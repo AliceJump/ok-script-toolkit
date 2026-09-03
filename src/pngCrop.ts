@@ -94,7 +94,7 @@ function paeth(a: number, b: number, c: number): number {
 }
 
 /** 解码 PNG 为 RGBA8 像素（Buffer, w*h*4） */
-function decodeRgba(buf: Buffer): { width: number; height: number; rgba: Buffer } {
+export function decodeRgba(buf: Buffer): { width: number; height: number; rgba: Buffer } {
   const { meta, idat } = parsePng(buf);
   if (meta.bitDepth !== 8) throw new Error(`unsupported bitDepth ${meta.bitDepth}`);
   const { width, height, colorType } = meta;
@@ -160,7 +160,7 @@ function decodeRgba(buf: Buffer): { width: number; height: number; rgba: Buffer 
 }
 
 /** 把 RGBA 像素编码为 PNG Buffer（8bit RGBA, filter 0） */
-function encodePng(width: number, height: number, rgba: Buffer): Buffer {
+export function encodePng(width: number, height: number, rgba: Buffer): Buffer {
   const stride = width * 4;
   const raw = Buffer.alloc((stride + 1) * height);
   for (let y = 0; y < height; y++) {
@@ -177,6 +177,59 @@ function encodePng(width: number, height: number, rgba: Buffer): Buffer {
   ihdr[12] = 0;
   // 使用 level 1 换取更快的编码速度（缩略图/标注图不需要极高压缩率）
   const idat = zlib.deflateSync(raw, { level: 1 });
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk('IHDR', ihdr),
+    chunk('IDAT', idat),
+    chunk('IEND', Buffer.alloc(0)),
+  ]);
+}
+
+/**
+ * 高效 RGB PNG 编码器（对齐 ok-script compress_coco 的压缩效果）。
+ *
+ * 与 encodePng 的区别：
+ * - RGB (colorType=2) 而非 RGBA：省 33% 数据
+ * - Sub filter (filter=1)：提高压缩率 10-30%
+ * - zlib level 6：平衡压缩率与速度
+ */
+export function encodePngRgb(width: number, height: number, rgba: Buffer): Buffer {
+  const stride = width * 3; // RGB, 3 bytes per pixel
+  const raw = Buffer.alloc((stride + 1) * height);
+
+  for (let y = 0; y < height; y++) {
+    const rawRowStart = y * (stride + 1);
+    raw[rawRowStart] = 1; // filter: Sub (value = current - left)
+
+    const rgbaRowStart = y * width * 4;
+    const rowStart = rawRowStart + 1;
+
+    // 第一个像素：filter=Sub 时 left=0，所以 raw = pixel
+    raw[rowStart] = rgba[rgbaRowStart];       // R
+    raw[rowStart + 1] = rgba[rgbaRowStart + 1]; // G
+    raw[rowStart + 2] = rgba[rgbaRowStart + 2]; // B
+
+    // 后续像素：raw = pixel - left
+    for (let x = 1; x < width; x++) {
+      const di = rowStart + x * 3;
+      const si = rgbaRowStart + x * 4;
+      const pi = rgbaRowStart + (x - 1) * 4;
+      raw[di] = (rgba[si] - rgba[pi]) & 0xff;         // R
+      raw[di + 1] = (rgba[si + 1] - rgba[pi + 1]) & 0xff; // G
+      raw[di + 2] = (rgba[si + 2] - rgba[pi + 2]) & 0xff; // B
+    }
+  }
+
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(width, 0);
+  ihdr.writeUInt32BE(height, 4);
+  ihdr[8] = 8; // bit depth
+  ihdr[9] = 2; // RGB (colorType=2)
+  ihdr[10] = 0;
+  ihdr[11] = 0;
+  ihdr[12] = 0;
+
+  const idat = zlib.deflateSync(raw, { level: 6 });
   return Buffer.concat([
     Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
     chunk('IHDR', ihdr),
@@ -320,6 +373,45 @@ export async function warmCropCache(
 /** 模板标注/图片变化时清空裁剪缓存。 */
 export function clearCropCache(): void {
   CROP_CACHE.clear();
+}
+
+/* ---------------- 原始分辨率裁剪落盘（供 saveToAssets bin-packing 使用） ---------------- */
+
+/**
+ * 从原图按 bbox 裁剪（保持原始分辨率，不缩放），将裁剪区域写入指定路径的 PNG 文件。
+ * 用于 saveToAssets 的 bin-packing 流程中单 bbox 直接裁剪场景。
+ * @returns 输出文件绝对路径；失败返回 undefined。
+ */
+export function cropTemplateOriginalFile(
+  imagePath: string,
+  bbox: [number, number, number, number],
+  outDir: string,
+  fileName: string,
+): string | undefined {
+  try {
+    const buf = fs.readFileSync(imagePath);
+    const { width, height, rgba } = decodeRgba(buf);
+    const [bx, by, bw, bh] = bbox;
+    const cx = Math.max(0, Math.min(bx, width));
+    const cy = Math.max(0, Math.min(by, height));
+    const cw = Math.max(1, Math.min(bw, width - cx));
+    const ch = Math.max(1, Math.min(bh, height - cy));
+
+    // 裁剪（不缩放）
+    const cropped = Buffer.alloc(cw * ch * 4);
+    for (let y = 0; y < ch; y++) {
+      const srcStart = ((cy + y) * width + cx) * 4;
+      rgba.copy(cropped, y * cw * 4, srcStart, srcStart + cw * 4);
+    }
+
+    const png = encodePng(cw, ch, cropped);
+    fs.mkdirSync(outDir, { recursive: true });
+    const outPath = path.join(outDir, fileName);
+    fs.writeFileSync(outPath, png);
+    return outPath;
+  } catch {
+    return undefined;
+  }
 }
 
 /* ---------------- 缩略图落盘（供 webview 通过 asWebviewUri 加载） ---------------- */
