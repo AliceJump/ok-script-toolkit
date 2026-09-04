@@ -46,12 +46,12 @@ vMAJOR.MINOR.PATCH
 
 ### JetBrains 发布 Token
 
-Secret：`JETBRAINS_PUBLISH_TOKEN`
+Secret：`JETBRAINS_TOKEN`
 
 1. 打开 https://plugins.jetbrains.com/author/me/tokens 。
 2. 选择 **Generate Token**，输入名称。
 3. 立即复制只显示一次的永久 Token。
-4. 保存为父仓库 Secret `JETBRAINS_PUBLISH_TOKEN`。
+4. 保存为父仓库 Secret `JETBRAINS_TOKEN`。
 
 ### JetBrains 签名密钥
 

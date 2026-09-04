@@ -198,7 +198,7 @@ git push origin v0.6.0
 | Secret | 获取方式 | 是否必需 |
 |---|---|---|
 | `VSCE_PAT` | Visual Studio Marketplace 发布 PAT | 可选；可改用 OIDC Trusted Publishing |
-| `JETBRAINS_PUBLISH_TOKEN` | JetBrains Marketplace 作者页 → My Tokens | 发布 JetBrains Marketplace 时必需 |
+| `JETBRAINS_TOKEN` | JetBrains Marketplace 作者页 → My Tokens | 发布 JetBrains Marketplace 时必需 |
 | `JETBRAINS_PRIVATE_KEY` | JetBrains 插件签名用 PEM 私钥全文或 Base64 | JetBrains Marketplace 发布时必需 |
 | `JETBRAINS_PRIVATE_KEY_PASSWORD` | 生成私钥时设置的密码 | JetBrains Marketplace 发布时必需 |
 | `JETBRAINS_CERTIFICATE_CHAIN` | 与私钥配套的 `chain.crt` 全文或 Base64 | JetBrains Marketplace 发布时必需 |
