@@ -144,7 +144,7 @@ jobs:
       contents: read
       id-token: write
     env:
-      VSCE_PAT: ${{ secrets.VSCE_PAT }}
+      VSCODE_PAT: ${{ secrets.VSCODE_PAT }}
       VSCE_USE_OIDC: ${{ vars.VSCE_USE_OIDC }}
 
     steps:
@@ -168,10 +168,10 @@ jobs:
       - name: Publish to Visual Studio Marketplace
         run: |
           set -euo pipefail
-          if [ -n "${VSCE_PAT:-}" ]; then
+          if [ -n "${VSCODE_PAT:-}" ]; then
             npm run publish:marketplace
           elif [ "${VSCE_USE_OIDC:-}" = "true" ]; then
-            echo "VSCE_PAT is not configured; using Visual Studio Marketplace trusted publishing (OIDC)."
+            echo "VSCODE_PAT is not configured; using Visual Studio Marketplace trusted publishing (OIDC)."
             output=$(mktemp)
             if ! npx @vscode/vsce publish --oidc --packagePath "${{ needs.validate.outputs.vsix }}" 2>&1 | tee "$output"; then
               if grep -Eqi 'already exists|version .* exists|duplicate' "$output"; then
@@ -181,7 +181,7 @@ jobs:
               fi
             fi
           else
-            echo "::notice::Neither VSCE_PAT nor VSCE_USE_OIDC=true is configured; Visual Studio Marketplace publishing was skipped."
+            echo "::notice::Neither VSCODE_PAT nor VSCE_USE_OIDC=true is configured; Visual Studio Marketplace publishing was skipped."
           fi
 
   publish-jetbrains:
