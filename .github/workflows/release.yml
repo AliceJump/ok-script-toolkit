@@ -212,14 +212,14 @@ jobs:
           fi
           version="${{ needs.validate.outputs.version }}"
           if curl --silent --show-error --fail --location --range 0-0 \
-            "https://plugins.jetbrains.com/plugin/download?pluginId=com.alicejump.oklanghints&version=$version" \
+            "https://plugins.jetbrains.com/plugin/download?pluginId=com.alicejump.okscripttoolkit&version=$version" \
             --output /dev/null; then
             echo "JetBrains Marketplace already contains version $version; skipping duplicate upload."
             exit 0
           fi
           curl --fail-with-body \
             --header "Authorization: Bearer $JETBRAINS_TOKEN" \
-            -F "xmlId=com.alicejump.oklanghints" \
+            -F "xmlId=com.alicejump.okscripttoolkit" \
             -F "file=@${{ needs.validate.outputs.jetbrains_zip }}" \
             https://plugins.jetbrains.com/api/updates/upload
 
