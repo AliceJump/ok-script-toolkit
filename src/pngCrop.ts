@@ -3,7 +3,7 @@ import * as path from 'path';
 import * as crypto from 'crypto';
 import * as zlib from 'zlib';
 import { Worker } from 'worker_threads';
-import { findOkTemplateOriginal } from './featureData';
+import { findOkTemplateCocoEntry } from './featureData';
 
 /** 模板缩略图统一高度（面板/缓存/worker 共用，消除 key 不匹配） */
 export const THUMB_HEIGHT = 96;
@@ -696,22 +696,6 @@ export function cropTemplateOriginalFile(
  *  原图标注查看（非热路径）
  * ======================================================================== */
 
-export function resolveOriginalImagePath(imagePath: string): string {
-  const m = imagePath.match(/^(.*[/\\])assets[/\\]images([/\\][^/\\]+)$/);
-  if (!m) return imagePath;
-  const rest = m[2]; const prefix = m[1];
-  // 优先主库 ok_templates（原始截图在此），再回退 ok_tasks/ok_templates
-  const rootOkTpls = prefix.replace(/ok_tasks[/\\]$/, '');
-  const candidates = [
-    path.join(rootOkTpls, 'ok_templates', rest),
-    path.join(prefix, 'ok_templates', rest),
-  ];
-  for (const c of candidates) {
-    try { if (fs.existsSync(c)) return c; } catch { /* 忽略 */ }
-  }
-  return imagePath;
-}
-
 function strokeRectInward(
   rgba: Buffer, imgW: number, imgH: number,
   x: number, y: number, w: number, h: number, thickness: number,
@@ -770,17 +754,14 @@ export function openAnnotatedImage(
   imagePath: string, name: string, bbox: [number, number, number, number],
   thumbDir: string, rootDir: string,
 ): string | undefined {
-  const candidates: string[] = [];
-  const viaLabelme = findOkTemplateOriginal(rootDir, name, bbox);
-  if (viaLabelme) candidates.push(viaLabelme);
-  if (!candidates.includes(imagePath)) candidates.push(imagePath);
-  for (const src of candidates) {
-    try { if (!fs.existsSync(src)) continue; } catch { continue; }
-    const key = crypto.createHash('sha1').update(`${src}|${bbox.join(',')}`).digest('hex').slice(0, 16);
-    const out = path.join(thumbDir, 'annotated', `a_${key}.png`);
-    try { if (fs.existsSync(out) && fs.statSync(out).size > 0) return out; } catch { /* 重新生成 */ }
-    const written = writeAnnotatedImage(src, bbox, out);
-    if (written) return written;
-  }
-  return undefined;
+  // 按模板名从 ok_templates/coco_annotations.json 反查原图 + 标注 bbox
+  const entry = findOkTemplateCocoEntry(rootDir, name);
+  if (!entry) return undefined;
+  const src = entry.imagePath;
+  const srcBbox = entry.bbox;
+  try { if (!fs.existsSync(src)) return undefined; } catch { return undefined; }
+  const key = crypto.createHash('sha1').update(`${src}|${srcBbox.join(',')}`).digest('hex').slice(0, 16);
+  const out = path.join(thumbDir, 'annotated', `a_${key}.png`);
+  try { if (fs.existsSync(out) && fs.statSync(out).size > 0) return out; } catch { /* 重新生成 */ }
+  return writeAnnotatedImage(src, srcBbox, out);
 }

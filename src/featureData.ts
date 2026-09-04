@@ -107,105 +107,79 @@ export class FeatureData {
   }
 }
 
-/* ---------------- ok_templates 原图反查（labelme json 索引） ---------------- */
+/* ---------------- ok_templates/coco_annotations.json 反查（原图 + 标注） ---------------- */
+
+export interface OkTemplateCocoEntry {
+  imagePath: string; // ok_templates 下的原图绝对路径
+  bbox: [number, number, number, number]; // [x, y, w, h] — ok_templates COCO 中的标注坐标
+}
+
+const okTplCocoIndexes = new Map<string, Map<string, OkTemplateCocoEntry>>();
+const OK_TPL_COCO_TTL_MS = 30_000;
+
+interface okTplCocoIndexData {
+  builtAt: number;
+  byName: Map<string, OkTemplateCocoEntry>;
+}
 
 /**
- * ok-script 的 ok_templates 目录里，N.png 是原始截图、N.json 是对应的 labelme 标注。
- * coco 的 assets/images/N.png 与 ok_templates/N.png 编号并不对应，
- * 必须按「模板名 + 标注坐标」在 labelme json 中反查真正的原图。
+ * 读取 ok_templates/coco_annotations.json，按模板名反查原图路径 + bbox。
+ * 同时扫描 ok_tasks/ok_templates/coco_annotations.json（扩展库）。
  */
+function getOkTemplateCocoIndex(rootDir: string): Map<string, OkTemplateCocoEntry> {
+  const hit = okTplCocoIndexes.get(rootDir);
+  if (hit) return hit;
 
-interface LabelmeShape {
-  label?: string;
-  shape_type?: string;
-  points?: number[][];
-}
-
-interface LabelmeIndex {
-  builtAt: number;
-  /** `${label}|${x},${y}` → 原图绝对路径（精确坐标匹配） */
-  byKey: Map<string, string>;
-  /** label → 原图绝对路径（按模板名直接匹配，无坐标歧义时使用） */
-  byName: Map<string, string>;
-}
-
-const labelmeIndexes = new Map<string, LabelmeIndex>();
-const LABELME_TTL_MS = 30_000;
-
-function buildLabelmeIndex(rootDir: string): LabelmeIndex {
-  const byKey = new Map<string, string>();
-  const byName = new Map<string, string>();
+  const byName = new Map<string, OkTemplateCocoEntry>();
   const dirs = [
     path.join(rootDir, 'ok_templates'),
     path.join(rootDir, 'ok_tasks', 'ok_templates'),
   ];
   for (const dir of dirs) {
-    let files: string[] = [];
+    const cocoPath = path.join(dir, 'coco_annotations.json');
     try {
-      if (!fs.existsSync(dir)) continue;
-      files = fs.readdirSync(dir).filter((f) => f.endsWith('.json'));
-    } catch {
-      continue;
-    }
-    for (const f of files) {
-      const jsonPath = path.join(dir, f);
-      const pngPath = path.join(dir, f.replace(/\.json$/, '.png'));
-      try {
-        if (!fs.existsSync(pngPath)) continue;
-        const data = JSON.parse(fs.readFileSync(jsonPath, 'utf-8'));
-        const shapes: LabelmeShape[] = Array.isArray(data?.shapes) ? data.shapes : [];
-        for (const s of shapes) {
-          if (!s || s.shape_type !== 'rectangle' || typeof s.label !== 'string') continue;
-          const pts = s.points;
-          if (!Array.isArray(pts) || pts.length < 2) continue;
-          const xs = pts.map((p) => p[0]);
-          const ys = pts.map((p) => p[1]);
-          const x = Math.round(Math.min(...xs));
-          const y = Math.round(Math.min(...ys));
-          byKey.set(`${s.label}|${x},${y}`, pngPath);
-          // 按模板名索引：每个模板名在 labelme 中只出现一次（无多图歧义）
-          if (!byName.has(s.label)) byName.set(s.label, pngPath);
+      if (!fs.existsSync(cocoPath)) continue;
+      const data = JSON.parse(fs.readFileSync(cocoPath, 'utf-8'));
+      if (!data || typeof data !== 'object') continue;
+
+      const imageMap = new Map<number, string>();
+      for (const img of data['images'] ?? []) {
+        if (img && typeof img.id === 'number' && typeof img.file_name === 'string') {
+          imageMap.set(img.id, path.join(dir, img.file_name));
         }
-      } catch {
-        // 坏文件跳过
       }
+      const categoryMap = new Map<number, string>();
+      for (const cat of data['categories'] ?? []) {
+        if (cat && typeof cat.id === 'number' && typeof cat.name === 'string') {
+          categoryMap.set(cat.id, cat.name);
+        }
+      }
+      for (const ann of data['annotations'] ?? []) {
+        const name = categoryMap.get(ann?.category_id);
+        const imagePath = imageMap.get(ann?.image_id);
+        if (!name || !imagePath || !Array.isArray(ann?.bbox) || ann.bbox.length < 4) continue;
+        const [x, y, w, h] = ann.bbox.map((n: number) => Math.round(n));
+        if (w <= 0 || h <= 0) continue;
+        if (!byName.has(name)) {
+          byName.set(name, { imagePath, bbox: [x, y, w, h] });
+        }
+      }
+    } catch {
+      // 坏文件跳过
     }
   }
-  return { builtAt: Date.now(), byKey, byName };
-}
-
-function getLabelmeIndex(rootDir: string): LabelmeIndex {
-  const hit = labelmeIndexes.get(rootDir);
-  if (hit && Date.now() - hit.builtAt < LABELME_TTL_MS) return hit;
-  const fresh = buildLabelmeIndex(rootDir);
-  labelmeIndexes.set(rootDir, fresh);
-  return fresh;
+  okTplCocoIndexes.set(rootDir, byName);
+  return byName;
 }
 
 /**
- * 按「模板名 + bbox 左上角」反查 ok_templates 中的原始截图。
- * 查找优先级：
- *   1. 精确坐标匹配（`label|x,y`）
- *   2. 模板名直接匹配（每个模板在 labelme 中只出现一次，无歧义）
- *   3. 遍历所有坐标 key 找同名片段（兼容边界情况）
+ * 按模板名从 ok_templates/coco_annotations.json 反查原图路径和标注 bbox。
+ * 返回 undefined 表示该模板在 ok_templates 中没有对应标注。
  */
-export function findOkTemplateOriginal(
+export function findOkTemplateCocoEntry(
   rootDir: string,
   name: string,
-  bbox: [number, number, number, number],
-): string | undefined {
+): OkTemplateCocoEntry | undefined {
   if (!rootDir) return undefined;
-  const idx = getLabelmeIndex(rootDir);
-  // 1. 精确坐标匹配
-  const exact = idx.byKey.get(`${name}|${bbox[0]},${bbox[1]}`);
-  if (exact) return exact;
-  // 2. 模板名直接匹配（最可靠，每个模板只出现在一张截图中）
-  const byName = idx.byName.get(name);
-  if (byName) return byName;
-  // 3. 兜底：遍历所有 key 找同名片段
-  const hits = new Set<string>();
-  for (const [k, v] of idx.byKey) {
-    if (k.startsWith(`${name}|`)) hits.add(v);
-  }
-  return hits.size === 1 ? [...hits][0] : undefined;
+  return getOkTemplateCocoIndex(rootDir).get(name);
 }
