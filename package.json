@@ -280,7 +280,5 @@
     "jsdom": "^26.1.0",
     "typescript": "^5.4.0"
   },
-  "dependencies": {
-    "sharp": "^0.35.4"
-  }
+  "dependencies": {}
 }

@@ -244,7 +244,7 @@ function cropAndEncodeSync(
 }
 
 /* ========================================================================
- *  Worker 线程池 — sharp 原生处理，主线程零阻塞
+ *  Worker 线程池 — 纯 JS 处理，主线程零阻塞
  * ======================================================================== */
 
 interface CropTask {
@@ -491,7 +491,7 @@ export interface CropRequest {
 
 /**
  * 后台预热：按原图分组提交 worker（同一 4K 原图只解码一次）。
- * worker 用 sharp 处理，主线程只做 IPC 通信，完全不阻塞。
+ * worker 用纯 JS 处理，主线程只做 IPC 通信，完全不阻塞。
  */
 export async function warmCropCache(requests: CropRequest[]): Promise<void> {
   const t0 = performance.now();

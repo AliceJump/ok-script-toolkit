@@ -44,7 +44,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const cropLog = vscode.window.createOutputChannel('ok-script-toolkit');
   setCropLogger((msg) => cropLog.appendLine(msg));
 
-  // 初始化 worker 线程池（sharp 原生图像处理，主线程零阻塞）
+  // 初始化 worker 线程池（纯 JS 图像处理，主线程零阻塞）
   initCropWorkerPool(context.extensionPath);
 
   // 后台预热：把全部模板缩略图裁进缓存，后续 hover/补全直接命中
