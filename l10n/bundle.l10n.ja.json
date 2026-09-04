@@ -64,7 +64,7 @@
   "Not defined in effects.py": "effects.py に未定義",
   "Undefined": "未定義",
   "No Python editor is available; copied instead: {text}": "利用可能な Python エディターがないためコピーしました: {text}",
-  "ok-lang-hints: Generating source image annotation…": "ok-lang-hints: 元画像の注釈を生成しています…",
+  "ok-script-toolkit: Generating source image annotation…": "ok-script-toolkit: 元画像の注釈を生成しています…",
   "Failed to generate annotated image: source image could not be decoded or was missing": "注釈画像を生成できませんでした。元画像をデコードできないか、ファイルがありません。",
   "Template Gallery": "テンプレートギャラリー",
   "Category": "カテゴリ",

@@ -54,7 +54,7 @@ interface TaskSchema {
   locale?: string;
 }
 
-/** 每个任务的独立配置（持久化到 .vscode/ok-lang-hints-tasks.json） */
+/** 每个任务的独立配置（持久化到 .vscode/ok-script-toolkit-tasks.json） */
 interface TaskConfig {
   /** 透传给 ok-script / 项目级 argparse 的额外命令行参数。 */
   extraArgs?: string;
@@ -260,10 +260,10 @@ export class TaskLauncherViewProvider implements vscode.WebviewViewProvider {
   private view: vscode.WebviewView | null = null;
   private currentProjectDir = '';
   private refreshGeneration = 0;
-  /** 每任务独立配置（内存缓存 + 持久化到 .vscode/ok-lang-hints-tasks.json） */
+  /** 每任务独立配置（内存缓存 + 持久化到 .vscode/ok-script-toolkit-tasks.json） */
   private taskConfigs: Record<string, TaskConfig> = {};
   private knownTasks: TaskInfo[] = [];
-  /** 采集到的任务参数 schema（缓存到 .vscode/ok-lang-hints-schema.json） */
+  /** 采集到的任务参数 schema（缓存到 .vscode/ok-script-toolkit-schema.json） */
   private schemas: Record<string, TaskSchema> = {};
 
   constructor(
@@ -341,16 +341,16 @@ export class TaskLauncherViewProvider implements vscode.WebviewViewProvider {
     return config;
   }
 
-  /** .vscode 目录下 ok-lang-hints 数据文件的绝对路径 */
+  /** .vscode 目录下 ok-script-toolkit 数据文件的绝对路径 */
   private dataFile(name: string): string {
     const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '';
     return path.join(root, '.vscode', name);
   }
 
-  /** 读取 .vscode/ok-lang-hints-tasks.json（每任务独立配置持久化） */
+  /** 读取 .vscode/ok-script-toolkit-tasks.json（每任务独立配置持久化） */
   private loadTaskConfigs(projectDir = this.currentProjectDir): void {
     try {
-      const p = this.dataFile('ok-lang-hints-tasks.json');
+      const p = this.dataFile('ok-script-toolkit-tasks.json');
       if (fs.existsSync(p)) {
         const raw = JSON.parse(fs.readFileSync(p, 'utf-8')) as Partial<TaskConfigStore> & { tasks?: Record<string, TaskConfig> };
         // 兼容旧版顶层 tasks 格式；保存后自动迁移为按项目隔离的 projects。
@@ -369,12 +369,12 @@ export class TaskLauncherViewProvider implements vscode.WebviewViewProvider {
     }
   }
 
-  /** 保存单个任务的配置到 .vscode/ok-lang-hints-tasks.json */
+  /** 保存单个任务的配置到 .vscode/ok-script-toolkit-tasks.json */
   private async saveTaskConfig(task: TaskInfo, config: TaskConfig): Promise<void> {
     const key = `${task.module}::${task.className}`;
     const nextConfigs = { ...this.taskConfigs, [key]: config };
     try {
-      const p = this.dataFile('ok-lang-hints-tasks.json');
+      const p = this.dataFile('ok-script-toolkit-tasks.json');
       fs.mkdirSync(path.dirname(p), { recursive: true });
       let store: TaskConfigStore = { projects: {} };
       if (fs.existsSync(p)) {
@@ -411,7 +411,7 @@ export class TaskLauncherViewProvider implements vscode.WebviewViewProvider {
   /** 读取 schema 缓存；无缓存时返回空 */
   private loadSchemaCache(projectDir: string, locale: string): Record<string, TaskSchema> {
     try {
-      const p = this.dataFile('ok-lang-hints-schema.json');
+      const p = this.dataFile('ok-script-toolkit-schema.json');
       if (fs.existsSync(p)) {
         const raw = JSON.parse(fs.readFileSync(p, 'utf-8')) as SchemaProbeResult & { projectDir?: string; locale?: string };
         const cachedLocale = raw.locale || Object.values(raw.schemas || {})[0]?.locale;
@@ -424,7 +424,7 @@ export class TaskLauncherViewProvider implements vscode.WebviewViewProvider {
   /** 写入 schema 缓存 */
   private saveSchemaCache(projectDir: string, locale: string, schemas: Record<string, TaskSchema>): void {
     try {
-      const p = this.dataFile('ok-lang-hints-schema.json');
+      const p = this.dataFile('ok-script-toolkit-schema.json');
       fs.mkdirSync(path.dirname(p), { recursive: true });
       fs.writeFileSync(p, JSON.stringify({ ok: true, projectDir, locale, schemas }, null, 2), 'utf-8');
     } catch { /* 缓存失败不阻塞 */ }

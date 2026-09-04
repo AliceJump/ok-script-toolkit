@@ -330,7 +330,7 @@ export class CharacterManagerPanel implements vscode.Disposable {
 
   private atomicWriteJson(file: string, root: JsonObject): void {
     const backup = `${file}.bak`;
-    const temporary = `${file}.ok-lang-hints.tmp`;
+    const temporary = `${file}.ok-script-toolkit.tmp`;
     fs.copyFileSync(file, backup);
     try {
       fs.writeFileSync(temporary, `${JSON.stringify(root, null, 2)}\n`, 'utf-8');
@@ -437,7 +437,7 @@ export class CharacterManagerPanel implements vscode.Disposable {
 
   private atomicWriteText(file: string, content: string): void {
     const backup = `${file}.bak`;
-    const temporary = `${file}.ok-lang-hints.tmp`;
+    const temporary = `${file}.ok-script-toolkit.tmp`;
     fs.copyFileSync(file, backup);
     try {
       fs.writeFileSync(temporary, content, 'utf-8');

@@ -115,7 +115,7 @@
   "Undefined": "Undefined",
   "{character} / {skill} references unknown effect {effect}": "{character} / {skill} references unknown effect {effect}",
   "No Python editor is available; copied instead: {text}": "No Python editor is available; copied instead: {text}",
-  "ok-lang-hints: Generating source image annotation…": "ok-lang-hints: Generating source image annotation…",
+  "ok-script-toolkit: Generating source image annotation…": "ok-script-toolkit: Generating source image annotation…",
   "Failed to generate annotated image: source image could not be decoded or was missing": "Failed to generate annotated image: source image could not be decoded or was missing",
   "Template Gallery": "Template Gallery",
   "Category": "Category",

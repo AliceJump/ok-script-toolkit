@@ -40,8 +40,8 @@ export function activate(context: vscode.ExtensionContext): void {
     .digest('hex').slice(0, 12);
   const thumbDir = path.join(context.globalStorageUri.fsPath, 'template-thumbs', wsHash);
 
-  // 性能日志输出通道：查看 → 输出 → ok-lang-hints
-  const cropLog = vscode.window.createOutputChannel('ok-lang-hints');
+  // 性能日志输出通道：查看 → 输出 → ok-script-toolkit
+  const cropLog = vscode.window.createOutputChannel('ok-script-toolkit');
   setCropLogger((msg) => cropLog.appendLine(msg));
 
   // 初始化 worker 线程池（sharp 原生图像处理，主线程零阻塞）

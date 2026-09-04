@@ -42,7 +42,7 @@ if (jetbrainsVersion !== version) {
 
 const tag = `v${version}`;
 const vsix = `${packageJson.name}-${version}.vsix`;
-const jetbrainsZip = `ok-lang-hints-jetbrains-${version}.zip`;
+const jetbrainsZip = `ok-script-toolkit-jetbrains-${version}.zip`;
 const refType = process.env.GITHUB_REF_TYPE;
 const refName = process.env.GITHUB_REF_NAME;
 if (refType === 'tag' && refName && refName !== tag) {

@@ -64,7 +64,7 @@
   "Not defined in effects.py": "No definido en effects.py",
   "Undefined": "No definido",
   "No Python editor is available; copied instead: {text}": "No hay un editor de Python disponible; se copió en su lugar: {text}",
-  "ok-lang-hints: Generating source image annotation…": "ok-lang-hints: Generando anotación de la imagen original…",
+  "ok-script-toolkit: Generating source image annotation…": "ok-script-toolkit: Generando anotación de la imagen original…",
   "Failed to generate annotated image: source image could not be decoded or was missing": "No se pudo generar la imagen anotada: no se pudo decodificar la imagen original o falta el archivo",
   "Template Gallery": "Galería de plantillas",
   "Category": "Categoría",

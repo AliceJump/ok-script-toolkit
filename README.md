@@ -149,17 +149,17 @@ Windows 使用 `gradlew.bat`。生成的 ZIP 位于 `jetbrains/build/distributio
 方式一（打包安装，推荐）：
 
 ```bash
-cd ok-lang-hints
+cd ok-script-toolkit
 npm install
 npm run compile
 npx @vscode/vsce package --allow-missing-repository
 ```
 
-然后在 VS Code 中：`Ctrl+Shift+P` → **Extensions: Install from VSIX...** → 选择生成的 `ok-lang-hints-0.5.0.vsix`。
+然后在 VS Code 中：`Ctrl+Shift+P` → **Extensions: Install from VSIX...** → 选择生成的 `ok-script-toolkit-0.5.0.vsix`。
 
 方式二（开发调试）：
 
-用 VS Code 打开本项目根目录，按 `F5`（使用 `ok-lang-hints/.vscode/launch.json` 的配置）启动扩展开发宿主，在宿主窗口打开任意 Python 文件即可看到效果。
+用 VS Code 打开本项目根目录，按 `F5`（使用 `ok-script-toolkit/.vscode/launch.json` 的配置）启动扩展开发宿主，在宿主窗口打开任意 Python 文件即可看到效果。
 
 ## 自动发布
 
@@ -167,7 +167,7 @@ npx @vscode/vsce package --allow-missing-repository
 - **发布的唯一触发方式是推送一个尚不存在的 `vX.Y.Z` 标签**。工作流不提供手动发布，也不会因 `main` 推送自动发布。
 - `package.json`、`package-lock.json` 和 `jetbrains/gradle.properties` 的版本必须完全一致；标签必须等于 `v<version>`。
 - 标签工作流会测试两端，构建 VSIX 和 JetBrains ZIP，在同一个 GitHub Release 中上传两个安装包，然后按已配置的 Secret 发布两个 Marketplace。
-- GitHub Release 使用仓库内置 `GITHUB_TOKEN`；Marketplace 所需 Secret 统一配置在父仓库 `AliceJump/ok-lang-hints`，子仓库不保存发布凭据。
+- GitHub Release 使用仓库内置 `GITHUB_TOKEN`；Marketplace 所需 Secret 统一配置在父仓库 `AliceJump/ok-script-toolkit`，子仓库不保存发布凭据。
 
 发布示例：
 
