@@ -6,6 +6,8 @@
   "command.openTemplatesEditor": "편집기에서 템플릿 갤러리 열기",
   "command.showTaskLauncher": "작업 실행기 열기",
   "command.openCharacterManager": "캐릭터·스킬 관리자 열기",
+  "command.openTemplateAssets": "템플릿 에셋 열기",
+  "command.openAnnotationEditor": "어노테이션 편집기 열기",
   "viewContainer.title": "ok-script 도구",
   "viewContainer.tools.title": "ok-script 도구",
   "viewContainer.templates.title": "ok-script 템플릿",
@@ -13,6 +15,10 @@
   "view.taskLauncher": "작업 실행기",
   "view.toolbox": "도구 상자",
   "view.templateAssets": "템플릿 에셋",
+  "view.toolbox.title": "ok-script 도구: 도구 상자",
+  "view.taskLauncher.title": "ok-script 도구: 작업 실행기",
+  "view.templateGallery.title": "ok-script 템플릿: 템플릿 갤러리",
+  "view.templateAssets.title": "ok-script 템플릿: 템플릿 에셋",
   "configuration.title": "ok-script 언어 힌트",
   "config.langDirectory": "작업 영역 루트 기준 언어 JSON 디렉터리입니다.",
   "config.poDirectory": "작업 영역 루트 기준 gettext PO 디렉터리입니다.",
@@ -28,5 +34,7 @@
   "config.characterMasterFile": "캐릭터 마스터 JSON입니다.",
   "config.characterSkillsDirectory": "캐릭터 스킬 JSON 디렉터리입니다.",
   "config.characterLocaleFile": "캐릭터 이름 현지화 JSON입니다.",
-  "config.characterAvatarTemplateRegex": "캐릭터 아바타 템플릿 이름 정규식입니다. 캡처 그룹이 있으면 첫 번째 그룹을, 없으면 일치한 접두사 뒤의 이름을 영문 slug와 대조합니다. 기본값은 battleicon, battle_icon, battle-icon 접두사를 지원합니다."
+  "config.characterAvatarTemplateRegex": "캐릭터 아바타 템플릿 이름 정규식입니다. 캡처 그룹이 있으면 첫 번째 그룹을, 없으면 일치한 접두사 뒤의 이름을 영문 slug와 대조합니다. 기본값은 battleicon, battle_icon, battle-icon 접두사를 지원합니다.",
+  "config.okTemplatesDirectory": "템플릿 에셋 관리자에서 사용하는 작업 영역 루트 기준 ok_templates 폴더 이름입니다.",
+  "config.annotationKeybindings": "어노테이션 편집기의 키보드 단축키입니다. 각 값은 키 이름이고 `+`로 연결된 수정 키 접두사를 붙일 수 있습니다(예: `ctrl+z`, `shift+d`). 지원되는 키: 알파벳, 숫자, `Delete`, `ArrowLeft`, `ArrowRight` 등."
 }

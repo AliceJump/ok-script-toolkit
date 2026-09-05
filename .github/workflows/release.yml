@@ -191,7 +191,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
-      JETBRAINS_PUBLISH_TOKEN: ${{ secrets.JETBRAINS_PUBLISH_TOKEN }}
+      JETBRAINS_TOKEN: ${{ secrets.JETBRAINS_TOKEN }}
 
     steps:
       - name: Download JetBrains artifact
@@ -202,8 +202,8 @@ jobs:
       - name: Publish to JetBrains Marketplace
         run: |
           set -euo pipefail
-          if [ -z "${JETBRAINS_PUBLISH_TOKEN:-}" ]; then
-            echo "::notice::JETBRAINS_PUBLISH_TOKEN is not configured; JetBrains Marketplace publishing was skipped."
+          if [ -z "${JETBRAINS_TOKEN:-}" ]; then
+            echo "::notice::JETBRAINS_TOKEN is not configured; JetBrains Marketplace publishing was skipped."
             exit 0
           fi
           if [ "${{ needs.build-jetbrains.outputs.signed }}" != "true" ]; then
@@ -212,14 +212,14 @@ jobs:
           fi
           version="${{ needs.validate.outputs.version }}"
           if curl --silent --show-error --fail --location --range 0-0 \
-            "https://plugins.jetbrains.com/plugin/download?pluginId=com.alicejump.oklanghints&version=$version" \
+            "https://plugins.jetbrains.com/plugin/download?pluginId=com.alicejump.okscripttoolkit&version=$version" \
             --output /dev/null; then
             echo "JetBrains Marketplace already contains version $version; skipping duplicate upload."
             exit 0
           fi
           curl --fail-with-body \
-            --header "Authorization: Bearer $JETBRAINS_PUBLISH_TOKEN" \
-            -F "xmlId=com.alicejump.oklanghints" \
+            --header "Authorization: Bearer $JETBRAINS_TOKEN" \
+            -F "xmlId=com.alicejump.okscripttoolkit" \
             -F "file=@${{ needs.validate.outputs.jetbrains_zip }}" \
             https://plugins.jetbrains.com/api/updates/upload
 

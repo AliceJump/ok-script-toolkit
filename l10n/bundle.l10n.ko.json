@@ -64,7 +64,7 @@
   "Not defined in effects.py": "effects.py에 정의되지 않음",
   "Undefined": "정의되지 않음",
   "No Python editor is available; copied instead: {text}": "사용 가능한 Python 편집기가 없어 대신 복사했습니다: {text}",
-  "ok-lang-hints: Generating source image annotation…": "ok-lang-hints: 원본 이미지 주석 생성 중…",
+  "ok-script-toolkit: Generating source image annotation…": "ok-script-toolkit: 원본 이미지 주석 생성 중…",
   "Failed to generate annotated image: source image could not be decoded or was missing": "주석 이미지를 생성하지 못했습니다. 원본 이미지를 디코딩할 수 없거나 파일이 없습니다.",
   "Template Gallery": "템플릿 갤러리",
   "Category": "분류",

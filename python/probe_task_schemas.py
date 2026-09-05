@@ -216,7 +216,7 @@ def main():
     sys.path.insert(0, project_dir)
     os.chdir(project_dir)
 
-    temp_dir = tempfile.TemporaryDirectory(prefix="ok-lang-hints-probe-")
+    temp_dir = tempfile.TemporaryDirectory(prefix="ok-script-toolkit-probe-")
     source_config_folder = detect_config_folder(project_dir)
     temp_config_folder = os.path.join(temp_dir.name, "configs")
     source_config_path = os.path.join(project_dir, source_config_folder)

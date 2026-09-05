@@ -23,7 +23,6 @@ logs/**/*.log
 AGENT.md
 AGENTS.md
 **/agent.md
-**/agents.md
-python/**
+**/agents.md、
 screenshots/**
 ok_tasks/**

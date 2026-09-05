@@ -64,7 +64,7 @@
   "Not defined in effects.py": "未在 effects.py 中定義",
   "Undefined": "未定義",
   "No Python editor is available; copied instead: {text}": "沒有可用的 Python 編輯器，已改為複製：{text}",
-  "ok-lang-hints: Generating source image annotation…": "ok-lang-hints：正在產生原圖標註…",
+  "ok-script-toolkit: Generating source image annotation…": "ok-script-toolkit：正在產生原圖標註…",
   "Failed to generate annotated image: source image could not be decoded or was missing": "產生標註圖失敗：原圖無法解碼或檔案遺失",
   "Template Gallery": "模板面板",
   "Category": "分類",

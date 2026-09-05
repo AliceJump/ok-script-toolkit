@@ -115,7 +115,7 @@
   "Undefined": "未定义",
   "{character} / {skill} references unknown effect {effect}": "{character} / {skill} 引用了未知效果 {effect}",
   "No Python editor is available; copied instead: {text}": "没有可用的 Python 编辑器，已改为复制：{text}",
-  "ok-lang-hints: Generating source image annotation…": "ok-lang-hints：正在生成原图标注…",
+  "ok-script-toolkit: Generating source image annotation…": "ok-script-toolkit：正在生成原图标注…",
   "Failed to generate annotated image: source image could not be decoded or was missing": "生成标注图失败：原图解码失败或文件缺失",
   "Template Gallery": "模板面板",
   "Category": "分类",

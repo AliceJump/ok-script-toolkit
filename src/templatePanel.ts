@@ -185,7 +185,7 @@ class GalleryController {
       const file = await vscode.window.withProgress(
         {
           location: vscode.ProgressLocation.Notification,
-          title: tr('ok-lang-hints: Generating source image annotation…'),
+          title: tr('ok-script-toolkit: Generating source image annotation…'),
         },
         async () => openAnnotatedImage(imagePath, name, bbox!, this.thumbDir, this.features.root),
       );
