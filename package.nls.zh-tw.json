@@ -6,6 +6,8 @@
   "command.openTemplatesEditor": "在編輯器中開啟模板面板",
   "command.showTaskLauncher": "開啟任務啟動",
   "command.openCharacterManager": "開啟角色技能管理面板",
+  "command.openTemplateAssets": "開啟模板素材",
+  "command.openAnnotationEditor": "開啟標註編輯器",
   "viewContainer.title": "ok-script 工具",
   "viewContainer.tools.title": "ok-script 工具",
   "viewContainer.templates.title": "ok-script 模板",
@@ -13,6 +15,10 @@
   "view.taskLauncher": "任務啟動",
   "view.toolbox": "工具箱",
   "view.templateAssets": "模板素材",
+  "view.toolbox.title": "ok-script 工具: 工具箱",
+  "view.taskLauncher.title": "ok-script 工具: 任務啟動",
+  "view.templateGallery.title": "ok-script 模板: 模板面板",
+  "view.templateAssets.title": "ok-script 模板: 模板素材",
   "configuration.title": "ok-script 語言提示",
   "config.langDirectory": "lang JSON 目錄（相對於工作區根目錄）。",
   "config.poDirectory": "gettext PO 目錄（相對於工作區根目錄），按 <locale>/LC_MESSAGES/*.po 組織。",
@@ -28,5 +34,7 @@
   "config.characterMasterFile": "角色主表 JSON（相對於角色專案根目錄）。",
   "config.characterSkillsDirectory": "角色技能 JSON 目錄（相對於角色專案根目錄）。",
   "config.characterLocaleFile": "角色名稱多語言 JSON（相對於角色專案根目錄）。",
-  "config.characterAvatarTemplateRegex": "角色頭像模板名稱正規表示式；有擷取群組時使用第一組，否則使用符合前綴後的剩餘名稱與角色英文 slug 比對；預設相容 battleicon、battle_icon 與 battle-icon 前綴。"
+  "config.characterAvatarTemplateRegex": "角色頭像模板名稱正規表示式；有擷取群組時使用第一組，否則使用符合前綴後的剩餘名稱與角色英文 slug 比對；預設相容 battleicon、battle_icon 與 battle-icon 前綴。",
+  "config.okTemplatesDirectory": "ok_templates 資料夾名稱（相對於工作區根目錄），供模板素材管理器使用。",
+  "config.annotationKeybindings": "標註編輯器的鍵盤快速鍵。每個值為按鍵名稱，可選擇性使用 `+` 連接修飾鍵前綴（如 `ctrl+z`、`shift+d`）。支援的鍵：字母、數字、`Delete`、`ArrowLeft`、`ArrowRight` 等。"
 }

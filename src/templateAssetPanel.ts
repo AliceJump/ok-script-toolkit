@@ -256,19 +256,19 @@ class AssetGalleryController {
     const outputPath = path.join(outputDir, `screenshot_${ts}.png`);
 
     // Find the capture script
-    const scriptPath = path.join(folder.uri.fsPath, 'scripts', 'capture_game_window.py');
+    const scriptPath = path.join(folder.uri.fsPath, 'python', 'capture_game_window.py');
     let captureScript: string | undefined;
     if (fs.existsSync(scriptPath)) {
       captureScript = scriptPath;
     } else {
-      const extScriptsDir = path.join(path.dirname(__dirname), 'scripts');
-      const extScriptPath = path.join(extScriptsDir, 'capture_game_window.py');
+      const extPythonDir = path.join(path.dirname(__dirname), 'python');
+      const extScriptPath = path.join(extPythonDir, 'capture_game_window.py');
       if (fs.existsSync(extScriptPath)) {
         captureScript = extScriptPath;
       }
     }
     if (!captureScript) {
-      void vscode.window.showErrorMessage(tr('Screenshot script not found. Please place capture_game_window.py in scripts/ directory.'));
+      void vscode.window.showErrorMessage(tr('Screenshot script not found. Please place capture_game_window.py in python/ directory.'));
       return;
     }
 
@@ -277,10 +277,10 @@ class AssetGalleryController {
       ? JSON.stringify({ exe: exeNames, title: titleRegex, hwnd_class: hwndClass })
       : undefined;
 
-    return this.captureWithScript(captureScript, outputPath, titleRegex, windowConfigJson);
+    return this.captureWithScript(captureScript, outputPath, titleRegex, windowConfigJson, folder.uri.fsPath);
   }
 
-  private captureWithScript(scriptPath: string, outputPath: string, titlePattern: string | undefined, configJson?: string): Promise<void> {
+  private captureWithScript(scriptPath: string, outputPath: string, titlePattern: string | undefined, configJson?: string, projectDir?: string): Promise<void> {
     return new Promise<void>((resolve) => {
       const args: string[] = [scriptPath, outputPath];
       if (configJson) {
@@ -289,6 +289,9 @@ class AssetGalleryController {
       } else if (titlePattern) {
         // 兼容旧模式：直接传正则
         args.push(titlePattern);
+      }
+      if (projectDir) {
+        args.push('--project-dir', projectDir);
       }
 
       const { pythonPath } = getProjectConfig();
@@ -443,7 +446,7 @@ export class TemplateAssetViewProvider implements vscode.WebviewViewProvider {
     private readonly thumbDir: string,
     private readonly extensionUri: vscode.Uri,
     private readonly globalState?: vscode.Memento,
-  ) {}
+  ) { }
 
   resolveWebviewView(view: vscode.WebviewView): void {
     view.webview.options = {

@@ -6,6 +6,8 @@
   "command.openTemplatesEditor": "Abrir galería de plantillas en el editor",
   "command.showTaskLauncher": "Abrir lanzador de tareas",
   "command.openCharacterManager": "Abrir gestor de personajes y habilidades",
+  "command.openTemplateAssets": "Abrir recursos de plantillas",
+  "command.openAnnotationEditor": "Abrir editor de anotaciones",
   "viewContainer.title": "Herramientas de ok-script",
   "viewContainer.tools.title": "Herramientas de ok-script",
   "viewContainer.templates.title": "Plantillas de ok-script",
@@ -13,6 +15,10 @@
   "view.taskLauncher": "Lanzador de tareas",
   "view.toolbox": "Caja de herramientas",
   "view.templateAssets": "Recursos de plantillas",
+  "view.toolbox.title": "Herramientas de ok-script: Caja de herramientas",
+  "view.taskLauncher.title": "Herramientas de ok-script: Lanzador de tareas",
+  "view.templateGallery.title": "Plantillas de ok-script: Galería de plantillas",
+  "view.templateAssets.title": "Plantillas de ok-script: Recursos de plantillas",
   "configuration.title": "Sugerencias de idioma de ok-script",
   "config.langDirectory": "Directorio JSON de idiomas relativo a la raíz del espacio de trabajo.",
   "config.poDirectory": "Directorio gettext PO relativo a la raíz del espacio de trabajo.",
@@ -28,5 +34,7 @@
   "config.characterMasterFile": "JSON maestro de personajes.",
   "config.characterSkillsDirectory": "Directorio JSON de habilidades de personajes.",
   "config.characterLocaleFile": "JSON de localización de nombres de personajes.",
-  "config.characterAvatarTemplateRegex": "Expresión regular para nombres de plantillas de avatar. Usa el primer grupo si existe; en caso contrario compara el texto posterior al prefijo coincidente con el slug inglés. Admite por defecto battleicon, battle_icon y battle-icon."
+  "config.characterAvatarTemplateRegex": "Expresión regular para nombres de plantillas de avatar. Usa el primer grupo si existe; en caso contrario compara el texto posterior al prefijo coincidente con el slug inglés. Admite por defecto battleicon, battle_icon y battle-icon.",
+  "config.okTemplatesDirectory": "Nombre de la carpeta ok_templates relativo a la raíz del espacio de trabajo. Usado por el gestor de recursos de plantillas.",
+  "config.annotationKeybindings": "Atajos de teclado del editor de anotaciones. Cada valor es un nombre de tecla, opcionalmente con prefijos de modificador unidos por `+` (p. ej. `ctrl+z`, `shift+d`). Teclas admitidas: letras, dígitos, `Delete`, `ArrowLeft`, `ArrowRight`, etc."
 }
