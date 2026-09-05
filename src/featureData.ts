@@ -125,7 +125,7 @@ export interface OkTemplateCocoEntry {
   bbox: [number, number, number, number]; // [x, y, w, h] — ok_templates COCO 中的标注坐标
 }
 
-const okTplCocoIndexes = new Map<string, Map<string, OkTemplateCocoEntry>>();
+const okTplCocoIndexes = new Map<string, okTplCocoIndexData>();
 const OK_TPL_COCO_TTL_MS = 30_000;
 
 interface okTplCocoIndexData {
@@ -136,10 +136,12 @@ interface okTplCocoIndexData {
 /**
  * 读取 ok_templates/coco_annotations.json，按模板名反查原图路径 + bbox。
  * 同时扫描 ok_tasks/ok_templates/coco_annotations.json（扩展库）。
+ * 结果按 TTL 缓存过期，避免标注修改后一直用旧索引。
  */
 function getOkTemplateCocoIndex(rootDir: string): Map<string, OkTemplateCocoEntry> {
   const hit = okTplCocoIndexes.get(rootDir);
-  if (hit) return hit;
+  if (hit && Date.now() - hit.builtAt < OK_TPL_COCO_TTL_MS) return hit.byName;
+  if (hit) okTplCocoIndexes.delete(rootDir);
 
   const byName = new Map<string, OkTemplateCocoEntry>();
   const dirs = [
@@ -179,7 +181,7 @@ function getOkTemplateCocoIndex(rootDir: string): Map<string, OkTemplateCocoEntr
       // 坏文件跳过
     }
   }
-  okTplCocoIndexes.set(rootDir, byName);
+  okTplCocoIndexes.set(rootDir, { builtAt: Date.now(), byName });
   return byName;
 }
 
