@@ -6,7 +6,6 @@
   "Failed to collect task schema": "Failed to collect task schema",
   "Failed to read task configuration: {error}": "Failed to read task configuration: {error}",
   "Failed to save task configuration: {error}": "Failed to save task configuration: {error}",
-  "Saved parameters for {task}": "Saved parameters for {task}",
   "No ok-script project was found. Configure okLangHints.okScriptProjectPath or open a folder containing src/config.py.": "No ok-script project was found. Configure okLangHints.okScriptProjectPath or open a folder containing src/config.py.",
   "Project directory does not exist: {path}": "Project directory does not exist: {path}",
   "Failed to load task list: {error}": "Failed to load task list: {error}",

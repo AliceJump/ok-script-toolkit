@@ -17,10 +17,9 @@ const match = /const EN: WebviewStrings = \{([\s\S]*?)\n\};/.exec(source);
 if (!match) throw new Error('EN dictionary not found');
 const dictionary = {
   parameters: 'Parameters', collapseParameters: 'Collapse Parameters', launchSettings: 'Launch Settings',
-  extraArgs: 'Extra Arguments', extraArgsHint: '', environmentVariables: 'Environment Variables', environmentHint: '',
-  timeoutSeconds: 'Timeout', timeoutHint: '', saveParameters: 'Save', reset: 'Reset', configGroup: 'Group',
+  timeoutSeconds: 'Timeout', timeoutHint: '', reset: 'Reset', configGroup: 'Group', saved: 'Auto-saved',
   commonParameters: 'Common', groupParameters: 'Groups', childTaskConfig: 'Children', otherParameters: 'Other',
-  noConfigParameters: 'None', saveLaunchSettings: 'Save launch', schemaFailed: 'Failed {error}', current: 'Current',
+  noConfigParameters: 'None', schemaFailed: 'Failed {error}', current: 'Current',
   currentValue: '{value}', enabled: 'On', disabled: 'Off', holdCtrlMulti: '', structuredJsonHint: '',
   selectedOptionsHint: '{values}', taskTitle: 'Tasks', refresh: 'Refresh', noTasks: 'No tasks',
   triggerTask: 'Trigger', oneTimeTask: 'One-time', launch: 'Launch', stop: 'Stop', running: 'Running',

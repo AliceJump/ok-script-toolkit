@@ -3,7 +3,6 @@
   "Unknown error": "不明なエラー",
   "Failed to read task configuration: {error}": "タスク設定の読み込みに失敗しました: {error}",
   "Failed to save task configuration: {error}": "タスク設定の保存に失敗しました: {error}",
-  "Saved parameters for {task}": "{task} のパラメーターを保存しました",
   "No ok-script project was found. Configure okLangHints.okScriptProjectPath or open a folder containing src/config.py.": "ok-script プロジェクトが見つかりません。okLangHints.okScriptProjectPath を設定するか、src/config.py を含むフォルダーを開いてください。",
   "Project directory does not exist: {path}": "プロジェクトディレクトリが存在しません: {path}",
   "Failed to load task list: {error}": "タスク一覧の読み込みに失敗しました: {error}",

@@ -198,6 +198,17 @@ button.secondary:hover:not(:disabled) { background: var(--vscode-button-secondar
 }
 .config-section-title::after { content: ''; flex: 1; height: 1px; background: var(--border); }
 
+.config-saved {
+  padding: 1px 8px;
+  border-radius: 999px;
+  color: var(--vscode-charts-green, #3fb950);
+  background: color-mix(in srgb, var(--vscode-charts-green, #3fb950) 14%, transparent);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .02em;
+  text-transform: none;
+}
+
 .config-field {
   min-width: 0;
   padding: 8px 9px;

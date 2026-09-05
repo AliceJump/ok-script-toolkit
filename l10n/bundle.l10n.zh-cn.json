@@ -6,7 +6,6 @@
   "Failed to collect task schema": "采集任务 schema 失败",
   "Failed to read task configuration: {error}": "读取任务配置失败：{error}",
   "Failed to save task configuration: {error}": "保存任务配置失败：{error}",
-  "Saved parameters for {task}": "已保存 {task} 的参数",
   "No ok-script project was found. Configure okLangHints.okScriptProjectPath or open a folder containing src/config.py.": "未找到 ok-script 项目。请配置 okLangHints.okScriptProjectPath，或打开含 src/config.py 的项目文件夹。",
   "Project directory does not exist: {path}": "项目目录不存在：{path}",
   "Failed to load task list: {error}": "任务列表加载失败：{error}",
