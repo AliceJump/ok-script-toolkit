@@ -61,6 +61,7 @@ export class EffectData {
   private cache = new Map<string, EffectEntry>();
   private filePath = '';
   private mtime = 0;
+  private lastScanMs = 0;
 
   constructor(root: vscode.WorkspaceFolder | undefined) {
     this.rootDir = root ? root.uri.fsPath : '';
@@ -75,6 +76,10 @@ export class EffectData {
 
   refresh(force = false): void {
     if (!this.rootDir) return;
+    // 补全会对每个效果 ID 各调一次 entry()，这里节流避免每按键重复 statSync
+    const now = Date.now();
+    if (!force && now - this.lastScanMs < 300) return;
+    this.lastScanMs = now;
     const fp = this.effectsFile();
     if (!fs.existsSync(fp)) {
       if (force || this.filePath === fp) {
