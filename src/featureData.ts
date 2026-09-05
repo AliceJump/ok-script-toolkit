@@ -11,11 +11,19 @@ export interface FeatureTemplate {
   height: number;
 }
 
+/**
+ * 访问器侧刷新的最小扫描间隔（ms）。
+ * 补全/hover 会对每个模板名各调一次 entry()，不节流时每次按键产生
+ * 上千次 existsSync/statSync；文件变化由 watcher 的 force 刷新保证。
+ */
+const ACCESSOR_SCAN_INTERVAL_MS = 300;
+
 /** 解析 assets/coco_annotations.json（COCO 格式）为 feature -> 模板映射 */
 export class FeatureData {
   private rootDir: string;
   private cache = new Map<string, FeatureTemplate>();
   private cocoMtimes = new Map<string, number>();
+  private lastScanMs = 0;
 
   constructor(root: vscode.WorkspaceFolder | string | undefined) {
     this.rootDir = typeof root === 'string' ? root : root ? root.uri.fsPath : '';
@@ -31,6 +39,9 @@ export class FeatureData {
 
   refresh(force = false): void {
     if (!this.rootDir) return;
+    const now = Date.now();
+    if (!force && now - this.lastScanMs < ACCESSOR_SCAN_INTERVAL_MS) return;
+    this.lastScanMs = now;
     if (force) {
       this.cache.clear();
       this.cocoMtimes.clear();

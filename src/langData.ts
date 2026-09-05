@@ -91,6 +91,14 @@ export function poDomainsSetting(): string[] {
   return cfg && cfg.length ? cfg : ['ocr'];
 }
 
+/**
+ * 访问器侧刷新的最小扫描间隔（ms）。
+ * providers 的每个 entry()/keys()/poKeys() 调用都会触发 refresh()，
+ * 一次补全请求可能级联数百上千次；文件变化由 watcher 的 force 刷新保证，
+ * 这里只做低频兜底扫描，避免每按键都做全目录同步 IO。
+ */
+const ACCESSOR_SCAN_INTERVAL_MS = 300;
+
 /** PO 条目：msgid（OCR 原文/源文案） -> msgstr（修正/翻译文本） */
 export interface PoEntry {
   msgid: string;
@@ -193,6 +201,9 @@ export class LangData {
   private merged = new Map<string, ModuleDict>();
   private mtimes = new Map<string, number>();
   private poMtimes = new Map<string, number>();
+  private lastScanMs = 0;
+  private jsonDirty = false;
+  private poDirty = false;
 
   constructor(root: vscode.WorkspaceFolder | undefined) {
     this.rootDir = root ? root.uri.fsPath : '';
@@ -207,11 +218,17 @@ export class LangData {
     return path.join(this.rootDir, poDirectorySetting());
   }
 
-  /** 强制全量刷新 */
+  /** 强制全量刷新；非强制时按 ACCESSOR_SCAN_INTERVAL_MS 节流 */
   refresh(force = false): void {
+    const now = Date.now();
+    if (!force && now - this.lastScanMs < ACCESSOR_SCAN_INTERVAL_MS) return;
+    this.lastScanMs = now;
     this.refreshJson(force);
     this.refreshPo(force);
-    this.rebuildMerged();
+    if (this.jsonDirty) {
+      this.jsonDirty = false;
+      this.rebuildMerged();
+    }
   }
 
   /** 扫描 assets/lang/*.json（按 mtime 增量） */
@@ -220,6 +237,7 @@ export class LangData {
     if (force) {
       this.jsonCache.clear();
       this.mtimes.clear();
+      this.jsonDirty = true;
     }
     if (!this.rootDir || !fs.existsSync(dir)) return;
 
@@ -236,6 +254,7 @@ export class LangData {
           this.mtimes.set(fp, m);
           const raw = JSON.parse(fs.readFileSync(fp, 'utf-8'));
           this.jsonCache.set(moduleName, raw as ModuleDict);
+          this.jsonDirty = true;
         }
       } catch {
         // 跳过坏文件
@@ -243,17 +262,34 @@ export class LangData {
     }
     // 删除已消失的模块
     for (const mod of [...this.jsonCache.keys()]) {
-      if (!seen.has(mod)) this.jsonCache.delete(mod);
+      if (!seen.has(mod)) {
+        this.jsonCache.delete(mod);
+        this.jsonDirty = true;
+      }
     }
   }
 
-  /** 扫描 <poDirectory>/<locale>/LC_MESSAGES/*.po（按 mtime 增量） */
+  /** 扫描 <poDirectory>/<locale>/LC_MESSAGES/*.po（按 mtime 增量；无变化时跳过聚合重建） */
   private refreshPo(force: boolean): void {
-    this.poCache.clear();
-    if (!enablePoData()) return;
+    if (!enablePoData()) {
+      if (this.poFiles.size) {
+        this.poFiles.clear();
+        this.poMtimes.clear();
+        this.poDirty = true;
+      }
+      return;
+    }
     const root = this.poRoot();
-    if (!this.rootDir || !fs.existsSync(root)) return;
+    if (!this.rootDir || !fs.existsSync(root)) {
+      if (this.poFiles.size) {
+        this.poFiles.clear();
+        this.poMtimes.clear();
+        this.poDirty = true;
+      }
+      return;
+    }
 
+    let changed = force;
     const seen = new Set<string>();
     for (const localeDir of fs.readdirSync(root, { withFileTypes: true })) {
       if (!localeDir.isDirectory()) continue;
@@ -275,6 +311,7 @@ export class LangData {
               locale: localeDir.name,
               entries: parsePo(fs.readFileSync(fp, 'utf-8')),
             });
+            changed = true;
           }
         } catch {
           // 跳过坏文件
@@ -286,9 +323,15 @@ export class LangData {
       if (!seen.has(fp)) {
         this.poFiles.delete(fp);
         this.poMtimes.delete(fp);
+        changed = true;
       }
     }
+    if (!changed && !this.poDirty) return;
+
     // 按 domain 聚合：msgid（及去空格副本）-> locale -> { string: msgstr }
+    // 仅在文件集合/内容实际变化时重建，避免每次访问器调用都重放全量条目
+    this.poCache.clear();
+    this.poDirty = false;
     for (const { domain, locale, entries } of this.poFiles.values()) {
       let dict = this.poCache.get(domain);
       if (!dict) {
