@@ -394,26 +394,43 @@ function ensurePool(): void {
   if (!poolInitialized) return;
   while (poolWorkers.length < poolMax) {
     const worker = new Worker(path.join(poolExtPath, 'out', 'pngCropWorker.js'));
-    const state: WorkerState = { worker, busy: false };
-    worker.on('message', (msg: {
-      id: number;
-      results: Array<{ bbox: number[]; dataUrl: string; filePath: string }>;
-      error?: string;
-    }) => {
+    const state: WorkerState = { worker, busy: false, inflight: new Set() };
+    worker.on('message', (msg: WorkerReply) => {
       state.busy = false;
-      const idx = cropTaskQueue.findIndex((t) => t.id === msg.id);
-      if (idx >= 0) {
-        const task = cropTaskQueue.splice(idx, 1)[0];
-        if (msg.error || !msg.results?.length) {
-          task.resolve(undefined);
-        } else {
-          task.resolve({ dataUrl: msg.results[0].dataUrl, filePath: msg.results[0].filePath });
-        }
+      state.inflight.delete(msg.id);
+      if (msg.error) {
+        log(`worker task #${msg.id} failed: ${msg.error}`);
       }
+      resolveReply(msg.id, msg);
       drainQueue();
     });
-    worker.on('error', () => { state.busy = false; });
+    const fail = (error: string) => {
+      // worker 崩溃/退出：把派发给它的任务统一置为失败，并从池中移除（drainQueue 会重建）
+      const idx = poolWorkers.indexOf(state);
+      if (idx >= 0) poolWorkers.splice(idx, 1);
+      for (const id of state.inflight) resolveReply(id, { id, results: [], error });
+      state.inflight.clear();
+      state.busy = false;
+    };
+    worker.on('error', (err) => fail(String(err)));
+    worker.on('exit', () => fail('worker exited'));
     poolWorkers.push(state);
+  }
+}
+
+function postTask(state: WorkerState, task: CropTask): void {
+  try {
+    state.worker.postMessage({
+      id: task.id,
+      imagePath: task.imagePath,
+      bboxes: task.bboxes,
+      thumbDir: task.thumbDir,
+    });
+    state.busy = true;
+    state.inflight.add(task.id);
+  } catch (err) {
+    // post 失败（如 worker 已退出）：任务立即失败，不悬挂
+    resolveReply(task.id, { id: task.id, results: [], error: String(err) });
   }
 }
 
@@ -422,15 +439,7 @@ function drainQueue(): void {
   ensurePool();
   for (const state of poolWorkers) {
     if (state.busy || cropTaskQueue.length === 0) continue;
-    const task = cropTaskQueue.shift();
-    if (!task) break;
-    state.busy = true;
-    state.worker.postMessage({
-      id: task.id,
-      imagePath: task.imagePath,
-      bboxes: [{ bbox: task.bbox, targetHeight: task.targetHeight }],
-      thumbDir: task.thumbDir,
-    });
+    postTask(state, cropTaskQueue.shift()!);
   }
 }
 
@@ -440,7 +449,15 @@ function submitToWorker(
   targetHeight: number, thumbDir: string,
 ): Promise<{ dataUrl: string; filePath: string } | undefined> {
   return new Promise((resolve) => {
-    cropTaskQueue.push({ id: nextTaskId++, imagePath, bbox, targetHeight, thumbDir, resolve });
+    const id = nextTaskId++;
+    pendingReplies.set(id, (reply) => {
+      if (reply.error || !reply.results?.length) {
+        resolve(undefined);
+      } else {
+        resolve({ dataUrl: reply.results[0].dataUrl, filePath: reply.results[0].filePath });
+      }
+    });
+    cropTaskQueue.push({ id, imagePath, bboxes: [{ bbox, targetHeight }], thumbDir });
     drainQueue();
   });
 }
@@ -460,16 +477,10 @@ function submitBatchToWorker(
     const batchId = nextTaskId++;
     ensurePool();
 
-    // 找一个空闲 worker（或等 drainQueue 调度）
-    const freeWorker = poolWorkers.find((w) => !w.busy);
-
-    const handler = (msg: { id: number; results: Array<{ bbox: number[]; dataUrl: string; filePath: string }>; error?: string }) => {
-      if (msg.id !== batchId) return;
-      for (const s of poolWorkers) s.worker.removeListener('message', handler);
-
+    pendingReplies.set(batchId, (reply) => {
       const results: Array<{ bbox: [number, number, number, number]; dataUrl: string; filePath: string }> = [];
-      if (!msg.error) {
-        for (const r of msg.results) {
+      if (!reply.error) {
+        for (const r of reply.results) {
           results.push({
             bbox: r.bbox as [number, number, number, number],
             dataUrl: r.dataUrl, filePath: r.filePath,
@@ -478,31 +489,30 @@ function submitBatchToWorker(
       }
       resolve(results);
       drainQueue();
-    };
-    for (const s of poolWorkers) s.worker.on('message', handler);
+    });
 
+    const task: CropTask = {
+      id: batchId, imagePath,
+      bboxes: bboxes.map((b) => ({ bbox: b.bbox, targetHeight: b.targetHeight })),
+      thumbDir,
+    };
+    const freeWorker = poolWorkers.find((w) => !w.busy);
     if (freeWorker) {
-      freeWorker.busy = true;
-      freeWorker.worker.postMessage({
-        id: batchId, imagePath,
-        bboxes: bboxes.map((b) => ({ bbox: b.bbox, targetHeight: b.targetHeight })),
-        thumbDir,
-      });
+      postTask(freeWorker, task);
     } else {
-      // 所有 worker 忙：注册一个占位任务让 drainQueue 调度
-      const placeholder: CropTask = {
-        id: batchId, imagePath, bbox: bboxes[0].bbox,
-        targetHeight: bboxes[0].targetHeight, thumbDir,
-        resolve: () => { /* batch 用 handler 回调 */ },
-      };
-      cropTaskQueue.unshift(placeholder);
+      // 所有 worker 忙：排队让 drainQueue 调度
+      cropTaskQueue.unshift(task);
       drainQueue();
     }
   });
 }
 
-/** 销毁 worker 池 */
+/** 销毁 worker 池：先失败所有等待中的任务，再终止线程 */
 export function disposeCropWorkerPool(): void {
+  for (const id of [...pendingReplies.keys()]) {
+    resolveReply(id, { id, results: [], error: 'worker pool disposed' });
+  }
+  cropTaskQueue = [];
   for (const s of poolWorkers) {
     try { s.worker.terminate(); } catch { /* 忽略 */ }
   }
@@ -519,6 +529,15 @@ const CROP_CACHE_MAX = 600;
 
 function cropKey(imagePath: string, bbox: [number, number, number, number], targetHeight: number): string {
   return `${imagePath}|${bbox.join(',')}|${targetHeight}`;
+}
+
+/** 写入裁剪缓存；满时淘汰最早插入的条目（Map 保序），避免整表清空导致预热成果全部丢失 */
+function cacheSet(key: string, url: string): void {
+  if (CROP_CACHE.size >= CROP_CACHE_MAX) {
+    const oldest = CROP_CACHE.keys().next().value;
+    if (oldest !== undefined) CROP_CACHE.delete(oldest);
+  }
+  CROP_CACHE.set(key, url);
 }
 
 /** 模板标注/图片变化时清空裁剪缓存。 */
@@ -628,8 +647,7 @@ export async function warmCropCache(requests: CropRequest[]): Promise<void> {
           const th = it.targetHeight ?? THUMB_HEIGHT;
           const key = cropKey(it.imagePath, it.bbox, th);
           if (CROP_CACHE.has(key)) continue;
-          if (CROP_CACHE.size >= CROP_CACHE_MAX) CROP_CACHE.clear();
-          CROP_CACHE.set(key, cropAndEncodeSync(width, height, rgba, it.bbox, th));
+          cacheSet(key, cropAndEncodeSync(width, height, rgba, it.bbox, th));
         }
       } catch { /* 忽略 */ }
     }
@@ -661,8 +679,7 @@ export async function warmCropCache(requests: CropRequest[]): Promise<void> {
     for (const r of results) {
       const key = cropKey(imagePath, r.bbox, targetHeight);
       if (!CROP_CACHE.has(key)) {
-        if (CROP_CACHE.size >= CROP_CACHE_MAX) CROP_CACHE.clear();
-        CROP_CACHE.set(key, r.dataUrl);
+        cacheSet(key, r.dataUrl);
       }
     }
   }
@@ -693,8 +710,7 @@ export function cropTemplateToDataUrlCached(
     return undefined;
   }
   if (url !== undefined) {
-    if (CROP_CACHE.size >= CROP_CACHE_MAX) CROP_CACHE.clear();
-    CROP_CACHE.set(key, url);
+    cacheSet(key, url);
     logT(`sync fallback (miss→JS decode): ${path.basename(imagePath)}`, t0);
     return url;
   }
@@ -751,8 +767,7 @@ export async function cropTemplateThumbFileAsync(
     logT(`thumb async: ${path.basename(imagePath)} via worker`, t0);
     const key = cropKey(imagePath, bbox, targetHeight);
     if (!CROP_CACHE.has(key)) {
-      if (CROP_CACHE.size >= CROP_CACHE_MAX) CROP_CACHE.clear();
-      CROP_CACHE.set(key, result.dataUrl);
+      cacheSet(key, result.dataUrl);
     }
     return result.filePath;
   }
