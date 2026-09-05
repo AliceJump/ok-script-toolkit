@@ -43,6 +43,7 @@ export function activate(context: vscode.ExtensionContext): void {
   // 性能日志输出通道：查看 → 输出 → ok-script-toolkit
   const cropLog = vscode.window.createOutputChannel('ok-script-toolkit');
   setCropLogger((msg) => cropLog.appendLine(msg));
+  context.subscriptions.push(cropLog);
 
   // 初始化 worker 线程池（纯 JS 图像处理，主线程零阻塞）
   initCropWorkerPool(context.extensionPath);
@@ -91,8 +92,9 @@ export function activate(context: vscode.ExtensionContext): void {
           // ok_templates: 只清被改动 PNG 对应的缩略图，不影响同源其他 PNG
           if (src === 'ok_templates') {
             const pngRe = /\.png$/i;
+            // fsPath 在 Windows 上是反斜杠，先归一化再做目录段匹配
             const pngUris = changedUris.filter(u =>
-              u.fsPath.includes('ok_templates/') && pngRe.test(u.fsPath)
+              /(^|\/)ok_templates\//.test(u.fsPath.replace(/[\\/]+/g, '/')) && pngRe.test(u.fsPath)
             );
             for (const uri of pngUris) {
               clearCropCacheForImage(uri.fsPath);
@@ -181,8 +183,21 @@ export function activate(context: vscode.ExtensionContext): void {
     ) {
       return { ...empty, features: true };
     }
+    // 相对路径按工作区相对比较；绝对路径配置（如 D:/proj/src/data/effects.py）按解析后的绝对路径比较
     if (rel === effectsFile) {
       return { ...empty, effects: true };
+    }
+    if (wsFolder) {
+      const sameFile = (a: string, b: string) => {
+        const na = a.replace(/[\\/]+/g, '/');
+        const nb = b.replace(/[\\/]+/g, '/');
+        return process.platform === 'win32'
+          ? na.toLowerCase() === nb.toLowerCase()
+          : na === nb;
+      };
+      if (sameFile(uri.fsPath, path.resolve(wsFolder.uri.fsPath, effectsFile))) {
+        return { ...empty, effects: true };
+      }
     }
     return empty;
   };
