@@ -135,5 +135,6 @@
   "{character} is missing localized names": "{character} にローカライズ名がありません",
   "Localized name {id} has no character master entry or skill file": "ローカライズ名 {id} にキャラクターマスター項目またはスキルファイルがありません",
   "{character} / {skill} references unknown effect {effect}": "{character} / {skill} が不明な効果 {effect} を参照しています",
-  "At runtime, fix_match_regex translates this pattern using ocr.po before calling re.compile.": "実行時、fix_match_regex は re.compile を呼び出す前に ocr.po でこのパターンを翻訳します。"
+  "At runtime, fix_match_regex translates this pattern using ocr.po before calling re.compile.": "実行時、fix_match_regex は re.compile を呼び出す前に ocr.po でこのパターンを翻訳します。",
+  "Saving to assets…": "assets に保存中…"
 }

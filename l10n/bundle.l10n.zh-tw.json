@@ -135,5 +135,6 @@
   "{character} is missing localized names": "{character} 缺少多語言名稱",
   "Localized name {id} has no character master entry or skill file": "多語言名稱 {id} 沒有角色主表項目或技能檔案",
   "{character} / {skill} references unknown effect {effect}": "{character} / {skill} 引用了未知效果 {effect}",
-  "At runtime, fix_match_regex translates this pattern using ocr.po before calling re.compile.": "執行時 fix_match_regex 會先使用 ocr.po 翻譯此模式，再呼叫 re.compile。"
+  "At runtime, fix_match_regex translates this pattern using ocr.po before calling re.compile.": "執行時 fix_match_regex 會先使用 ocr.po 翻譯此模式，再呼叫 re.compile。",
+  "Saving to assets…": "正在儲存到 assets…"
 }

@@ -12,6 +12,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
 import * as zlib from 'zlib';
+import { decode as jpegDecode } from 'jpeg-js';
 
 interface PngMeta {
   width: number;
@@ -99,7 +100,7 @@ function paeth(a: number, b: number, c: number): number {
   return c;
 }
 
-function decodeRgba(buf: Buffer): { width: number; height: number; rgba: Buffer } {
+function decodePngRgba(buf: Buffer): { width: number; height: number; rgba: Buffer } {
   const { meta, idat } = parsePng(buf);
   if (meta.bitDepth !== 8) throw new Error(`unsupported bitDepth ${meta.bitDepth}`);
   const { width, height, colorType } = meta;
@@ -150,6 +151,67 @@ function decodeRgba(buf: Buffer): { width: number; height: number; rgba: Buffer 
     prev = recon;
   }
   return { width, height, rgba };
+}
+
+/** 解码 JPEG 为 RGBA8 像素（jpeg-js 纯 JS 实现，有损解码） */
+function decodeJpegRgba(buf: Buffer): { width: number; height: number; rgba: Buffer } {
+  const img = jpegDecode(buf, { useTArray: true });
+  const data = img.data as Uint8Array;
+  return {
+    width: img.width,
+    height: img.height,
+    rgba: Buffer.from(data.buffer, data.byteOffset, data.length),
+  };
+}
+
+/** 解码 BMP 为 RGBA8 像素（支持 24/32bpp BI_RGB 与 BI_BITFIELDS） */
+function decodeBmpRgba(buf: Buffer): { width: number; height: number; rgba: Buffer } {
+  if (buf.length < 26 || buf[0] !== 0x42 || buf[1] !== 0x4d) throw new Error('not a bmp');
+  const pixelOffset = buf.readUInt32LE(10);
+  const headerSize = buf.readUInt32LE(14);
+  if (headerSize < 40) throw new Error(`unsupported bmp header size ${headerSize}`);
+  const width = buf.readInt32LE(18);
+  const heightRaw = buf.readInt32LE(22);
+  const height = Math.abs(heightRaw);
+  const bottomUp = heightRaw > 0;
+  const bpp = buf.readUInt16LE(28);
+  const compression = buf.readUInt32LE(30);
+  if (width <= 0 || height <= 0) throw new Error('invalid bmp dimensions');
+  if (compression !== 0 && compression !== 3) throw new Error(`unsupported bmp compression ${compression}`);
+  if (bpp !== 24 && bpp !== 32) throw new Error(`unsupported bmp bpp ${bpp}`);
+  // BITMAPV4HEADER（108 字节）起才有显式 alpha 掩码；BI_RGB 32bpp 第 4 字节视作不透明
+  const alphaMask = bpp === 32 && compression === 3 && headerSize >= 108 ? buf.readUInt32LE(66) >>> 0 : 0;
+  const maskShift = (mask: number) => {
+    let m = mask;
+    let s = 0;
+    while (m > 0 && (m & 1) === 0) { m >>>= 1; s++; }
+    return s;
+  };
+  const alphaShift = alphaMask ? maskShift(alphaMask) : 24;
+  const rowBytes = (bpp * width + 7) >> 3;
+  const rowSize = (rowBytes + 3) & ~3; // 每行按 4 字节对齐
+  const rgba = Buffer.alloc(width * height * 4);
+  for (let y = 0; y < height; y++) {
+    const srcRow = pixelOffset + (bottomUp ? height - 1 - y : y) * rowSize;
+    if (srcRow + rowBytes > buf.length) throw new Error('truncated bmp');
+    let src = srcRow;
+    let dst = y * width * 4;
+    for (let x = 0; x < width; x++, src += bpp / 8, dst += 4) {
+      rgba[dst] = buf[src + 2];     // BGR 内存序 → RGBA
+      rgba[dst + 1] = buf[src + 1];
+      rgba[dst + 2] = buf[src];
+      rgba[dst + 3] = bpp === 24 ? 255 : alphaMask ? (buf.readUInt32LE(src) & alphaMask) >>> alphaShift : 255;
+    }
+  }
+  return { width, height, rgba };
+}
+
+/** 按魔数分发解码：PNG / JPEG / BMP 统一输出 RGBA8 */
+function decodeImage(buf: Buffer): { width: number; height: number; rgba: Buffer } {
+  if (buf.length >= 8 && buf.readUInt32BE(0) === 0x89504e47) return decodePngRgba(buf);
+  if (buf.length > 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return decodeJpegRgba(buf);
+  if (buf.length > 2 && buf[0] === 0x42 && buf[1] === 0x4d) return decodeBmpRgba(buf);
+  throw new Error('unsupported image format');
 }
 
 function encodePng(width: number, height: number, rgba: Buffer): Buffer {
@@ -221,20 +283,17 @@ interface CropTask {
 }
 
 parentPort?.on('message', async (task: CropTask) => {
-  const taskT0 = performance.now();
   try {
     // 读取原图文件（fs 在 worker 中也是同步的，但文件读取通常 <5ms）
     const buf = fs.readFileSync(task.imagePath);
-    const readMs = performance.now() - taskT0;
 
-    const decoded = decodeRgba(buf);
+    const decoded = decodeImage(buf);
     const imgW = decoded.width;
     const imgH = decoded.height;
     if (imgW === 0 || imgH === 0) {
       parentPort?.postMessage({ id: task.id, results: [], error: 'invalid image' });
       return;
     }
-    console.warn(`[pngCrop-worker] read ${path.basename(task.imagePath)} ${imgW}×${imgH} ${buf.length}B, ${readMs.toFixed(0)}ms`);
 
     const results: Array<{
       bbox: [number, number, number, number];
@@ -262,10 +321,9 @@ parentPort?.on('message', async (task: CropTask) => {
       results.push({ bbox: item.bbox, dataUrl, filePath });
     }
 
-    console.warn(`[pngCrop-worker] done ${path.basename(task.imagePath)} ×${task.bboxes.length} crop(s) in ${(performance.now() - taskT0).toFixed(0)}ms`);
     parentPort?.postMessage({ id: task.id, results });
   } catch (err) {
-    console.warn(`[pngCrop-worker] error ${path.basename(task.imagePath)}: ${err}`);
+    // 错误经回包传给主线程记录（主线程输出通道），worker 内不再走 console
     parentPort?.postMessage({ id: task.id, results: [], error: String(err) });
   }
 });

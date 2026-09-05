@@ -135,5 +135,6 @@
   "Size": "尺寸",
   "Source": "来源",
   "At runtime, fix_match_regex translates this pattern using ocr.po before calling re.compile.": "运行时 fix_match_regex 会用 ocr.po 翻译该正则后再调用 re.compile。",
-  "{count} keys": "{count} 个键"
+  "{count} keys": "{count} 个键",
+  "Saving to assets…": "正在保存到 assets…"
 }
