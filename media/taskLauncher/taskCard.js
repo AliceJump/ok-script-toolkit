@@ -54,12 +54,17 @@
       post({ type: 'launch', task: { ...task, displayName } });
     });
     launch.dataset.role = 'launch';
+    const pause = createButton('task-card__pause secondary', `⏸ ${t('pause')}`, () => {
+      if (!state.running) return;
+      post({ type: state.paused ? 'resume' : 'pause', task: { ...task, displayName } });
+    });
+    pause.dataset.role = 'pause';
     const stop = createButton('task-card__stop secondary', `⏹ ${t('stop')}`, () => {
       if (!state.running) return;
       post({ type: 'stop', task: { ...task, displayName } });
     });
     stop.dataset.role = 'stop';
-    actions.append(launch, stop);
+    actions.append(launch, pause, stop);
     header.append(identity, actions);
 
     const configPanel = buildConfigPanel(task, schema);
@@ -85,9 +90,13 @@
       const current = card.dataset.taskKey === state.runningTaskKey;
       card.classList.toggle('is-running', state.running && current);
       const launch = card.querySelector('[data-role="launch"]');
+      const pause = card.querySelector('[data-role="pause"]');
       const stop = card.querySelector('[data-role="stop"]');
       launch.disabled = state.running;
       launch.textContent = state.running && current ? `⏳ ${t('running')}` : `▶ ${t('launch')}`;
+      pause.hidden = !state.running;
+      pause.disabled = !state.running || !current || state.stopping;
+      pause.textContent = state.paused && current ? `▶ ${t('resume')}` : `⏸ ${t('pause')}`;
       stop.disabled = !state.running || !current;
     }
   }

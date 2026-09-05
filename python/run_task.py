@@ -10,15 +10,88 @@
 注入原理：猴子补丁 BaseTask.load_config —— 任务加载配置后、on_create() 前，
 把插件侧 params 覆盖进 self.config（仅内存，不写 configs/*.json，不污染项目配置）。
 参考 ok-end-field src/patches 的 monkey-patch 模式（functools.wraps + 类方法替换 + 幂等）。
+
+运行期控制：宿主通过 stdin 按行发送 pause / resume 命令（与 ok-script GUI 的
+og.executor.pause() / executor.start() 一致，参考 task.unpause() 的实现）。
+命令生效后向 stdout 打印 OK_TOOLKIT_PAUSED / OK_TOOLKIT_RESUMED 标记行，
+宿主据此同步任务启动器 UI；异常打印 OK_TOOLKIT_ERROR:<err>。
 """
 import argparse
 import functools
 import json
 import os
 import sys
+import threading
+import time
 
 sys.stdout.reconfigure(encoding="utf-8")
 sys.stderr.reconfigure(encoding="utf-8")
+
+# 命令执行结果标记行（宿主按行扫描 stdout）
+MARKER_PAUSED = "OK_TOOLKIT_PAUSED"
+MARKER_RESUMED = "OK_TOOLKIT_RESUMED"
+MARKER_ERROR = "OK_TOOLKIT_ERROR:"
+
+
+def _emit(line: str) -> None:
+    print(line, flush=True)
+
+
+def _executor():
+    """og.executor 在 OK(config) 初始化后才被赋值（ok/__init__.py og.executor = task_executor）。"""
+    from ok import og
+
+    return getattr(og, "executor", None)
+
+
+def _apply_command(command: str) -> None:
+    executor = _executor()
+    if executor is None:
+        raise RuntimeError("task executor is not ready")
+    if command == "pause":
+        # executor.pause()：置 paused 标志并唤醒执行循环；任务在下一次取 frame 时挂起。
+        # 已处于暂停时返回 None（幂等），同样回标记让宿主同步状态。
+        executor.pause()
+        _emit(MARKER_PAUSED)
+    elif command == "resume":
+        # executor.start()：executor.paused=False 并补正 pause_end_time，与 task.unpause() 一致。
+        executor.start()
+        _emit(MARKER_RESUMED)
+    else:
+        raise ValueError(f"unknown command: {command}")
+
+
+def _handle_command(command: str) -> None:
+    """执行命令；executor 尚未就绪（OK 还在初始化）时短暂等待重试。"""
+    deadline = time.monotonic() + 120
+    while True:
+        try:
+            _apply_command(command)
+            return
+        except RuntimeError:
+            if time.monotonic() >= deadline:
+                _emit(f"{MARKER_ERROR}task executor did not start within 120s")
+                return
+            time.sleep(0.2)
+        except Exception as e:  # noqa: BLE001 — 回传给宿主展示
+            _emit(f"{MARKER_ERROR}{e}")
+            return
+
+
+def start_stdin_command_listener() -> None:
+    """后台线程按行读取 stdin 命令；EOF（宿主关闭或进程退出）时自然结束。"""
+
+    def listen() -> None:
+        try:
+            for line in sys.stdin:
+                command = line.strip().lower()
+                if command in ("pause", "resume"):
+                    _handle_command(command)
+        except Exception:
+            # stdin 被关闭等场景直接退出线程，不影响任务运行
+            pass
+
+    threading.Thread(target=listen, name="ok-toolkit-stdin", daemon=True).start()
 
 
 def apply_inject_patch(inject: dict) -> None:
@@ -90,6 +163,10 @@ def main():
     sys.argv = [saved_argv[0], *extra_args]
 
     from ok import run_task
+
+    # stdin 命令监听（pause/resume）；og.executor 由 OK(config) 初始化时赋值，
+    # 命令到达早于初始化完成时在 _handle_command 内等待。
+    start_stdin_command_listener()
 
     try:
         run_task(config, task=task_name)
