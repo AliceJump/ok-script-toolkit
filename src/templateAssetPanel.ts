@@ -358,7 +358,22 @@ class AssetGalleryController {
 
     try {
       this.data.ensureTemplateFolder();
-      this.data.saveToAssets(pick.target, generateEnum, absEnumPath);
+      await vscode.window.withProgress(
+        {
+          location: vscode.ProgressLocation.Notification,
+          title: tr('Saving to assets…'),
+        },
+        async (progress) => {
+          await this.data.saveToAssets(
+            pick.target,
+            generateEnum,
+            absEnumPath,
+            (done, total) => {
+              progress.report({ message: `${done} / ${total}` });
+            },
+          );
+        },
+      );
       void vscode.window.showInformationMessage(tr('Saved to: {path}', { path: pick.label }));
     } catch (e) {
       void vscode.window.showErrorMessage(tr('Save failed: {error}', { error: String(e) }));
