@@ -2,7 +2,7 @@
   "name": "ok-script-toolkit",
   "displayName": "%extension.displayName%",
   "description": "%extension.description%",
-  "version": "0.6.10",
+  "version": "0.6.11",
   "publisher": "AliceJump",
   "license": "MIT",
   "icon": "icon.png",
