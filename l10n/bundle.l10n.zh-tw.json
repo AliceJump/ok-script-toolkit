@@ -3,7 +3,6 @@
   "Unknown error": "未知錯誤",
   "Failed to read task configuration: {error}": "讀取任務設定失敗：{error}",
   "Failed to save task configuration: {error}": "儲存任務設定失敗：{error}",
-  "Saved parameters for {task}": "已儲存 {task} 的參數",
   "No ok-script project was found. Configure okLangHints.okScriptProjectPath or open a folder containing src/config.py.": "找不到 ok-script 專案。請設定 okLangHints.okScriptProjectPath，或開啟含 src/config.py 的資料夾。",
   "Project directory does not exist: {path}": "專案目錄不存在：{path}",
   "Failed to load task list: {error}": "載入任務清單失敗：{error}",

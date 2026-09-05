@@ -56,9 +56,9 @@ interface TaskSchema {
 
 /** 每个任务的独立配置（持久化到 .vscode/ok-script-toolkit-tasks.json） */
 interface TaskConfig {
-  /** 透传给 ok-script / 项目级 argparse 的额外命令行参数。 */
+  /** 透传给 ok-script / 项目级 argparse 的额外命令行参数（UI 已移除，历史配置仍生效）。 */
   extraArgs?: string;
-  /** 仅对当前任务子进程生效的环境变量。 */
+  /** 仅对当前任务子进程生效的环境变量（UI 已移除，历史配置仍生效）。 */
   env?: Record<string, string>;
   /** 自动停止超时（秒）；0 或未设置表示不限时。 */
   timeout?: number;
@@ -341,10 +341,16 @@ export class TaskLauncherViewProvider implements vscode.WebviewViewProvider {
       if (Object.keys(env).length) config.env = env;
     }
     if (raw.params && typeof raw.params === 'object' && !Array.isArray(raw.params)) {
-      const allowed = new Set((this.schemas[this.taskKey(task)]?.fields || []).map((field) => field.key));
+      const schemaFields = this.schemas[this.taskKey(task)]?.fields;
       const params: Record<string, unknown> = {};
-      for (const [key, item] of Object.entries(raw.params as Record<string, unknown>)) {
-        if (allowed.has(key)) params[key] = item;
+      if (!schemaFields?.length) {
+        // schema 未就绪（或采集失败）时原样保留，避免自动保存误删既有参数覆盖
+        Object.assign(params, raw.params as Record<string, unknown>);
+      } else {
+        const allowed = new Set(schemaFields.map((field) => field.key));
+        for (const [key, item] of Object.entries(raw.params as Record<string, unknown>)) {
+          if (allowed.has(key)) params[key] = item;
+        }
       }
       if (Object.keys(params).length) config.params = params;
     }
@@ -406,16 +412,8 @@ export class TaskLauncherViewProvider implements vscode.WebviewViewProvider {
       return;
     }
     this.taskConfigs = nextConfigs;
-    if (this.view) {
-      void this.view.webview.postMessage({ type: 'taskConfigs', configs: this.taskConfigs });
-      void this.view.webview.postMessage({
-        type: 'status',
-        level: 'ok',
-        text: tr('Saved parameters for {task}', {
-          task: this.schemas[this.taskKey(task)]?.displayName || task.displayName,
-        }),
-      });
-    }
+    // webview 在发送 saveConfig 前已自行同步内存状态并显示“已自动保存”，
+    // 这里不再回推 taskConfigs（回推会触发整列表重渲染，打断正在进行的编辑）。
   }
 
   /** 读取 schema 缓存；无缓存时返回空 */
@@ -635,6 +633,9 @@ export class TaskLauncherViewProvider implements vscode.WebviewViewProvider {
       // 强制子进程以 UTF-8 编码输出，与 Python 端 reconfigure 配合彻底解决乱码
       env: childEnv,
     });
+    // 子进程退出瞬间向 stdin 写入会以 error 事件异步报错（EPIPE），
+    // 不挂监听会变成扩展宿主未捕获异常
+    this.childProcess.stdin?.on('error', () => { /* 忽略 EPIPE */ });
     this.childProcess.stdout?.on('data', (d) => {
       const text = d.toString('utf8');
       this.scanControlMarkers(text);
@@ -771,23 +772,27 @@ export class TaskLauncherViewProvider implements vscode.WebviewViewProvider {
     // 尝试优雅终止
     try {
       if (process.platform === 'win32') {
-        // Windows: 使用 taskkill
+        // Windows: 使用 taskkill（异步 spawn，避免阻塞扩展宿主）
         const pid = this.childProcess.pid;
         if (!pid) {
           throw new Error(tr('Unable to get the process PID'));
         }
-        const taskkill = cp.spawnSync('taskkill', ['/F', '/T', '/PID', pid.toString()], {
-          windowsHide: true,
-          env: process.env
+        await new Promise<void>((resolve, reject) => {
+          const taskkill = cp.spawn('taskkill', ['/F', '/T', '/PID', pid.toString()], {
+            windowsHide: true,
+            env: process.env,
+          });
+          let stderr = '';
+          taskkill.stderr?.on('data', (d) => { stderr += d.toString(); });
+          taskkill.on('error', reject);
+          taskkill.on('close', (code) => {
+            if (code === 0) {
+              resolve();
+            } else {
+              reject(new Error(stderr.trim() || tr('taskkill exit code {code}', { code: code ?? 'null' })));
+            }
+          });
         });
-        if (taskkill.error) {
-          throw taskkill.error;
-        }
-        if (taskkill.status !== 0) {
-          throw new Error(taskkill.stderr?.toString().trim() || tr('taskkill exit code {code}', {
-            code: taskkill.status ?? 'null',
-          }));
-        }
       } else {
         // Unix-like: 发送 SIGTERM
         this.childProcess.kill('SIGTERM');

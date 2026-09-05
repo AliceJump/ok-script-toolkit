@@ -48,46 +48,21 @@
     return title;
   }
 
-  function buildRuntimeFields(panel, config) {
-    panel.appendChild(sectionTitle(t('launchSettings')));
+  function buildRuntimeFields(panel, config, onConfigChange) {
+    const title = sectionTitle(t('launchSettings'));
+    const savedBadge = document.createElement('span');
+    savedBadge.className = 'config-saved';
+    savedBadge.textContent = `✓ ${t('saved')}`;
+    savedBadge.hidden = true;
+    title.appendChild(savedBadge);
+    panel.appendChild(title);
 
-    const addTextField = (labelText, helpText, value, onChange, multiline) => {
-      const row = document.createElement('div');
-      row.className = 'config-field';
-      const label = document.createElement('label');
-      label.className = 'config-field__label';
-      label.textContent = labelText;
-      const description = document.createElement('div');
-      description.className = 'config-field__description';
-      description.textContent = helpText;
-      const input = document.createElement(multiline ? 'textarea' : 'input');
-      if (!multiline) input.type = 'text';
-      input.value = value || '';
-      input.addEventListener('change', () => onChange(input.value));
-      row.append(label, description, input);
-      panel.appendChild(row);
+    let hideSavedTimer;
+    const showSaved = () => {
+      savedBadge.hidden = false;
+      clearTimeout(hideSavedTimer);
+      hideSavedTimer = setTimeout(() => { savedBadge.hidden = true; }, 1600);
     };
-
-    addTextField(t('extraArgs'), t('extraArgsHint'), config.extraArgs || '', value => {
-      if (value.trim()) config.extraArgs = value.trim(); else delete config.extraArgs;
-    }, false);
-
-    addTextField(
-      t('environmentVariables'),
-      t('environmentHint'),
-      Object.entries(config.env || {}).map(([key, value]) => `${key}=${value}`).join('\n'),
-      value => {
-        const env = {};
-        for (const line of value.split(/\r?\n/)) {
-          const separator = line.indexOf('=');
-          if (separator <= 0) continue;
-          const key = line.slice(0, separator).trim();
-          if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) env[key] = line.slice(separator + 1);
-        }
-        if (Object.keys(env).length) config.env = env; else delete config.env;
-      },
-      true,
-    );
 
     const timeoutRow = document.createElement('div');
     timeoutRow.className = 'config-field';
@@ -104,31 +79,27 @@
     timeout.value = String(config.timeout || 0);
     timeout.addEventListener('change', () => {
       const value = Number(timeout.value);
-      if (value > 0) config.timeout = value; else delete config.timeout;
+      if (value > 0) config.timeout = Math.min(value, 604800); else delete config.timeout;
+      onConfigChange();
     });
     timeoutRow.append(timeoutLabel, timeoutHelp, timeout);
     panel.appendChild(timeoutRow);
+    return showSaved;
   }
 
-  function createActions(panel, task, config, hasSchemaFields) {
+  function createActions(panel, config, hasSchemaFields, onConfigChange) {
+    if (!hasSchemaFields) return;
     const actions = document.createElement('div');
     actions.className = 'config-actions';
-    const save = document.createElement('button');
-    save.textContent = `💾 ${hasSchemaFields ? t('saveParameters') : t('saveLaunchSettings')}`;
-    save.addEventListener('click', () => post({ type: 'saveConfig', task, config }));
-    actions.appendChild(save);
-
-    if (hasSchemaFields) {
-      const reset = document.createElement('button');
-      reset.className = 'secondary';
-      reset.textContent = `↺ ${t('reset')}`;
-      reset.addEventListener('click', () => {
-        const fresh = { ...(state.taskConfigs[taskKey(task)] || {}) };
-        delete fresh.params;
-        post({ type: 'saveConfig', task, config: fresh });
-      });
-      actions.appendChild(reset);
-    }
+    const reset = document.createElement('button');
+    reset.className = 'secondary';
+    reset.textContent = `↺ ${t('reset')}`;
+    reset.addEventListener('click', () => {
+      delete config.params;
+      onConfigChange();
+      globalThis.TaskLauncherTaskCard?.renderTasks?.(state.currentTasks);
+    });
+    actions.appendChild(reset);
     panel.appendChild(actions);
   }
 
@@ -137,6 +108,15 @@
     panel.className = 'config-panel';
     const saved = state.taskConfigs[taskKey(task)] || {};
     const config = { ...saved, params: { ...(saved.params || {}) } };
+
+    // 修改即保存：字段变更直接落盘，无需点击保存按钮；状态同步到本地缓存供重渲染使用
+    let showSaved = () => {};
+    const persist = () => {
+      state.taskConfigs[taskKey(task)] = config;
+      post({ type: 'saveConfig', task, config });
+      showSaved();
+    };
+    showSaved = buildRuntimeFields(panel, config, persist);
 
     if (schema?.broken) {
       const broken = document.createElement('div');
@@ -147,7 +127,7 @@
       const host = document.createElement('div');
       host.className = 'config-fields';
       panel.appendChild(host);
-      renderSchema(host, task, schema, config);
+      renderSchema(host, task, schema, config, persist);
     } else {
       const empty = document.createElement('div');
       empty.className = 'config-empty';
@@ -155,12 +135,11 @@
       panel.appendChild(empty);
     }
 
-    buildRuntimeFields(panel, config);
-    createActions(panel, task, config, Boolean(schema?.fields?.length));
+    createActions(panel, config, Boolean(schema?.fields?.length), persist);
     return panel;
   }
 
-  function renderSchema(host, task, schema, config) {
+  function renderSchema(host, task, schema, config, onConfigChange) {
     const fieldsByKey = Object.fromEntries(schema.fields.map(field => [field.key, field]));
     const groups = schema.configGroups && typeof schema.configGroups === 'object' ? schema.configGroups : {};
     const selectorKey = schema.groupSelector && fieldsByKey[schema.groupSelector] ? schema.groupSelector : '';
@@ -197,10 +176,15 @@
       }
     };
 
+    const notifyChange = () => {
+      applyVisibility();
+      onConfigChange();
+    };
+
     const renderField = (key, container, options = {}) => {
       if (!fieldsByKey[key] || (!options.duplicate && renderedFields.has(key))) return false;
       if (!options.duplicate) renderedFields.add(key);
-      const row = buildField(container, fieldsByKey[key], config, applyVisibility);
+      const row = buildField(container, fieldsByKey[key], config, notifyChange);
       row.classList.toggle('is-subconfig', options.subConfig === true);
       (rowsByKey[key] ||= []).push(row);
       return true;

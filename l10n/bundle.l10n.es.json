@@ -3,7 +3,6 @@
   "Unknown error": "Error desconocido",
   "Failed to read task configuration: {error}": "No se pudo leer la configuración de tareas: {error}",
   "Failed to save task configuration: {error}": "No se pudo guardar la configuración de tareas: {error}",
-  "Saved parameters for {task}": "Se guardaron los parámetros de {task}",
   "No ok-script project was found. Configure okLangHints.okScriptProjectPath or open a folder containing src/config.py.": "No se encontró un proyecto ok-script. Configure okLangHints.okScriptProjectPath o abra una carpeta que contenga src/config.py.",
   "Project directory does not exist: {path}": "El directorio del proyecto no existe: {path}",
   "Failed to load task list: {error}": "No se pudo cargar la lista de tareas: {error}",
