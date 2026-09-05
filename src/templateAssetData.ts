@@ -297,8 +297,17 @@ export class TemplateAssetData {
    *   同一张白色 Canvas（原坐标粘贴），重叠 bbox 分到不同 page。
    * - COCO annotation bbox 保持原始坐标不变。
    * - 生成的 COCO image file_name 指向打包后的 PNG。
+   *
+   * 异步分批执行（每张图/每个 page 之间让出事件循环），避免大模板库
+   * 长时间阻塞扩展宿主；onProgress 汇报 page 渲染进度。
    */
-  saveToAssets(targetFolder: string, generateEnum = false, enumPath?: string): void {
+  async saveToAssets(
+    targetFolder: string,
+    generateEnum = false,
+    enumPath?: string,
+    onProgress?: (done: number, total: number) => void,
+  ): Promise<void> {
+    const yieldToLoop = () => new Promise<void>((resolve) => setImmediate(resolve));
     const targetImagesDir = path.join(targetFolder, 'images');
 
     // 清空目标目录中的旧图片（重新生成前清理）
@@ -315,17 +324,13 @@ export class TemplateAssetData {
     let nextAnnId = 1;
 
     // ── 1. 只处理有标注的图片（无标注的原图不放入 assets） ──
-    const annotatedImages: CocoImage[] = [];
-
-    for (const img of this.cocoData.images) {
-      const hasAnnotations = this.cocoData.annotations.some((a) => a.image_id === img.id);
-      if (hasAnnotations) {
-        annotatedImages.push(img);
-      }
-    }
+    const annotatedImages = this.cocoData.images.filter(
+      (img) => this.cocoData.annotations.some((a) => a.image_id === img.id),
+    );
 
     // ── 2. 有标注图片：按原始尺寸分组，bin-packing 到 Canvas ──
     //    对齐 ok-script compress_coco: 同尺寸原图的互不重叠 bbox 打包到同一张 Canvas。
+    //    尺寸只从图片头读取（PNG/JPEG/BMP），失败回退 COCO 记录值，不做整图解码。
     type AnnotatedEntry = { img: CocoImage; ann: CocoAnnotation };
     const dimGroups = new Map<string, AnnotatedEntry[]>();
 
@@ -349,7 +354,13 @@ export class TemplateAssetData {
       }
     }
 
-    // 每个尺寸组内执行 bin-packing
+    // ── 3. 每个尺寸组内 bin-packing，先收集全部 page 再统一渲染 ──
+    const pageList: Array<{
+      W: number;
+      H: number;
+      items: Array<{ img: CocoImage; ann: CocoAnnotation }>;
+    }> = [];
+
     for (const [_dimKey, entries] of dimGroups) {
       // 从 entries 推导画布尺寸（同组所有 entry 的 img 宽高相同）
       const W = entries[0].img.width;
@@ -400,74 +411,111 @@ export class TemplateAssetData {
         }
       }
 
-      // 为每个 page 生成打包 PNG
       for (const page of pages) {
-        // 白色画布
-        const canvasRgba = Buffer.alloc(W * H * 4, 255); // 全白 (RGBA 255,255,255,255)
-
-        // 从每个原图复制对应 bbox ROI 到 Canvas
-        for (const imgId of page.imgIds) {
-          const srcImg = entries.find((e) => e.img.id === imgId)!.img;
-          const src = path.join(this.templateFolder, srcImg.file_name);
-          try {
-            const buf = fs.readFileSync(src);
-            const srcDecoded = decodeRgba(buf);
-            const srcAnnotations = entries.filter((e) => e.img.id === imgId);
-            for (const e of srcAnnotations) {
-              const [bx, by, bw, bh] = e.ann.bbox.map(Math.round);
-              const x1 = Math.max(0, bx);
-              const y1 = Math.max(0, by);
-              const x2 = Math.min(W, bx + bw);
-              const y2 = Math.min(H, by + bh);
-              if (x2 > x1 && y2 > y1) {
-                for (let y = y1; y < y2; y++) {
-                  const srcStart = (y * srcDecoded.width + x1) * 4;
-                  const dstStart = (y * W + x1) * 4;
-                  srcDecoded.rgba.copy(canvasRgba, dstStart, srcStart, srcStart + (x2 - x1) * 4);
-                }
-              }
-            }
-          } catch {
-            // 源图读取失败，跳过
-          }
-        }
-
-        // 编码并写入打包 PNG（使用 RGB 编码器，对齐 ok-script 压缩效果）
-        const pageFileName = `${nextImageId}.png`;
-        const pagePng = encodePngRgb(W, H, canvasRgba);
-        const pageDst = path.join(targetImagesDir, pageFileName);
-        fs.writeFileSync(pageDst, pagePng);
-
-        // file_name = 从 COCO JSON 到打包 PNG 的相对路径（对齐 ok-script compress_coco）
-        // COCO JSON 在 targetFolder/，图片在 targetFolder/images/，所以相对路径固定为 images/{id}.png
-        const finalRelPath = `images/${pageFileName}`;
-
-        const packedImgId = nextImageId++;
-        newImages.push({
-          id: packedImgId,
-          file_name: finalRelPath,
-          width: W,
-          height: H,
-        });
-
-        // COCO annotations: 保持原始 bbox 坐标，仅更新 image_id 指向打包图
         const pageImgIds = new Set(page.imgIds);
-        for (const e of entries) {
-          if (!pageImgIds.has(e.img.id)) continue;
-          const [bx, by, bw, bh] = e.ann.bbox.map(Math.round) as [number, number, number, number];
-          newAnnotations.push({
-            id: nextAnnId++,
-            image_id: packedImgId,
-            category_id: e.ann.category_id,
-            bbox: [bx, by, bw, bh],
-            area: bw * bh,
-            iscrowd: 0,
-          });
-        }
+        pageList.push({
+          W,
+          H,
+          items: entries
+            .filter((e) => pageImgIds.has(e.img.id))
+            .map((e) => ({ img: e.img, ann: e.ann })),
+        });
       }
     }
 
-    // ── 4. 构建并写入 COCO JSON ──
+    // ── 4. 渲染每个 page：解码缓存跨 page 复用同一原图 ──
+    const decodedCache = new Map<string, { width: number; height: number; rgba: Buffer }>();
+    let decodedBytes = 0;
+    const DECODED_CACHE_MAX_BYTES = 256 * 1024 * 1024;
+    const getDecoded = (src: string) => {
+      const hit = decodedCache.get(src);
+      if (hit) return hit;
+      const decoded = decodeRgba(fs.readFileSync(src));
+      decodedCache.set(src, decoded);
+      decodedBytes += decoded.rgba.length;
+      while (decodedBytes > DECODED_CACHE_MAX_BYTES && decodedCache.size > 1) {
+        const oldest = decodedCache.keys().next().value;
+        if (oldest === undefined) break;
+        decodedBytes -= decodedCache.get(oldest)?.rgba.length ?? 0;
+        decodedCache.delete(oldest);
+      }
+      return decoded;
+    };
+
+    for (let pageIndex = 0; pageIndex < pageList.length; pageIndex++) {
+      const { W, H, items } = pageList[pageIndex];
+
+      // 按原图聚合标注，同一原图只解码/读取一次
+      const byImage = new Map<number, { img: CocoImage; anns: CocoAnnotation[] }>();
+      for (const it of items) {
+        const group = byImage.get(it.img.id) ?? { img: it.img, anns: [] };
+        group.anns.push(it.ann);
+        byImage.set(it.img.id, group);
+      }
+
+      // 白色画布
+      const canvasRgba = Buffer.alloc(W * H * 4, 255); // 全白 (RGBA 255,255,255,255)
+
+      // 从每个原图复制对应 bbox ROI 到 Canvas
+      for (const { img, anns } of byImage.values()) {
+        const src = path.join(this.templateFolder, img.file_name);
+        // 让出事件循环：大图解码 + deflate 编码很重，连续跑会卡死扩展宿主
+        await yieldToLoop();
+        try {
+          const srcDecoded = getDecoded(src);
+          for (const e of anns) {
+            const [bx, by, bw, bh] = e.bbox.map(Math.round);
+            const x1 = Math.max(0, bx);
+            const y1 = Math.max(0, by);
+            const x2 = Math.min(W, bx + bw);
+            const y2 = Math.min(H, by + bh);
+            if (x2 > x1 && y2 > y1) {
+              for (let y = y1; y < y2; y++) {
+                const srcStart = (y * srcDecoded.width + x1) * 4;
+                const dstStart = (y * W + x1) * 4;
+                srcDecoded.rgba.copy(canvasRgba, dstStart, srcStart, srcStart + (x2 - x1) * 4);
+              }
+            }
+          }
+        } catch {
+          // 源图读取失败，跳过
+        }
+      }
+
+      // 编码并写入打包 PNG（使用 RGB 编码器，对齐 ok-script 压缩效果）
+      const pageFileName = `${nextImageId}.png`;
+      const pagePng = encodePngRgb(W, H, canvasRgba);
+      fs.writeFileSync(path.join(targetImagesDir, pageFileName), pagePng);
+
+      // file_name = 从 COCO JSON 到打包 PNG 的相对路径（对齐 ok-script compress_coco）
+      // COCO JSON 在 targetFolder/，图片在 targetFolder/images/，所以相对路径固定为 images/{id}.png
+      const finalRelPath = `images/${pageFileName}`;
+
+      const packedImgId = nextImageId++;
+      newImages.push({
+        id: packedImgId,
+        file_name: finalRelPath,
+        width: W,
+        height: H,
+      });
+
+      // COCO annotations: 保持原始 bbox 坐标，仅更新 image_id 指向打包图
+      for (const it of items) {
+        const [bx, by, bw, bh] = it.ann.bbox.map(Math.round) as [number, number, number, number];
+        newAnnotations.push({
+          id: nextAnnId++,
+          image_id: packedImgId,
+          category_id: it.ann.category_id,
+          bbox: [bx, by, bw, bh],
+          area: bw * bh,
+          iscrowd: 0,
+        });
+      }
+
+      onProgress?.(pageIndex + 1, pageList.length);
+    }
+
+    // ── 5. 构建并写入 COCO JSON ──
     const croppedCoco: CocoData = {
       images: newImages,
       annotations: newAnnotations,
@@ -478,15 +526,8 @@ export class TemplateAssetData {
     const usedCatIds = new Set(newAnnotations.map((a) => a.category_id));
     croppedCoco.categories = croppedCoco.categories.filter((c) => usedCatIds.has(c.id));
 
-    // 清理旧的 COCO JSON 文件
-    try {
-      for (const f of fs.readdirSync(targetFolder)) {
-        if (f.toLowerCase().endsWith('.json')) {
-          try { fs.unlinkSync(path.join(targetFolder, f)); } catch { /* ignore */ }
-        }
-      }
-    } catch { /* ignore */ }
-
+    // writeFileSync 直接覆盖旧的 coco_annotations.json；
+    // 不再清扫目录下其他 .json——目标目录（如 assets/）顶层可能放有无关 JSON
     const cocoTarget = path.join(targetFolder, COCO_JSON);
     fs.writeFileSync(cocoTarget, JSON.stringify(croppedCoco, null, 2), 'utf-8');
 
