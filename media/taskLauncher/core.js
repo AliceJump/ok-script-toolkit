@@ -5,6 +5,8 @@
 
   const state = {
     running: false,
+    paused: false,
+    stopping: false,
     schemas: {},
     taskConfigs: {},
     currentTasks: [],

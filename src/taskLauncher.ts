@@ -265,6 +265,10 @@ export class TaskLauncherViewProvider implements vscode.WebviewViewProvider {
   private knownTasks: TaskInfo[] = [];
   /** 采集到的任务参数 schema（缓存到 .vscode/ok-script-toolkit-schema.json） */
   private schemas: Record<string, TaskSchema> = {};
+  /** 任务是否已被 run_task.py 确认暂停（以 stdout 标记行为准） */
+  private paused = false;
+  /** stdout 按行扫描的未完结残留（标记行可能跨 chunk 到达） */
+  private stdoutRemainder = '';
 
   constructor(
     private readonly extensionUri: vscode.Uri,
@@ -286,7 +290,7 @@ export class TaskLauncherViewProvider implements vscode.WebviewViewProvider {
           await this.refreshTasks(view);
           // webview 重建后同步当前运行状态，避免切换侧边栏再回来时按钮状态丢失
           if (this.running && this.currentTask) {
-            void view.webview.postMessage({ type: 'running', task: this.currentTask, running: true });
+            void view.webview.postMessage({ type: 'running', task: this.currentTask, running: true, paused: this.paused });
           }
           break;
         case 'refresh':
@@ -297,6 +301,12 @@ export class TaskLauncherViewProvider implements vscode.WebviewViewProvider {
           break;
         case 'stop':
           await this.stopTask();
+          break;
+        case 'pause':
+          this.sendControlCommand(view, 'pause');
+          break;
+        case 'resume':
+          this.sendControlCommand(view, 'resume');
           break;
         case 'saveConfig':
           if (this.isKnownTask(msg.task)) await this.saveTaskConfig(msg.task, this.sanitizeTaskConfig(msg.task, msg.config));
@@ -584,6 +594,8 @@ export class TaskLauncherViewProvider implements vscode.WebviewViewProvider {
     this.running = true;
     this.stopRequested = false;
     this.timedOutRequested = false;
+    this.paused = false;
+    this.stdoutRemainder = '';
     this.output.clear();
     this.output.appendLine(tr('▶ Launch task: {task} ({module})', { task: task.displayName, module: task.module }));
     this.output.appendLine(tr('Project: {path}', { path: projectDir }));
@@ -623,7 +635,11 @@ export class TaskLauncherViewProvider implements vscode.WebviewViewProvider {
       // 强制子进程以 UTF-8 编码输出，与 Python 端 reconfigure 配合彻底解决乱码
       env: childEnv,
     });
-    this.childProcess.stdout?.on('data', (d) => this.output.append(d.toString('utf8')));
+    this.childProcess.stdout?.on('data', (d) => {
+      const text = d.toString('utf8');
+      this.scanControlMarkers(text);
+      this.output.append(text);
+    });
     this.childProcess.stderr?.on('data', (d) => this.output.append(d.toString('utf8')));
     this.childProcess.on('error', (err) => {
       this.clearTimeoutTimer();
@@ -639,6 +655,8 @@ export class TaskLauncherViewProvider implements vscode.WebviewViewProvider {
       const stopped = this.stopRequested;
       const timedOut = this.timedOutRequested;
       this.running = false;
+      this.paused = false;
+      this.stdoutRemainder = '';
       this.childProcess = null;
       this.output.appendLine('');
       this.output.appendLine(stopped
@@ -667,6 +685,65 @@ export class TaskLauncherViewProvider implements vscode.WebviewViewProvider {
           void this.stopTask(true);
         }
       }, timeoutSeconds * 1000);
+    }
+  }
+
+  /** 向任务子进程 stdin 发送运行期控制命令（run_task.py 按行读取 pause/resume） */
+  private sendControlCommand(view: vscode.WebviewView, command: 'pause' | 'resume'): void {
+    if (!this.running || !this.childProcess) {
+      void vscode.window.showWarningMessage(tr('No task is currently running.'));
+      return;
+    }
+    const stdin = this.childProcess.stdin;
+    if (!stdin || !stdin.writable) {
+      const message = tr('Failed to send command to the task process: {error}', { error: 'stdin unavailable' });
+      void vscode.window.showErrorMessage(message);
+      this.output.appendLine(message);
+      return;
+    }
+    this.output.appendLine('');
+    this.output.appendLine(command === 'pause' ? tr('⏸ Pausing task…') : tr('▶ Resuming task…'));
+    try {
+      stdin.write(`${command}\n`);
+    } catch (err) {
+      const message = tr('Failed to send command to the task process: {error}', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+      void vscode.window.showErrorMessage(message);
+      this.output.appendLine(message);
+    }
+  }
+
+  /** 暂停状态以 run_task.py 的确认标记为准；翻转时同步日志与 webview */
+  private setPaused(paused: boolean): void {
+    if (this.paused === paused) return;
+    this.paused = paused;
+    this.output.appendLine(paused ? tr('⏸ Task paused') : tr('▶ Task resumed'));
+    if (this.view) {
+      void this.view.webview.postMessage({ type: 'paused', paused });
+    }
+  }
+
+  /** 按行扫描 stdout，识别 run_task.py 输出的控制标记（标记行可能跨 chunk 到达） */
+  private scanControlMarkers(text: string): void {
+    const combined = this.stdoutRemainder + text;
+    const lines = combined.split(/\r?\n/);
+    this.stdoutRemainder = lines.pop() ?? '';
+    for (const line of lines) {
+      if (line.includes('OK_TOOLKIT_PAUSED')) {
+        this.setPaused(true);
+      } else if (line.includes('OK_TOOLKIT_RESUMED')) {
+        this.setPaused(false);
+      } else if (line.includes('OK_TOOLKIT_ERROR:')) {
+        const error = line.slice(line.indexOf('OK_TOOLKIT_ERROR:') + 'OK_TOOLKIT_ERROR:'.length).trim();
+        if (this.view && error) {
+          void this.view.webview.postMessage({
+            type: 'status',
+            level: 'error',
+            text: tr('Task control command failed: {error}', { error }),
+          });
+        }
+      }
     }
   }
 
