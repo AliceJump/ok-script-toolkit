@@ -63,11 +63,17 @@ class AnnotationController {
     if (this.disposed) return;
     this._currentImage = imagePath;
 
-    // 读取图片为 base64
+    // 读取图片为 base64（异步读，避免大截图阻塞扩展宿主）；
+    // webview 原生渲染 PNG/JPEG/BMP，MIME 按魔数判定
     let imageBase64 = '';
     try {
-      const buf = fs.readFileSync(imagePath);
-      imageBase64 = `data:image/png;base64,${buf.toString('base64')}`;
+      const buf = await fs.promises.readFile(imagePath);
+      const mime = buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff
+        ? 'image/jpeg'
+        : buf.length >= 2 && buf[0] === 0x42 && buf[1] === 0x4d
+          ? 'image/bmp'
+          : 'image/png';
+      imageBase64 = `data:${mime};base64,${buf.toString('base64')}`;
     } catch {
       imageBase64 = '';
     }

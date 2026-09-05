@@ -3,6 +3,7 @@ import * as path from 'path';
 import * as crypto from 'crypto';
 import * as zlib from 'zlib';
 import { Worker } from 'worker_threads';
+import { decode as jpegDecode } from 'jpeg-js';
 import { findOkTemplateCocoEntry } from './featureData';
 
 /** 模板缩略图统一高度（面板/缓存/worker 共用，消除 key 不匹配） */
@@ -110,7 +111,7 @@ function paeth(a: number, b: number, c: number): number {
 }
 
 /** 解码 PNG 为 RGBA8 像素 — 纯 JS 回退路径 */
-export function decodeRgba(buf: Buffer): { width: number; height: number; rgba: Buffer } {
+function decodePngRgba(buf: Buffer): { width: number; height: number; rgba: Buffer } {
   const { meta, idat } = parsePng(buf);
   if (meta.bitDepth !== 8) throw new Error(`unsupported bitDepth ${meta.bitDepth}`);
   const { width, height, colorType } = meta;
@@ -161,6 +162,104 @@ export function decodeRgba(buf: Buffer): { width: number; height: number; rgba: 
     prev = recon;
   }
   return { width, height, rgba };
+}
+
+/** 解码 JPEG 为 RGBA8 像素（jpeg-js 纯 JS 实现，有损解码） */
+function decodeJpegRgba(buf: Buffer): { width: number; height: number; rgba: Buffer } {
+  const img = jpegDecode(buf, { useTArray: true });
+  const data = img.data as Uint8Array;
+  return {
+    width: img.width,
+    height: img.height,
+    rgba: Buffer.from(data.buffer, data.byteOffset, data.length),
+  };
+}
+
+/** 解码 BMP 为 RGBA8 像素（支持 24/32bpp BI_RGB 与 BI_BITFIELDS） */
+function decodeBmpRgba(buf: Buffer): { width: number; height: number; rgba: Buffer } {
+  if (buf.length < 26 || buf[0] !== 0x42 || buf[1] !== 0x4d) throw new Error('not a bmp');
+  const pixelOffset = buf.readUInt32LE(10);
+  const headerSize = buf.readUInt32LE(14);
+  if (headerSize < 40) throw new Error(`unsupported bmp header size ${headerSize}`);
+  const width = buf.readInt32LE(18);
+  const heightRaw = buf.readInt32LE(22);
+  const height = Math.abs(heightRaw);
+  const bottomUp = heightRaw > 0;
+  const bpp = buf.readUInt16LE(28);
+  const compression = buf.readUInt32LE(30);
+  if (width <= 0 || height <= 0) throw new Error('invalid bmp dimensions');
+  if (compression !== 0 && compression !== 3) throw new Error(`unsupported bmp compression ${compression}`);
+  if (bpp !== 24 && bpp !== 32) throw new Error(`unsupported bmp bpp ${bpp}`);
+  // BITMAPV4HEADER（108 字节）起才有显式 alpha 掩码；BI_RGB 32bpp 第 4 字节视作不透明
+  const alphaMask = bpp === 32 && compression === 3 && headerSize >= 108 ? buf.readUInt32LE(66) >>> 0 : 0;
+  const maskShift = (mask: number) => {
+    let m = mask;
+    let s = 0;
+    while (m > 0 && (m & 1) === 0) { m >>>= 1; s++; }
+    return s;
+  };
+  const alphaShift = alphaMask ? maskShift(alphaMask) : 24;
+  const rowBytes = (bpp * width + 7) >> 3;
+  const rowSize = (rowBytes + 3) & ~3; // 每行按 4 字节对齐
+  const rgba = Buffer.alloc(width * height * 4);
+  for (let y = 0; y < height; y++) {
+    const srcRow = pixelOffset + (bottomUp ? height - 1 - y : y) * rowSize;
+    if (srcRow + rowBytes > buf.length) throw new Error('truncated bmp');
+    let src = srcRow;
+    let dst = y * width * 4;
+    for (let x = 0; x < width; x++, src += bpp / 8, dst += 4) {
+      rgba[dst] = buf[src + 2];     // BGR 内存序 → RGBA
+      rgba[dst + 1] = buf[src + 1];
+      rgba[dst + 2] = buf[src];
+      rgba[dst + 3] = bpp === 24 ? 255 : alphaMask ? (buf.readUInt32LE(src) & alphaMask) >>> alphaShift : 255;
+    }
+  }
+  return { width, height, rgba };
+}
+
+/** 按魔数分发解码：PNG / JPEG / BMP 统一输出 RGBA8 */
+export function decodeRgba(buf: Buffer): { width: number; height: number; rgba: Buffer } {
+  if (buf.length >= 8 && buf.readUInt32BE(0) === 0x89504e47) return decodePngRgba(buf);
+  if (buf.length > 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return decodeJpegRgba(buf);
+  if (buf.length > 2 && buf[0] === 0x42 && buf[1] === 0x4d) return decodeBmpRgba(buf);
+  throw new Error('unsupported image format');
+}
+
+/** 只读图片头拿宽高（PNG IHDR / JPEG SOF 扫描 / BMP DIB 头），不解码像素 */
+export function readImageSize(buf: Buffer): { width: number; height: number } | undefined {
+  if (buf.length >= 24 && buf.readUInt32BE(0) === 0x89504e47) {
+    const width = buf.readUInt32BE(16);
+    const height = buf.readUInt32BE(20);
+    return width > 0 && height > 0 ? { width, height } : undefined;
+  }
+  if (buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) {
+    // 逐 marker 扫描到第一个 SOF；SOF 一定出现在 SOS 之前，不会进入熵编码数据
+    let offset = 2;
+    while (offset + 4 <= buf.length) {
+      if (buf[offset] !== 0xff) { offset++; continue; }
+      const marker = buf[offset + 1];
+      if (marker === 0x01 || marker === 0xd8 || (marker >= 0xd0 && marker <= 0xd7)) {
+        offset += 2; // 无长度的独立 marker
+        continue;
+      }
+      const segLen = buf.readUInt16BE(offset + 2);
+      if (segLen < 2) return undefined;
+      if (marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc) {
+        if (offset + 9 > buf.length) return undefined;
+        const width = buf.readUInt16BE(offset + 7);
+        const height = buf.readUInt16BE(offset + 5);
+        return width > 0 && height > 0 ? { width, height } : undefined;
+      }
+      offset += 2 + segLen;
+    }
+    return undefined;
+  }
+  if (buf.length >= 26 && buf[0] === 0x42 && buf[1] === 0x4d) {
+    const width = buf.readInt32LE(18);
+    const height = Math.abs(buf.readInt32LE(22));
+    return width > 0 && height > 0 ? { width, height } : undefined;
+  }
+  return undefined;
 }
 
 /** 把 RGBA 像素编码为 PNG Buffer — 纯 JS 回退 */
@@ -250,23 +349,38 @@ function cropAndEncodeSync(
 interface CropTask {
   id: number;
   imagePath: string;
-  bbox: [number, number, number, number];
-  targetHeight: number;
+  bboxes: Array<{ bbox: [number, number, number, number]; targetHeight: number }>;
   thumbDir: string;
-  resolve: (result: { dataUrl: string; filePath: string } | undefined) => void;
+}
+
+/** worker 回包（单任务与批量共用：单任务 results 只有一个元素） */
+interface WorkerReply {
+  id: number;
+  results: Array<{ bbox: number[]; dataUrl: string; filePath: string }>;
+  error?: string;
 }
 
 interface WorkerState {
   worker: Worker;
   busy: boolean;
+  /** 已派发给该 worker、尚未回包的任务 id */
+  inflight: Set<number>;
 }
 
 let poolWorkers: WorkerState[] = [];
 let cropTaskQueue: CropTask[] = [];
+/** 等待 worker 回包的任务：id -> resolve。worker 崩溃/退出/池销毁时统一置失败，避免调用方永久悬挂 */
+const pendingReplies = new Map<number, (reply: WorkerReply) => void>();
 let poolMax = 2;
 let poolInitialized = false;
 let poolExtPath = '';
 let nextTaskId = 1;
+
+function resolveReply(id: number, reply: WorkerReply): void {
+  const resolve = pendingReplies.get(id);
+  pendingReplies.delete(id);
+  resolve?.(reply);
+}
 
 /** 初始化 worker 池（扩展激活时调用一次） */
 export function initCropWorkerPool(extensionPath: string, maxWorkers = 2): void {

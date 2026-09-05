@@ -4,7 +4,7 @@ import * as vscode from 'vscode';
 import { execFile } from 'child_process';
 import { TemplateAssetData } from './templateAssetData';
 import { AnnotationPanel } from './annotationPanel';
-import { cropTemplateThumbFileAsync, THUMB_HEIGHT } from './pngCrop';
+import { cropTemplateThumbFileAsync, readImageSize, THUMB_HEIGHT } from './pngCrop';
 import { injectWebviewLocalization, tr, webviewStrings } from './localization';
 
 /** 窗口配置（从项目 config.py 的 windows 子字典提取） */
@@ -389,7 +389,9 @@ class AssetGalleryController {
       canSelectFiles: true,
       canSelectFolders: false,
       canSelectMany: true,
-      filters: { [tr('importImagesFilter')]: ['png', 'jpg', 'jpeg', 'bmp', 'webp'] },
+      // 裁剪/打包管线支持 PNG/JPEG/BMP（纯 JS 解码），其他格式（如 webp）缺
+      // 少可靠解码器，产出的标注与缩略图会是坏的，这里直接限制可选类型
+      filters: { [tr('importImagesFilter')]: ['png', 'jpg', 'jpeg', 'bmp'] },
       title: tr('Import images to ok_templates'),
     });
     if (!uris || uris.length === 0) return;
@@ -404,8 +406,8 @@ class AssetGalleryController {
         fs.copyFileSync(uri.fsPath, dst);
         // 读取尺寸
         const buf = fs.readFileSync(dst);
-        const dims = readPngDimensions(buf);
-        this.data.addImageEntry(dst, dims.width, dims.height);
+        const dims = readImageSize(buf);
+        this.data.addImageEntry(dst, dims?.width ?? 0, dims?.height ?? 0);
         count++;
       } catch {
         // 跳过失败的文件
@@ -425,15 +427,6 @@ class AssetGalleryController {
     for (const d of this.disposables) d.dispose();
     this.disposables.length = 0;
   }
-}
-
-/* ---------- 简易 PNG 尺寸读取 ---------- */
-
-function readPngDimensions(buf: Buffer): { width: number; height: number } {
-  if (buf.length < 24 || buf.readUInt32BE(0) !== 0x89504e47) {
-    return { width: 0, height: 0 };
-  }
-  return { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) };
 }
 
 /* ---------------- 侧边栏视图 ---------------- */

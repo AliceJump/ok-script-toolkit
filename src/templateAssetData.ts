@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { decodeRgba, encodePngRgb } from './pngCrop';
+import { decodeRgba, encodePngRgb, readImageSize } from './pngCrop';
 import { tr } from './localization';
 
 /* ---------------- COCO 数据类型 ---------------- */
@@ -42,9 +42,27 @@ export function filenameKey(name: string): string {
 
 /* ---------------- 模板素材数据管理 ---------------- */
 
-const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.bmp', '.webp']);
+const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.bmp']);
 const TEMPLATE_FOLDER = 'ok_templates';
 const COCO_JSON = 'coco_annotations.json';
+
+/** 只读图片头拿宽高（PNG/JPEG/BMP），不做像素解码；失败返回 undefined */
+function readImageHeaderSize(src: string): { width: number; height: number } | undefined {
+  let fd: number | undefined;
+  try {
+    fd = fs.openSync(src, 'r');
+    // JPEG 的 SOF marker 可能被 EXIF 等大 APP 段推后，多读一些
+    const buf = Buffer.alloc(65536);
+    const read = fs.readSync(fd, buf, 0, buf.length, 0);
+    return readImageSize(buf.subarray(0, read));
+  } catch {
+    return undefined;
+  } finally {
+    if (fd !== undefined) {
+      try { fs.closeSync(fd); } catch { /* ignore */ }
+    }
+  }
+}
 
 export class TemplateAssetData {
   private rootDir: string;
@@ -66,14 +84,13 @@ export class TemplateAssetData {
     const data = new TemplateAssetData(folder);
     await data.load();
     data.addImageEntry(imagePath, 0, 0);
-    // Read actual dimensions if PNG
+    // Read actual dimensions (PNG/JPEG/BMP via header)
     try {
       const buf = fs.readFileSync(imagePath);
-      if (buf.length >= 24 && buf.readUInt32BE(0) === 0x89504e47) {
-        const w = buf.readUInt32BE(16);
-        const h = buf.readUInt32BE(20);
+      const dims = readImageSize(buf);
+      if (dims) {
         const img = data.cocoData.images.find(i => i.file_name === path.basename(imagePath));
-        if (img) { img.width = w; img.height = h; }
+        if (img) { img.width = dims.width; img.height = dims.height; }
       }
     } catch { /* ignore */ }
     data.save();
@@ -316,16 +333,12 @@ export class TemplateAssetData {
       const src = path.join(this.templateFolder, img.file_name);
       if (!fs.existsSync(src)) continue;
 
-      // 从原图读取实际宽高（优先使用 COCO 中记录的值，但以实际文件为准）
       let imgW = img.width;
       let imgH = img.height;
-      try {
-        const buf = fs.readFileSync(src);
-        const dims = decodeRgba(buf);
-        imgW = dims.width;
-        imgH = dims.height;
-      } catch {
-        // 读取失败则使用 COCO 记录值
+      const headerDims = readImageHeaderSize(src);
+      if (headerDims) {
+        imgW = headerDims.width;
+        imgH = headerDims.height;
       }
 
       const annotations = this.cocoData.annotations.filter((a) => a.image_id === img.id);
@@ -510,24 +523,12 @@ export class TemplateAssetData {
       fs.writeFileSync(filePath, buf);
 
       // 读取图片尺寸
-      const dims = this.readPngDimensions(buf);
-      this.addImageEntry(filePath, dims.width, dims.height);
+      const dims = readImageSize(buf);
+      this.addImageEntry(filePath, dims?.width ?? 0, dims?.height ?? 0);
       this.save();
       return filePath;
     } catch {
       return undefined;
     }
-  }
-
-  /* ---------- 简易PNG尺寸读取 ---------- */
-
-  private readPngDimensions(buf: Buffer): { width: number; height: number } {
-    if (buf.length < 24 || buf.readUInt32BE(0) !== 0x89504e47) {
-      return { width: 0, height: 0 };
-    }
-    return {
-      width: buf.readUInt32BE(16),
-      height: buf.readUInt32BE(20),
-    };
   }
 }
