@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { injectWebviewLocalization, projectLocale, tr } from './localization';
+import { loadToolboxState, saveToolboxState } from './toolboxState';
 
 /** 单个任务的元信息 */
 interface TaskInfo {
@@ -81,12 +82,12 @@ interface SchemaProbeResult {
 }
 
 /** 扩展根目录下 python/ 脚本的绝对路径 */
-function pythonScript(extensionUri: vscode.Uri, name: string): string {
+export function pythonScript(extensionUri: vscode.Uri, name: string): string {
   return path.join(extensionUri.fsPath, 'python', name);
 }
 
 /** 解析 Python 子进程 stdout 中最后一个 JSON 行（前面的输出可能是日志） */
-function parseJsonFromStdout(stdout: string): any {
+export function parseJsonFromStdout(stdout: string): any {
   const lines = stdout.split('\n').filter(Boolean);
   for (let i = lines.length - 1; i >= 0; i--) {
     try {
@@ -143,7 +144,7 @@ interface PythonResult {
 }
 
 /** 异步运行 Python，避免耗时探针阻塞 VS Code 扩展宿主。 */
-function runPython(
+export function runPython(
   pythonPath: string,
   args: string[],
   projectDir: string,
@@ -245,9 +246,41 @@ async function probeTaskSchemas(
   }
 }
 
+/**
+ * 解析 ok-script 项目路径与 Python 解释器（工具箱与任务启动器共用）。
+ * 配置未填写时，自动检测当前工作区根目录（若含 src/config.py 则视为 ok-script 项目）。
+ */
+export function resolveProjectContext(): { projectDir: string; pythonPath: string; fromConfig: boolean } {
+  const cfg = vscode.workspace.getConfiguration('okScriptToolkit');
+  let projectDir = cfg.get<string>('okScriptProjectPath') || '';
+  let fromConfig = true;
+  projectDir = projectDir.replace(/^~/, process.env.USERPROFILE || '');
+  projectDir = projectDir.replace(/[\\/]+$/, '');
+
+  if (!projectDir) {
+    // 自动检测：工作区根目录是否本身就是 ok-script 项目
+    const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '';
+    if (root && (fs.existsSync(path.join(root, 'src', 'config.py')) || fs.existsSync(path.join(root, 'config.py')))) {
+      projectDir = root;
+      fromConfig = false;
+    }
+  }
+
+  const python = cfg.get<string>('okScriptPython') || '';
+  let pythonPath = python;
+  if (!pythonPath) {
+    const venvPy = path.join(projectDir, '.venv', 'Scripts', 'python.exe');
+    pythonPath = fs.existsSync(venvPy) ? venvPy : 'python';
+  }
+  return { projectDir, pythonPath, fromConfig };
+}
+
 /** 侧边栏任务启动视图 */
 export class TaskLauncherViewProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'okScriptToolkit.taskLauncher';
+
+  /** 当前活跃实例：工具箱经此向运行中的任务转发浮层开关命令 */
+  static current: TaskLauncherViewProvider | undefined;
 
   private readonly output: vscode.OutputChannel;
   private running = false;
@@ -267,6 +300,8 @@ export class TaskLauncherViewProvider implements vscode.WebviewViewProvider {
   private schemas: Record<string, TaskSchema> = {};
   /** 任务是否已被 run_task.py 确认暂停（以 stdout 标记行为准） */
   private paused = false;
+  /** 调试浮层当前是否生效（启动沿用工具箱状态，运行中经 overlay_* 标记同步） */
+  private overlayActive = false;
   /** stdout 按行扫描的未完结残留（标记行可能跨 chunk 到达） */
   private stdoutRemainder = '';
 
@@ -278,6 +313,7 @@ export class TaskLauncherViewProvider implements vscode.WebviewViewProvider {
 
   resolveWebviewView(view: vscode.WebviewView): void {
     this.view = view;
+    TaskLauncherViewProvider.current = this;
     view.webview.options = {
       enableScripts: true,
       localResourceRoots: [vscode.Uri.joinPath(this.extensionUri, 'media', 'taskLauncher')],
@@ -439,32 +475,10 @@ export class TaskLauncherViewProvider implements vscode.WebviewViewProvider {
   }
 
   /**
-   * 读取配置获取项目路径和 Python 解释器。
-   * 配置未填写时，自动检测当前工作区根目录（若含 src/config.py 则视为 ok-script 项目）。
+   * 读取配置获取项目路径和 Python 解释器（见 resolveProjectContext）。
    */
   private getConfig(): { projectDir: string; pythonPath: string; fromConfig: boolean } {
-    const cfg = vscode.workspace.getConfiguration('okScriptToolkit');
-    let projectDir = cfg.get<string>('okScriptProjectPath') || '';
-    let fromConfig = true;
-    projectDir = projectDir.replace(/^~/, process.env.USERPROFILE || '');
-    projectDir = projectDir.replace(/[\\/]+$/, '');
-
-    if (!projectDir) {
-      // 自动检测：工作区根目录是否本身就是 ok-script 项目
-      const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '';
-      if (root && (fs.existsSync(path.join(root, 'src', 'config.py')) || fs.existsSync(path.join(root, 'config.py')))) {
-        projectDir = root;
-        fromConfig = false;
-      }
-    }
-
-    const python = cfg.get<string>('okScriptPython') || '';
-    let pythonPath = python;
-    if (!pythonPath) {
-      const venvPy = path.join(projectDir, '.venv', 'Scripts', 'python.exe');
-      pythonPath = fs.existsSync(venvPy) ? venvPy : 'python';
-    }
-    return { projectDir, pythonPath, fromConfig };
+    return resolveProjectContext();
   }
 
   private async refreshTasks(view: vscode.WebviewView): Promise<void> {
@@ -627,6 +641,21 @@ export class TaskLauncherViewProvider implements vscode.WebviewViewProvider {
     if (cfg?.params && Object.keys(cfg.params).length > 0) {
       childEnv.OK_LANG_HINTS_INJECT = JSON.stringify({ [this.taskKey(task)]: cfg.params });
     }
+    // 工具箱共享配置：任务启动无感沿用调试浮层开关与游戏连接
+    const toolbox = loadToolboxState(projectDir);
+    this.overlayActive = toolbox.overlay === true;
+    if (this.overlayActive) {
+      childEnv.OK_TOOLKIT_USE_OVERLAY = '1';
+      this.output.appendLine(tr('▶ Debug overlay: enabled'));
+    }
+    if (toolbox.game) {
+      // 实际复用由 connect_game.py 写入的 configs/devices.json selected_hwnd 驱动，
+      // 这里仅记录连接来源，便于确认任务与工具箱操作的是同一个窗口。
+      this.output.appendLine(tr('Reusing game connection from toolbox: {title} (PID {pid})', {
+        title: toolbox.game.title || String(toolbox.game.hwnd),
+        pid: toolbox.game.pid,
+      }));
+    }
     this.childProcess = cp.spawn(pythonPath, args, {
       cwd: projectDir,
       windowsHide: true,
@@ -657,6 +686,7 @@ export class TaskLauncherViewProvider implements vscode.WebviewViewProvider {
       const timedOut = this.timedOutRequested;
       this.running = false;
       this.paused = false;
+      this.overlayActive = false;
       this.stdoutRemainder = '';
       this.childProcess = null;
       this.output.appendLine('');
@@ -725,6 +755,35 @@ export class TaskLauncherViewProvider implements vscode.WebviewViewProvider {
     }
   }
 
+  /** 调试浮层以 run_task.py 的确认标记为准；翻转时同步日志并回写工具箱共享状态 */
+  private setOverlayActive(active: boolean): void {
+    if (this.overlayActive === active) return;
+    this.overlayActive = active;
+    this.output.appendLine(active ? tr('▶ Debug overlay: enabled') : tr('⏹ Debug overlay: disabled'));
+    if (this.currentProjectDir) {
+      saveToolboxState(this.currentProjectDir, { overlay: active });
+    }
+  }
+
+  /**
+   * 工具箱浮层开关 → 运行中任务即时生效（stdin overlay_on/off 命令）。
+   * 无运行任务时返回 false，开关状态由工具箱直接持久化、下次启动沿用。
+   */
+  setOverlayEnabled(enabled: boolean): boolean {
+    const stdin = this.childProcess?.stdin;
+    if (!this.running || !stdin || !stdin.writable) return false;
+    this.output.appendLine(enabled ? tr('▶ Enabling debug overlay…') : tr('⏹ Disabling debug overlay…'));
+    try {
+      stdin.write(enabled ? 'overlay_on\n' : 'overlay_off\n');
+    } catch (err) {
+      this.output.appendLine(tr('Failed to send command to the task process: {error}', {
+        error: err instanceof Error ? err.message : String(err),
+      }));
+      return false;
+    }
+    return true;
+  }
+
   /** 按行扫描 stdout，识别 run_task.py 输出的控制标记（标记行可能跨 chunk 到达） */
   private scanControlMarkers(text: string): void {
     const combined = this.stdoutRemainder + text;
@@ -735,6 +794,10 @@ export class TaskLauncherViewProvider implements vscode.WebviewViewProvider {
         this.setPaused(true);
       } else if (line.includes('OK_TOOLKIT_RESUMED')) {
         this.setPaused(false);
+      } else if (line.includes('OK_TOOLKIT_OVERLAY_ON')) {
+        this.setOverlayActive(true);
+      } else if (line.includes('OK_TOOLKIT_OVERLAY_OFF')) {
+        this.setOverlayActive(false);
       } else if (line.includes('OK_TOOLKIT_ERROR:')) {
         const error = line.slice(line.indexOf('OK_TOOLKIT_ERROR:') + 'OK_TOOLKIT_ERROR:'.length).trim();
         if (this.view && error) {
@@ -815,6 +878,7 @@ export class TaskLauncherViewProvider implements vscode.WebviewViewProvider {
   /** 释放资源（output channel 由扩展生命周期统一关闭） */
   dispose(): void {
     this.clearTimeoutTimer();
+    if (TaskLauncherViewProvider.current === this) TaskLauncherViewProvider.current = undefined;
     if (this.childProcess) {
       this.childProcess.kill();
       this.childProcess = null;
