@@ -362,21 +362,28 @@ class AssetGalleryController {
         {
           location: vscode.ProgressLocation.Notification,
           title: tr('Saving to assets…'),
+          cancellable: true,
         },
-        async (progress) => {
+        async (progress, token) => {
           await this.data.saveToAssets(
             pick.target,
             generateEnum,
             absEnumPath,
             (done, total) => {
-              progress.report({ message: `${done} / ${total}` });
+              // page 渲染在 worker 池并行，完成顺序可能乱序，done 单调递增
+              progress.report({ message: tr('Packing pages {done}/{total}…', { done, total }) });
             },
+            token,
           );
         },
       );
       void vscode.window.showInformationMessage(tr('Saved to: {path}', { path: pick.label }));
     } catch (e) {
-      void vscode.window.showErrorMessage(tr('Save failed: {error}', { error: String(e) }));
+      if (e instanceof vscode.CancellationError) {
+        void vscode.window.showInformationMessage(tr('Save to assets cancelled.'));
+      } else {
+        void vscode.window.showErrorMessage(tr('Save failed: {error}', { error: String(e) }));
+      }
     }
   }
 

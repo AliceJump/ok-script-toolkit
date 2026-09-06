@@ -2,6 +2,10 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { decodeRgba, encodePngRgb, readImageSize } from './pngCrop';
+import {
+  AssetPackCancelledError, AssetPackPageTask,
+  isAssetPackPoolInitialized, renderPagesViaPool,
+} from './assetPack';
 import { tr } from './localization';
 
 /* ---------------- COCO 数据类型 ---------------- */
@@ -298,16 +302,19 @@ export class TemplateAssetData {
    * - COCO annotation bbox 保持原始坐标不变。
    * - 生成的 COCO image file_name 指向打包后的 PNG。
    *
-   * 异步分批执行（每张图/每个 page 之间让出事件循环），避免大模板库
-   * 长时间阻塞扩展宿主；onProgress 汇报 page 渲染进度。
+   * page 渲染（PNG 全图解码 + 全画布 level-6 deflate 编码）在 worker 池中并行
+   * 执行，主线程零阻塞；worker 池不可用或中途崩溃时回退到主线程分批渲染
+   * （每个重操作之间让出事件循环）。onProgress 汇报已完成 page 数；传入
+   * cancellationToken 可在渲染中途取消（已完成的 page 保留，抛 CancellationError）。
    */
   async saveToAssets(
     targetFolder: string,
     generateEnum = false,
     enumPath?: string,
     onProgress?: (done: number, total: number) => void,
+    cancellationToken?: vscode.CancellationToken,
   ): Promise<void> {
-    const yieldToLoop = () => new Promise<void>((resolve) => setImmediate(resolve));
+    if (cancellationToken?.isCancellationRequested) throw new vscode.CancellationError();
     const targetImagesDir = path.join(targetFolder, 'images');
 
     // 清空目标目录中的旧图片（重新生成前清理）
@@ -317,11 +324,6 @@ export class TemplateAssetData {
       }
     }
     if (!fs.existsSync(targetImagesDir)) fs.mkdirSync(targetImagesDir, { recursive: true });
-
-    const newImages: CocoImage[] = [];
-    const newAnnotations: CocoAnnotation[] = [];
-    let nextImageId = 1;
-    let nextAnnId = 1;
 
     // ── 1. 只处理有标注的图片（无标注的原图不放入 assets） ──
     const annotatedImages = this.cocoData.images.filter(
@@ -423,84 +425,38 @@ export class TemplateAssetData {
       }
     }
 
-    // ── 4. 渲染每个 page：解码缓存跨 page 复用同一原图 ──
-    const decodedCache = new Map<string, { width: number; height: number; rgba: Buffer }>();
-    let decodedBytes = 0;
-    const DECODED_CACHE_MAX_BYTES = 256 * 1024 * 1024;
-    const getDecoded = (src: string) => {
-      const hit = decodedCache.get(src);
-      if (hit) return hit;
-      const decoded = decodeRgba(fs.readFileSync(src));
-      decodedCache.set(src, decoded);
-      decodedBytes += decoded.rgba.length;
-      while (decodedBytes > DECODED_CACHE_MAX_BYTES && decodedCache.size > 1) {
-        const oldest = decodedCache.keys().next().value;
-        if (oldest === undefined) break;
-        decodedBytes -= decodedCache.get(oldest)?.rgba.length ?? 0;
-        decodedCache.delete(oldest);
+    // ── 4. 构建 page 渲染任务（id/file_name 确定性：第 i 个 page → images/{i+1}.png）──
+    //    同一原图的全部 bbox 归入同一条 source；bin-packing 保证每张原图只出现在
+    //    一个 page，因此整轮渲染每张原图恰好解码一次，无需跨 page 解码缓存。
+    const pageTasks: AssetPackPageTask[] = pageList.map((page, pageIndex) => {
+      const byImage = new Map<number, { imagePath: string; rects: Array<[number, number, number, number]> }>();
+      for (const it of page.items) {
+        const rect = it.ann.bbox.map(Math.round) as [number, number, number, number];
+        const group = byImage.get(it.img.id);
+        if (group) group.rects.push(rect);
+        else byImage.set(it.img.id, { imagePath: path.join(this.templateFolder, it.img.file_name), rects: [rect] });
       }
-      return decoded;
-    };
+      return {
+        W: page.W,
+        H: page.H,
+        outPath: path.join(targetImagesDir, `${pageIndex + 1}.png`),
+        sources: [...byImage.values()],
+      };
+    });
 
-    for (let pageIndex = 0; pageIndex < pageList.length; pageIndex++) {
-      const { W, H, items } = pageList[pageIndex];
-
-      // 按原图聚合标注，同一原图只解码/读取一次
-      const byImage = new Map<number, { img: CocoImage; anns: CocoAnnotation[] }>();
-      for (const it of items) {
-        const group = byImage.get(it.img.id) ?? { img: it.img, anns: [] };
-        group.anns.push(it.ann);
-        byImage.set(it.img.id, group);
-      }
-
-      // 白色画布
-      const canvasRgba = Buffer.alloc(W * H * 4, 255); // 全白 (RGBA 255,255,255,255)
-
-      // 从每个原图复制对应 bbox ROI 到 Canvas
-      for (const { img, anns } of byImage.values()) {
-        const src = path.join(this.templateFolder, img.file_name);
-        // 让出事件循环：大图解码 + deflate 编码很重，连续跑会卡死扩展宿主
-        await yieldToLoop();
-        try {
-          const srcDecoded = getDecoded(src);
-          for (const e of anns) {
-            const [bx, by, bw, bh] = e.bbox.map(Math.round);
-            const x1 = Math.max(0, bx);
-            const y1 = Math.max(0, by);
-            const x2 = Math.min(W, bx + bw);
-            const y2 = Math.min(H, by + bh);
-            if (x2 > x1 && y2 > y1) {
-              for (let y = y1; y < y2; y++) {
-                const srcStart = (y * srcDecoded.width + x1) * 4;
-                const dstStart = (y * W + x1) * 4;
-                srcDecoded.rgba.copy(canvasRgba, dstStart, srcStart, srcStart + (x2 - x1) * 4);
-              }
-            }
-          }
-        } catch {
-          // 源图读取失败，跳过
-        }
-      }
-
-      // 编码并写入打包 PNG（使用 RGB 编码器，对齐 ok-script 压缩效果）
-      const pageFileName = `${nextImageId}.png`;
-      const pagePng = encodePngRgb(W, H, canvasRgba);
-      fs.writeFileSync(path.join(targetImagesDir, pageFileName), pagePng);
-
-      // file_name = 从 COCO JSON 到打包 PNG 的相对路径（对齐 ok-script compress_coco）
-      // COCO JSON 在 targetFolder/，图片在 targetFolder/images/，所以相对路径固定为 images/{id}.png
-      const finalRelPath = `images/${pageFileName}`;
-
-      const packedImgId = nextImageId++;
+    // COCO 元数据与渲染解耦：file_name/bbox 都是确定性的，渲染只产出像素文件
+    const newImages: CocoImage[] = [];
+    const newAnnotations: CocoAnnotation[] = [];
+    let nextAnnId = 1;
+    for (let pageIndex = 0; pageIndex < pageTasks.length; pageIndex++) {
+      const packedImgId = pageIndex + 1;
       newImages.push({
         id: packedImgId,
-        file_name: finalRelPath,
-        width: W,
-        height: H,
+        file_name: `images/${packedImgId}.png`,
+        width: pageTasks[pageIndex].W,
+        height: pageTasks[pageIndex].H,
       });
-
-      // COCO annotations: 保持原始 bbox 坐标，仅更新 image_id 指向打包图
-      for (const it of items) {
+      for (const it of pageList[pageIndex].items) {
         const [bx, by, bw, bh] = it.ann.bbox.map(Math.round) as [number, number, number, number];
         newAnnotations.push({
           id: nextAnnId++,
@@ -511,11 +467,37 @@ export class TemplateAssetData {
           iscrowd: 0,
         });
       }
-
-      onProgress?.(pageIndex + 1, pageList.length);
     }
 
-    // ── 5. 构建并写入 COCO JSON ──
+    // ── 5. 渲染全部 page：优先 worker 池并行（解码/deflate 离开主线程），失败回退内联 ──
+    const total = pageTasks.length;
+    if (total > 0 && isAssetPackPoolInitialized()) {
+      try {
+        await renderPagesViaPool(
+          pageTasks,
+          onProgress,
+          () => cancellationToken?.isCancellationRequested ?? false,
+        );
+      } catch (err) {
+        if (err instanceof AssetPackCancelledError) throw new vscode.CancellationError();
+        // worker 崩溃等异常：已落盘的 page 保留，缺失的由下面的内联回退补渲
+      }
+    }
+
+    // 内联回退：只补渲缺失的 page（worker 全部成功时这里一次都不跑）
+    const pageMissing = (outPath: string): boolean => {
+      try { return !fs.existsSync(outPath) || fs.statSync(outPath).size === 0; } catch { return true; }
+    };
+    let completed = total - pageTasks.filter((t) => pageMissing(t.outPath)).length;
+    for (const task of pageTasks) {
+      if (!pageMissing(task.outPath)) continue;
+      if (cancellationToken?.isCancellationRequested) throw new vscode.CancellationError();
+      await this.renderPageInline(task);
+      completed++;
+      onProgress?.(completed, total);
+    }
+
+    // ── 6. 构建并写入 COCO JSON ──
     const croppedCoco: CocoData = {
       images: newImages,
       annotations: newAnnotations,
@@ -537,6 +519,40 @@ export class TemplateAssetData {
       const enumFile = enumPath || path.join(targetFolder, 'LabelEnum.py');
       this.generateLabelEnum(enumFile, labels);
     }
+  }
+
+  /**
+   * 主线程内联渲染单个 page（worker 池不可用时的回退路径）。
+   * 行为与 worker 版一致：白底画布 + 原坐标粘贴 + RGB level-6 PNG；
+   * 每个重操作（解码/编码）之前让出事件循环，避免长时间冻结扩展宿主。
+   */
+  private async renderPageInline(task: AssetPackPageTask): Promise<void> {
+    const yieldToLoop = () => new Promise<void>((resolve) => setImmediate(resolve));
+    const canvasRgba = Buffer.alloc(task.W * task.H * 4, 255);
+    for (const src of task.sources) {
+      await yieldToLoop();
+      try {
+        const decoded = decodeRgba(fs.readFileSync(src.imagePath));
+        for (const [bx, by, bw, bh] of src.rects) {
+          const x1 = Math.max(0, bx);
+          const y1 = Math.max(0, by);
+          const x2 = Math.min(task.W, bx + bw);
+          const y2 = Math.min(task.H, by + bh);
+          if (x2 > x1 && y2 > y1) {
+            for (let y = y1; y < y2; y++) {
+              const srcStart = (y * decoded.width + x1) * 4;
+              const dstStart = (y * task.W + x1) * 4;
+              decoded.rgba.copy(canvasRgba, dstStart, srcStart, srcStart + (x2 - x1) * 4);
+            }
+          }
+        }
+      } catch {
+        // 源图读取失败，跳过（与 worker 行为一致）
+      }
+    }
+    await yieldToLoop();
+    fs.mkdirSync(path.dirname(task.outPath), { recursive: true });
+    fs.writeFileSync(task.outPath, encodePngRgb(task.W, task.H, canvasRgba));
   }
 
   /** Generate a Python enum file from category labels. */
