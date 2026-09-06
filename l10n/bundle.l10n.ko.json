@@ -140,7 +140,7 @@
   "Saving to assets…": "assets에 저장하는 중…",
   "Packing pages {done}/{total}…": "페이지 패킹 중 {done}/{total}…",
   "Save to assets cancelled.": "assets 저장이 취소되었습니다.",
-  "Connecting to game window…": "게임 창에 연결하는 중…",
+  "Connecting to game window…": "게임 창에 연결하는 중(실행 중이 아니면 자동으로 시작)…",
   "Failed to connect game window: {error}": "게임 창 연결 실패: {error}",
   "Reusing game connection from toolbox: {title} (PID {pid})": "도구 상자의 게임 연결 재사용: {title}(PID {pid})",
   "▶ Enabling debug overlay…": "▶ 디버그 오버레이 활성화 중…",
