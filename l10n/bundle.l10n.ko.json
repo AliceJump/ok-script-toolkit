@@ -15,6 +15,7 @@
   "The ok-script project path is not configured.": "ok-script 프로젝트 경로가 설정되지 않았습니다.",
   "Python interpreter does not exist: {path}": "Python 인터프리터가 없습니다: {path}",
   "▶ Launch task: {task} ({module})": "▶ 작업 실행: {task}({module})",
+  "▶ Debug overlay: enabled": "▶ 디버그 오버레이: 활성화됨",
   "Project: {path}": "프로젝트: {path}",
   "Parameter overrides: {count}": "매개변수 재정의: {count}개",
   "Failed to launch task: {error}": "작업을 실행하지 못했습니다: {error}",
@@ -138,5 +139,11 @@
   "At runtime, fix_match_regex translates this pattern using ocr.po before calling re.compile.": "실행 시 fix_match_regex는 re.compile을 호출하기 전에 ocr.po로 이 패턴을 번역합니다.",
   "Saving to assets…": "assets에 저장하는 중…",
   "Packing pages {done}/{total}…": "페이지 패킹 중 {done}/{total}…",
-  "Save to assets cancelled.": "assets 저장이 취소되었습니다."
+  "Save to assets cancelled.": "assets 저장이 취소되었습니다.",
+  "Connecting to game window…": "게임 창에 연결하는 중…",
+  "Failed to connect game window: {error}": "게임 창 연결 실패: {error}",
+  "Reusing game connection from toolbox: {title} (PID {pid})": "도구 상자의 게임 연결 재사용: {title}(PID {pid})",
+  "▶ Enabling debug overlay…": "▶ 디버그 오버레이 활성화 중…",
+  "⏹ Disabling debug overlay…": "⏹ 디버그 오버레이 비활성화 중…",
+  "⏹ Debug overlay: disabled": "⏹ 디버그 오버레이: 꺼짐"
 }
