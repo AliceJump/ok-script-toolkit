@@ -136,5 +136,7 @@
   "Localized name {id} has no character master entry or skill file": "El nombre localizado {id} no tiene entrada maestra de personaje ni archivo de habilidades",
   "{character} / {skill} references unknown effect {effect}": "{character} / {skill} hace referencia al efecto desconocido {effect}",
   "At runtime, fix_match_regex translates this pattern using ocr.po before calling re.compile.": "En tiempo de ejecución, fix_match_regex traduce este patrón con ocr.po antes de llamar a re.compile.",
-  "Saving to assets…": "Guardando en assets…"
+  "Saving to assets…": "Guardando en assets…",
+  "Packing pages {done}/{total}…": "Empaquetando páginas {done}/{total}…",
+  "Save to assets cancelled.": "Se canceló el guardado en assets."
 }

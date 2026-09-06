@@ -136,5 +136,7 @@
   "Localized name {id} has no character master entry or skill file": "현지화된 이름 {id}에 캐릭터 마스터 항목이나 스킬 파일이 없습니다",
   "{character} / {skill} references unknown effect {effect}": "{character} / {skill}이(가) 알 수 없는 효과 {effect}을(를) 참조합니다",
   "At runtime, fix_match_regex translates this pattern using ocr.po before calling re.compile.": "실행 시 fix_match_regex는 re.compile을 호출하기 전에 ocr.po로 이 패턴을 번역합니다.",
-  "Saving to assets…": "assets에 저장하는 중…"
+  "Saving to assets…": "assets에 저장하는 중…",
+  "Packing pages {done}/{total}…": "페이지 패킹 중 {done}/{total}…",
+  "Save to assets cancelled.": "assets 저장이 취소되었습니다."
 }
