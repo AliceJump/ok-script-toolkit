@@ -140,7 +140,7 @@
   "Saving to assets…": "Guardando en assets…",
   "Packing pages {done}/{total}…": "Empaquetando páginas {done}/{total}…",
   "Save to assets cancelled.": "Se canceló el guardado en assets.",
-  "Connecting to game window…": "Conectando a la ventana del juego…",
+  "Connecting to game window…": "Conectando a la ventana del juego (inicia el juego automáticamente si no está en ejecución)…",
   "Failed to connect game window: {error}": "Error al conectar con la ventana del juego: {error}",
   "Reusing game connection from toolbox: {title} (PID {pid})": "Reutilizando la conexión del juego del kit de herramientas: {title} (PID {pid})",
   "▶ Enabling debug overlay…": "▶ Activando la superposición de depuración…",

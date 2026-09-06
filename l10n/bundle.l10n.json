@@ -145,7 +145,7 @@
   "Saving to assets…": "Saving to assets…",
   "Packing pages {done}/{total}…": "Packing pages {done}/{total}…",
   "Save to assets cancelled.": "Save to assets cancelled.",
-  "Connecting to game window…": "Connecting to game window…",
+  "Connecting to game window…": "Connecting to game window (auto-starts the game if not running)…",
   "Failed to connect game window: {error}": "Failed to connect game window: {error}",
   "Reusing game connection from toolbox: {title} (PID {pid})": "Reusing game connection from toolbox: {title} (PID {pid})",
   "▶ Enabling debug overlay…": "▶ Enabling debug overlay…",
