@@ -6,6 +6,7 @@ import { tr } from './localization';
 import { FeatureData } from './featureData';
 import { EffectData } from './effectData';
 import { clearCropCache, clearSourceCropCache, clearCropCacheForImage, removeTemplateThumbFile, clearThumbDir, warmCropCache, initCropWorkerPool, disposeCropWorkerPool, setCropLogger, THUMB_HEIGHT, thumbDirForSource, thumbSourceSubdir, clearSourceThumbs } from './pngCrop';
+import { initAssetPackPool, disposeAssetPackPool } from './assetPack';
 import {
   LangCompletionProvider,
   LangHoverProvider,
@@ -47,6 +48,8 @@ export function activate(context: vscode.ExtensionContext): void {
 
   // 初始化 worker 线程池（纯 JS 图像处理，主线程零阻塞）
   initCropWorkerPool(context.extensionPath);
+  // saveToAssets 打包渲染专用池（PNG 解码 + level-6 deflate 全在 worker）
+  initAssetPackPool(context.extensionPath);
 
   // 后台预热：把全部模板缩略图裁进缓存，后续 hover/补全直接命中
   const prewarm = () => {
@@ -221,6 +224,7 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push({
     dispose: () => {
       disposeCropWorkerPool();
+      disposeAssetPackPool();
       watcher?.dispose();
       watcher = undefined;
       if (langTimer) clearTimeout(langTimer);
