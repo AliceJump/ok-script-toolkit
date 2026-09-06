@@ -136,5 +136,7 @@
   "Source": "来源",
   "At runtime, fix_match_regex translates this pattern using ocr.po before calling re.compile.": "运行时 fix_match_regex 会用 ocr.po 翻译该正则后再调用 re.compile。",
   "{count} keys": "{count} 个键",
-  "Saving to assets…": "正在保存到 assets…"
+  "Saving to assets…": "正在保存到 assets…",
+  "Packing pages {done}/{total}…": "正在打包页面 {done}/{total}…",
+  "Save to assets cancelled.": "已取消保存到 assets。"
 }
