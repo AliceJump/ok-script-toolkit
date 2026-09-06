@@ -141,5 +141,7 @@
   "e.g. assets/data/LabelEnum.py or src/label_enum.py": "e.g. assets/data/LabelEnum.py or src/label_enum.py",
   "Undo ({key})": "Undo ({key})",
   "Redo ({key})": "Redo ({key})",
-  "Saving to assets…": "Saving to assets…"
+  "Saving to assets…": "Saving to assets…",
+  "Packing pages {done}/{total}…": "Packing pages {done}/{total}…",
+  "Save to assets cancelled.": "Save to assets cancelled."
 }
