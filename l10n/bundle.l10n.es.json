@@ -145,5 +145,8 @@
   "Reusing game connection from toolbox: {title} (PID {pid})": "Reutilizando la conexión del juego del kit de herramientas: {title} (PID {pid})",
   "▶ Enabling debug overlay…": "▶ Activando la superposición de depuración…",
   "⏹ Disabling debug overlay…": "⏹ Desactivando la superposición de depuración…",
-  "⏹ Debug overlay: disabled": "⏹ Superposición de depuración: desactivada"
+  "⏹ Debug overlay: disabled": "⏹ Superposición de depuración: desactivada",
+  "ok-script Overlay Host": "Anfitrión de superposición de ok-script",
+  "Overlay host ready: Alt+Right-click two corners in the game to copy box coordinates.": "Superposición residente: pulse Alt+clic derecho en dos esquinas del juego para copiar las coordenadas.",
+  "Overlay host stopped.": "Anfitrión de superposición detenido."
 }
