@@ -145,5 +145,8 @@
   "Reusing game connection from toolbox: {title} (PID {pid})": "ツールボックスのゲーム接続を再利用: {title}（PID {pid}）",
   "▶ Enabling debug overlay…": "▶ デバッグ オーバーレイを有効化中…",
   "⏹ Disabling debug overlay…": "⏹ デバッグ オーバーレイを無効化中…",
-  "⏹ Debug overlay: disabled": "⏹ デバッグ オーバーレイ: 無効"
+  "⏹ Debug overlay: disabled": "⏹ デバッグ オーバーレイ: 無効",
+  "ok-script Overlay Host": "ok-script オーバーレイホスト",
+  "Overlay host ready: Alt+Right-click two corners in the game to copy box coordinates.": "オーバーレイ常駐中：ゲーム画面の2点を Alt+右クリックすると枠座標がクリップボードにコピーされます。",
+  "Overlay host stopped.": "オーバーレイホストを停止しました。"
 }
