@@ -92,9 +92,9 @@ def main():
                          ensure_ascii=False))
         sys.exit(1)
 
-    import win32gui
+    import win32process
 
-    _thread_id, pid = win32gui.GetWindowThreadProcessId(hwnd)
+    _thread_id, pid = win32process.GetWindowThreadProcessId(hwnd)
     row = next((r for r in hwnds if r and r[0] == hwnd), None)
     window_title = (row[6] if row else "") or name or ""
 

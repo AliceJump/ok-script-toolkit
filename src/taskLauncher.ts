@@ -161,7 +161,13 @@ export function runPython(
       maxBuffer: 16 * 1024 * 1024,
     }, (error, stdout, stderr) => {
       if (error) {
-        reject(new Error(stderr?.trim() || error.message));
+        // 项目脚本约定：失败时往 stdout 末尾打印 {"ok": false, "error": "..."}；
+        // 优先回传结构化错误，其次 stderr，最后才是通用命令失败信息。
+        const parsed = parseJsonFromStdout(stdout || '');
+        const message = (parsed && typeof parsed.error === 'string' && parsed.error)
+          || stderr?.trim()
+          || error.message;
+        reject(new Error(message));
         return;
       }
       resolve({ stdout: stdout || '', stderr: stderr || '' });
