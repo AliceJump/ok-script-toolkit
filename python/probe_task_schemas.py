@@ -350,12 +350,18 @@ def main():
                     "locale": locale,
                 }
 
-        print(json.dumps({
+        result = json.dumps({
             "ok": True,
             "total": len(tasks),
             "broken": broken,
             "schemas": schemas,
-        }, ensure_ascii=False))
+        }, ensure_ascii=False)
+        sys.stdout.write(result + "\n")
+        sys.stdout.flush()
+        # ok.quit() 在某些项目（如 SoundContext 线程未退出）会永久阻塞，
+        # 导致 120s 超时后被宿主 kill → 报 "Command failed"。
+        # schema 已成功输出，强制退出避免清理阻塞。
+        os._exit(0)
     finally:
         if ok is not None:
             ok.quit()
@@ -366,5 +372,6 @@ if __name__ == "__main__":
     try:
         main()
     except Exception as e:
-        print(json.dumps({"ok": False, "error": f"{type(e).__name__}: {e}"}, ensure_ascii=False))
-        sys.exit(1)
+        sys.stdout.write(json.dumps({"ok": False, "error": f"{type(e).__name__}: {e}"}, ensure_ascii=False) + "\n")
+        sys.stdout.flush()
+        os._exit(1)

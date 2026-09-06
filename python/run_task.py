@@ -181,13 +181,11 @@ def main():
     if config.get("use_overlay"):
         print("[toolkit] 调试浮层已开启（游戏窗口置前时显示识别框/边框）", flush=True)
     task_name = args.task
-    task_module = args.task_module
-    config["onetime_tasks"] = [
-        t for t in config.get("onetime_tasks", []) if t[0] == task_module and t[1] == task_name
-    ]
-    config["trigger_tasks"] = [
-        t for t in config.get("trigger_tasks", []) if t[0] == task_module and t[1] == task_name
-    ]
+
+    # 不手动过滤任务列表：
+    # ok.run_task(task_name) 内部会按名称查找目标任务并执行；
+    # 所有 onetime/trigger 任务都必须保留，因为任务间有依赖关系
+    # （如 DailyTask 通过 get_task_by_class 获取 TacetTask、MouseResetTask 等）。
 
     # 只把显式透传参数交给 ok-script，避免辅助脚本自身参数与框架 argparse 冲突。
     saved_argv = sys.argv[:]
