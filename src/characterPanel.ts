@@ -1,3 +1,4 @@
+import * as childProcess from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
@@ -746,6 +747,10 @@ export class CharacterManagerLauncherViewProvider implements vscode.WebviewViewP
 
   private view?: vscode.WebviewView;
   private busSubscription?: vscode.Disposable;
+  /** 常驻浮层宿主进程（连接游戏后拉起，断开/关浮层/项目切换时停止） */
+  private overlayHost?: childProcess.ChildProcess;
+  private overlayHostProjectDir = '';
+  private overlayHostChannel?: vscode.OutputChannel;
 
   constructor(private readonly dependencies: CharacterManagerDependencies) {}
 
@@ -937,6 +942,10 @@ export class CharacterManagerLauncherViewProvider implements vscode.WebviewViewP
       };
       saveToolboxState(projectDir, { game });
       this.postStatus('');
+      // 调试浮层开启时拉起常驻宿主：无需启动任务即可 Alt+右键框选取坐标
+      if (loadToolboxState(projectDir).overlay) {
+        this.startOverlayHost(projectDir);
+      }
     } catch (e) {
       this.postStatus(tr('Failed to connect game window: {error}', {
         error: e instanceof Error ? e.message : String(e),
@@ -959,7 +968,67 @@ export class CharacterManagerLauncherViewProvider implements vscode.WebviewViewP
       );
     } catch { /* devices.json 缺失等场景按已断开处理 */ }
     saveToolboxState(projectDir, { game: null });
+    this.stopOverlayHost();
     this.postStatus('');
+  }
+
+  /** 拉起常驻浮层宿主（同项目已运行则复用） */
+  private startOverlayHost(projectDir: string): void {
+    if (!projectDir) return;
+    if (this.overlayHost && this.overlayHostProjectDir === projectDir && !this.overlayHost.killed) return;
+    this.stopOverlayHost();
+
+    const { pythonPath } = resolveProjectContext();
+    if (!pythonPath) return;
+    if (!this.overlayHostChannel) {
+      this.overlayHostChannel = vscode.window.createOutputChannel(tr('ok-script Overlay Host'));
+    }
+    const child = childProcess.spawn(
+      pythonPath,
+      [pythonScript(this.dependencies.extensionUri, 'overlay_host.py'), projectDir],
+      { cwd: projectDir, windowsHide: true },
+    );
+    this.overlayHostChannel.appendLine(`[spawn] ${pythonPath} overlay_host.py ${projectDir}`);
+    child.stdout?.on('data', (d: Buffer) => {
+      const text = d.toString('utf8');
+      this.overlayHostChannel?.append(text);
+      if (text.includes('OK_TOOLKIT_OVERLAY_HOST_READY')) {
+        this.postStatus(tr('Overlay host ready: Alt+Right-click two corners in the game to copy box coordinates.'));
+      }
+    });
+    child.stderr?.on('data', (d: Buffer) => this.overlayHostChannel?.append(d.toString('utf8')));
+    child.on('error', (err) => {
+      this.overlayHostChannel?.appendLine(`[error] ${err.message}`);
+      if (this.overlayHost === child) this.overlayHost = undefined;
+    });
+    child.on('exit', () => {
+      if (this.overlayHost === child) this.overlayHost = undefined;
+    });
+    this.overlayHost = child;
+    this.overlayHostProjectDir = projectDir;
+  }
+
+  /** 停止常驻浮层宿主（若有） */
+  private stopOverlayHost(): void {
+    const child = this.overlayHost;
+    if (!child) return;
+    this.overlayHost = undefined;
+    try {
+      if (child.pid) {
+        // Windows 上 TerminateProcess 直接结束宿主及其线程
+        if (process.platform === 'win32') {
+          childProcess.spawn('taskkill', ['/F', '/T', '/PID', String(child.pid)], { windowsHide: true });
+        } else {
+          child.kill('SIGTERM');
+        }
+      } else {
+        child.kill();
+      }
+    } catch { /* 进程已退出 */ }
+    if (this.overlayHostProjectDir) {
+      this.postStatus(tr('Overlay host stopped.'));
+    }
+    this.overlayHostProjectDir = '';
   }
 
   /** 调试浮层开关：持久化到工具箱状态；任务运行中即时下发，否则下次启动沿用 */
@@ -971,11 +1040,20 @@ export class CharacterManagerLauncherViewProvider implements vscode.WebviewViewP
     }
     saveToolboxState(projectDir, { overlay: enabled });
     TaskLauncherViewProvider.current?.setOverlayEnabled(enabled);
+    // 常驻宿主跟随开关：开着且已连接游戏时保持，关闭即停
+    if (enabled && loadToolboxState(projectDir).game) {
+      this.startOverlayHost(projectDir);
+    } else if (!enabled) {
+      this.stopOverlayHost();
+    }
   }
 
   dispose(): void {
     this.busSubscription?.dispose();
     this.busSubscription = undefined;
+    this.stopOverlayHost();
+    this.overlayHostChannel?.dispose();
+    this.overlayHostChannel = undefined;
     this.view = undefined;
   }
 }

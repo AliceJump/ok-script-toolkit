@@ -173,6 +173,8 @@ def main():
     # 从 config 里读取该键，HeadlessApp 据此懒创建 Win32GdiOverlay。
     if os.environ.get("OK_TOOLKIT_USE_OVERLAY", "").strip().lower() in ("1", "true", "yes"):
         config["use_overlay"] = True
+    if config.get("use_overlay"):
+        print("[toolkit] 调试浮层已开启（游戏窗口置前时显示识别框/边框）", flush=True)
     task_name = args.task
     task_module = args.task_module
     config["onetime_tasks"] = [

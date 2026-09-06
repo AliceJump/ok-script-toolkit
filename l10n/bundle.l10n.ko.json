@@ -145,5 +145,8 @@
   "Reusing game connection from toolbox: {title} (PID {pid})": "도구 상자의 게임 연결 재사용: {title}(PID {pid})",
   "▶ Enabling debug overlay…": "▶ 디버그 오버레이 활성화 중…",
   "⏹ Disabling debug overlay…": "⏹ 디버그 오버레이 비활성화 중…",
-  "⏹ Debug overlay: disabled": "⏹ 디버그 오버레이: 꺼짐"
+  "⏹ Debug overlay: disabled": "⏹ 디버그 오버레이: 꺼짐",
+  "ok-script Overlay Host": "ok-script 오버레이 호스트",
+  "Overlay host ready: Alt+Right-click two corners in the game to copy box coordinates.": "오버레이 상주 중: 게임 화면의 두 모서리를 Alt+오른쪽 클릭하면 좌표가 클립보드에 복사됩니다.",
+  "Overlay host stopped.": "오버레이 호스트가 중지되었습니다."
 }
