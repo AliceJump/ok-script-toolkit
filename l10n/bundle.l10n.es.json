@@ -15,6 +15,7 @@
   "The ok-script project path is not configured.": "La ruta del proyecto ok-script no está configurada.",
   "Python interpreter does not exist: {path}": "El intérprete de Python no existe: {path}",
   "▶ Launch task: {task} ({module})": "▶ Iniciar tarea: {task} ({module})",
+  "▶ Debug overlay: enabled": "▶ Superposición de depuración: activada",
   "Project: {path}": "Proyecto: {path}",
   "Parameter overrides: {count}": "Parámetros reemplazados: {count}",
   "Failed to launch task: {error}": "No se pudo iniciar la tarea: {error}",
@@ -138,5 +139,11 @@
   "At runtime, fix_match_regex translates this pattern using ocr.po before calling re.compile.": "En tiempo de ejecución, fix_match_regex traduce este patrón con ocr.po antes de llamar a re.compile.",
   "Saving to assets…": "Guardando en assets…",
   "Packing pages {done}/{total}…": "Empaquetando páginas {done}/{total}…",
-  "Save to assets cancelled.": "Se canceló el guardado en assets."
+  "Save to assets cancelled.": "Se canceló el guardado en assets.",
+  "Connecting to game window…": "Conectando a la ventana del juego…",
+  "Failed to connect game window: {error}": "Error al conectar con la ventana del juego: {error}",
+  "Reusing game connection from toolbox: {title} (PID {pid})": "Reutilizando la conexión del juego del kit de herramientas: {title} (PID {pid})",
+  "▶ Enabling debug overlay…": "▶ Activando la superposición de depuración…",
+  "⏹ Disabling debug overlay…": "⏹ Desactivando la superposición de depuración…",
+  "⏹ Debug overlay: disabled": "⏹ Superposición de depuración: desactivada"
 }
