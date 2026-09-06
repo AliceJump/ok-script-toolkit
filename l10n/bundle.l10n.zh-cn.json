@@ -140,7 +140,7 @@
   "Saving to assets…": "正在保存到 assets…",
   "Packing pages {done}/{total}…": "正在打包页面 {done}/{total}…",
   "Save to assets cancelled.": "已取消保存到 assets。",
-  "Connecting to game window…": "正在连接游戏窗口…",
+  "Connecting to game window…": "正在连接游戏窗口（游戏未运行时会自动启动）…",
   "Failed to connect game window: {error}": "连接游戏窗口失败：{error}",
   "Reusing game connection from toolbox: {title} (PID {pid})": "复用工具箱游戏连接：{title}（PID {pid}）",
   "▶ Enabling debug overlay…": "▶ 正在开启调试浮层…",

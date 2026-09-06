@@ -921,7 +921,8 @@ export class CharacterManagerLauncherViewProvider implements vscode.WebviewViewP
         pythonPath,
         [pythonScript(this.dependencies.extensionUri, 'connect_game.py'), projectDir],
         projectDir,
-        30000,
+        // 游戏未运行时会自动启动并等待窗口（脚本侧最长 150s），超时要留足余量
+        200000,
       );
       const parsed = parseJsonFromStdout(result.stdout || '');
       if (!parsed || !parsed.ok) {

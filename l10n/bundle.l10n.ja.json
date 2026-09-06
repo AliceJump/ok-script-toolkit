@@ -140,7 +140,7 @@
   "Saving to assets…": "assets に保存中…",
   "Packing pages {done}/{total}…": "ページをパック中 {done}/{total}…",
   "Save to assets cancelled.": "assets への保存をキャンセルしました。",
-  "Connecting to game window…": "ゲームウィンドウに接続中…",
+  "Connecting to game window…": "ゲームウィンドウに接続中（未起動なら自動で起動します）…",
   "Failed to connect game window: {error}": "ゲームウィンドウへの接続に失敗しました: {error}",
   "Reusing game connection from toolbox: {title} (PID {pid})": "ツールボックスのゲーム接続を再利用: {title}（PID {pid}）",
   "▶ Enabling debug overlay…": "▶ デバッグ オーバーレイを有効化中…",
