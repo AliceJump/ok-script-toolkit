@@ -26,3 +26,6 @@ AGENTS.md
 **/agents.md
 screenshots/**
 ok_tasks/**
+**/__pycache__/**
+**/*.pyc
+out/tmp_test/**
