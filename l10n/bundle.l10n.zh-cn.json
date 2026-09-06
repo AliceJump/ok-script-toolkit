@@ -18,6 +18,7 @@
   "The ok-script project path is not configured.": "未配置 ok-script 项目路径。",
   "Python interpreter does not exist: {path}": "Python 解释器不存在：{path}",
   "▶ Launch task: {task} ({module})": "▶ 启动任务：{task}（{module}）",
+  "▶ Debug overlay: enabled": "▶ 调试浮层：已启用",
   "Project: {path}": "项目：{path}",
   "Python: {path}": "Python：{path}",
   "Parameter overrides: {count}": "参数覆盖：{count} 项",
@@ -138,5 +139,11 @@
   "{count} keys": "{count} 个键",
   "Saving to assets…": "正在保存到 assets…",
   "Packing pages {done}/{total}…": "正在打包页面 {done}/{total}…",
-  "Save to assets cancelled.": "已取消保存到 assets。"
+  "Save to assets cancelled.": "已取消保存到 assets。",
+  "Connecting to game window…": "正在连接游戏窗口…",
+  "Failed to connect game window: {error}": "连接游戏窗口失败：{error}",
+  "Reusing game connection from toolbox: {title} (PID {pid})": "复用工具箱游戏连接：{title}（PID {pid}）",
+  "▶ Enabling debug overlay…": "▶ 正在开启调试浮层…",
+  "⏹ Disabling debug overlay…": "⏹ 正在关闭调试浮层…",
+  "⏹ Debug overlay: disabled": "⏹ 调试浮层：已关闭"
 }

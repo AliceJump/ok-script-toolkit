@@ -15,6 +15,7 @@
   "The ok-script project path is not configured.": "尚未設定 ok-script 專案路徑。",
   "Python interpreter does not exist: {path}": "Python 直譯器不存在：{path}",
   "▶ Launch task: {task} ({module})": "▶ 啟動任務：{task}（{module}）",
+  "▶ Debug overlay: enabled": "▶ 除錯浮層：已啟用",
   "Project: {path}": "專案：{path}",
   "Parameter overrides: {count}": "參數覆寫：{count} 項",
   "Failed to launch task: {error}": "無法啟動任務：{error}",
@@ -138,5 +139,11 @@
   "At runtime, fix_match_regex translates this pattern using ocr.po before calling re.compile.": "執行時 fix_match_regex 會先使用 ocr.po 翻譯此模式，再呼叫 re.compile。",
   "Saving to assets…": "正在儲存到 assets…",
   "Packing pages {done}/{total}…": "正在打包頁面 {done}/{total}…",
-  "Save to assets cancelled.": "已取消儲存到 assets。"
+  "Save to assets cancelled.": "已取消儲存到 assets。",
+  "Connecting to game window…": "正在連線遊戲視窗…",
+  "Failed to connect game window: {error}": "連線遊戲視窗失敗：{error}",
+  "Reusing game connection from toolbox: {title} (PID {pid})": "複用工具箱遊戲連線：{title}（PID {pid}）",
+  "▶ Enabling debug overlay…": "▶ 正在開啟除錯浮層…",
+  "⏹ Disabling debug overlay…": "⏹ 正在關閉除錯浮層…",
+  "⏹ Debug overlay: disabled": "⏹ 除錯浮層：已關閉"
 }

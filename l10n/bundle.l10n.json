@@ -18,6 +18,7 @@
   "The ok-script project path is not configured.": "The ok-script project path is not configured.",
   "Python interpreter does not exist: {path}": "Python interpreter does not exist: {path}",
   "▶ Launch task: {task} ({module})": "▶ Launch task: {task} ({module})",
+  "▶ Debug overlay: enabled": "▶ Debug overlay: enabled",
   "Project: {path}": "Project: {path}",
   "Python: {path}": "Python: {path}",
   "Parameter overrides: {count}": "Parameter overrides: {count}",
@@ -143,5 +144,11 @@
   "Redo ({key})": "Redo ({key})",
   "Saving to assets…": "Saving to assets…",
   "Packing pages {done}/{total}…": "Packing pages {done}/{total}…",
-  "Save to assets cancelled.": "Save to assets cancelled."
+  "Save to assets cancelled.": "Save to assets cancelled.",
+  "Connecting to game window…": "Connecting to game window…",
+  "Failed to connect game window: {error}": "Failed to connect game window: {error}",
+  "Reusing game connection from toolbox: {title} (PID {pid})": "Reusing game connection from toolbox: {title} (PID {pid})",
+  "▶ Enabling debug overlay…": "▶ Enabling debug overlay…",
+  "⏹ Disabling debug overlay…": "⏹ Disabling debug overlay…",
+  "⏹ Debug overlay: disabled": "⏹ Debug overlay: disabled"
 }

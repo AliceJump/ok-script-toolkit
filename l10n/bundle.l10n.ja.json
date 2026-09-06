@@ -15,6 +15,7 @@
   "The ok-script project path is not configured.": "ok-script プロジェクトパスが設定されていません。",
   "Python interpreter does not exist: {path}": "Python インタープリターが存在しません: {path}",
   "▶ Launch task: {task} ({module})": "▶ タスクを起動: {task}（{module}）",
+  "▶ Debug overlay: enabled": "▶ デバッグ オーバーレイ: 有効",
   "Project: {path}": "プロジェクト: {path}",
   "Parameter overrides: {count}": "パラメーター上書き: {count} 件",
   "Failed to launch task: {error}": "タスクを起動できませんでした: {error}",
@@ -138,5 +139,11 @@
   "At runtime, fix_match_regex translates this pattern using ocr.po before calling re.compile.": "実行時、fix_match_regex は re.compile を呼び出す前に ocr.po でこのパターンを翻訳します。",
   "Saving to assets…": "assets に保存中…",
   "Packing pages {done}/{total}…": "ページをパック中 {done}/{total}…",
-  "Save to assets cancelled.": "assets への保存をキャンセルしました。"
+  "Save to assets cancelled.": "assets への保存をキャンセルしました。",
+  "Connecting to game window…": "ゲームウィンドウに接続中…",
+  "Failed to connect game window: {error}": "ゲームウィンドウへの接続に失敗しました: {error}",
+  "Reusing game connection from toolbox: {title} (PID {pid})": "ツールボックスのゲーム接続を再利用: {title}（PID {pid}）",
+  "▶ Enabling debug overlay…": "▶ デバッグ オーバーレイを有効化中…",
+  "⏹ Disabling debug overlay…": "⏹ デバッグ オーバーレイを無効化中…",
+  "⏹ Debug overlay: disabled": "⏹ デバッグ オーバーレイ: 無効"
 }
