@@ -145,5 +145,8 @@
   "Reusing game connection from toolbox: {title} (PID {pid})": "复用工具箱游戏连接：{title}（PID {pid}）",
   "▶ Enabling debug overlay…": "▶ 正在开启调试浮层…",
   "⏹ Disabling debug overlay…": "⏹ 正在关闭调试浮层…",
-  "⏹ Debug overlay: disabled": "⏹ 调试浮层：已关闭"
+  "⏹ Debug overlay: disabled": "⏹ 调试浮层：已关闭",
+  "ok-script Overlay Host": "ok-script 浮层宿主",
+  "Overlay host ready: Alt+Right-click two corners in the game to copy box coordinates.": "浮层已常驻：Alt+右键点游戏画面两个角，框选坐标自动复制到剪贴板。",
+  "Overlay host stopped.": "浮层宿主已停止。"
 }

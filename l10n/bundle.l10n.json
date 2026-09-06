@@ -150,5 +150,8 @@
   "Reusing game connection from toolbox: {title} (PID {pid})": "Reusing game connection from toolbox: {title} (PID {pid})",
   "▶ Enabling debug overlay…": "▶ Enabling debug overlay…",
   "⏹ Disabling debug overlay…": "⏹ Disabling debug overlay…",
-  "⏹ Debug overlay: disabled": "⏹ Debug overlay: disabled"
+  "⏹ Debug overlay: disabled": "⏹ Debug overlay: disabled",
+  "ok-script Overlay Host": "ok-script Overlay Host",
+  "Overlay host ready: Alt+Right-click two corners in the game to copy box coordinates.": "Overlay host ready: Alt+Right-click two corners in the game to copy box coordinates.",
+  "Overlay host stopped.": "Overlay host stopped."
 }
