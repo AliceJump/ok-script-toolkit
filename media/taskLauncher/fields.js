@@ -146,18 +146,284 @@
     return wrapper;
   }
 
-  function buildList(typeMeta, rawValue, setValue) {
-    const textarea = document.createElement('textarea');
-    textarea.value = (Array.isArray(rawValue) ? rawValue : []).join('\n');
-    const available = Array.isArray(typeMeta.options_available) ? typeMeta.options_available : [];
-    if (available.length) {
-      const labels = Array.isArray(typeMeta.options_available_labels) ? typeMeta.options_available_labels : available;
-      textarea.title = t('selectedOptionsHint', { values: labels.map(String).join(', ') });
-    }
-    textarea.addEventListener('change', () => {
-      setValue(textarea.value.split(/\r?\n/).map(value => value.trim()).filter(Boolean));
+  function buildList(typeMeta, rawValue, setValue, field) {
+    // 复刻框架 ModifyListItem + ModifyListDialog 语义：
+    // 折叠态显示当前项摘要 + 「修改」按钮；弹窗内按有无 options_available 分两种模式。
+    const items = Array.isArray(rawValue) ? rawValue : [];
+    const available = Array.isArray(typeMeta.options_available) ? typeMeta.options_available : null;
+    const labels = Array.isArray(typeMeta.options_available_labels) ? typeMeta.options_available_labels : [];
+    const allowDup = typeMeta.allow_duplication === true;
+    const labelFor = value => {
+      if (!available) return String(value);
+      const index = available.findIndex(option => String(option) === String(value));
+      return index >= 0 ? String(labels[index] ?? value) : String(value);
+    };
+
+    const wrapper = document.createElement('div');
+    wrapper.className = 'list-editor';
+
+    const summaryText = items.map(labelFor);
+    const summary = document.createElement('div');
+    summary.className = 'list-editor__summary';
+    summary.textContent = summaryText.join('').length > 30 || items.length > 3
+      ? summaryText.join('\n')
+      : (summaryText.join(', ') || '—');
+    wrapper.appendChild(summary);
+
+    const modify = document.createElement('button');
+    modify.type = 'button';
+    modify.className = 'secondary list-editor__modify';
+    modify.textContent = t('modify');
+    modify.addEventListener('click', () => {
+      openListDialog({
+        title: field?.displayKey || field?.key || '',
+        items,
+        available,
+        labels,
+        allowDup,
+        labelFor,
+        apply: value => setValue(value),
+      });
     });
-    return textarea;
+    wrapper.appendChild(modify);
+    return wrapper;
+  }
+
+  // 与框架 ModifyListDialog.SHOW_SEARCH_OPTIONS_THRESHOLD 一致
+  const LIST_DIALOG_SEARCH_THRESHOLD = 20;
+
+  function openListDialog({ title, items, available, labels, allowDup, labelFor, apply }) {
+    const working = available
+      ? items.filter(value => available.some(option => String(option) === String(value)))
+      : items.slice();
+    let selectedRow = -1;
+
+    const backdrop = document.createElement('div');
+    backdrop.className = 'list-dialog__backdrop';
+    const dialog = document.createElement('div');
+    dialog.className = 'list-dialog';
+    dialog.setAttribute('role', 'dialog');
+    dialog.setAttribute('aria-modal', 'true');
+    dialog.tabIndex = -1;
+
+    const titleNode = document.createElement('div');
+    titleNode.className = 'list-dialog__title';
+    titleNode.textContent = title || t('modify');
+    dialog.appendChild(titleNode);
+
+    const body = document.createElement('div');
+    body.className = 'list-dialog__body';
+    dialog.appendChild(body);
+
+    const listNode = document.createElement('ul');
+    listNode.className = 'list-dialog__list';
+
+    const upButton = document.createElement('button');
+    upButton.type = 'button';
+    upButton.className = 'secondary';
+    upButton.textContent = t('moveUp');
+    const downButton = document.createElement('button');
+    downButton.type = 'button';
+    downButton.className = 'secondary';
+    downButton.textContent = t('moveDown');
+    const removeButton = document.createElement('button');
+    removeButton.type = 'button';
+    removeButton.className = 'secondary';
+    removeButton.textContent = t('removeItem');
+
+    const renderList = () => {
+      listNode.replaceChildren();
+      working.forEach((value, index) => {
+        const row = document.createElement('li');
+        row.className = 'list-dialog__row' + (index === selectedRow ? ' selected' : '');
+        row.textContent = labelFor(value);
+        row.addEventListener('click', () => {
+          selectedRow = index;
+          renderList();
+        });
+        listNode.appendChild(row);
+      });
+      syncActionStates();
+    };
+
+    const syncActionStates = () => {
+      upButton.disabled = selectedRow <= 0;
+      downButton.disabled = selectedRow < 0 || selectedRow >= working.length - 1;
+      removeButton.disabled = selectedRow < 0;
+      if (optionButtons) {
+        for (const [value, button] of optionButtons) {
+          const taken = working.some(item => String(item) === String(value));
+          button.disabled = !allowDup && taken;
+        }
+      }
+    };
+
+    const move = delta => {
+      const target = selectedRow + delta;
+      if (target < 0 || target >= working.length) return;
+      [working[selectedRow], working[target]] = [working[target], working[selectedRow]];
+      selectedRow = target;
+      renderList();
+    };
+    upButton.addEventListener('click', () => move(-1));
+    downButton.addEventListener('click', () => move(1));
+    removeButton.addEventListener('click', () => {
+      if (selectedRow < 0) return;
+      working.splice(selectedRow, 1);
+      selectedRow = -1;
+      renderList();
+    });
+
+    const addValue = value => {
+      if (!allowDup && working.some(item => String(item) === String(value))) return;
+      working.push(value);
+      selectedRow = working.length - 1;
+      renderList();
+    };
+
+    let optionButtons = null;
+    if (available) {
+      // 双栏模式：左侧可用选项按钮流，右侧已选列表（与框架 ModifyListDialog 布局一致）
+      const optionsPane = document.createElement('div');
+      optionsPane.className = 'list-dialog__pane';
+
+      const optionsTitle = document.createElement('div');
+      optionsTitle.className = 'list-dialog__subtitle';
+      optionsTitle.textContent = t('availableOptions');
+      const optionsHint = document.createElement('div');
+      optionsHint.className = 'list-dialog__hint';
+      optionsHint.textContent = t('clickOptionToAdd');
+      optionsPane.append(optionsTitle, optionsHint);
+
+      let searchInput = null;
+      if (available.length > LIST_DIALOG_SEARCH_THRESHOLD) {
+        searchInput = document.createElement('input');
+        searchInput.type = 'text';
+        searchInput.className = 'list-dialog__search';
+        searchInput.placeholder = t('searchOptions');
+        optionsPane.appendChild(searchInput);
+      }
+
+      const optionsFlow = document.createElement('div');
+      optionsFlow.className = 'list-dialog__options';
+      optionButtons = new Map();
+      available.forEach((value, index) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'secondary list-dialog__option';
+        button.textContent = String(labels[index] ?? value);
+        button.addEventListener('click', () => addValue(value));
+        optionsFlow.appendChild(button);
+        optionButtons.set(value, button);
+      });
+      optionsPane.appendChild(optionsFlow);
+      if (searchInput) {
+        searchInput.addEventListener('input', () => {
+          const keyword = searchInput.value.trim().toLowerCase();
+          for (const [value, button] of optionButtons) {
+            const haystack = `${value}`.toLowerCase();
+            const needle = String(labels[available.indexOf(value)] ?? value).toLowerCase();
+            button.hidden = Boolean(keyword) && !haystack.includes(keyword) && !needle.includes(keyword);
+          }
+        });
+      }
+
+      const selectedPane = document.createElement('div');
+      selectedPane.className = 'list-dialog__pane list-dialog__pane--narrow';
+      const selectedTitle = document.createElement('div');
+      selectedTitle.className = 'list-dialog__subtitle';
+      selectedTitle.textContent = t('selectedOptions');
+      const selectedBody = document.createElement('div');
+      selectedBody.className = 'list-dialog__columns';
+      const actions = document.createElement('div');
+      actions.className = 'list-dialog__actions';
+      actions.append(upButton, downButton, removeButton);
+      selectedBody.append(listNode, actions);
+      selectedPane.append(selectedTitle, selectedBody);
+      body.append(optionsPane, selectedPane);
+    } else {
+      // 自由编辑模式：列表 + 文本添加行 + 上移/下移/移除
+      const pane = document.createElement('div');
+      pane.className = 'list-dialog__pane';
+      const selectedTitle = document.createElement('div');
+      selectedTitle.className = 'list-dialog__subtitle';
+      selectedTitle.textContent = t('selectedOptions');
+      pane.appendChild(selectedTitle);
+
+      const selectedBody = document.createElement('div');
+      selectedBody.className = 'list-dialog__columns';
+      const actions = document.createElement('div');
+      actions.className = 'list-dialog__actions';
+      actions.append(upButton, downButton, removeButton);
+      selectedBody.append(listNode, actions);
+      pane.appendChild(selectedBody);
+
+      const addRow = document.createElement('div');
+      addRow.className = 'list-dialog__add-row';
+      const addInput = document.createElement('input');
+      addInput.type = 'text';
+      addInput.placeholder = t('addValue');
+      const addButton = document.createElement('button');
+      addButton.type = 'button';
+      addButton.textContent = t('add');
+      addButton.disabled = true;
+      addInput.addEventListener('input', () => { addButton.disabled = !addInput.value.trim(); });
+      const submit = () => {
+        const text = addInput.value.trim();
+        if (!text) return;
+        addValue(text);
+        addInput.value = '';
+        addButton.disabled = true;
+        addInput.focus();
+      };
+      addButton.addEventListener('click', submit);
+      addInput.addEventListener('keydown', event => {
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          submit();
+        }
+      });
+      addRow.append(addInput, addButton);
+      pane.appendChild(addRow);
+      body.appendChild(pane);
+    }
+
+    const footer = document.createElement('div');
+    footer.className = 'list-dialog__footer';
+    const cancelButton = document.createElement('button');
+    cancelButton.type = 'button';
+    cancelButton.className = 'secondary';
+    cancelButton.textContent = t('cancel');
+    const confirmButton = document.createElement('button');
+    confirmButton.type = 'button';
+    confirmButton.textContent = t('confirm');
+    footer.append(cancelButton, confirmButton);
+    dialog.appendChild(footer);
+
+    const close = () => {
+      document.removeEventListener('keydown', onKeyDown, true);
+      backdrop.remove();
+    };
+    const onKeyDown = event => {
+      if (event.key === 'Escape') {
+        event.stopPropagation();
+        close();
+      }
+    };
+    confirmButton.addEventListener('click', () => {
+      apply(working.slice());
+      close();
+    });
+    cancelButton.addEventListener('click', close);
+    backdrop.addEventListener('mousedown', event => {
+      if (event.target === backdrop) close();
+    });
+    document.addEventListener('keydown', onKeyDown, true);
+
+    backdrop.appendChild(dialog);
+    document.body.appendChild(backdrop);
+    dialog.focus();
+    renderList();
   }
 
   function buildText(rawValue, setValue, multiline) {
@@ -206,7 +472,7 @@
     } else if (typeName === 'cond_sequence_editor' || (Array.isArray(rawValue) && rawValue.some(item => item && typeof item === 'object'))) {
       control = buildStructuredList(rawValue, setValue);
     } else if (Array.isArray(rawValue)) {
-      control = buildList(typeMeta, rawValue, setValue);
+      control = buildList(typeMeta, rawValue, setValue, field);
     } else {
       const multiline = typeof rawValue === 'string' && (typeName === 'text_edit' || rawValue.includes('\n') || rawValue.length > 80);
       control = buildText(rawValue, setValue, multiline);

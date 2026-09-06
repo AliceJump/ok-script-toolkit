@@ -362,3 +362,138 @@ button.secondary:hover:not(:disabled) { background: var(--vscode-button-secondar
   .config-actions { flex-direction: column; }
   .config-actions button { width: 100%; }
 }
+
+/* ---- 可编辑列表（ModifyListItem 语义） ---- */
+.list-editor {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+}
+.list-editor__summary {
+  flex: 1;
+  min-width: 0;
+  max-height: 96px;
+  overflow: auto;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--surface) 70%, transparent);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.list-editor__summary:empty::before { content: '—'; color: var(--muted); }
+.list-editor__modify { flex: 0 0 auto; }
+
+/* ---- 列表编辑弹窗（ModifyListDialog 语义） ---- */
+.list-dialog__backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  background: color-mix(in srgb, #000 45%, transparent);
+}
+.list-dialog {
+  display: flex;
+  flex-direction: column;
+  width: min(760px, 100%);
+  max-height: min(620px, 92vh);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow);
+  outline: none;
+}
+.list-dialog__title {
+  padding: 12px 14px 9px;
+  font-size: 13px;
+  font-weight: 650;
+  border-bottom: 1px solid var(--border);
+}
+.list-dialog__body {
+  display: flex;
+  gap: 12px;
+  flex: 1;
+  min-height: 0;
+  padding: 12px 14px;
+  overflow: hidden;
+}
+.list-dialog__pane {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+.list-dialog__pane--narrow { flex: 0 0 44%; }
+.list-dialog__subtitle { font-size: 12px; font-weight: 650; }
+.list-dialog__hint { color: var(--muted); font-size: 11px; }
+.list-dialog__search { min-height: 28px; }
+.list-dialog__options {
+  flex: 1;
+  overflow: auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  gap: 6px;
+  padding: 2px;
+}
+.list-dialog__option { min-height: 26px; padding: 3px 9px; font-size: 12px; }
+.list-dialog__columns {
+  display: flex;
+  gap: 8px;
+  flex: 1;
+  min-height: 0;
+}
+.list-dialog__list {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--surface) 70%, transparent);
+}
+.list-dialog__list:empty::after {
+  content: '—';
+  display: block;
+  text-align: center;
+  color: var(--muted);
+}
+.list-dialog__row {
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  word-break: break-all;
+}
+.list-dialog__row:hover { background: var(--surface-hover); }
+.list-dialog__row.selected {
+  background: color-mix(in srgb, var(--border-strong) 24%, transparent);
+}
+.list-dialog__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+.list-dialog__actions button { min-width: 64px; }
+.list-dialog__add-row { display: flex; gap: 6px; }
+.list-dialog__add-row input { flex: 1; min-height: 28px; }
+.list-dialog__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--border);
+}
+
+@media (max-width: 560px) {
+  .list-dialog__body { flex-direction: column; }
+  .list-dialog__pane--narrow { flex: 1; }
+}
