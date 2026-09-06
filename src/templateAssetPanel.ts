@@ -255,20 +255,10 @@ class AssetGalleryController {
     const ts = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}`;
     const outputPath = path.join(outputDir, `screenshot_${ts}.png`);
 
-    // Find the capture script
-    const scriptPath = path.join(folder.uri.fsPath, 'python', 'capture_game_window.py');
-    let captureScript: string | undefined;
-    if (fs.existsSync(scriptPath)) {
-      captureScript = scriptPath;
-    } else {
-      const extPythonDir = path.join(path.dirname(__dirname), 'python');
-      const extScriptPath = path.join(extPythonDir, 'capture_game_window.py');
-      if (fs.existsSync(extScriptPath)) {
-        captureScript = extScriptPath;
-      }
-    }
-    if (!captureScript) {
-      void vscode.window.showErrorMessage(tr('Screenshot script not found. Please place capture_game_window.py in python/ directory.'));
+    // Find the capture script (only from extension bundled resources)
+    const captureScript = path.join(path.dirname(__dirname), 'python', 'capture_game_window.py');
+    if (!fs.existsSync(captureScript)) {
+      void vscode.window.showErrorMessage(tr('Screenshot script not found. capture_game_window.py is missing from the extension.'));
       return;
     }
 
