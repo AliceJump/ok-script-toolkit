@@ -169,6 +169,11 @@ def main():
     # OK.get_task 会先查 onetime_tasks 再查 trigger_tasks，清空会导致找不到。
     config = dict(config)
     config["check_mutex"] = False
+    # ok-script 2.x：config['gui']={'type':'qt'}（如 ok-wuthering-waves）会让 OK 创建
+    # 完整 Qt App 并安装 QtEventDispatcher，headless 下没有事件循环，
+    # communicate.window/overlay 信号全部排队丢失，浮层收不到窗口更新。置 None
+    # 强制 resolve_ui_config 返回 None → HeadlessApp（同步分发）。
+    config["gui"] = None
     # 调试浮层开关（宿主经 OK_TOOLKIT_USE_OVERLAY 传入）；_create_ok_config 会
     # 从 config 里读取该键，HeadlessApp 据此懒创建 Win32GdiOverlay。
     if os.environ.get("OK_TOOLKIT_USE_OVERLAY", "").strip().lower() in ("1", "true", "yes"):
