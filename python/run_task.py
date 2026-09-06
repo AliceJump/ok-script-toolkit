@@ -11,10 +11,17 @@
 把插件侧 params 覆盖进 self.config（仅内存，不写 configs/*.json，不污染项目配置）。
 参考 ok-end-field src/patches 的 monkey-patch 模式（functools.wraps + 类方法替换 + 幂等）。
 
-运行期控制：宿主通过 stdin 按行发送 pause / resume 命令（与 ok-script GUI 的
-og.executor.pause() / executor.start() 一致，参考 task.unpause() 的实现）。
-命令生效后向 stdout 打印 OK_TOOLKIT_PAUSED / OK_TOOLKIT_RESUMED 标记行，
+运行期控制：宿主通过 stdin 按行发送 pause / resume / overlay_on / overlay_off 命令
+（pause/resume 与 ok-script GUI 的 og.executor.pause() / executor.start() 一致，
+参考 task.unpause() 的实现；overlay_* 调用框架 _OverlayConfigMixin.set_overlay_setting，
+对运行中的任务即时开/关 Win32GdiOverlay）。
+命令生效后向 stdout 打印 OK_TOOLKIT_PAUSED / OK_TOOLKIT_RESUMED /
+OK_TOOLKIT_OVERLAY_ON / OK_TOOLKIT_OVERLAY_OFF 标记行，
 宿主据此同步任务启动器 UI；异常打印 OK_TOOLKIT_ERROR:<err>。
+
+调试浮层：环境变量 OK_TOOLKIT_USE_OVERLAY=1 时把 config['use_overlay'] 置真，
+ok-script（ok/__init__.py _create_ok_config / HeadlessApp.get_overlay_view）据此
+创建 Win32GdiOverlay，任务内 draw_boxes 的识别框会绘制到游戏窗口上。
 """
 import argparse
 import functools
@@ -30,6 +37,8 @@ sys.stderr.reconfigure(encoding="utf-8")
 # 命令执行结果标记行（宿主按行扫描 stdout）
 MARKER_PAUSED = "OK_TOOLKIT_PAUSED"
 MARKER_RESUMED = "OK_TOOLKIT_RESUMED"
+MARKER_OVERLAY_ON = "OK_TOOLKIT_OVERLAY_ON"
+MARKER_OVERLAY_OFF = "OK_TOOLKIT_OVERLAY_OFF"
 MARKER_ERROR = "OK_TOOLKIT_ERROR:"
 
 
@@ -57,6 +66,17 @@ def _apply_command(command: str) -> None:
         # executor.start()：executor.paused=False 并补正 pause_end_time，与 task.unpause() 一致。
         executor.start()
         _emit(MARKER_RESUMED)
+    elif command in ("overlay_on", "overlay_off"):
+        # og.app 是 OK(config) 初始化出的 App/HeadlessApp 实例；set_overlay_setting
+        # 置 ok_config['use_overlay'] 并懒创建（get_overlay_view）/关闭 Win32GdiOverlay，
+        # 任务后续 draw_boxes 即时生效，无需重启进程。
+        from ok import og
+
+        app = getattr(og, "app", None)
+        if app is None:
+            raise RuntimeError("app is not ready")
+        app.set_overlay_setting("boxes", command == "overlay_on")
+        _emit(MARKER_OVERLAY_ON if command == "overlay_on" else MARKER_OVERLAY_OFF)
     else:
         raise ValueError(f"unknown command: {command}")
 
@@ -85,7 +105,7 @@ def start_stdin_command_listener() -> None:
         try:
             for line in sys.stdin:
                 command = line.strip().lower()
-                if command in ("pause", "resume"):
+                if command in ("pause", "resume", "overlay_on", "overlay_off"):
                     _handle_command(command)
         except Exception:
             # stdin 被关闭等场景直接退出线程，不影响任务运行
@@ -149,6 +169,10 @@ def main():
     # OK.get_task 会先查 onetime_tasks 再查 trigger_tasks，清空会导致找不到。
     config = dict(config)
     config["check_mutex"] = False
+    # 调试浮层开关（宿主经 OK_TOOLKIT_USE_OVERLAY 传入）；_create_ok_config 会
+    # 从 config 里读取该键，HeadlessApp 据此懒创建 Win32GdiOverlay。
+    if os.environ.get("OK_TOOLKIT_USE_OVERLAY", "").strip().lower() in ("1", "true", "yes"):
+        config["use_overlay"] = True
     task_name = args.task
     task_module = args.task_module
     config["onetime_tasks"] = [
