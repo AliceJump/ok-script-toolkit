@@ -11,6 +11,19 @@ import {
 import { FeatureData, FeatureTemplate } from './featureData';
 import { injectWebviewLocalization, tr, webviewStrings } from './localization';
 import {
+  parseJsonFromStdout,
+  pythonScript,
+  resolveProjectContext,
+  runPython,
+  TaskLauncherViewProvider,
+} from './taskLauncher';
+import {
+  GameConnection,
+  loadToolboxState,
+  onToolboxStateChange,
+  saveToolboxState,
+} from './toolboxState';
+import {
   clearCropCache,
   cropTemplateThumbFileAsync,
   removeTemplateThumbFile,
@@ -727,14 +740,20 @@ export class CharacterManagerPanel implements vscode.Disposable {
   }
 }
 
-/** 侧边栏中的单按钮入口；大面板仍在编辑器区打开。 */
+/** 侧边栏工具箱：角色面板入口 + 游戏连接 + 调试浮层开关（状态与任务启动器共享）。 */
 export class CharacterManagerLauncherViewProvider implements vscode.WebviewViewProvider {
   static readonly viewType = 'okScriptToolkit.toolbox';
+
+  private view?: vscode.WebviewView;
+  private busSubscription?: vscode.Disposable;
 
   constructor(private readonly dependencies: CharacterManagerDependencies) {}
 
   resolveWebviewView(view: vscode.WebviewView): void {
+    this.view = view;
     view.webview.options = { enableScripts: true };
+    this.busSubscription?.dispose();
+    this.busSubscription = onToolboxStateChange(() => this.postToolboxState());
     const nonce = getNonce();
     const strings = JSON.stringify(webviewStrings()).replace(/</g, '\\u003c');
     view.webview.html = `<!DOCTYPE html>
@@ -762,20 +781,200 @@ export class CharacterManagerLauncherViewProvider implements vscode.WebviewViewP
     font: inherit;
   }
   button:hover { background: var(--vscode-button-hoverBackground); }
+  button:disabled { cursor: not-allowed; opacity: .5; }
+  button.secondary {
+    background: var(--vscode-button-secondaryBackground);
+    color: var(--vscode-button-secondaryForeground);
+  }
+  button.secondary:hover:not(:disabled) { background: var(--vscode-button-secondaryHoverBackground); }
+  .section {
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px solid var(--vscode-panel-border, color-mix(in srgb, currentColor 18%, transparent));
+  }
+  .section-title { font-weight: 650; margin-bottom: 6px; }
+  .row { display: flex; gap: 6px; margin-top: 6px; }
+  .row button { flex: 1; }
+  .status { margin-top: 6px; color: var(--vscode-descriptionForeground); word-break: break-all; }
+  .switch-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 4px;
+    cursor: pointer;
+  }
+  .switch-row input { accent-color: var(--vscode-focusBorder, #007acc); }
+  .hint { margin-top: 5px; color: var(--vscode-descriptionForeground); font-size: 11px; line-height: 1.5; }
 </style>
 </head>
 <body>
   <button id="open"></button>
+  <div class="section">
+    <div class="section-title" id="gameTitle"></div>
+    <div class="row">
+      <button id="connect"></button>
+      <button id="disconnect" class="secondary" hidden></button>
+    </div>
+    <div id="gameStatus" class="status"></div>
+  </div>
+  <div class="section">
+    <label class="switch-row">
+      <input type="checkbox" id="overlay">
+      <span id="overlayLabel"></span>
+    </label>
+    <div id="overlayHint" class="hint"></div>
+  </div>
+  <div id="status" class="status"></div>
   <script nonce="${nonce}">
     const I18N = ${strings};
     const vscode = acquireVsCodeApi();
-    document.getElementById('open').textContent = I18N.toolboxOpenCharacterManager;
-    document.getElementById('open').addEventListener('click', () => vscode.postMessage({ type: 'open' }));
+    const $ = id => document.getElementById(id);
+    $('open').textContent = I18N.toolboxOpenCharacterManager;
+    $('gameTitle').textContent = I18N.toolboxGameSection;
+    $('connect').textContent = I18N.toolboxConnectGame;
+    $('disconnect').textContent = I18N.toolboxDisconnect;
+    $('overlayLabel').textContent = I18N.debugOverlay;
+    $('overlayHint').textContent = I18N.debugOverlayHint;
+    function renderGame(game) {
+      if (game) {
+        $('gameStatus').textContent = I18N.toolboxGameConnected
+          .replace('{title}', game.title || String(game.hwnd))
+          .replace('{pid}', String(game.pid));
+        $('disconnect').hidden = false;
+      } else {
+        $('gameStatus').textContent = I18N.toolboxGameNotConnected;
+        $('disconnect').hidden = true;
+      }
+    }
+    $('open').addEventListener('click', () => vscode.postMessage({ type: 'open' }));
+    $('connect').addEventListener('click', () => {
+      $('connect').disabled = true;
+      vscode.postMessage({ type: 'connectGame' });
+    });
+    $('disconnect').addEventListener('click', () => vscode.postMessage({ type: 'disconnectGame' }));
+    $('overlay').addEventListener('change', () => {
+      vscode.postMessage({ type: 'setOverlay', enabled: $('overlay').checked });
+    });
+    window.addEventListener('message', event => {
+      const msg = event.data;
+      if (msg.type === 'toolboxState') {
+        renderGame(msg.game);
+        $('overlay').checked = !!msg.overlay;
+      } else if (msg.type === 'toolboxStatus') {
+        $('status').textContent = msg.text || '';
+      } else if (msg.type === 'connectDone') {
+        $('connect').disabled = false;
+      }
+    });
+    vscode.postMessage({ type: 'ready' });
   </script>
 </body>
 </html>`;
-    view.webview.onDidReceiveMessage((message: { type?: string }) => {
-      if (message.type === 'open') CharacterManagerPanel.show(this.dependencies);
+    view.webview.onDidReceiveMessage((message: { type?: string; enabled?: boolean }) => {
+      switch (message.type) {
+        case 'open':
+          CharacterManagerPanel.show(this.dependencies);
+          break;
+        case 'ready':
+          this.postToolboxState();
+          break;
+        case 'connectGame':
+          void this.connectGame();
+          break;
+        case 'disconnectGame':
+          void this.disconnectGame();
+          break;
+        case 'setOverlay':
+          this.setOverlayEnabled(Boolean(message.enabled));
+          break;
+      }
     });
+  }
+
+  /** 当前项目目录；未配置项目时返回空串 */
+  private currentProjectDir(): string {
+    return resolveProjectContext().projectDir;
+  }
+
+  private postToolboxState(): void {
+    if (!this.view) return;
+    const projectDir = this.currentProjectDir();
+    const state = loadToolboxState(projectDir);
+    void this.view.webview.postMessage({ type: 'toolboxState', overlay: !!state.overlay, game: state.game || null });
+  }
+
+  private postStatus(text: string): void {
+    if (this.view) void this.view.webview.postMessage({ type: 'toolboxStatus', text });
+  }
+
+  /** 连接游戏窗口：搜索并写入 devices.json，任务进程启动时原生优先该窗口 */
+  private async connectGame(): Promise<void> {
+    const { projectDir, pythonPath } = resolveProjectContext();
+    if (!projectDir) {
+      this.postStatus(tr('No ok-script project was found. Configure okScriptToolkit.okScriptProjectPath or open a folder containing src/config.py.'));
+      void this.view?.webview.postMessage({ type: 'connectDone' });
+      return;
+    }
+    this.postStatus(tr('Connecting to game window…'));
+    try {
+      const result = await runPython(
+        pythonPath,
+        [pythonScript(this.dependencies.extensionUri, 'connect_game.py'), projectDir],
+        projectDir,
+        30000,
+      );
+      const parsed = parseJsonFromStdout(result.stdout || '');
+      if (!parsed || !parsed.ok) {
+        throw new Error(parsed?.error || tr('Unknown error'));
+      }
+      const game: GameConnection = {
+        hwnd: Number(parsed.hwnd) || 0,
+        pid: Number(parsed.pid) || 0,
+        title: String(parsed.title || ''),
+        exe: String(parsed.exe || ''),
+        connectedAt: Date.now(),
+      };
+      saveToolboxState(projectDir, { game });
+      this.postStatus('');
+    } catch (e) {
+      this.postStatus(tr('Failed to connect game window: {error}', {
+        error: e instanceof Error ? e.message : String(e),
+      }));
+    } finally {
+      void this.view?.webview.postMessage({ type: 'connectDone' });
+    }
+  }
+
+  /** 断开连接：清除 devices.json 里的窗口选中，任务进程恢复自动探测 */
+  private async disconnectGame(): Promise<void> {
+    const { projectDir, pythonPath } = resolveProjectContext();
+    if (!projectDir) return;
+    try {
+      await runPython(
+        pythonPath,
+        [pythonScript(this.dependencies.extensionUri, 'connect_game.py'), projectDir, '--disconnect'],
+        projectDir,
+        30000,
+      );
+    } catch { /* devices.json 缺失等场景按已断开处理 */ }
+    saveToolboxState(projectDir, { game: null });
+    this.postStatus('');
+  }
+
+  /** 调试浮层开关：持久化到工具箱状态；任务运行中即时下发，否则下次启动沿用 */
+  private setOverlayEnabled(enabled: boolean): void {
+    const projectDir = this.currentProjectDir();
+    if (!projectDir) {
+      this.postToolboxState();
+      return;
+    }
+    saveToolboxState(projectDir, { overlay: enabled });
+    TaskLauncherViewProvider.current?.setOverlayEnabled(enabled);
+  }
+
+  dispose(): void {
+    this.busSubscription?.dispose();
+    this.busSubscription = undefined;
+    this.view = undefined;
   }
 }
