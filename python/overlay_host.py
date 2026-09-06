@@ -58,6 +58,11 @@ def main():
 
     cfg = dict(config)
     cfg["use_gui"] = False
+    # ok-script 2.x：config['gui']={'type':'qt'}（如 ok-wuthering-waves）会让 OK 创建
+    # 完整 Qt App 并安装 QtEventDispatcher，headless 下没有事件循环，
+    # communicate.window 信号全部排队丢失，浮层永远收不到窗口更新。置 None 强制
+    # resolve_ui_config 返回 None → HeadlessApp（同步分发）。
+    cfg["gui"] = None
     cfg["check_mutex"] = False
     cfg["custom_tasks"] = False
     cfg["config_folder"] = temp_config_folder
