@@ -866,15 +866,35 @@ export function writeAnnotatedImage(
     const cropX = Math.max(0, bx - pad), cropY = Math.max(0, by - pad);
     const cropW = Math.min(width - cropX, bw + 2 * pad + Math.min(pad, bx));
     const cropH = Math.min(height - cropY, bh + 2 * pad + Math.min(pad, by));
-    const cropRgba = Buffer.alloc(cropW * cropH * 4);
-    for (let y = 0; y < cropH; y++) {
-      const srcStart = ((cropY + y) * width + cropX) * 4;
-      rgba.copy(cropRgba, y * cropW * 4, srcStart, srcStart + cropW * 4);
+
+    // 归一化：缩放到目标分辨率内，保证不同原图输出视觉效果一致
+    const TARGET = 400;
+    const scale = Math.min(1, TARGET / Math.max(cropW, cropH));
+    const outW = Math.round(cropW * scale);
+    const outH = Math.round(cropH * scale);
+
+    // 缩放裁剪区域（最近邻）
+    const outRgba = Buffer.alloc(outW * outH * 4);
+    for (let oy = 0; oy < outH; oy++) {
+      const sy = Math.min(Math.round(oy / scale), cropH - 1);
+      const srcRow = ((cropY + sy) * width + cropX) * 4;
+      for (let ox = 0; ox < outW; ox++) {
+        const sx = Math.min(Math.round(ox / scale), cropW - 1);
+        const srcIdx = srcRow + sx * 4;
+        const dstIdx = (oy * outW + ox) * 4;
+        outRgba[dstIdx] = rgba[srcIdx];
+        outRgba[dstIdx + 1] = rgba[srcIdx + 1];
+        outRgba[dstIdx + 2] = rgba[srcIdx + 2];
+        outRgba[dstIdx + 3] = rgba[srcIdx + 3];
+      }
     }
-    const thickness = Math.max(3, Math.min(10, Math.round(Math.min(width, height) * 0.004)));
-    drawRectOutline(cropRgba, cropW, cropH, bx - cropX, by - cropY, bw, bh, thickness);
+
+    const thickness = Math.max(2, Math.round(2 * scale));
+    drawRectOutline(outRgba, outW, outH,
+      Math.round((bx - cropX) * scale), Math.round((by - cropY) * scale),
+      Math.round(bw * scale), Math.round(bh * scale), thickness);
     fs.mkdirSync(path.dirname(outPath), { recursive: true });
-    fs.writeFileSync(outPath, encodePng(cropW, cropH, cropRgba));
+    fs.writeFileSync(outPath, encodePng(outW, outH, outRgba));
     return outPath;
   } catch { return undefined; }
 }
@@ -889,7 +909,7 @@ export function openAnnotatedImage(
   const src = entry.imagePath;
   const srcBbox = entry.bbox;
   try { if (!fs.existsSync(src)) return undefined; } catch { return undefined; }
-  const key = crypto.createHash('sha1').update(`${src}|${srcBbox.join(',')}`).digest('hex').slice(0, 16);
+  const key = crypto.createHash('sha1').update(`v1|${src}|${srcBbox.join(',')}`).digest('hex').slice(0, 16);
   const out = path.join(thumbDir, 'annotated', `a_${key}.png`);
   try { if (fs.existsSync(out) && fs.statSync(out).size > 0) return out; } catch { /* 重新生成 */ }
   return writeAnnotatedImage(src, srcBbox, out);
