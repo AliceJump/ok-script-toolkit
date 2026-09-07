@@ -17,13 +17,13 @@ const match = /const EN: WebviewStrings = \{([\s\S]*?)\n\};/.exec(source);
 if (!match) throw new Error('EN dictionary not found');
 const dictionary = {
   parameters: 'Parameters', collapseParameters: 'Collapse Parameters', launchSettings: 'Launch Settings',
-  timeoutSeconds: 'Timeout', timeoutHint: '', reset: 'Reset', configGroup: 'Group', saved: 'Auto-saved',
+  reset: 'Reset', configGroup: 'Group', saved: 'Auto-saved',
   commonParameters: 'Common', groupParameters: 'Groups', childTaskConfig: 'Children', otherParameters: 'Other',
   noConfigParameters: 'None', schemaFailed: 'Failed {error}', current: 'Current',
   currentValue: '{value}', enabled: 'On', disabled: 'Off', holdCtrlMulti: '', structuredJsonHint: '',
   selectedOptionsHint: '{values}', taskTitle: 'Tasks', refresh: 'Refresh', noTasks: 'No tasks',
   triggerTask: 'Trigger', oneTimeTask: 'One-time', launch: 'Launch', stop: 'Stop', running: 'Running',
-  stopping: 'Stopping', timeoutStopping: 'Timeout', taskTimedOut: 'Timed out', taskStopped: 'Stopped',
+  stopping: 'Stopping', taskStopped: 'Stopped',
   taskCompleted: 'Completed', taskFailed: 'Failed'
 };
 html = html

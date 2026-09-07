@@ -36,9 +36,9 @@
       case 'running':
         setRunning(message.running, message.task, message.paused);
         state.stopping = message.running === true && message.stopping === true;
-        if (message.stopping) setStatus('warn', message.timedOut ? t('timeoutStopping') : t('stopping'));
+        if (message.stopping) setStatus('warn', t('stopping'));
         else if (message.error) setStatus('error', message.error);
-        else if (message.stopped) setStatus('warn', message.timedOut ? t('taskTimedOut') : t('taskStopped'));
+        else if (message.stopped) setStatus('warn', t('taskStopped'));
         else if (message.running === false && message.code === 0) setStatus('ok', t('taskCompleted'));
         else if (message.running === false) setStatus('error', t('taskFailed'));
         break;

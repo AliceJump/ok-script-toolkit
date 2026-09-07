@@ -61,8 +61,6 @@ interface TaskConfig {
   extraArgs?: string;
   /** 仅对当前任务子进程生效的环境变量（UI 已移除，历史配置仍生效）。 */
   env?: Record<string, string>;
-  /** 自动停止超时（秒）；0 或未设置表示不限时。 */
-  timeout?: number;
   /** 任务参数覆盖：key=任务 default_config 的 key，value=覆盖值 */
   params?: Record<string, unknown>;
 }
@@ -294,8 +292,6 @@ export class TaskLauncherViewProvider implements vscode.WebviewViewProvider {
   private configModule = 'src.config';
   private childProcess: cp.ChildProcess | null = null;
   private stopRequested = false;
-  private timedOutRequested = false;
-  private timeoutTimer: NodeJS.Timeout | undefined;
   private view: vscode.WebviewView | null = null;
   private currentProjectDir = '';
   private refreshGeneration = 0;
@@ -372,9 +368,6 @@ export class TaskLauncherViewProvider implements vscode.WebviewViewProvider {
     const raw = value as Record<string, unknown>;
     const config: TaskConfig = {};
     if (typeof raw.extraArgs === 'string' && raw.extraArgs.trim()) config.extraArgs = raw.extraArgs.trim();
-    if (typeof raw.timeout === 'number' && Number.isFinite(raw.timeout) && raw.timeout > 0) {
-      config.timeout = Math.min(raw.timeout, 7 * 24 * 60 * 60);
-    }
     if (raw.env && typeof raw.env === 'object' && !Array.isArray(raw.env)) {
       const env: Record<string, string> = {};
       for (const [key, item] of Object.entries(raw.env as Record<string, unknown>)) {
@@ -611,7 +604,6 @@ export class TaskLauncherViewProvider implements vscode.WebviewViewProvider {
     this.currentTask = task;
     this.running = true;
     this.stopRequested = false;
-    this.timedOutRequested = false;
     this.paused = false;
     this.stdoutRemainder = '';
     this.output.clear();
@@ -678,7 +670,6 @@ export class TaskLauncherViewProvider implements vscode.WebviewViewProvider {
     });
     this.childProcess.stderr?.on('data', (d) => this.output.append(d.toString('utf8')));
     this.childProcess.on('error', (err) => {
-      this.clearTimeoutTimer();
       this.running = false;
       this.childProcess = null;
       this.output.appendLine('');
@@ -687,9 +678,7 @@ export class TaskLauncherViewProvider implements vscode.WebviewViewProvider {
       void view.webview.postMessage({ type: 'running', task, running: false, error: err.message });
     });
     this.childProcess.on('close', (code) => {
-      this.clearTimeoutTimer();
       const stopped = this.stopRequested;
-      const timedOut = this.timedOutRequested;
       this.running = false;
       this.paused = false;
       this.overlayActive = false;
@@ -707,22 +696,9 @@ export class TaskLauncherViewProvider implements vscode.WebviewViewProvider {
         running: false,
         code,
         stopped,
-        timedOut,
         error: !stopped && code !== 0 ? tr('Task exit code: {code}', { code: code ?? 'null' }) : undefined,
       });
     });
-    if (cfg.timeout && cfg.timeout > 0) {
-      const timeoutSeconds = cfg.timeout;
-      this.timeoutTimer = setTimeout(() => {
-        if (this.running && this.childProcess) {
-          this.output.appendLine('');
-          this.output.appendLine(tr('⏱ Timeout reached after {seconds} seconds; stopping task...', {
-            seconds: timeoutSeconds,
-          }));
-          void this.stopTask(true);
-        }
-      }, timeoutSeconds * 1000);
-    }
   }
 
   /** 向任务子进程 stdin 发送运行期控制命令（run_task.py 按行读取 pause/resume） */
@@ -826,17 +802,16 @@ export class TaskLauncherViewProvider implements vscode.WebviewViewProvider {
     return `${task.module}::${task.className}`;
   }
 
-  private async stopTask(timedOut = false): Promise<void> {
+  private async stopTask(): Promise<void> {
     if (!this.running || !this.childProcess || !this.view) {
       void vscode.window.showWarningMessage(tr('No task is currently running.'));
       return;
     }
     
     this.output.appendLine('');
-    this.output.appendLine(timedOut ? tr('⏱ Stopping timed-out task...') : tr('⏹ Stopping task...'));
+    this.output.appendLine(tr('⏹ Stopping task...'));
     this.stopRequested = true;
-    this.timedOutRequested = timedOut;
-    void this.view.webview.postMessage({ type: 'running', task: this.currentTask, running: true, stopping: true, timedOut });
+    void this.view.webview.postMessage({ type: 'running', task: this.currentTask, running: true, stopping: true });
     
     // 尝试优雅终止
     try {
@@ -868,7 +843,6 @@ export class TaskLauncherViewProvider implements vscode.WebviewViewProvider {
       }
     } catch (err) {
       this.stopRequested = false;
-      this.timedOutRequested = false;
       const error = err instanceof Error ? err.message : String(err);
       this.output.appendLine(tr('❌ Failed to stop task: {error}', { error }));
       void vscode.window.showErrorMessage(tr('Failed to stop task: {error}', { error }));
@@ -883,20 +857,12 @@ export class TaskLauncherViewProvider implements vscode.WebviewViewProvider {
 
   /** 释放资源（output channel 由扩展生命周期统一关闭） */
   dispose(): void {
-    this.clearTimeoutTimer();
     if (TaskLauncherViewProvider.current === this) TaskLauncherViewProvider.current = undefined;
     if (this.childProcess) {
       this.childProcess.kill();
       this.childProcess = null;
     }
     this.output.dispose();
-  }
-
-  private clearTimeoutTimer(): void {
-    if (this.timeoutTimer) {
-      clearTimeout(this.timeoutTimer);
-      this.timeoutTimer = undefined;
-    }
   }
 
   /** 读取任务启动器 Webview 外壳并注入 CSP 与本地资源 URI。 */

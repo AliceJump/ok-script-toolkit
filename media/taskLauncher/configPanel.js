@@ -64,26 +64,6 @@
       hideSavedTimer = setTimeout(() => { savedBadge.hidden = true; }, 1600);
     };
 
-    const timeoutRow = document.createElement('div');
-    timeoutRow.className = 'config-field';
-    const timeoutLabel = document.createElement('label');
-    timeoutLabel.className = 'config-field__label';
-    timeoutLabel.textContent = t('timeoutSeconds');
-    const timeoutHelp = document.createElement('div');
-    timeoutHelp.className = 'config-field__description';
-    timeoutHelp.textContent = t('timeoutHint');
-    const timeout = document.createElement('input');
-    timeout.type = 'number';
-    timeout.min = '0';
-    timeout.step = '1';
-    timeout.value = String(config.timeout || 0);
-    timeout.addEventListener('change', () => {
-      const value = Number(timeout.value);
-      if (value > 0) config.timeout = Math.min(value, 604800); else delete config.timeout;
-      onConfigChange();
-    });
-    timeoutRow.append(timeoutLabel, timeoutHelp, timeout);
-    panel.appendChild(timeoutRow);
     return showSaved;
   }
 
