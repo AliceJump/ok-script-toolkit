@@ -117,7 +117,8 @@ def main():
     parser.add_argument("output_path", help="Output image path")
     parser.add_argument("--exe-names", nargs="+", default=None, help="Executable names to match")
     parser.add_argument("--hwnd-class", default=None, help="Window class name")
-    parser.add_argument("--config-json", default=None, help="JSON config from probe_window_config")
+    parser.add_argument("--config-json", default=None, help="JSON config string (legacy)")
+    parser.add_argument("--config-file", default=None, help="Path to JSON config file")
     parser.add_argument("--project-dir", default=None, help="Project root dir (loads screenshot_processor from src/config.py)")
     parser.add_argument("title_regex", nargs="?", default=None, help=argparse.SUPPRESS)
 
@@ -126,7 +127,15 @@ def main():
     exe_names = args.exe_names
     hwnd_class = args.hwnd_class
 
-    if args.config_json:
+    if args.config_file:
+        try:
+            with open(args.config_file, "r", encoding="utf-8") as f:
+                cfg = json.load(f)
+            exe_names = exe_names or cfg.get("exe")
+            hwnd_class = hwnd_class or cfg.get("hwnd_class")
+        except Exception as exc:
+            print(f"Invalid config file: {exc}", file=sys.stderr)
+    elif args.config_json:
         try:
             cfg = json.loads(args.config_json)
             exe_names = exe_names or cfg.get("exe")
