@@ -6,14 +6,19 @@
 
 ```text
 src/                         VS Code 扩展宿主 TypeScript 源码
+	annotationPanel.ts         标注编辑器面板（画框标注 + 框选复制归一化坐标）
+	tempScreenshotStore.ts     临时截图存储（最多 10 张，按工作区隔离落盘）
+	tempScreenshotPanel.ts     临时截图侧边栏视图（粘贴/截屏、0.1s 轮播、框选坐标）
+	screenshotCapture.ts       游戏窗口截图采集（窗口探测 + capture_game_window.py 调用）
+	tempDrag.ts                跨 Webview 拖拽中介（临时截图 → 标注管理）
 media/
 	icons/                     活动栏与视图图标（templates.svg、toolbox.svg、task.svg）
 	annotationPanel/           标注编辑器 Webview（index.html、CSS、交互脚本）
+	tempScreenshots/           临时截图侧边栏 Webview（index.html、CSS、交互脚本）
 	templateAssetPanel/        模板素材管理 Webview（index.html、CSS、交互脚本）
 	templatePanel/             模板面板 Webview（index.html、CSS、交互脚本）
 	taskLauncher/              任务启动器 Webview（index.html、CSS、组件脚本）
 	characterManager/          角色技能管理 Webview（index.html、CSS、交互脚本）
-	pngCropWorker.ts           Worker 线程：纯 JS PNG 解码、裁剪与缩放
 python/                      随扩展发布的辅助脚本：任务发现、探测与执行（parse_config_tasks.py、probe_task_schemas.py、run_task.py），以及模板素材面板的游戏窗口截图与配置探测（capture_game_window.py、probe_window_config.py）
 scripts/                     开发期生成与回归测试工具，不打入 VSIX
 l10n/                        扩展宿主运行时本地化资源
@@ -22,6 +27,13 @@ out/                         TypeScript 编译产物（由构建生成）
 ```
 
 每个外置 Webview 的 HTML、CSS 和 JavaScript 均放在同一功能目录中；宿主通过 CSP 限制和 `asWebviewUri()` 加载资源。
+
+## 临时截图与归一化坐标
+
+- **临时截图侧边栏**（`ok-script Templates: 临时截图`）最多保留 10 张截图，超出后自动淘汰最早的一张；图片落在扩展 `globalStorage` 的按工作区哈希隔离子目录中。
+- 支持 `Ctrl+V` 粘贴系统剪贴板图片、一键截取游戏窗口；网格缩略图可拖拽到「标注管理」直接导入 `ok_templates`（跨 Webview 拖拽以扩展宿主为中继，见 `src/tempDrag.ts`；另有卡片上的 `→` 按钮作为等价入口）。
+- **0.1s 轮播**：点击「轮播 0.1s」后舞台按 100ms 间隔切换帧。**轮播与框选是相互独立的两条通道**：框选期间轮播继续播放，选框松手后保留在原位，便于对着运动中的目标（如带移动界限的按钮）反复比对与微调；归一化坐标只取比例，因此与当前显示的是哪一帧无关。
+- **框选复制归一化坐标**：临时截图侧边栏的「框选坐标」模式与标注编辑器的「坐标 (C)」模式，都会在框选结束后把 `x,y,tox,toy`（左上 / 右下，均按图片宽高归一化到 0..1，保留 4 位小数）写入剪贴板。归一化与显示缩放无关，因此降采样预览与缩放视图下结果一致。
 
 ## JetBrains / PyCharm 版本
 

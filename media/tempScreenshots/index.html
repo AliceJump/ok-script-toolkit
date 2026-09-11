@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src __CSP_SOURCE__; script-src __CSP_SOURCE__ 'nonce-__CSP_NONCE__'; img-src data: __CSP_SOURCE__ vscode-resource:">
+<link rel="stylesheet" href="__STYLE_URI__">
+</head>
+<body>
+  <div class="toolbar">
+    <button id="pasteBtn">Paste</button>
+    <button id="captureBtn">Capture</button>
+    <button id="clearBtn">Clear</button>
+    <div class="spacer"></div>
+    <span class="count" id="count"></span>
+  </div>
+
+  <div class="stage" id="stage">
+    <div class="stage-inner" id="stageInner"></div>
+    <div class="stage-overlay" id="stageOverlay">
+      <div class="sel-box" id="selBox"></div>
+    </div>
+    <div class="stage-empty" id="stageEmpty"></div>
+  </div>
+
+  <div class="stage-bar">
+    <button id="carouselBtn">0.1s</button>
+    <button id="coordBtn">Box</button>
+    <div class="spacer"></div>
+    <span class="coord" id="coordInfo"></span>
+  </div>
+
+  <div class="grid" id="grid"></div>
+  <div class="empty" id="emptyHint" style="display:none"></div>
+
+  <div class="toast" id="toast"></div>
+
+  <div class="confirm" id="confirmBar">
+    <span id="confirmText"></span>
+    <div class="confirm-actions">
+      <button id="confirmCancel">Cancel</button>
+      <button id="confirmOk" class="danger">OK</button>
+    </div>
+  </div>
+
+  <div id="tempPanelI18n" hidden>__I18N_JSON__</div>
+  <script src="__APP_SCRIPT_URI__"></script>
+</body>
+</html>

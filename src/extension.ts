@@ -26,6 +26,8 @@ import {
   TemplateAssetPanel,
   repaintAllAssetGalleries,
 } from './templateAssetPanel';
+import { TempScreenshotStore } from './tempScreenshotStore';
+import { TempScreenshotViewProvider } from './tempScreenshotPanel';
 
 export function activate(context: vscode.ExtensionContext): void {
   const folder = vscode.workspace.workspaceFolders?.[0];
@@ -242,6 +244,12 @@ export function activate(context: vscode.ExtensionContext): void {
 
   // 模板素材数据管理
   const templateAssetData = new TemplateAssetData(folder);
+  // 临时截图存储（侧边栏最多 10 张，按工作区隔离）
+  const tempScreenshotStore = new TempScreenshotStore(
+    path.join(context.globalStorageUri.fsPath, 'temp-screenshots', wsHash),
+  );
+  tempScreenshotStore.ensure();
+  const tempThumbDir = path.join(context.globalStorageUri.fsPath, 'temp-thumbs', wsHash);
   context.subscriptions.push(taskLauncher);
 
   context.subscriptions.push(
@@ -301,7 +309,11 @@ export function activate(context: vscode.ExtensionContext): void {
     ),
     vscode.window.registerWebviewViewProvider(
       TemplateAssetViewProvider.viewType,
-      new TemplateAssetViewProvider(templateAssetData, thumbDir, context.extensionUri, context.globalState),
+      new TemplateAssetViewProvider(templateAssetData, thumbDir, context.extensionUri, context.globalState, tempScreenshotStore),
+    ),
+    vscode.window.registerWebviewViewProvider(
+      TempScreenshotViewProvider.viewType,
+      new TempScreenshotViewProvider(tempScreenshotStore, templateAssetData, tempThumbDir, context.extensionUri),
     ),
     vscode.commands.registerCommand('okScriptToolkit.showTemplates', () => {
       // 聚焦活动栏中的模板视图（左侧图标 Tab）
@@ -318,7 +330,11 @@ export function activate(context: vscode.ExtensionContext): void {
       CharacterManagerPanel.show(characterManagerDependencies);
     }),
     vscode.commands.registerCommand('okScriptToolkit.openTemplateAssets', () => {
-      TemplateAssetPanel.show(templateAssetData, thumbDir, context.extensionUri, context.globalState);
+      TemplateAssetPanel.show(templateAssetData, thumbDir, context.extensionUri, context.globalState, tempScreenshotStore);
+    }),
+    vscode.commands.registerCommand('okScriptToolkit.showTempScreenshots', () => {
+      // 聚焦活动栏中的临时截图视图
+      void vscode.commands.executeCommand(`${TempScreenshotViewProvider.viewType}.focus`);
     }),
     vscode.commands.registerCommand('okScriptToolkit.openAnnotationEditor', () => {
       // 打开当前选中的图片，或者提示用户先选择

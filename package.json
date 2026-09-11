@@ -70,6 +70,11 @@
         "command": "okScriptToolkit.openAnnotationEditor",
         "title": "%command.openAnnotationEditor%",
         "category": "%command.category%"
+      },
+      {
+        "command": "okScriptToolkit.showTempScreenshots",
+        "title": "%command.showTempScreenshots%",
+        "category": "%command.category%"
       }
     ],
     "viewsContainers": {
@@ -122,6 +127,16 @@
           "id": "okScriptToolkit.templateAssets",
           "name": "%view.templateAssets%",
           "title": "%view.templateAssets.title%",
+          "icon": "media/icons/templates.svg",
+          "webviewOptions": {
+            "retainContextWhenHidden": true
+          }
+        },
+        {
+          "type": "webview",
+          "id": "okScriptToolkit.tempScreenshots",
+          "name": "%view.tempScreenshots%",
+          "title": "%view.tempScreenshots.title%",
           "icon": "media/icons/templates.svg",
           "webviewOptions": {
             "retainContextWhenHidden": true

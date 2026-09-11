@@ -1,0 +1,250 @@
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    color: var(--vscode-foreground);
+    background: var(--vscode-sideBar-background, var(--vscode-editor-background));
+    font-family: var(--vscode-font-family);
+    font-size: var(--vscode-font-size, 13px);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ---------- 工具栏 ---------- */
+  .toolbar {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 5px 6px;
+    flex-shrink: 0;
+    flex-wrap: wrap;
+  }
+  .toolbar button,
+  .stage-bar button {
+    padding: 3px 8px;
+    border-radius: 3px;
+    border: 1px solid var(--vscode-button-secondaryBackground, rgba(128,128,128,.35));
+    background: var(--vscode-button-secondaryBackground);
+    color: var(--vscode-button-secondaryForeground);
+    cursor: pointer;
+    font-size: 11px;
+    white-space: nowrap;
+  }
+  .toolbar button:hover,
+  .stage-bar button:hover { background: var(--vscode-button-secondaryHoverBackground); }
+  .toolbar button.active,
+  .stage-bar button.active {
+    background: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+    border-color: var(--vscode-button-background);
+  }
+  .spacer { flex: 1; }
+  .count { font-size: 11px; opacity: .65; }
+
+  /* ---------- 舞台（单图预览 / 0.1s 轮播） ---------- */
+  .stage {
+    position: relative;
+    flex: 1 1 45%;
+    min-height: 110px;
+    margin: 0 6px;
+    overflow: hidden;
+    border: 1px solid var(--vscode-panel-border, rgba(128,128,128,.3));
+    border-radius: 4px;
+    background:
+      repeating-conic-gradient(rgba(128,128,128,.12) 0% 25%, transparent 0% 50%) 50% / 16px 16px;
+    cursor: crosshair;
+  }
+  .stage-inner {
+    position: absolute;
+    left: 0; top: 0;
+    transform-origin: 0 0;
+  }
+  .stage-inner img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: none;
+    image-rendering: auto;
+    -webkit-user-drag: none;
+    user-select: none;
+  }
+  .stage-inner img.active { display: block; }
+  .stage-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+  }
+  .sel-box {
+    position: absolute;
+    display: none;
+    border: 1px dashed var(--vscode-charts-green, #3fb950);
+    background: rgba(63,185,80,.16);
+    pointer-events: none;
+  }
+  .sel-box.visible { display: block; }
+  .stage-empty {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 8px;
+    font-size: 11px;
+    line-height: 1.5;
+    opacity: .55;
+    pointer-events: none;
+    white-space: pre-line;
+  }
+
+  /* ---------- 舞台操作条 ---------- */
+  .stage-bar {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 5px 6px;
+    flex-shrink: 0;
+  }
+  .coord {
+    font-size: 10px;
+    opacity: .8;
+    font-family: var(--vscode-editor-font-family, monospace);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 60%;
+  }
+
+  /* ---------- 缩略图网格 ---------- */
+  .grid {
+    flex: 1 1 55%;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 0 6px 8px;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+    gap: 6px;
+    align-content: start;
+  }
+  .card {
+    position: relative;
+    border: 1px solid var(--vscode-panel-border, rgba(128,128,128,.3));
+    border-radius: 4px;
+    overflow: hidden;
+    background: var(--vscode-editor-background);
+    cursor: pointer;
+    user-select: none;
+  }
+  .card.active { border-color: var(--vscode-focusBorder, #0078d4); box-shadow: 0 0 0 1px var(--vscode-focusBorder, #0078d4); }
+  .card.dragging { opacity: .45; }
+  .card img {
+    display: block;
+    width: 100%;
+    height: 56px;
+    object-fit: contain;
+    background: rgba(128,128,128,.1);
+    -webkit-user-drag: none;
+  }
+  .card .name {
+    font-size: 9px;
+    opacity: .6;
+    padding: 2px 3px;
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .card .actions {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    display: none;
+    gap: 2px;
+  }
+  .card:hover .actions { display: flex; }
+  .card .actions button {
+    width: 16px;
+    height: 16px;
+    line-height: 1;
+    padding: 0;
+    font-size: 11px;
+    border-radius: 3px;
+    border: none;
+    cursor: pointer;
+    background: rgba(0,0,0,.55);
+    color: #fff;
+  }
+  .card .actions button:hover { background: rgba(0,0,0,.8); }
+
+  .empty {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 12px;
+    font-size: 11px;
+    line-height: 1.6;
+    opacity: .55;
+    white-space: pre-line;
+  }
+
+  /* ---------- 提示条 ---------- */
+  .toast {
+    position: fixed;
+    left: 6px;
+    right: 6px;
+    bottom: 6px;
+    padding: 5px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    background: var(--vscode-editorWidget-background, #252526);
+    color: var(--vscode-editorWidget-foreground, inherit);
+    border: 1px solid var(--vscode-panel-border, rgba(128,128,128,.4));
+    box-shadow: 0 2px 10px rgba(0,0,0,.3);
+    opacity: 0;
+    transform: translateY(6px);
+    transition: opacity .15s ease, transform .15s ease;
+    pointer-events: none;
+    word-break: break-all;
+  }
+  .toast.visible { opacity: 1; transform: translateY(0); }
+  .toast.error { border-color: var(--vscode-errorForeground, #f14c4c); }
+
+  /* ---------- 内联确认条（webview 中不使用 window.confirm） ---------- */
+  .confirm {
+    position: fixed;
+    left: 6px;
+    right: 6px;
+    bottom: 6px;
+    display: none;
+    flex-direction: column;
+    gap: 6px;
+    padding: 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    line-height: 1.5;
+    background: var(--vscode-editorWidget-background, #252526);
+    color: var(--vscode-editorWidget-foreground, inherit);
+    border: 1px solid var(--vscode-panel-border, rgba(128,128,128,.4));
+    box-shadow: 0 2px 10px rgba(0,0,0,.35);
+    z-index: 20;
+  }
+  .confirm.visible { display: flex; }
+  .confirm-actions { display: flex; justify-content: flex-end; gap: 6px; }
+  .confirm-actions button {
+    padding: 3px 10px;
+    border-radius: 3px;
+    font-size: 11px;
+    cursor: pointer;
+    border: 1px solid var(--vscode-button-secondaryBackground, rgba(128,128,128,.35));
+    background: var(--vscode-button-secondaryBackground);
+    color: var(--vscode-button-secondaryForeground);
+  }
+  .confirm-actions button.danger {
+    background: var(--vscode-inputValidation-errorBorder, #a1260d);
+    border-color: var(--vscode-inputValidation-errorBorder, #a1260d);
+    color: #fff;
+  }
