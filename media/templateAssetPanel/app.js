@@ -151,7 +151,14 @@
   if (dropHint) dropHint.textContent = t('assetDropHint');
   let dragDepth = 0;
 
-  /** 优先从 dataTransfer 读取自定义 MIME；跨 origin 时读不到，交由宿主中继。 */
+  /**
+   * 取出被拖入的临时截图 id，三级通道：
+   * 1. 自定义 MIME（同源 webview 可用）
+   * 2. text/plain —— 跨 origin 时浏览器往往只保留这一个，值就是文件名（文件名即 id）
+   * 3. 都读不到返回 undefined，由宿主用 dragStart 记录的 pending id 兜底
+   */
+  const SHOT_ID_RE = /^shot_\d+_\d+\.png$/;
+
   function readTempId(dataTransfer) {
     if (!dataTransfer) return undefined;
     try {
@@ -160,7 +167,11 @@
         const parsed = JSON.parse(raw);
         if (parsed && parsed.id) return String(parsed.id);
       }
-    } catch (err) { /* 跨源读取被拒，走宿主中继 */ }
+    } catch (err) { /* 跨源读取被拒，继续尝试 text/plain */ }
+    try {
+      const text = (dataTransfer.getData('text/plain') || '').trim();
+      if (SHOT_ID_RE.test(text)) return text;
+    } catch (err) { /* 同样可能被拒 */ }
     return undefined;
   }
 

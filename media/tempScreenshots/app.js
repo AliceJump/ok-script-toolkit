@@ -255,7 +255,9 @@
       card.className = 'card';
       card.draggable = true;
       card.dataset.id = meta.id;
-      card.title = meta.name + (meta.width ? '\n' + meta.width + '×' + meta.height : '') + '\n' + t('tempDragHint');
+      // 提示先讲可用的入口：跨 webview 拖拽在 VS Code 里通常不可用
+      card.title = meta.name + (meta.width ? '\n' + meta.width + '×' + meta.height : '') +
+        '\n' + t('tempSendToAssets') + '\n' + t('tempDragHint');
 
       const img = document.createElement('img');
       img.src = meta.thumbUrl || meta.url;
@@ -266,6 +268,7 @@
       actions.className = 'actions';
 
       const sendBtn = document.createElement('button');
+      sendBtn.className = 'send';
       sendBtn.textContent = '→';
       sendBtn.title = t('tempSendToAssets');
       sendBtn.addEventListener('click', (e) => {
@@ -274,6 +277,7 @@
       });
 
       const delBtn = document.createElement('button');
+      delBtn.className = 'del';
       delBtn.textContent = '×';
       delBtn.title = t('tempDelete');
       delBtn.addEventListener('click', (e) => {

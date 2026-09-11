@@ -156,27 +156,33 @@
     overflow: hidden;
     text-overflow: ellipsis;
   }
+  /* 操作按钮常驻可见：跨 webview 拖拽在 VS Code 里不可用，
+     「→ 添加到标注管理」是导入的主入口，不能只在 hover 时才露出 */
   .card .actions {
     position: absolute;
     top: 2px;
     right: 2px;
-    display: none;
+    display: flex;
     gap: 2px;
+    opacity: .82;
+    transition: opacity .12s ease;
   }
-  .card:hover .actions { display: flex; }
+  .card:hover .actions { opacity: 1; }
   .card .actions button {
-    width: 16px;
-    height: 16px;
+    width: 18px;
+    height: 18px;
     line-height: 1;
     padding: 0;
-    font-size: 11px;
+    font-size: 12px;
     border-radius: 3px;
     border: none;
     cursor: pointer;
-    background: rgba(0,0,0,.55);
+    background: rgba(0,0,0,.6);
     color: #fff;
   }
-  .card .actions button:hover { background: rgba(0,0,0,.8); }
+  .card .actions button:hover { background: rgba(0,0,0,.85); }
+  .card .actions button.send { background: rgba(0,90,158,.85); }
+  .card .actions button.send:hover { background: rgba(0,120,212,.95); }
 
   .empty {
     flex: 1;
