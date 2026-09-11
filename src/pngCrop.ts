@@ -351,6 +351,8 @@ interface CropTask {
   imagePath: string;
   bboxes: Array<{ bbox: [number, number, number, number]; targetHeight: number }>;
   thumbDir: string;
+  /** 原图内容 hash：与主线程共用，保证 worker 落盘文件名与主线程查找的文件名一致 */
+  contentHash?: string;
 }
 
 /** worker 回包（单任务与批量共用：单任务 results 只有一个元素） */
@@ -425,6 +427,7 @@ function postTask(state: WorkerState, task: CropTask): void {
       imagePath: task.imagePath,
       bboxes: task.bboxes,
       thumbDir: task.thumbDir,
+      contentHash: task.contentHash,
     });
     state.busy = true;
     state.inflight.add(task.id);
@@ -446,7 +449,7 @@ function drainQueue(): void {
 /** 提交单个裁剪任务到 worker */
 function submitToWorker(
   imagePath: string, bbox: [number, number, number, number],
-  targetHeight: number, thumbDir: string,
+  targetHeight: number, thumbDir: string, contentHash?: string,
 ): Promise<{ dataUrl: string; filePath: string } | undefined> {
   return new Promise((resolve) => {
     const id = nextTaskId++;
@@ -457,7 +460,7 @@ function submitToWorker(
         resolve({ dataUrl: reply.results[0].dataUrl, filePath: reply.results[0].filePath });
       }
     });
-    cropTaskQueue.push({ id, imagePath, bboxes: [{ bbox, targetHeight }], thumbDir });
+    cropTaskQueue.push({ id, imagePath, bboxes: [{ bbox, targetHeight }], thumbDir, contentHash });
     drainQueue();
   });
 }
@@ -470,6 +473,7 @@ function submitBatchToWorker(
   imagePath: string,
   bboxes: Array<{ bbox: [number, number, number, number]; targetHeight: number }>,
   thumbDir: string,
+  contentHash?: string,
 ): Promise<Array<{ bbox: [number, number, number, number]; dataUrl: string; filePath: string }>> {
   return new Promise((resolve) => {
     if (bboxes.length === 0) { resolve([]); return; }
@@ -494,7 +498,7 @@ function submitBatchToWorker(
     const task: CropTask = {
       id: batchId, imagePath,
       bboxes: bboxes.map((b) => ({ bbox: b.bbox, targetHeight: b.targetHeight })),
-      thumbDir,
+      thumbDir, contentHash,
     };
     const freeWorker = poolWorkers.find((w) => !w.busy);
     if (freeWorker) {
@@ -521,23 +525,96 @@ export function disposeCropWorkerPool(): void {
 }
 
 /* ========================================================================
+ *  原图内容指纹 — 缓存 key 的唯一标识
+ *
+ *  背景：缓存 key 早先由 imagePath 参与哈希，同一路径的图片被替换后
+ *  key 不变，旧缩略图被直接复用，导致面板里看到的图与点击打开的图不一致。
+ *  现改为以「原图内容 sha1」为唯一标识：内容一变，key 与磁盘文件名同步变化。
+ * ======================================================================== */
+
+interface ContentHashEntry { size: number; mtimeMs: number; hash: string; }
+
+/** path -> 内容指纹；仅当 size + mtimeMs 都未变时复用，保证内容替换一定被感知 */
+const CONTENT_HASH_CACHE = new Map<string, ContentHashEntry>();
+const CONTENT_HASH_CACHE_MAX = 2000;
+
+function contentHashSet(imagePath: string, entry: ContentHashEntry): void {
+  if (CONTENT_HASH_CACHE.size >= CONTENT_HASH_CACHE_MAX) {
+    const oldest = CONTENT_HASH_CACHE.keys().next().value;
+    if (oldest !== undefined) CONTENT_HASH_CACHE.delete(oldest);
+  }
+  CONTENT_HASH_CACHE.set(imagePath, entry);
+}
+
+/** 取已记录的内容指纹：不读盘、不校验 stat（删除旧缓存时要用旧值） */
+export function knownImageContentHash(imagePath: string): string | undefined {
+  return CONTENT_HASH_CACHE.get(imagePath)?.hash;
+}
+
+/** 丢弃指定图片的内容指纹记录，强制下次重新计算 */
+export function invalidateImageContentHash(imagePath: string): void {
+  CONTENT_HASH_CACHE.delete(imagePath);
+}
+
+/**
+ * 原图内容 sha1（16 hex）——缩略图缓存的唯一标识。
+ * stat 未变时复用上次结果，避免每次重复读盘。
+ */
+export function imageContentHash(imagePath: string): string | undefined {
+  let st: fs.Stats;
+  try {
+    st = fs.statSync(imagePath);
+  } catch {
+    CONTENT_HASH_CACHE.delete(imagePath);
+    return undefined;
+  }
+  const prev = CONTENT_HASH_CACHE.get(imagePath);
+  if (prev && prev.size === st.size && prev.mtimeMs === st.mtimeMs) return prev.hash;
+  let buf: Buffer;
+  try {
+    buf = fs.readFileSync(imagePath);
+  } catch {
+    CONTENT_HASH_CACHE.delete(imagePath);
+    return undefined;
+  }
+  const hash = crypto.createHash('sha1').update(buf).digest('hex').slice(0, 16);
+  contentHashSet(imagePath, { size: st.size, mtimeMs: st.mtimeMs, hash });
+  return hash;
+}
+
+/** 缓存标识：优先用传入/已缓存的内容 hash；算不出（文件不可读）时退回路径，保证 key 仍可用 */
+function contentToken(imagePath: string, contentHash?: string): string {
+  return contentHash ?? imageContentHash(imagePath) ?? `p:${imagePath}`;
+}
+
+/* ========================================================================
  *  缓存 — 内存 data URL 缓存 + 磁盘缩略图文件
  * ======================================================================== */
 
-const CROP_CACHE = new Map<string, string>();
+interface CropEntry {
+  url: string;
+  /** 反查用：key 里只放内容 hash，按图/按来源清理要靠它 */
+  imagePath: string;
+  source: string;
+}
+
+const CROP_CACHE = new Map<string, CropEntry>();
 const CROP_CACHE_MAX = 600;
 
-function cropKey(imagePath: string, bbox: [number, number, number, number], targetHeight: number): string {
-  return `${imagePath}|${bbox.join(',')}|${targetHeight}`;
+function cropKey(
+  imagePath: string, bbox: [number, number, number, number],
+  targetHeight: number, contentHash?: string,
+): string {
+  return `${contentToken(imagePath, contentHash)}|${bbox.join(',')}|${targetHeight}`;
 }
 
 /** 写入裁剪缓存；满时淘汰最早插入的条目（Map 保序），避免整表清空导致预热成果全部丢失 */
-function cacheSet(key: string, url: string): void {
+function cacheSet(key: string, entry: CropEntry): void {
   if (CROP_CACHE.size >= CROP_CACHE_MAX) {
     const oldest = CROP_CACHE.keys().next().value;
     if (oldest !== undefined) CROP_CACHE.delete(oldest);
   }
-  CROP_CACHE.set(key, url);
+  CROP_CACHE.set(key, entry);
 }
 
 /** 模板标注/图片变化时清空裁剪缓存。 */
@@ -545,11 +622,10 @@ export function clearCropCache(): void {
   CROP_CACHE.clear();
 }
 
-/** 仅清空指定来源的内存裁剪缓存（按 imagePath 路径匹配）。 */
+/** 仅清空指定来源的内存裁剪缓存。 */
 export function clearSourceCropCache(source: string): void {
-  for (const [key] of CROP_CACHE) {
-    const imagePath = key.split('|')[0];
-    if (thumbSourceSubdir(imagePath) === source) {
+  for (const [key, entry] of CROP_CACHE) {
+    if (entry.source === source) {
       CROP_CACHE.delete(key);
     }
   }
@@ -557,8 +633,8 @@ export function clearSourceCropCache(source: string): void {
 
 /** 仅清空引用指定原图的内存裁剪缓存条目（精确到单张 PNG）。 */
 export function clearCropCacheForImage(imagePath: string): void {
-  for (const [key] of CROP_CACHE) {
-    if (key.split('|')[0] === imagePath) {
+  for (const [key, entry] of CROP_CACHE) {
+    if (entry.imagePath === imagePath) {
       CROP_CACHE.delete(key);
     }
   }
@@ -597,18 +673,59 @@ export function clearSourceThumbs(basePath: string, source: string): void {
 
 /* ---------------- 缩略图文件路径 ---------------- */
 
-function thumbFileName(imagePath: string, bbox: [number, number, number, number], targetHeight: number): string {
-  const key = `${imagePath}|${bbox.join(',')}|${targetHeight}`;
-  return `t_${crypto.createHash('sha1').update(key).digest('hex').slice(0, 16)}.png`;
+/** 缩略图文件名前缀：t2 = 内容 hash 版本（旧版 t_ 基于路径，见 purgeLegacyThumbFiles） */
+const THUMB_PREFIX = 't2';
+
+/**
+ * 缩略图文件名 = hash(内容 hash + bbox + 目标高度)。
+ * 不含 imagePath：同一份内容的不同路径复用同一份缩略图；
+ * 内容变化 → 内容 hash 变化 → 文件名变化 → 旧图不会被复用。
+ */
+function thumbFileName(contentHash: string, bbox: [number, number, number, number], targetHeight: number): string {
+  const key = `${contentHash}|${bbox.join(',')}|${targetHeight}`;
+  return `${THUMB_PREFIX}_${crypto.createHash('sha1').update(key).digest('hex').slice(0, 16)}.png`;
 }
 
-/** 返回模板缩略图的确定性绝对路径（自动路由到来源子目录）。 */
+/**
+ * 返回模板缩略图的确定性绝对路径（自动路由到来源子目录）。
+ * 原图不可读（无法计算内容 hash）时返回空串——调用方的 existsSync 会自然判为未命中。
+ */
 export function templateThumbFilePath(
   imagePath: string, bbox: [number, number, number, number],
-  outDir: string, targetHeight = THUMB_HEIGHT,
+  outDir: string, targetHeight = THUMB_HEIGHT, contentHash?: string,
 ): string {
+  const hash = contentHash ?? imageContentHash(imagePath);
+  if (!hash) return '';
   const srcDir = thumbDirForSource(outDir, imagePath);
-  return path.join(srcDir, thumbFileName(imagePath, bbox, targetHeight));
+  return path.join(srcDir, thumbFileName(hash, bbox, targetHeight));
+}
+
+/** 旧格式缩略图文件名：t_/a_ + 16 位 hex（基于路径命名，内容变化不感知） */
+const LEGACY_THUMB_RE = /^[ta]_[0-9a-f]{16}\.png$/i;
+
+/**
+ * 清理旧格式（基于路径命名）的缩略图文件，避免切换为内容 hash 后残留垃圾。
+ * 只删严格匹配旧命名的文件，新格式（t2_/a2_）与目录结构不受影响。
+ */
+export function purgeLegacyThumbFiles(outDir: string): void {
+  let removed = 0;
+  const walk = (dir: string): void => {
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch { return; }
+    for (const e of entries) {
+      const full = path.join(dir, e.name);
+      if (e.isDirectory()) { walk(full); continue; }
+      if (!LEGACY_THUMB_RE.test(e.name)) continue;
+      try { fs.rmSync(full, { force: true }); removed++; } catch { /* 忽略 */ }
+    }
+  };
+  try {
+    if (!fs.existsSync(outDir)) return;
+  } catch { return; }
+  walk(outDir);
+  if (removed > 0) log(`purgeLegacyThumbFiles: removed ${removed} legacy thumbs in ${outDir}`);
 }
 
 /* ========================================================================
@@ -641,13 +758,19 @@ export async function warmCropCache(requests: CropRequest[]): Promise<void> {
     for (const [imagePath, items] of groups) {
       await new Promise((resolve) => setImmediate(resolve));
       try {
+        // 每张图只算一次内容 hash，后续 bbox 复用，避免重复 stat / 读盘
+        const hash = imageContentHash(imagePath);
         const buf = fs.readFileSync(imagePath);
         const { width, height, rgba } = decodeRgba(buf);
         for (const it of items) {
           const th = it.targetHeight ?? THUMB_HEIGHT;
-          const key = cropKey(it.imagePath, it.bbox, th);
+          const key = cropKey(it.imagePath, it.bbox, th, hash);
           if (CROP_CACHE.has(key)) continue;
-          cacheSet(key, cropAndEncodeSync(width, height, rgba, it.bbox, th));
+          cacheSet(key, {
+            url: cropAndEncodeSync(width, height, rgba, it.bbox, th),
+            imagePath: it.imagePath,
+            source: thumbSourceSubdir(it.imagePath),
+          });
         }
       } catch { /* 忽略 */ }
     }
@@ -658,7 +781,8 @@ export async function warmCropCache(requests: CropRequest[]): Promise<void> {
   let workerHits = 0; let workerMisses = 0; let workerErrors = 0;
   for (const [imagePath, items] of groups) {
     const targetHeight = items[0]?.targetHeight ?? THUMB_HEIGHT;
-    const missing = items.filter((it) => !CROP_CACHE.has(cropKey(it.imagePath, it.bbox, it.targetHeight ?? targetHeight)));
+    const hash = imageContentHash(imagePath);
+    const missing = items.filter((it) => !CROP_CACHE.has(cropKey(it.imagePath, it.bbox, it.targetHeight ?? targetHeight, hash)));
     if (missing.length === 0) { workerHits += items.length; continue; }
     workerMisses += missing.length;
 
@@ -672,14 +796,19 @@ export async function warmCropCache(requests: CropRequest[]): Promise<void> {
       imagePath,
       missing.map((it) => ({ bbox: it.bbox, targetHeight: it.targetHeight ?? targetHeight })),
       thumbDir,
+      hash,
     );
     if (results.length === 0) workerErrors += missing.length;
     log(`  worker batch: ${path.basename(imagePath)} ×${missing.length} → ${results.length} ok, ${(performance.now() - imgT0).toFixed(0)}ms`);
 
     for (const r of results) {
-      const key = cropKey(imagePath, r.bbox, targetHeight);
+      const key = cropKey(imagePath, r.bbox, targetHeight, hash);
       if (!CROP_CACHE.has(key)) {
-        cacheSet(key, r.dataUrl);
+        cacheSet(key, {
+          url: r.dataUrl,
+          imagePath,
+          source: thumbSourceSubdir(imagePath),
+        });
       }
     }
   }
@@ -699,7 +828,7 @@ export function cropTemplateToDataUrlCached(
 ): string | undefined {
   const key = cropKey(imagePath, bbox, targetHeight);
   const hit = CROP_CACHE.get(key);
-  if (hit !== undefined) { log(`sync hit: ${path.basename(imagePath)}`); return hit; }
+  if (hit !== undefined) { log(`sync hit: ${path.basename(imagePath)}`); return hit.url; }
   const t0 = performance.now();
   let url: string | undefined;
   try {
@@ -710,7 +839,7 @@ export function cropTemplateToDataUrlCached(
     return undefined;
   }
   if (url !== undefined) {
-    cacheSet(key, url);
+    cacheSet(key, { url, imagePath, source: thumbSourceSubdir(imagePath) });
     logT(`sync fallback (miss→JS decode): ${path.basename(imagePath)}`, t0);
     return url;
   }
@@ -728,10 +857,13 @@ export async function cropTemplateThumbFileAsync(
   imagePath: string, bbox: [number, number, number, number],
   outDir: string, targetHeight = THUMB_HEIGHT,
 ): Promise<string | undefined> {
+  // 内容 hash 决定缓存文件名：图片被替换后 hash 变化 → 自然落到新文件，不会复用旧缩略图
+  const contentHash = imageContentHash(imagePath);
+  if (!contentHash) return undefined;
   // 按来源自动路由到子目录（srcDir 供 worker 使用）
   const srcDir = thumbDirForSource(outDir, imagePath);
   // 注意：outDir 而非 srcDir —— templateThumbFilePath 内部会再调一次 thumbDirForSource
-  const file = templateThumbFilePath(imagePath, bbox, outDir, targetHeight);
+  const file = templateThumbFilePath(imagePath, bbox, outDir, targetHeight, contentHash);
   try {
     if (fs.existsSync(file) && fs.statSync(file).size > 0) return file;
   } catch { /* 重写 */ }
@@ -762,24 +894,31 @@ export async function cropTemplateThumbFileAsync(
 
   // 有 worker：提交异步任务（主线程不阻塞）
   const t0 = performance.now();
-  const result = await submitToWorker(imagePath, bbox, targetHeight, srcDir);
+  const result = await submitToWorker(imagePath, bbox, targetHeight, srcDir, contentHash);
   if (result) {
     logT(`thumb async: ${path.basename(imagePath)} via worker`, t0);
-    const key = cropKey(imagePath, bbox, targetHeight);
+    const key = cropKey(imagePath, bbox, targetHeight, contentHash);
     if (!CROP_CACHE.has(key)) {
-      cacheSet(key, result.dataUrl);
+      cacheSet(key, { url: result.dataUrl, imagePath, source: thumbSourceSubdir(imagePath) });
     }
     return result.filePath;
   }
   return undefined;
 }
 
-/** 删除一个确定性模板缩略图。 */
+/**
+ * 删除一个确定性模板缩略图。
+ * 优先用已记录的内容 hash（文件被替换时指向的是旧缩略图），
+ * 没有记录才现算——这样「图片改动后清理旧缓存」才删得对。
+ */
 export function removeTemplateThumbFile(
   imagePath: string, bbox: [number, number, number, number],
   outDir: string, targetHeight = THUMB_HEIGHT,
 ): void {
-  try { fs.rmSync(templateThumbFilePath(imagePath, bbox, outDir, targetHeight), { force: true }); } catch { /* 忽略 */ }
+  const hash = knownImageContentHash(imagePath) ?? imageContentHash(imagePath);
+  const file = templateThumbFilePath(imagePath, bbox, outDir, targetHeight, hash);
+  if (!file) return;
+  try { fs.rmSync(file, { force: true }); } catch { /* 忽略 */ }
 }
 
 /** 清空缩略图目录内容（含所有子目录）。 */
@@ -909,8 +1048,11 @@ export function openAnnotatedImage(
   const src = entry.imagePath;
   const srcBbox = entry.bbox;
   try { if (!fs.existsSync(src)) return undefined; } catch { return undefined; }
-  const key = crypto.createHash('sha1').update(`v1|${src}|${srcBbox.join(',')}`).digest('hex').slice(0, 16);
-  const out = path.join(thumbDir, 'annotated', `a_${key}.png`);
+  // a2 = 内容 hash 版本：原图被替换后标注图同步重绘，不会停留在旧图
+  const contentHash = imageContentHash(src);
+  if (!contentHash) return undefined;
+  const key = crypto.createHash('sha1').update(`v2|${contentHash}|${srcBbox.join(',')}`).digest('hex').slice(0, 16);
+  const out = path.join(thumbDir, 'annotated', `a2_${key}.png`);
   try { if (fs.existsSync(out) && fs.statSync(out).size > 0) return out; } catch { /* 重新生成 */ }
   return writeAnnotatedImage(src, srcBbox, out);
 }

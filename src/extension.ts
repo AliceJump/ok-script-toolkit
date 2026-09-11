@@ -5,7 +5,7 @@ import { LangData, poDirectorySetting } from './langData';
 import { tr } from './localization';
 import { FeatureData } from './featureData';
 import { EffectData } from './effectData';
-import { clearCropCache, clearSourceCropCache, clearCropCacheForImage, removeTemplateThumbFile, clearThumbDir, warmCropCache, initCropWorkerPool, disposeCropWorkerPool, setCropLogger, THUMB_HEIGHT, thumbDirForSource, thumbSourceSubdir, clearSourceThumbs } from './pngCrop';
+import { clearCropCache, clearSourceCropCache, clearCropCacheForImage, removeTemplateThumbFile, clearThumbDir, warmCropCache, initCropWorkerPool, disposeCropWorkerPool, setCropLogger, THUMB_HEIGHT, thumbDirForSource, thumbSourceSubdir, clearSourceThumbs, purgeLegacyThumbFiles, invalidateImageContentHash } from './pngCrop';
 import { initAssetPackPool, disposeAssetPackPool } from './assetPack';
 import {
   LangCompletionProvider,
@@ -28,6 +28,10 @@ import {
 } from './templateAssetPanel';
 import { TempScreenshotStore } from './tempScreenshotStore';
 import { TempScreenshotViewProvider } from './tempScreenshotPanel';
+
+/** 缩略图缓存 key 版本：内容 hash 化后旧命名（t_/a_）需要清理一次 */
+const THUMB_KEY_VERSION = 'content-hash-v2';
+const LEGACY_THUMB_PURGE_KEY = 'okScriptToolkit.legacyThumbPurgeVersion';
 
 export function activate(context: vscode.ExtensionContext): void {
   const folder = vscode.workspace.workspaceFolders?.[0];
@@ -102,13 +106,15 @@ export function activate(context: vscode.ExtensionContext): void {
               /(^|\/)ok_templates\//.test(u.fsPath.replace(/[\\/]+/g, '/')) && pngRe.test(u.fsPath)
             );
             for (const uri of pngUris) {
-              clearCropCacheForImage(uri.fsPath);
+              // 先删旧缩略图（此时内容 hash 记录仍是旧值，才能删到旧文件），再作废指纹
               for (const ft of features.all()) {
                 if (ft.imagePath === uri.fsPath) {
                   removeTemplateThumbFile(ft.imagePath, ft.bbox, thumbDir);
                   cacheInvalidated = true;
                 }
               }
+              clearCropCacheForImage(uri.fsPath);
+              invalidateImageContentHash(uri.fsPath);
             }
             continue;
           }
@@ -250,6 +256,13 @@ export function activate(context: vscode.ExtensionContext): void {
   );
   tempScreenshotStore.ensure();
   const tempThumbDir = path.join(context.globalStorageUri.fsPath, 'temp-thumbs', wsHash);
+  // 缩略图命名已由「原图路径」切换为「原图内容 hash」：清理旧格式残留，
+  // 否则旧缩略图会一直躺在缓存目录里（升级后按新名字查找，永远读不到也删不掉）
+  if (context.globalState.get<string>(LEGACY_THUMB_PURGE_KEY) !== THUMB_KEY_VERSION) {
+    purgeLegacyThumbFiles(thumbDir);
+    purgeLegacyThumbFiles(tempThumbDir);
+    void context.globalState.update(LEGACY_THUMB_PURGE_KEY, THUMB_KEY_VERSION);
+  }
   context.subscriptions.push(taskLauncher);
 
   context.subscriptions.push(

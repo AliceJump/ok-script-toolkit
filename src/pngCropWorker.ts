@@ -264,10 +264,15 @@ function cropAndEncodeSync(
 
 /* ==================== 缩略图文件名 ==================== */
 
-function thumbFileName(imagePath: string, bbox: [number, number, number, number], targetHeight: number): string {
-  const key = `${imagePath}|${bbox.join(',')}|${targetHeight}`;
+/**
+ * 缩略图文件名 = hash(原图内容 hash + bbox + 目标高度)。
+ * 必须与主线程 pngCrop.ts 的 thumbFileName 完全一致，否则主线程按名查找会 miss。
+ * 内容 hash 优先取主线程传入值；缺省时按同一算法（全文件 sha1 前 16 hex）现算。
+ */
+function thumbFileName(contentHash: string, bbox: [number, number, number, number], targetHeight: number): string {
+  const key = `${contentHash}|${bbox.join(',')}|${targetHeight}`;
   const hash = crypto.createHash('sha1').update(key).digest('hex').slice(0, 16);
-  return `t_${hash}.png`;
+  return `t2_${hash}.png`;
 }
 
 /* ==================== 消息处理 ==================== */
@@ -280,12 +285,16 @@ interface CropTask {
     targetHeight: number;
   }>;
   thumbDir: string;
+  /** 主线程传入的原图内容 hash（缺省时本地按同一算法现算） */
+  contentHash?: string;
 }
 
 parentPort?.on('message', async (task: CropTask) => {
   try {
     // 读取原图文件（fs 在 worker 中也是同步的，但文件读取通常 <5ms）
     const buf = fs.readFileSync(task.imagePath);
+    const contentHash = task.contentHash
+      ?? crypto.createHash('sha1').update(buf).digest('hex').slice(0, 16);
 
     const decoded = decodeImage(buf);
     const imgW = decoded.width;
@@ -313,7 +322,7 @@ parentPort?.on('message', async (task: CropTask) => {
       const pngData = Buffer.from(dataUrl.slice(dataUrl.indexOf(',') + 1), 'base64');
 
       // 写入缩略图文件
-      const fileName = thumbFileName(task.imagePath, item.bbox, item.targetHeight);
+      const fileName = thumbFileName(contentHash, item.bbox, item.targetHeight);
       const filePath = path.join(task.thumbDir, fileName);
       fs.mkdirSync(path.dirname(filePath), { recursive: true });
       fs.writeFileSync(filePath, pngData);

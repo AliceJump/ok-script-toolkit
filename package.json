@@ -283,10 +283,11 @@
     "version:sync": "node scripts/release/sync-version.js",
     "verify:version": "node scripts/release/verify-version.js",
     "release": "node scripts/release/release.js",
-    "test": "npm run verify:version && npm run compile && npm run test:task-launcher && npm run test:temp-screenshots && npm run test:annotation-coords",
+    "test": "npm run verify:version && npm run compile && npm run test:task-launcher && npm run test:temp-screenshots && npm run test:annotation-coords && npm run test:thumb-content-hash",
     "test:task-launcher": "node scripts/test_task_launcher_subconfigs.js",
     "test:temp-screenshots": "node scripts/test_temp_screenshots.js",
     "test:annotation-coords": "node scripts/test_annotation_coords.js",
+    "test:thumb-content-hash": "node scripts/test_thumb_content_hash.js",
     "vscode:prepublish": "npm run compile",
     "package": "vsce package",
     "publish:marketplace": "vsce publish --skip-duplicate --packagePath ok-script-toolkit-${npm_package_version}.vsix"
