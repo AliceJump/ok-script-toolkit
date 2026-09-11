@@ -10,7 +10,7 @@ src/                         VS Code 扩展宿主 TypeScript 源码
 	tempScreenshotStore.ts     临时截图存储（最多 10 张，按工作区隔离落盘）
 	tempScreenshotPanel.ts     临时截图侧边栏视图（粘贴/截屏、0.1s 轮播、框选坐标）
 	screenshotCapture.ts       游戏窗口截图采集（窗口探测 + capture_game_window.py 调用）
-	tempDrag.ts                跨 Webview 拖拽中介（临时截图 → 标注管理）
+	tempDrag.ts                跨 Webview 拖拽中介（临时截图 → 标注管理；VS Code 端实测无效，见下）
 media/
 	icons/                     活动栏与视图图标（templates.svg、toolbox.svg、task.svg）
 	annotationPanel/           标注编辑器 Webview（index.html、CSS、交互脚本）
@@ -31,7 +31,9 @@ out/                         TypeScript 编译产物（由构建生成）
 ## 临时截图与归一化坐标
 
 - **临时截图侧边栏**（`ok-script Templates: 临时截图`）最多保留 10 张截图，超出后自动淘汰最早的一张；图片落在扩展 `globalStorage` 的按工作区哈希隔离子目录中。
-- 支持 `Ctrl+V` 粘贴系统剪贴板图片、一键截取游戏窗口；网格缩略图可拖拽到「标注管理」直接导入 `ok_templates`（跨 Webview 拖拽以扩展宿主为中继，见 `src/tempDrag.ts`；另有卡片上的 `→` 按钮作为等价入口）。
+- 支持 `Ctrl+V` 粘贴系统剪贴板图片、一键截取游戏窗口、拖入/粘贴图片文件。
+- **导入到标注管理的可靠入口是卡片右上角的 `→` 按钮**（常驻可见）。VS Code 的跨 Webview 拖拽实测不可用：各 webview 是不同 origin 的 iframe，`dataTransfer` 被浏览器屏蔽，**drop 事件也不派发**，因此 `src/tempDrag.ts` 的宿主中继同样收不到。拖拽代码与 `text/plain` 二级通道保留，若后续 VS Code / Chromium 放开跨 origin DnD 即可直接生效。
+- JetBrains 端（见下）**拖拽是能用的**：两个工具窗口同处一个 JVM，用自定义 `DataFlavor` 直接传文件路径。
 - **0.1s 轮播**：点击「轮播 0.1s」后舞台按 100ms 间隔切换帧。**轮播与框选是相互独立的两条通道**：框选期间轮播继续播放，选框松手后保留在原位，便于对着运动中的目标（如带移动界限的按钮）反复比对与微调；归一化坐标只取比例，因此与当前显示的是哪一帧无关。
 - **框选复制归一化坐标**：临时截图侧边栏的「框选坐标」模式与标注编辑器的「坐标 (C)」模式，都会在框选结束后把 `x,y,tox,toy`（左上 / 右下，均按图片宽高归一化到 0..1，保留 4 位小数）写入剪贴板。归一化与显示缩放无关，因此降采样预览与缩放视图下结果一致。
 
@@ -43,6 +45,12 @@ out/                         TypeScript 编译产物（由构建生成）
 - Python / JSON 效果与语言值行内提示。
 - 可搜索的原生模板工具窗口，可插入、复制表达式或打开来源图片。
 - 项目级数据目录、locale、模板别名和提示开关设置。
+- 标注编辑器（`AnnotationDialog`）：画框/删除/坐标模式、边缘手柄、撤销重做、
+  ←/→ 跨图导航，OK 时统一写回 `coco_annotations.json`。
+- 临时截图工具窗口（`ok-script Temp Shots`）：与 VS Code 端能力对齐（10 张上限、
+  粘贴/截屏入列、0.1s 轮播、框选复制归一化坐标、缩略图拖到素材面板导入）。
+  拖拽在这里**可用**——两个工具窗口同处一个 JVM，用自定义 `DataFlavor` 传路径；
+  注意 `JPanel` 没有内置自动拖出，需在 `mouseDragged` 里手动 `exportAsDrag`。
 
 构建与安装：
 
