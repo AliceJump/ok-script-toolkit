@@ -146,4 +146,42 @@
     }
   });
 
+  /* ---------- 接收「临时截图」侧边栏的拖拽 ---------- */
+  const dropHint = document.getElementById('dropHint');
+  if (dropHint) dropHint.textContent = t('assetDropHint');
+  let dragDepth = 0;
+
+  /** 优先从 dataTransfer 读取自定义 MIME；跨 origin 时读不到，交由宿主中继。 */
+  function readTempId(dataTransfer) {
+    if (!dataTransfer) return undefined;
+    try {
+      const raw = dataTransfer.getData('application/x-ok-temp-screenshot');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && parsed.id) return String(parsed.id);
+      }
+    } catch (err) { /* 跨源读取被拒，走宿主中继 */ }
+    return undefined;
+  }
+
+  document.addEventListener('dragenter', (e) => {
+    e.preventDefault();
+    dragDepth++;
+    document.body.classList.add('drop-active');
+  });
+  document.addEventListener('dragleave', () => {
+    dragDepth = Math.max(0, dragDepth - 1);
+    if (dragDepth === 0) document.body.classList.remove('drop-active');
+  });
+  document.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+  });
+  document.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dragDepth = 0;
+    document.body.classList.remove('drop-active');
+    vscode.postMessage({ type: 'dropTemp', tempId: readTempId(e.dataTransfer) });
+  });
+
   vscode.postMessage({ type: 'ready' });

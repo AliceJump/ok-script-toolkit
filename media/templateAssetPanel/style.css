@@ -79,3 +79,18 @@
     margin-top: 32px; text-align: center; opacity: .6;
     line-height: 1.8; white-space: pre-line; padding: 0 12px;
   }
+  /* 拖拽临时截图进入时的高亮提示 */
+  .drop-hint {
+    display: none;
+    position: fixed; inset: 6px;
+    border: 2px dashed var(--vscode-focusBorder, #0078d4);
+    border-radius: 8px;
+    background: rgba(0,120,212,.08);
+    align-items: center; justify-content: center;
+    text-align: center; padding: 16px;
+    font-size: 13px; font-weight: 600;
+    color: var(--vscode-focusBorder, #0078d4);
+    pointer-events: none;
+    z-index: 50;
+  }
+  body.drop-active .drop-hint { display: flex; }

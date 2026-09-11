@@ -569,6 +569,30 @@ export class TemplateAssetData {
     fs.writeFileSync(filePath, content, 'utf-8');
   }
 
+  /* ---------- 导入外部图片文件 ---------- */
+
+  /**
+   * 把外部图片文件复制进 ok_templates 并登记 COCO 条目。
+   * 文件名使用 nextImageName() 生成的序号（保持与面板导入一致的行为）。
+   * 返回落盘后的绝对路径，失败返回 undefined。
+   */
+  importImageFile(srcPath: string): string | undefined {
+    try {
+      this.ensureTemplateFolder();
+      const ext = path.extname(srcPath);
+      const name = this.nextImageName() + ext;
+      const dst = path.join(this.templateFolder, name);
+      fs.copyFileSync(srcPath, dst);
+      const buf = fs.readFileSync(dst);
+      const dims = readImageSize(buf);
+      this.addImageEntry(dst, dims?.width ?? 0, dims?.height ?? 0);
+      this.save();
+      return dst;
+    } catch {
+      return undefined;
+    }
+  }
+
   /* ---------- 添加截图（base64 PNG） ---------- */
 
   addScreenshot(base64Png: string): string | undefined {

@@ -1,87 +1,13 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { execFile } from 'child_process';
 import { TemplateAssetData } from './templateAssetData';
 import { AnnotationPanel } from './annotationPanel';
-import { cropTemplateThumbFileAsync, readImageSize, THUMB_HEIGHT } from './pngCrop';
-import { injectWebviewLocalization, tr, webviewStrings } from './localization';
-
-/** 窗口配置（从项目 config.py 的 windows 子字典提取） */
-interface WindowConfig {
-  exe?: string[];
-  title?: string;
-  hwnd_class?: string;
-  top_hwnd_class?: string;
-}
-
-/** probe_window_config.py 返回结构 */
-interface ProbeWindowConfigResult {
-  ok: boolean;
-  error?: string;
-  config_path?: string;
-  exe?: string[];
-  title?: string;
-  hwnd_class?: string;
-  top_hwnd_class?: string;
-}
-
-/** 读取项目 config.py 的窗口匹配配置（通过 Python AST 解析，不导入模块）。 */
-async function probeWindowConfig(projectDir: string, pythonPath: string): Promise<WindowConfig | undefined> {
-  const scriptPath = path.join(path.dirname(__dirname), 'python', 'probe_window_config.py');
-  if (!fs.existsSync(scriptPath)) return undefined;
-  try {
-    const result = await new Promise<string>((resolve, reject) => {
-      execFile(pythonPath, [scriptPath, projectDir], {
-        timeout: 10000,
-        encoding: 'utf-8',
-        windowsHide: true,
-        maxBuffer: 4 * 1024 * 1024,
-      }, (error, stdout, stderr) => {
-        if (error) reject(new Error(stderr?.trim() || error.message));
-        else resolve(stdout || '');
-      });
-    });
-    // 取最后一行 JSON
-    const lines = result.split('\n').filter(Boolean);
-    for (let i = lines.length - 1; i >= 0; i--) {
-      try {
-        const parsed = JSON.parse(lines[i]) as ProbeWindowConfigResult;
-        if (parsed.ok) {
-          return {
-            exe: parsed.exe,
-            title: parsed.title,
-            hwnd_class: parsed.hwnd_class,
-            top_hwnd_class: parsed.top_hwnd_class,
-          };
-        }
-        return undefined;
-      } catch { /* 跳过非 JSON 行 */ }
-    }
-  } catch { /* Python 不可用或脚本失败 */ }
-  return undefined;
-}
-
-/** 读取 okScriptToolkit 扩展配置中的项目路径和 Python 解释器 */
-function getProjectConfig(): { projectDir: string; pythonPath: string } {
-  const cfg = vscode.workspace.getConfiguration('okScriptToolkit');
-  let projectDir = cfg.get<string>('okScriptProjectPath') || '';
-  projectDir = projectDir.replace(/^~/, process.env.USERPROFILE || '');
-  projectDir = projectDir.replace(/[\\/]+$/, '');
-  if (!projectDir) {
-    const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '';
-    if (root && (fs.existsSync(path.join(root, 'src', 'config.py')) || fs.existsSync(path.join(root, 'config.py')))) {
-      projectDir = root;
-    }
-  }
-  const python = cfg.get<string>('okScriptPython') || '';
-  let pythonPath = python;
-  if (!pythonPath) {
-    const venvPy = path.join(projectDir, '.venv', 'Scripts', 'python.exe');
-    pythonPath = fs.existsSync(venvPy) ? venvPy : 'python';
-  }
-  return { projectDir, pythonPath };
-}
+import { cropTemplateThumbFileAsync, THUMB_HEIGHT } from './pngCrop';
+import { injectWebviewLocalization, tr } from './localization';
+import { TempScreenshotStore } from './tempScreenshotStore';
+import { captureGameWindow } from './screenshotCapture';
+import { takePendingDrag } from './tempDrag';
 
 /* ---------------- 控制器 ---------------- */
 
@@ -103,6 +29,7 @@ class AssetGalleryController {
     private readonly isVisible: () => boolean,
     private readonly extensionUri: vscode.Uri,
     private readonly globalState?: vscode.Memento,
+    private readonly tempStore?: TempScreenshotStore,
   ) {
     liveControllers.add(this);
     this.disposables.push(
@@ -169,6 +96,8 @@ class AssetGalleryController {
     imagePath?: string;
     command?: string;
     base64Png?: string;
+    tempId?: string;
+    dragKind?: string;
   }): Promise<void> {
     switch (msg.type) {
       case 'ready':
@@ -202,6 +131,12 @@ class AssetGalleryController {
         await this.handleImportFile();
         break;
       }
+      case 'dropTemp': {
+        // 优先使用 dataTransfer 里携带的 id；跨 origin 读不到时回退到宿主中继
+        const id = msg.tempId || takePendingDrag();
+        if (id) await this.handleDropTemp(id);
+        break;
+      }
     }
   }
 
@@ -213,101 +148,32 @@ class AssetGalleryController {
       return;
     }
 
-    const { projectDir, pythonPath } = getProjectConfig();
-    let windowConfig: WindowConfig | undefined;
-
-    // 从项目 config.py 自动读取窗口匹配信息
-    if (projectDir) {
-      windowConfig = await probeWindowConfig(projectDir, pythonPath);
-    }
-
-    let titleRegex: string | undefined;
-    let exeNames: string[] | undefined;
-    let hwndClass: string | undefined;
-
-    if (windowConfig && (windowConfig.exe || windowConfig.title || windowConfig.hwnd_class)) {
-      // 自动读取成功，直接使用 config 中的窗口信息
-      exeNames = windowConfig.exe;
-      titleRegex = windowConfig.title;
-      hwndClass = windowConfig.hwnd_class;
-      const desc = [
-        exeNames ? `exe: ${exeNames.join(', ')}` : '',
-        titleRegex ? `title: ${titleRegex}` : '',
-        hwndClass ? `class: ${hwndClass}` : '',
-      ].filter(Boolean).join(' | ');
-      void vscode.window.showInformationMessage(tr('Auto-detected window config: {config}', { config: desc }));
-    } else {
-      // 回退：让用户手动输入窗口标题正则
-      titleRegex = await vscode.window.showInputBox({
-        prompt: tr('Enter game window title pattern (regex), or leave empty for all windows'),
-        placeHolder: tr('screenshotWindowPlaceholder'),
-      });
-      if (titleRegex === undefined) return; // user cancelled
-    }
-
     const outputDir = path.join(folder.uri.fsPath, 'ok_templates');
-    if (!fs.existsSync(outputDir)) {
-      fs.mkdirSync(outputDir, { recursive: true });
-    }
+    fs.mkdirSync(outputDir, { recursive: true });
 
     // Generate filename with timestamp
     const now = new Date();
     const ts = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}`;
     const outputPath = path.join(outputDir, `screenshot_${ts}.png`);
 
-    // Find the capture script (only from extension bundled resources)
-    const captureScript = path.join(path.dirname(__dirname), 'python', 'capture_game_window.py');
-    if (!fs.existsSync(captureScript)) {
-      void vscode.window.showErrorMessage(tr('Screenshot script not found. capture_game_window.py is missing from the extension.'));
+    const outcome = await captureGameWindow(outputPath);
+    if (!outcome.ok) {
+      if (outcome.reason === 'noScript') {
+        void vscode.window.showErrorMessage(tr('Screenshot script not found. capture_game_window.py is missing from the extension.'));
+      } else if (outcome.reason === 'failed') {
+        void vscode.window.showErrorMessage(tr('Screenshot failed: {error}', { error: outcome.error || '' }));
+      }
       return;
     }
 
-    // 构建传递给 capture 脚本的窗口配置 JSON
-    const windowConfigJson = (exeNames || hwndClass || titleRegex)
-      ? JSON.stringify({ exe: exeNames, title: titleRegex, hwnd_class: hwndClass })
-      : undefined;
-
-    return this.captureWithScript(captureScript, outputPath, titleRegex, windowConfigJson, folder.uri.fsPath);
-  }
-
-  private captureWithScript(scriptPath: string, outputPath: string, titlePattern: string | undefined, configJson?: string, projectDir?: string): Promise<void> {
-    return new Promise<void>((resolve) => {
-      const args: string[] = [scriptPath, outputPath];
-      if (configJson) {
-        // 使用 --config-json 传递窗口配置
-        args.push('--config-json', configJson);
-      } else if (titlePattern) {
-        // 兼容旧模式：直接传正则
-        args.push(titlePattern);
-      }
-      if (projectDir) {
-        args.push('--project-dir', projectDir);
-      }
-
-      const { pythonPath } = getProjectConfig();
-      execFile(pythonPath, args, { timeout: 10000 }, async (error, stdout, stderr) => {
-        if (error) {
-          void vscode.window.showErrorMessage(tr('Screenshot failed: {error}', { error: error.message }));
-          resolve();
-          return;
-        }
-        if (!fs.existsSync(outputPath)) {
-          void vscode.window.showErrorMessage(tr('Screenshot failed: file not created'));
-          resolve();
-          return;
-        }
-
-        // Add to COCO data
-        try {
-          await TemplateAssetData.addImageToCoco(outputPath);
-          void vscode.window.showInformationMessage(tr('Screenshot saved: {name}', { name: path.basename(outputPath) }));
-          await this.update();
-        } catch (e) {
-          void vscode.window.showErrorMessage(tr('Screenshot saved but COCO update failed: {error}', { error: String(e) }));
-        }
-        resolve();
-      });
-    });
+    // Add to COCO data
+    try {
+      await TemplateAssetData.addImageToCoco(outputPath);
+      void vscode.window.showInformationMessage(tr('Screenshot saved: {name}', { name: path.basename(outputPath) }));
+      await this.update();
+    } catch (e) {
+      void vscode.window.showErrorMessage(tr('Screenshot saved but COCO update failed: {error}', { error: String(e) }));
+    }
   }
 
   /* ---------- 保存到 assets ---------- */
@@ -411,25 +277,29 @@ class AssetGalleryController {
     this.data.ensureTemplateFolder();
     let count = 0;
     for (const uri of uris) {
-      try {
-        const ext = path.extname(uri.fsPath);
-        const name = this.data.nextImageName() + ext;
-        const dst = path.join(this.data.templatesDir, name);
-        fs.copyFileSync(uri.fsPath, dst);
-        // 读取尺寸
-        const buf = fs.readFileSync(dst);
-        const dims = readImageSize(buf);
-        this.data.addImageEntry(dst, dims?.width ?? 0, dims?.height ?? 0);
-        count++;
-      } catch {
-        // 跳过失败的文件
-      }
+      if (this.data.importImageFile(uri.fsPath)) count++;
     }
     if (count > 0) {
-      this.data.save();
       void vscode.window.showInformationMessage(tr('Imported {count} image(s)', { count: String(count) }));
       await this.update();
     }
+  }
+
+  /* ---------- 接收临时截图拖拽 ---------- */
+  private async handleDropTemp(tempId: string): Promise<void> {
+    if (!this.tempStore) return;
+    const target = this.tempStore.get(tempId);
+    if (!target) {
+      void vscode.window.showWarningMessage(tr('The dragged screenshot is no longer available.'));
+      return;
+    }
+    const dst = this.data.importImageFile(target.filePath);
+    if (!dst) {
+      void vscode.window.showErrorMessage(tr('Failed to add to template assets: {error}', { error: target.name }));
+      return;
+    }
+    void vscode.window.showInformationMessage(tr('Added to template assets: {name}', { name: path.basename(dst) }));
+    await this.update();
   }
 
   dispose(): void {
@@ -451,6 +321,7 @@ export class TemplateAssetViewProvider implements vscode.WebviewViewProvider {
     private readonly thumbDir: string,
     private readonly extensionUri: vscode.Uri,
     private readonly globalState?: vscode.Memento,
+    private readonly tempStore?: TempScreenshotStore,
   ) { }
 
   resolveWebviewView(view: vscode.WebviewView): void {
@@ -465,6 +336,7 @@ export class TemplateAssetViewProvider implements vscode.WebviewViewProvider {
       () => view.visible,
       this.extensionUri,
       this.globalState,
+      this.tempStore,
     );
     controller.attachHtml();
     view.onDidChangeVisibility(() => { if (view.visible) void controller.update(); });
@@ -477,7 +349,7 @@ export class TemplateAssetViewProvider implements vscode.WebviewViewProvider {
 export class TemplateAssetPanel {
   static current: TemplateAssetPanel | undefined;
 
-  static show(data: TemplateAssetData, thumbDir: string, extensionUri: vscode.Uri, globalState?: vscode.Memento): void {
+  static show(data: TemplateAssetData, thumbDir: string, extensionUri: vscode.Uri, globalState?: vscode.Memento, tempStore?: TempScreenshotStore): void {
     if (TemplateAssetPanel.current) {
       TemplateAssetPanel.current.panel.reveal();
       void TemplateAssetPanel.current.controller.update();
@@ -500,6 +372,7 @@ export class TemplateAssetPanel {
       () => panel.visible,
       extensionUri,
       globalState,
+      tempStore,
     );
     TemplateAssetPanel.current = new TemplateAssetPanel(panel, controller);
   }
