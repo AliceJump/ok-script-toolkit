@@ -6,10 +6,12 @@ tsconfig.json
 *.vsix
 .git/**
 .github/**
+.workbuddy-ai/**
 scripts/**
 jetbrains/**
 .gitmodules
 RELEASING.md
+DEVELOPMENT.md
 configs/**
 logs/**/*.txt
 logs/**/*.log
