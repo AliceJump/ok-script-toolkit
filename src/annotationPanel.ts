@@ -119,6 +119,7 @@ class AnnotationController {
     annotations?: Annotation[];
     index?: number;
     category?: string;
+    text?: string;
     x?: number;
     y?: number;
     w?: number;
@@ -164,6 +165,14 @@ class AnnotationController {
         if (typeof msg.category === 'string') {
           await vscode.env.clipboard.writeText(msg.category);
           void vscode.window.showInformationMessage(tr('Copied: {text}', { text: msg.category }));
+        }
+        break;
+      }
+      case 'copyText': {
+        // 框选复制归一化坐标等任意文本
+        if (typeof msg.text === 'string' && msg.text.length > 0) {
+          await vscode.env.clipboard.writeText(msg.text);
+          void vscode.window.showInformationMessage(tr('Copied: {text}', { text: msg.text }));
         }
         break;
       }

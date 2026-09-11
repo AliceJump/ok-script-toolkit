@@ -244,6 +244,7 @@
           "type": "object",
           "default": {
             "drawBbox": "r",
+            "copyCoords": "c",
             "deleteMode": "d",
             "undo": "ctrl+z",
             "redo": "ctrl+y",

@@ -15,11 +15,17 @@
   document.getElementById('bboxTitle').textContent = t('newBboxTitle');
   document.getElementById('drawBtn').textContent = t('drawBbox');
   document.getElementById('drawBtn').title = t('drawBboxTooltip');
+  document.getElementById('coordBtn').textContent = t('copyCoords');
+  document.getElementById('coordBtn').title = t('copyCoordsTooltip');
   document.getElementById('deleteBtn').textContent = t('deleteMode');
   document.getElementById('deleteBtn').title = t('deleteBboxTooltip');
   document.getElementById('prevBtn').title = t('prevImage');
   document.getElementById('nextBtn').title = t('nextImage');
   document.getElementById('emptyMsg').textContent = t('noImageLoaded');
+
+  // 归一化坐标（x,y,tox,toy）保留的小数位
+  const COORD_DECIMALS = 4;
+  const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
 
   // 状态
   let imageData = null;   // { imagePath, imageBase64, annotations, allCategories, filename }
@@ -34,12 +40,13 @@
   let selectedIdx = -1;
   let hoveredIdx = -1;
 
-  // 模式: none, draw, delete
+  // 模式: none, draw, delete, copycoord
   let mode = 'none';
   let drawStart = null;   // widget coords
   let drawPreview = null;  // widget coords
   let drawDragging = false; // true when mouse is held down in draw mode
   let clipboard = null;    // copied bbox for Ctrl+C/V
+  let lastCoords = '';     // 最近一次复制的归一化坐标
 
   // 撤销/重做
   let undoStack = [];
@@ -49,6 +56,7 @@
   // 可配置快捷键 (从扩展设置读取)
   let keybindings = {
     drawBbox: 'r',
+    copyCoords: 'c',
     deleteMode: 'd',
     undo: 'ctrl+z',
     redo: 'ctrl+y',
@@ -110,10 +118,11 @@
   }
 
   function updateButtonTexts() {
-    const kb = keybindings;
     const drawBtn = document.getElementById('drawBtn');
+    const coordBtn = document.getElementById('coordBtn');
     const deleteBtn = document.getElementById('deleteBtn');
     if (drawBtn) { drawBtn.textContent = t('drawBbox'); drawBtn.title = t('drawBboxTooltip'); }
+    if (coordBtn) { coordBtn.textContent = t('copyCoords'); coordBtn.title = t('copyCoordsTooltip') + ' (' + keybindings.copyCoords + ')'; }
     if (deleteBtn) { deleteBtn.textContent = t('deleteMode'); deleteBtn.title = t('deleteBboxTooltip'); }
     updateUndoRedoButtons();
   }
@@ -242,17 +251,18 @@
       ctx.fillText(ann.category, r.x + 2, r.y - 4);
     });
 
-    // 画预览
-    if (mode === 'draw' && drawStart && drawPreview) {
+    // 画预览（画框模式 / 坐标复制模式）
+    if ((mode === 'draw' || mode === 'copycoord') && drawStart && drawPreview) {
       const [ix1, iy1] = widgetToImg(drawStart.x, drawStart.y);
       const [ix2, iy2] = widgetToImg(drawPreview.x, drawPreview.y);
       const px = Math.min(ix1, ix2), py = Math.min(iy1, iy2);
       const pw = Math.abs(ix2 - ix1), ph = Math.abs(iy2 - iy1);
       const [wx, wy] = imgToWidget(px, py);
-      ctx.strokeStyle = '#00c800';
+      const isCoord = mode === 'copycoord';
+      ctx.strokeStyle = isCoord ? '#e8a33d' : '#00c800';
       ctx.lineWidth = 2;
       ctx.setLineDash([6, 3]);
-      ctx.fillStyle = 'rgba(0,200,0,0.1)';
+      ctx.fillStyle = isCoord ? 'rgba(232,163,61,0.12)' : 'rgba(0,200,0,0.1)';
       ctx.fillRect(wx, wy, pw * scale, ph * scale);
       ctx.strokeRect(wx, wy, pw * scale, ph * scale);
       ctx.setLineDash([]);
@@ -301,12 +311,14 @@
     }
     if (e.button !== 0) return;
 
-    if (mode === 'draw') {
+    if (mode === 'draw' || mode === 'copycoord') {
       if (!drawStart) {
         drawStart = { x: px, y: py };
         drawDragging = true;
-      } else {
+      } else if (mode === 'draw') {
         finishDraw(px, py);
+      } else {
+        finishCoord(px, py);
       }
       return;
     }
@@ -377,6 +389,12 @@
       paint();
       return;
     }
+    if (mode === 'copycoord' && drawStart) {
+      drawPreview = { x: px, y: py };
+      updateCoordPreview();
+      paint();
+      return;
+    }
     if (resizing && selectedIdx >= 0 && resizeStartPos) {
       doResize(px, py);
       paint();
@@ -418,7 +436,7 @@
         else canvas.style.cursor = 'crosshair';
       }
       paint();
-    } else if (mode === 'draw') {
+    } else if (mode === 'draw' || mode === 'copycoord') {
       canvas.style.cursor = 'crosshair';
     } else if (mode === 'delete') {
       const aIdx = findAnnAt(px, py);
@@ -432,14 +450,15 @@
   });
 
   canvas.addEventListener('mouseup', (e) => {
-    if (mode === 'draw' && drawDragging && drawStart) {
+    if ((mode === 'draw' || mode === 'copycoord') && drawDragging && drawStart) {
       const rect = canvas.getBoundingClientRect();
       const px = e.clientX - rect.left, py = e.clientY - rect.top;
       const dx = px - drawStart.x, dy = py - drawStart.y;
       const dist = Math.sqrt(dx * dx + dy * dy);
       if (dist > 5) {
         // Dragged far enough: finish as drag-to-draw
-        finishDraw(px, py);
+        if (mode === 'draw') finishDraw(px, py);
+        else finishCoord(px, py);
       }
       // If barely moved, keep drawStart for click-two-points (second click)
       drawDragging = false;
@@ -539,6 +558,53 @@
     });
   }
 
+  /* ---------- 归一化坐标复制 ---------- */
+
+  /** 由两个 widget 坐标点算出归一化框坐标 [x, y, tox, toy]（均已 clamp 到 0..1）。 */
+  function normalizedBox(wx1, wy1, wx2, wy2) {
+    if (!img) return null;
+    const [ix1, iy1] = widgetToImg(wx1, wy1);
+    const [ix2, iy2] = widgetToImg(wx2, wy2);
+    const l = Math.min(ix1, ix2), t = Math.min(iy1, iy2);
+    const r = Math.max(ix1, ix2), b = Math.max(iy1, iy2);
+    return {
+      x: clamp01(l / img.width),
+      y: clamp01(t / img.height),
+      tox: clamp01(r / img.width),
+      toy: clamp01(b / img.height),
+    };
+  }
+
+  function formatNormalizedBox(box) {
+    return [box.x, box.y, box.tox, box.toy].map((v) => v.toFixed(COORD_DECIMALS)).join(',');
+  }
+
+  /** 拖拽过程中在颜色栏实时显示即将复制的坐标。 */
+  function updateCoordPreview() {
+    const box = drawStart && drawPreview
+      ? normalizedBox(drawStart.x, drawStart.y, drawPreview.x, drawPreview.y)
+      : null;
+    if (!box) return;
+    const info = document.getElementById('colorInfo');
+    if (info) info.textContent = t('coordLabel') + ' ' + formatNormalizedBox(box);
+  }
+
+  /** 完成框选：复制归一化坐标 x,y,tox,toy 到剪贴板。 */
+  function finishCoord(px, py) {
+    const box = drawStart ? normalizedBox(drawStart.x, drawStart.y, px, py) : null;
+    drawStart = null; drawPreview = null; drawDragging = false;
+    if (!box) { setMode('none'); paint(); return; }
+    // 过滤误触（两个方向都太小）
+    if (box.tox - box.x <= 0.002 || box.toy - box.y <= 0.002) { setMode('none'); paint(); return; }
+
+    lastCoords = formatNormalizedBox(box);
+    const info = document.getElementById('colorInfo');
+    if (info) info.textContent = t('coordLabel') + ' ' + lastCoords;
+    vscode.postMessage({ type: 'copyText', text: lastCoords });
+    setMode('none');
+    paint();
+  }
+
   /* ---------- 删除 ---------- */
   function deleteSelected() {
     if (selectedIdx < 0) return;
@@ -561,8 +627,9 @@
     mode = m;
     drawStart = null; drawPreview = null; drawDragging = false;
     document.getElementById('drawBtn').classList.toggle('active', m === 'draw');
+    document.getElementById('coordBtn').classList.toggle('active', m === 'copycoord');
     document.getElementById('deleteBtn').classList.toggle('active', m === 'delete');
-    if (m === 'draw') canvas.style.cursor = 'crosshair';
+    if (m === 'draw' || m === 'copycoord') canvas.style.cursor = 'crosshair';
     else if (m === 'delete') canvas.style.cursor = 'default';
     else canvas.style.cursor = isZoomed() ? 'grab' : 'crosshair';
     paint();
@@ -694,6 +761,9 @@
     // 画框模式
     if (matchKeybinding(e, keybindings.drawBbox) && !e.ctrlKey && !e.metaKey && !e.altKey) {
       setMode(mode === 'draw' ? 'none' : 'draw');
+    } else if (matchKeybinding(e, keybindings.copyCoords) && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      // 归一化坐标复制模式
+      setMode(mode === 'copycoord' ? 'none' : 'copycoord');
     } else if (matchKeybinding(e, keybindings.deleteMode) && !e.ctrlKey && !e.metaKey && !e.altKey) {
       // 删除模式
       setMode(mode === 'delete' ? 'none' : 'delete');
@@ -721,6 +791,7 @@
 
   /* ---------- 按钮事件 ---------- */
   document.getElementById('drawBtn').onclick = () => setMode(mode === 'draw' ? 'none' : 'draw');
+  document.getElementById('coordBtn').onclick = () => setMode(mode === 'copycoord' ? 'none' : 'copycoord');
   document.getElementById('deleteBtn').onclick = () => setMode(mode === 'delete' ? 'none' : 'delete');
   document.getElementById('undoBtn').onclick = () => { undo(); updateUndoRedoButtons(); };
   document.getElementById('redoBtn').onclick = () => { redo(); updateUndoRedoButtons(); };
