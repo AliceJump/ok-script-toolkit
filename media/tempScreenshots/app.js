@@ -12,6 +12,7 @@
   const emptyHint = document.getElementById('emptyHint');
   const countEl = document.getElementById('count');
   const coordInfo = document.getElementById('coordInfo');
+  const coordText = document.getElementById('selCoord');
   const toastEl = document.getElementById('toast');
   const carouselBtn = document.getElementById('carouselBtn');
   const coordBtn = document.getElementById('coordBtn');
@@ -72,6 +73,11 @@
   let panning = false, panStart = null, panStartPan = null;
   let boxDragging = false, boxStart = null, boxCurrent = null;
 
+  // 可调节的坐标框：归一化坐标 {x1,y1,x2,y2}，只用于取坐标、不落盘；
+  // 创建与每次调整结束都会重新复制，点击非交互区域即清除
+  let coordBox = null;
+  let coordDrag = null;   // {kind:'move'|'resize', handle, startClient, orig}
+
   let toastTimer = null;
 
   /* ---------- 小工具 ---------- */
@@ -98,6 +104,8 @@
   function applyTransform() {
     stageInner.style.transform =
       'translate(' + panX + 'px,' + panY + 'px) scale(' + zoom + ')';
+    // 缩放/平移后坐标框要跟着重绘（它存的是归一化坐标）
+    renderCoordBox();
   }
 
   function clampPan() {
@@ -351,6 +359,18 @@
 
     if (e.button === 0 && coordMode) {
       e.preventDefault();
+      // 坐标框已存在时优先命中手柄 / 框体，与模板标注的编辑体验一致
+      const handle = hitCoordHandle(e.clientX, e.clientY);
+      if (handle) {
+        coordDrag = { kind: 'resize', handle, startClient: { x: e.clientX, y: e.clientY }, orig: { ...coordBox } };
+        return;
+      }
+      if (insideCoordBox(e.clientX, e.clientY)) {
+        coordDrag = { kind: 'move', handle: null, startClient: { x: e.clientX, y: e.clientY }, orig: { ...coordBox } };
+        overlay.style.cursor = 'move';
+        return;
+      }
+      // 其余位置起手画新框；松手若没拖动则视为点击空白，清除坐标框
       boxDragging = true;
       boxStart = { x: e.clientX, y: e.clientY };
       boxCurrent = { x: e.clientX, y: e.clientY };
@@ -392,9 +412,20 @@
       applyTransform();
       return;
     }
+    if (coordDrag) {
+      applyCoordDrag(e.clientX, e.clientY);
+      return;
+    }
     if (boxDragging) {
       boxCurrent = { x: e.clientX, y: e.clientY };
       drawBox();
+      return;
+    }
+    if (coordMode) {
+      // 悬停手柄 / 框体时给出对应光标
+      const h = hitCoordHandle(e.clientX, e.clientY);
+      overlay.style.cursor = h ? handleCursor(h)
+        : insideCoordBox(e.clientX, e.clientY) ? 'move' : 'crosshair';
     }
   });
 
@@ -402,6 +433,17 @@
     if (panning) {
       panning = false; panStart = null; panStartPan = null;
       overlay.style.cursor = '';
+      return;
+    }
+    // 结束坐标框的移动/缩放：有变化才复制
+    if (coordDrag) {
+      const o = coordDrag.orig;
+      const changed = !coordBox ||
+        coordBox.x1 !== o.x1 || coordBox.y1 !== o.y1 ||
+        coordBox.x2 !== o.x2 || coordBox.y2 !== o.y2;
+      coordDrag = null;
+      overlay.style.cursor = 'crosshair';
+      if (changed) copyCoordBox(false);
       return;
     }
     if (boxDragging && e.button === 0) {
@@ -425,12 +467,139 @@
     const o = overlay.getBoundingClientRect();
     selBox.style.left = (r.left - o.left) + 'px';
     selBox.style.top = (r.top - o.top) + 'px';
+    // 拖拽预览阶段不显示手柄（手柄只在框确定后用于调整）
+    selBox.classList.add('preview');
     selBox.style.width = (r.right - r.left) + 'px';
     selBox.style.height = (r.bottom - r.top) + 'px';
     selBox.classList.add('visible');
 
     const norm = normalizeScreenRect(r, contentRect());
-    coordInfo.textContent = norm ? formatCoords(norm.x1, norm.y1, norm.x2, norm.y2) : '';
+    const text = norm ? formatCoords(norm.x1, norm.y1, norm.x2, norm.y2) : '';
+    coordInfo.textContent = text;
+    if (coordText) coordText.textContent = text;
+  }
+
+  /* ---------- 可调节的坐标框 ----------
+   * 存归一化坐标而非屏幕坐标：这样轮播切换帧、缩放、平移后选框都留在同一相对
+   * 位置，便于对着运动中的目标反复比对微调。它不写入任何数据，只是取坐标的尺子。
+   */
+
+  const HANDLE_PX = 8;
+  const HANDLE_IDS = ['tl', 't', 'tr', 'r', 'br', 'b', 'bl', 'l'];
+
+  function handleCursor(h) {
+    if (h === 'tl' || h === 'br') return 'nwse-resize';
+    if (h === 'tr' || h === 'bl') return 'nesw-resize';
+    if (h === 't' || h === 'b') return 'ns-resize';
+    if (h === 'l' || h === 'r') return 'ew-resize';
+    return 'default';
+  }
+
+  /** 坐标框在屏幕（client）坐标系下的矩形 */
+  function coordScreenRect() {
+    const cr = contentRect();
+    if (!coordBox || !cr) return null;
+    return {
+      left: cr.left + coordBox.x1 * cr.width,
+      top: cr.top + coordBox.y1 * cr.height,
+      right: cr.left + coordBox.x2 * cr.width,
+      bottom: cr.top + coordBox.y2 * cr.height,
+    };
+  }
+
+  function hitCoordHandle(px, py) {
+    const r = coordScreenRect();
+    if (!r) return null;
+    const mx = (r.left + r.right) / 2, my = (r.top + r.bottom) / 2;
+    const pts = {
+      tl: [r.left, r.top], t: [mx, r.top], tr: [r.right, r.top],
+      r: [r.right, my], br: [r.right, r.bottom], b: [mx, r.bottom],
+      bl: [r.left, r.bottom], l: [r.left, my],
+    };
+    for (const id of HANDLE_IDS) {
+      const [hx, hy] = pts[id];
+      if (Math.abs(px - hx) <= HANDLE_PX && Math.abs(py - hy) <= HANDLE_PX) return id;
+    }
+    return null;
+  }
+
+  function insideCoordBox(px, py) {
+    const r = coordScreenRect();
+    return !!r && px >= r.left && px <= r.right && py >= r.top && py <= r.bottom;
+  }
+
+  /** 按当前拖拽（移动或缩放）算出新的归一化坐标框 */
+  function applyCoordDrag(clientX, clientY) {
+    const d = coordDrag;
+    const cr = contentRect();
+    if (!d || !cr || cr.width <= 0 || cr.height <= 0) return;
+    const dxN = (clientX - d.startClient.x) / cr.width;
+    const dyN = (clientY - d.startClient.y) / cr.height;
+    const o = d.orig;
+    const minW = MIN_BOX_PX / cr.width;
+    const minH = MIN_BOX_PX / cr.height;
+    let x1 = o.x1, y1 = o.y1, x2 = o.x2, y2 = o.y2;
+
+    if (d.kind === 'move') {
+      x1 += dxN; x2 += dxN; y1 += dyN; y2 += dyN;
+      // 保持尺寸，整体被推回内容区内
+      if (x1 < 0) { x2 -= x1; x1 = 0; }
+      if (y1 < 0) { y2 -= y1; y1 = 0; }
+      if (x2 > 1) { x1 -= (x2 - 1); x2 = 1; }
+      if (y2 > 1) { y1 -= (y2 - 1); y2 = 1; }
+    } else {
+      // 手柄名是 tl/tr/bl/br/t/b/l/r，必须精确匹配
+      const h = d.handle;
+      if (h === 'l' || h === 'tl' || h === 'bl') x1 = Math.min(o.x1 + dxN, o.x2 - minW);
+      if (h === 'r' || h === 'tr' || h === 'br') x2 = Math.max(o.x2 + dxN, o.x1 + minW);
+      if (h === 't' || h === 'tl' || h === 'tr') y1 = Math.min(o.y1 + dyN, o.y2 - minH);
+      if (h === 'b' || h === 'bl' || h === 'br') y2 = Math.max(o.y2 + dyN, o.y1 + minH);
+    }
+
+    // 取整到 1e-6：避免浮点残差让「实际没动」被判成有变化而重复复制
+    const q = (v) => Math.round(clamp01(v) * 1e6) / 1e6;
+    coordBox = {
+      x1: q(Math.min(x1, x2)), y1: q(Math.min(y1, y2)),
+      x2: q(Math.max(x1, x2)), y2: q(Math.max(y1, y2)),
+    };
+    renderCoordBox();
+    if (coordText) coordText.textContent = formatCoords(coordBox.x1, coordBox.y1, coordBox.x2, coordBox.y2);
+    coordInfo.textContent = coordText ? coordText.textContent : '';
+  }
+
+  /** 把坐标框画到舞台上（含 8 向手柄与坐标读数） */
+  function renderCoordBox() {
+    const r = coordScreenRect();
+    if (!coordBox || !r) {
+      selBox.classList.remove('visible');
+      if (coordText) coordText.textContent = '';
+      return;
+    }
+    const o = overlay.getBoundingClientRect();
+    selBox.classList.remove('preview');
+    selBox.style.left = (r.left - o.left) + 'px';
+    selBox.style.top = (r.top - o.top) + 'px';
+    selBox.style.width = (r.right - r.left) + 'px';
+    selBox.style.height = (r.bottom - r.top) + 'px';
+    selBox.classList.add('visible');
+  }
+
+  /** 复制当前坐标框；announce=true 时额外弹提示（新建时） */
+  function copyCoordBox(announce) {
+    if (!coordBox) return;
+    const text = formatCoords(coordBox.x1, coordBox.y1, coordBox.x2, coordBox.y2);
+    renderCoordBox();
+    if (coordText) coordText.textContent = text;
+    coordInfo.textContent = text;
+    vscode.postMessage({ type: 'copyText', text });
+    if (announce) toast(t('tempCoordCopied', { text }));
+  }
+
+  function clearCoordBox() {
+    coordBox = null;
+    coordDrag = null;
+    renderCoordBox();
+    coordInfo.textContent = '';
   }
 
   function finishBox() {
@@ -439,17 +608,14 @@
     boxCurrent = null;
 
     const norm = normalizeScreenRect(r, contentRect());
-    if (norm) {
-      // 保留选框：轮播继续播放，选框留在原位便于持续对照运动中的目标微调
-      selBox.classList.add('visible');
-      const text = formatCoords(norm.x1, norm.y1, norm.x2, norm.y2);
-      coordInfo.textContent = text;
-      vscode.postMessage({ type: 'copyText', text });
-      toast(t('tempCoordCopied', { text }));
-    } else {
-      selBox.classList.remove('visible');
-      coordInfo.textContent = '';
+    if (!norm) {
+      // 几乎没拖动 = 点了图片的非交互部分：清除坐标框
+      clearCoordBox();
+      return;
     }
+    // 保留选框，之后可以继续拖手柄/拖动调整
+    coordBox = norm;
+    copyCoordBox(true);
   }
 
   /* ---------- 工具栏 ---------- */
@@ -474,7 +640,8 @@
     coordMode = !coordMode;
     coordBtn.classList.toggle('active', coordMode);
     overlay.style.cursor = coordMode ? 'crosshair' : 'grab';
-    if (!coordMode) { selBox.classList.remove('visible'); coordInfo.textContent = ''; }
+    // 坐标框只在坐标模式内存在，退出即丢弃（它不落盘）
+    if (!coordMode) clearCoordBox();
   });
   overlay.style.cursor = 'grab';
 
@@ -524,8 +691,7 @@
       maxCount = msg.max || maxCount;
 
       // 列表变化后适配尺寸会重算，旧的屏幕选框不再对应，清掉避免误读
-      selBox.classList.remove('visible');
-      coordInfo.textContent = '';
+      clearCoordBox();
 
       rebuildFrames();
       renderGrid();

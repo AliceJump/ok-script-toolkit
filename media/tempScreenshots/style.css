@@ -84,6 +84,36 @@
     pointer-events: none;
   }
   .sel-box.visible { display: block; }
+  /* 8 向手柄，纯视觉（命中判定在 JS 里按坐标做），由 CSS 自行定位 */
+  .sel-handle {
+    position: absolute;
+    width: 8px;
+    height: 8px;
+    margin: -4px 0 0 -4px;
+    border-radius: 2px;
+    background: var(--vscode-charts-green, #3fb950);
+    border: 1px solid rgba(0,0,0,.45);
+  }
+  .sel-handle[data-h="tl"] { left: 0; top: 0; }
+  .sel-handle[data-h="t"] { left: 50%; top: 0; }
+  .sel-handle[data-h="tr"] { left: 100%; top: 0; }
+  .sel-handle[data-h="r"] { left: 100%; top: 50%; }
+  .sel-handle[data-h="br"] { left: 100%; top: 100%; }
+  .sel-handle[data-h="b"] { left: 50%; top: 100%; }
+  .sel-handle[data-h="bl"] { left: 0; top: 100%; }
+  .sel-handle[data-h="l"] { left: 0; top: 50%; }
+  /* 拖拽预览阶段不显示手柄 */
+  .sel-box.preview .sel-handle,
+  .sel-box.preview .sel-coord { display: none; }
+  .sel-coord {
+    position: absolute;
+    left: 0;
+    top: -15px;
+    font: bold 11px var(--vscode-editor-font-family, monospace);
+    color: var(--vscode-charts-green, #3fb950);
+    white-space: nowrap;
+    text-shadow: 0 0 3px rgba(0,0,0,.85);
+  }
   .stage-empty {
     position: absolute;
     inset: 0;

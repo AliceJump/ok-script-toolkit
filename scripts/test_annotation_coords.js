@@ -162,10 +162,59 @@ function mouse(type, target, x, y, button = 0) {
   assert(copy, 'box-select in coord mode must post a copyText message');
   assert(copy.text === '0.1250,0.1000,0.6250,0.6000',
     'expected normalized x,y,tox,toy, got ' + copy.text);
-  assert(!coordBtn.classList.contains('active'), 'mode must return to none after copying');
+  // 框留在画布上供继续调整，所以坐标模式不会自动退出
+  assert(coordBtn.classList.contains('active'),
+    'coord mode must stay active so the box can still be adjusted');
+
+  /* ---------- 拖动框体：整体移动并重新复制 ---------- */
+  // 当前框屏幕矩形 (100,120)-(500,345)，(300,230) 落在框内
+  let before = post('copyText').length;
+  mouse('mousedown', canvas, 300, 230);
+  mouse('mousemove', canvas, 350, 260);
+  mouse('mouseup', canvas, 350, 260);
+  await flush();
+  assert(post('copyText').length === before + 1, 'moving the box must copy again');
+  assert(lastPost('copyText').text === '0.1875,0.1667,0.6875,0.6667',
+    'moved box must copy the updated coords, got ' + lastPost('copyText').text);
+
+  /* ---------- 拖动手柄：缩放并重新复制 ---------- */
+  // 移动后框为图像 (360,180,960,540)，屏幕 (150,150)-(550,375)；右下角即 br 手柄
+  before = post('copyText').length;
+  mouse('mousedown', canvas, 550, 375);
+  mouse('mousemove', canvas, 610, 405);
+  mouse('mouseup', canvas, 610, 405);
+  await flush();
+  assert(post('copyText').length === before + 1, 'resizing the box must copy again');
+  // dx=60,dy=30 → 图像 +144,+72 → 宽 1104 高 612
+  assert(lastPost('copyText').text === '0.1875,0.1667,0.7625,0.7333',
+    'resized box must copy the updated coords, got ' + lastPost('copyText').text);
+
+  /* ---------- 点击非交互部分清除坐标框 ---------- */
+  // (700, 520) 在框与所有手柄之外
+  before = post('copyText').length;
+  mouse('mousedown', canvas, 700, 520);
+  mouse('mouseup', canvas, 700, 520);
+  await flush();
+  assert(post('copyText').length === before,
+    'clicking empty area must clear the box without copying');
+
+  /* ---------- 清除后可以重新框选 ---------- */
+  mouse('mousedown', canvas, 100, 120);
+  mouse('mousemove', canvas, 500, 345);
+  mouse('mouseup', canvas, 500, 345);
+  await flush();
+  assert(lastPost('copyText').text === '0.1250,0.1000,0.6250,0.6000',
+    'a fresh box can be created after clearing, got ' + lastPost('copyText').text);
+
+  /* ---------- 坐标框不进入标注数据（不落盘） ---------- */
+  const saved = post('save');
+  assert(saved.length === 0, 'coord box must never be written to annotations/COCO');
 
   /* ---------- 反向框选（从右下拖到左上）必须得到相同结果 ---------- */
-  coordBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+  // 先清框：否则从右下角起手会命中已有框的 br 手柄，变成缩放而不是新建
+  mouse('mousedown', canvas, 700, 520);
+  mouse('mouseup', canvas, 700, 520);
+  await flush();
   mouse('mousedown', canvas, 500, 345);
   mouse('mousemove', canvas, 100, 120);
   mouse('mouseup', canvas, 100, 120);
@@ -174,7 +223,6 @@ function mouse(type, target, x, y, button = 0) {
     'reverse drag must normalize to the same box, got ' + lastPost('copyText').text);
 
   /* ---------- 越界框选必须 clamp ---------- */
-  coordBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
   mouse('mousedown', canvas, -400, -400);
   mouse('mousemove', canvas, 5000, 5000);
   mouse('mouseup', canvas, 5000, 5000);
@@ -182,9 +230,15 @@ function mouse(type, target, x, y, button = 0) {
   assert(lastPost('copyText').text === '0.0000,0.0000,1.0000,1.0000',
     'out-of-range selection must clamp to 0..1, got ' + lastPost('copyText').text);
 
-  /* ---------- 误触不应产生复制 ---------- */
-  const count = post('copyText').length;
+  /* ---------- 退出坐标模式应丢弃坐标框 ---------- */
   coordBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+  assert(!coordBtn.classList.contains('active'), 'coord button must toggle off');
+  assert(window.document.getElementById('colorInfo').textContent.trim() === '',
+    'leaving coord mode must clear the readout');
+
+  /* ---------- 误触不应产生复制 ---------- */
+  coordBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+  const count = post('copyText').length;
   mouse('mousedown', canvas, 300, 300);
   mouse('mouseup', canvas, 300, 300);
   await flush();

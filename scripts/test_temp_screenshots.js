@@ -196,7 +196,40 @@ function mouse(type, target, x, y, button = 0) {
   assert(document.getElementById('selBox').classList.contains('visible'),
     'the selection box must stay visible after copying so it can be compared against moving frames');
 
-  // 越界框选必须 clamp 到 0..1
+  /* ---------- 3a. 拖动框体整体移动并重新复制 ---------- */
+  // 当前框屏幕矩形 (100,82.5)-(300,187.5)，(200,135) 落在框内
+  let copyBefore = post('copyText').length;
+  mouse('mousedown', overlay, 200, 135);
+  mouse('mousemove', window, 250, 165);
+  mouse('mouseup', window, 250, 165);
+  await flush();
+  assert(post('copyText').length === copyBefore + 1, 'moving the box must copy again');
+  assert(lastPost('copyText').text === '0.3750,0.3333,0.8750,0.8000',
+    'moved box must copy the updated coords, got ' + lastPost('copyText').text);
+
+  /* ---------- 3b. 拖动手柄缩放并重新复制 ---------- */
+  // 移动后框屏幕 (150,112.5)-(350,217.5)，右下角即 br 手柄
+  copyBefore = post('copyText').length;
+  mouse('mousedown', overlay, 350, 217.5);
+  mouse('mousemove', window, 390, 247.5);
+  mouse('mouseup', window, 390, 247.5);
+  await flush();
+  assert(post('copyText').length === copyBefore + 1, 'resizing the box must copy again');
+  assert(lastPost('copyText').text === '0.3750,0.3333,0.9750,0.9333',
+    'resized box must copy the updated coords, got ' + lastPost('copyText').text);
+
+  /* ---------- 3c. 点击非交互部分清除坐标框 ---------- */
+  // (30, 30) 在框与所有手柄之外
+  copyBefore = post('copyText').length;
+  mouse('mousedown', overlay, 30, 30);
+  mouse('mouseup', window, 30, 30);
+  await flush();
+  assert(post('copyText').length === copyBefore,
+    'clicking empty area must clear the box without copying');
+  assert(!document.getElementById('selBox').classList.contains('visible'),
+    'the box must disappear after clicking empty area');
+
+  // 越界框选必须 clamp 到 0..1（放在清除之后，避免复用上一次留下的框）
   mouse('mousedown', overlay, -50, -50);
   mouse('mousemove', window, 900, 900);
   mouse('mouseup', window, 900, 900);
@@ -211,7 +244,15 @@ function mouse(type, target, x, y, button = 0) {
   await flush();
   assert(post('copyText').length === copyCount, 'a degenerate box must not copy coordinates');
 
-  /* ---------- 3b. 轮播与框选相互独立 ---------- */
+  /* ---------- 3d. 轮播与框选相互独立 ---------- */
+  // 上一个越界用例留下的是「全图框」，此时图上没有空白可点，
+  // 用退出 / 重进坐标模式来清除它
+  coordBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+  coordBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+  assert(coordBtn.classList.contains('active'), 'coord mode must be re-entered');
+  assert(!document.getElementById('selBox').classList.contains('visible'),
+    're-entering coord mode must start with no box');
+
   carouselBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
   assert(carouselBtn.classList.contains('active'), 'carousel must start for the independence check');
   const frameBeforeBox = activeIndex();

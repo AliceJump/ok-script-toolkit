@@ -48,6 +48,11 @@
   let clipboard = null;    // copied bbox for Ctrl+C/V
   let lastCoords = '';     // 最近一次复制的归一化坐标
 
+  // 坐标复制模式的临时框：只用于取坐标，不进 annotations、不落盘，
+  // 创建与每次调整结束都会重新复制归一化坐标；点击非交互区域即清除
+  let coordBox = null;     // {x,y,w,h} 图像坐标
+  let coordDrag = null;    // {kind:'move'|'resize', handle, startPos, origRect}
+
   // 撤销/重做
   let undoStack = [];
   let redoStack = [];
@@ -267,6 +272,9 @@
       ctx.strokeRect(wx, wy, pw * scale, ph * scale);
       ctx.setLineDash([]);
     }
+
+    // 坐标复制模式的可调框（画在最上层，便于看到手柄与读数）
+    if (mode === 'copycoord') paintCoordBox(ctx);
   }
 
   /* ---------- 缩放/适配 ---------- */
@@ -311,14 +319,40 @@
     }
     if (e.button !== 0) return;
 
-    if (mode === 'draw' || mode === 'copycoord') {
+    if (mode === 'copycoord') {
+      // 坐标框已存在时，优先命中手柄或框体（与标注框一致的可调交互）
+      const handle = findCoordHandleAt(px, py);
+      if (handle) {
+        coordDrag = {
+          kind: 'resize',
+          handle: handle,
+          startPos: { x: px, y: py },
+          origRect: { x: coordBox.x, y: coordBox.y, w: coordBox.w, h: coordBox.h },
+        };
+        canvas.style.cursor = handleCursor(handle);
+        return;
+      }
+      if (coordContains(px, py)) {
+        coordDrag = {
+          kind: 'move',
+          handle: null,
+          startPos: { x: px, y: py },
+          origRect: { x: coordBox.x, y: coordBox.y, w: coordBox.w, h: coordBox.h },
+        };
+        canvas.style.cursor = 'move';
+        return;
+      }
+      // 其余位置：起手画新框（松手后若没拖动则视为点击空白，清除坐标框）
+      drawStart = { x: px, y: py };
+      drawDragging = true;
+      return;
+    }
+    if (mode === 'draw') {
       if (!drawStart) {
         drawStart = { x: px, y: py };
         drawDragging = true;
-      } else if (mode === 'draw') {
-        finishDraw(px, py);
       } else {
-        finishCoord(px, py);
+        finishDraw(px, py);
       }
       return;
     }
@@ -384,6 +418,12 @@
     const rect = canvas.getBoundingClientRect();
     const px = e.clientX - rect.left, py = e.clientY - rect.top;
 
+    // 调整坐标框：过程中只刷新读数，松手时才复制
+    if (coordDrag) {
+      applyCoordDrag(px, py);
+      copyCoordBox(true);
+      return;
+    }
     if (mode === 'draw' && drawStart) {
       drawPreview = { x: px, y: py };
       paint();
@@ -436,7 +476,13 @@
         else canvas.style.cursor = 'crosshair';
       }
       paint();
-    } else if (mode === 'draw' || mode === 'copycoord') {
+    } else if (mode === 'copycoord') {
+      // 与标注框一致：悬停手柄/框体时给出对应光标
+      const h = findCoordHandleAt(px, py);
+      canvas.style.cursor = h ? handleCursor(h)
+        : coordContains(px, py) ? 'move' : 'crosshair';
+      paint();
+    } else if (mode === 'draw') {
       canvas.style.cursor = 'crosshair';
     } else if (mode === 'delete') {
       const aIdx = findAnnAt(px, py);
@@ -450,18 +496,39 @@
   });
 
   canvas.addEventListener('mouseup', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const px = e.clientX - rect.left, py = e.clientY - rect.top;
+
+    // 结束坐标框的移动/缩放：有变化才复制
+    if (coordDrag) {
+      const orig = coordDrag.origRect;
+      const changed = !coordBox ||
+        coordBox.x !== orig.x || coordBox.y !== orig.y ||
+        coordBox.w !== orig.w || coordBox.h !== orig.h;
+      coordDrag = null;
+      if (changed) copyCoordBox();
+      canvas.style.cursor = 'crosshair';
+      return;
+    }
+
     if ((mode === 'draw' || mode === 'copycoord') && drawDragging && drawStart) {
-      const rect = canvas.getBoundingClientRect();
-      const px = e.clientX - rect.left, py = e.clientY - rect.top;
       const dx = px - drawStart.x, dy = py - drawStart.y;
       const dist = Math.sqrt(dx * dx + dy * dy);
+      drawDragging = false;
       if (dist > 5) {
         // Dragged far enough: finish as drag-to-draw
         if (mode === 'draw') finishDraw(px, py);
         else finishCoord(px, py);
+        return;
       }
-      // If barely moved, keep drawStart for click-two-points (second click)
-      drawDragging = false;
+      if (mode === 'draw') {
+        // If barely moved, keep drawStart for click-two-points (second click)
+        return;
+      }
+      // 坐标模式下几乎没移动 = 点了图片的非交互部分：清除坐标框
+      drawStart = null;
+      drawPreview = null;
+      clearCoordBox();
       return;
     }
     drawDragging = false;
@@ -589,20 +656,155 @@
     if (info) info.textContent = t('coordLabel') + ' ' + formatNormalizedBox(box);
   }
 
-  /** 完成框选：复制归一化坐标 x,y,tox,toy 到剪贴板。 */
+  /** 完成框选：建立可继续调整的坐标框，并复制归一化坐标 x,y,tox,toy 到剪贴板。 */
   function finishCoord(px, py) {
     const box = drawStart ? normalizedBox(drawStart.x, drawStart.y, px, py) : null;
     drawStart = null; drawPreview = null; drawDragging = false;
-    if (!box) { setMode('none'); paint(); return; }
+    if (!box) { clearCoordBox(); return; }
     // 过滤误触（两个方向都太小）
-    if (box.tox - box.x <= 0.002 || box.toy - box.y <= 0.002) { setMode('none'); paint(); return; }
+    if (box.tox - box.x <= 0.002 || box.toy - box.y <= 0.002) { clearCoordBox(); return; }
 
-    lastCoords = formatNormalizedBox(box);
+    // 归一化 → 图像坐标，之后所有调整都在这个框上进行
+    coordBox = normalizedToImageRect(box);
+    copyCoordBox();
+  }
+
+  /* ---------- 可调节的坐标框（只用于取坐标，不进入 annotations、不落盘） ---------- */
+
+  const COORD_HANDLES = ['tl', 't', 'tr', 'r', 'br', 'b', 'bl', 'l'];
+
+  /** 归一化坐标 → 图像坐标矩形 */
+  function normalizedToImageRect(box) {
+    const [x1, y1] = [box.x * img.width, box.y * img.height];
+    const [x2, y2] = [box.tox * img.width, box.toy * img.height];
+    return {
+      x: Math.round(Math.min(x1, x2)),
+      y: Math.round(Math.min(y1, y2)),
+      w: Math.round(Math.abs(x2 - x1)),
+      h: Math.round(Math.abs(y2 - y1)),
+    };
+  }
+
+  /** 坐标框在 widget 坐标系下的矩形 */
+  function coordWidgetRect() {
+    if (!coordBox) return null;
+    const [wx, wy] = imgToWidget(coordBox.x, coordBox.y);
+    return { x: wx, y: wy, w: coordBox.w * scale, h: coordBox.h * scale };
+  }
+
+  function coordContains(px, py) {
+    const r = coordWidgetRect();
+    return !!r && rectContains(r, px, py);
+  }
+
+  /** 命中坐标框的哪个缩放手柄 */
+  function findCoordHandleAt(px, py) {
+    const r = coordWidgetRect();
+    if (!r) return null;
+    return detectHandle(px, py, r);
+  }
+
+  /**
+   * 刷新坐标读数并（默认）写入剪贴板。创建与每次调整结束都会调用；
+   * 拖动过程中传 silent=true 只更新显示，避免每帧发消息刷屏。
+   */
+  function copyCoordBox(silent) {
+    if (!coordBox || !img) return;
+    lastCoords = formatNormalizedBox({
+      x: clamp01(coordBox.x / img.width),
+      y: clamp01(coordBox.y / img.height),
+      tox: clamp01((coordBox.x + coordBox.w) / img.width),
+      toy: clamp01((coordBox.y + coordBox.h) / img.height),
+    });
     const info = document.getElementById('colorInfo');
     if (info) info.textContent = t('coordLabel') + ' ' + lastCoords;
-    vscode.postMessage({ type: 'copyText', text: lastCoords });
-    setMode('none');
+    if (!silent) vscode.postMessage({ type: 'copyText', text: lastCoords });
     paint();
+  }
+
+  function clearCoordBox() {
+    coordBox = null;
+    coordDrag = null;
+    const info = document.getElementById('colorInfo');
+    if (info) info.textContent = ' ';
+    paint();
+  }
+
+  /** 按当前拖拽（移动或缩放）算出新的图像坐标矩形 */
+  function applyCoordDrag(px, py) {
+    const d = coordDrag;
+    if (!d || !img) return;
+    const dxI = (px - d.startPos.x) / scale;
+    const dyI = (py - d.startPos.y) / scale;
+    const o = d.origRect;
+    let nx = o.x, ny = o.y, nw = o.w, nh = o.h;
+    const h = d.handle;
+    if (d.kind === 'move') {
+      nx = o.x + dxI;
+      ny = o.y + dyI;
+    } else {
+      // 手柄名是 tl/tr/bl/br/top/bottom/left/right，必须精确匹配
+      // （不能写 includes('right')，'br' 并不包含 'right'）
+      const atLeft = h === 'left' || h === 'tl' || h === 'bl';
+      const atRight = h === 'right' || h === 'tr' || h === 'br';
+      const atTop = h === 'top' || h === 'tl' || h === 'tr';
+      const atBottom = h === 'bottom' || h === 'bl' || h === 'br';
+      if (atLeft) { nx = o.x + dxI; nw = o.w - dxI; }
+      if (atRight) { nw = o.w + dxI; }
+      if (atTop) { ny = o.y + dyI; nh = o.h - dyI; }
+      if (atBottom) { nh = o.h + dyI; }
+      const minS = 5;
+      if (nw < minS) { if (atLeft) nx = o.x + o.w - minS; nw = minS; }
+      if (nh < minS) { if (atTop) ny = o.y + o.h - minS; nh = minS; }
+    }
+    nx = Math.max(0, Math.min(nx, img.width - Math.max(1, nw)));
+    ny = Math.max(0, Math.min(ny, img.height - Math.max(1, nh)));
+    nw = Math.max(1, Math.min(nw, img.width - nx));
+    nh = Math.max(1, Math.min(nh, img.height - ny));
+    coordBox = {
+      x: Math.round(nx), y: Math.round(ny),
+      w: Math.round(nw), h: Math.round(nh),
+    };
+  }
+
+  /** 绘制坐标框：框体 + 8 向手柄 + 归一化坐标文本 */
+  function paintCoordBox(ctx) {
+    if (!coordBox) return;
+    const r = coordWidgetRect();
+    if (!r) return;
+    ctx.strokeStyle = '#e8a33d';
+    ctx.lineWidth = 2;
+    ctx.fillStyle = 'rgba(232,163,61,0.12)';
+    ctx.fillRect(r.x, r.y, r.w, r.h);
+    ctx.strokeRect(r.x, r.y, r.w, r.h);
+
+    // 手柄：四角 + 四边中点，与标注框的手柄视觉一致
+    const mid = (a, b) => a + (b - a) / 2;
+    const pts = {
+      tl: [r.x, r.y],
+      t: [mid(r.x, r.x + r.w), r.y],
+      tr: [r.x + r.w, r.y],
+      r: [r.x + r.w, mid(r.y, r.y + r.h)],
+      br: [r.x + r.w, r.y + r.h],
+      b: [mid(r.x, r.x + r.w), r.y + r.h],
+      bl: [r.x, r.y + r.h],
+      l: [r.x, mid(r.y, r.y + r.h)],
+    };
+    ctx.fillStyle = '#00c800';
+    for (const key of COORD_HANDLES) {
+      const [hx, hy] = pts[key];
+      ctx.beginPath();
+      ctx.arc(hx, hy, 4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // 框上方显示当前归一化坐标，调整时可直接读数对比
+    if (lastCoords) {
+      ctx.fillStyle = '#e8a33d';
+      ctx.font = 'bold 11px sans-serif';
+      const labelY = r.y - 6;
+      ctx.fillText(lastCoords, r.x + 1, labelY < 12 ? r.y + 14 : labelY);
+    }
   }
 
   /* ---------- 删除 ---------- */
@@ -626,6 +828,13 @@
   function setMode(m) {
     mode = m;
     drawStart = null; drawPreview = null; drawDragging = false;
+    // 坐标框只在坐标模式内存在，切换走即丢弃（它不落盘，无需保留）
+    if (m !== 'copycoord' && (coordBox || coordDrag)) {
+      coordBox = null;
+      coordDrag = null;
+      const info = document.getElementById('colorInfo');
+      if (info) info.textContent = ' ';
+    }
     document.getElementById('drawBtn').classList.toggle('active', m === 'draw');
     document.getElementById('coordBtn').classList.toggle('active', m === 'copycoord');
     document.getElementById('deleteBtn').classList.toggle('active', m === 'delete');
