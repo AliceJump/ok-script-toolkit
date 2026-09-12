@@ -11,23 +11,24 @@
       5. Create and push v{newVersion} tag
 
 .PARAMETER Version
-    Explicit version number (MAJOR.MINOR.PATCH). If omitted, auto-increments patch.
+    Explicit version number (MAJOR.MINOR.PATCH). If omitted, auto-increments minor.
 
 .PARAMETER Major
     Auto-increment major version (e.g. 0.5.3 -> 1.0.0)
 
 .PARAMETER Minor
-    Auto-increment minor version (e.g. 0.5.3 -> 0.6.0)
+    Auto-increment minor version (default, e.g. 0.5.3 -> 0.6.0)
 
 .PARAMETER Patch
-    Auto-increment patch version (default, e.g. 0.5.3 -> 0.5.4)
+    Auto-increment patch version (e.g. 0.5.3 -> 0.5.4)
 
 .PARAMETER DryRun
     Preview mode, no write operations
 
 .EXAMPLE
-    .\scripts\release.ps1              # 0.5.3 -> 0.5.4
+    .\scripts\release.ps1              # 0.5.3 -> 0.6.0 (minor is the default)
     .\scripts\release.ps1 -Minor       # 0.5.3 -> 0.6.0
+    .\scripts\release.ps1 -Patch       # 0.5.3 -> 0.5.4
     .\scripts\release.ps1 -Major       # 0.5.3 -> 1.0.0
     .\scripts\release.ps1 0.8.0        # explicit version
     .\scripts\release.ps1 -DryRun      # preview mode
@@ -98,7 +99,7 @@ if ($Version) {
     }
     $newVersion = $Version
 } else {
-    $level = if ($Major) { 'major' } elseif ($Minor) { 'minor' } else { 'patch' }
+    $level = if ($Major) { 'major' } elseif ($Patch) { 'patch' } else { 'minor' }
     $newVersion = Bump-Version -Current $current -Level $level
 }
 
