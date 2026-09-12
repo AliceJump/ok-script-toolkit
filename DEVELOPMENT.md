@@ -30,7 +30,7 @@ out/                         TypeScript 编译产物（由构建生成）
 
 ## 临时截图与归一化坐标
 
-- **临时截图侧边栏**（`ok-script Templates: 临时截图`）最多保留 10 张截图，超出后自动淘汰最早的一张；图片落在扩展 `globalStorage` 的按工作区哈希隔离子目录中。
+- **临时截图侧边栏**（`ok-script 临时截图`）是活动栏上的**独立容器**（`viewsContainers` 里注册 `okTempShots`，图标 `media/icons/tempShots.svg`），不属于模板容器。最多保留 10 张截图，超出后自动淘汰最早的一张；图片落在扩展 `globalStorage` 的按工作区哈希隔离子目录中。
 - 支持 `Ctrl+V` 粘贴系统剪贴板图片、一键截取游戏窗口、拖入/粘贴图片文件。
 - **导入到标注管理的可靠入口是卡片右上角的 `→` 按钮**（常驻可见）。VS Code 的跨 Webview 拖拽实测不可用：各 webview 是不同 origin 的 iframe，`dataTransfer` 被浏览器屏蔽，**drop 事件也不派发**，因此 `src/tempDrag.ts` 的宿主中继同样收不到。拖拽代码与 `text/plain` 二级通道保留，若后续 VS Code / Chromium 放开跨 origin DnD 即可直接生效。
 - JetBrains 端（见下）**拖拽是能用的**：两个工具窗口同处一个 JVM，用自定义 `DataFlavor` 直接传文件路径。

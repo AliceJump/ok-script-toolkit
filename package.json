@@ -88,6 +88,11 @@
           "id": "okTemplates",
           "title": "%viewContainer.templates.title%",
           "icon": "media/icons/templates.svg"
+        },
+        {
+          "id": "okTempShots",
+          "title": "%viewContainer.tempShots.title%",
+          "icon": "media/icons/tempShots.svg"
         }
       ]
     },
@@ -131,13 +136,15 @@
           "webviewOptions": {
             "retainContextWhenHidden": true
           }
-        },
+        }
+      ],
+      "okTempShots": [
         {
           "type": "webview",
           "id": "okScriptToolkit.tempScreenshots",
           "name": "%view.tempScreenshots%",
           "title": "%view.tempScreenshots.title%",
-          "icon": "media/icons/templates.svg",
+          "icon": "media/icons/tempShots.svg",
           "webviewOptions": {
             "retainContextWhenHidden": true
           }
