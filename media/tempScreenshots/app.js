@@ -222,6 +222,8 @@
     activeId = temps[i] ? temps[i].id : '';
     highlightCard(activeId);
     updateStageEmpty();
+    // 切帧后按新帧的内容矩形重算坐标框位置（存的是归一化坐标，帧尺寸不同也不会跑偏）
+    renderCoordBox();
   }
 
   function highlightCard(id) {
