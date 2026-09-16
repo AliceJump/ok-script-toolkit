@@ -98,6 +98,7 @@ class AssetGalleryController {
     base64Png?: string;
     tempId?: string;
     dragKind?: string;
+    hardForeground?: boolean;
   }): Promise<void> {
     switch (msg.type) {
       case 'ready':
@@ -114,7 +115,7 @@ class AssetGalleryController {
       }
       case 'screenshot': {
         // 从剪贴板粘贴截图
-        await this.handleScreenshot();
+        await this.handleScreenshot(msg.hardForeground);
         break;
       }
       case 'saveToAssets': {
@@ -141,7 +142,7 @@ class AssetGalleryController {
   }
 
   /* ---------- 截图处理 ---------- */
-  private async handleScreenshot(): Promise<void> {
+  private async handleScreenshot(hardForeground?: boolean): Promise<void> {
     const folder = vscode.workspace.workspaceFolders?.[0];
     if (!folder) {
       void vscode.window.showWarningMessage(tr('No workspace folder open.'));
@@ -156,7 +157,7 @@ class AssetGalleryController {
     const ts = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}`;
     const outputPath = path.join(outputDir, `screenshot_${ts}.png`);
 
-    const outcome = await captureGameWindow(outputPath);
+    const outcome = await captureGameWindow(outputPath, hardForeground ? 'foreground' : undefined);
     if (!outcome.ok) {
       if (outcome.reason === 'noScript') {
         void vscode.window.showErrorMessage(tr('Screenshot script not found. capture_game_window.py is missing from the extension.'));

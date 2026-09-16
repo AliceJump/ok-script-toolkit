@@ -12,6 +12,14 @@
   search.placeholder = t('templatesSearch');
   document.getElementById('importBtn').textContent = t('assetImport');
   document.getElementById('screenshotBtn').textContent = t('screenshot');
+  const hardForegroundChk = document.getElementById('hardForegroundChk');
+  document.getElementById('hardForegroundLabel').textContent = t('hardForeground');
+  document.getElementById('fgCheck').title = t('hardForegroundHint');
+  const savedState = vscode.getState() || {};
+  hardForegroundChk.checked = !!savedState.hardForeground;
+  hardForegroundChk.addEventListener('change', () => {
+    vscode.setState(Object.assign({}, vscode.getState() || {}, { hardForeground: hardForegroundChk.checked }));
+  });
   document.getElementById('saveBtn').textContent = t('saveToAssetsTitle');
 
   function updateCount() {
@@ -119,7 +127,7 @@
     vscode.postMessage({ type: 'importFile' });
   });
   document.getElementById('screenshotBtn').addEventListener('click', () => {
-    vscode.postMessage({ type: 'screenshot' });
+    vscode.postMessage({ type: 'screenshot', hardForeground: hardForegroundChk.checked });
   });
   document.getElementById('saveBtn').addEventListener('click', () => {
     vscode.postMessage({ type: 'saveToAssets' });

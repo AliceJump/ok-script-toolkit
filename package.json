@@ -232,6 +232,17 @@
           "default": "",
           "markdownDescription": "%config.okScriptPython%"
         },
+        "okScriptToolkit.captureMethod": {
+          "type": "string",
+          "default": "auto",
+          "enum": [
+            "auto",
+            "wgc",
+            "bitblt",
+            "foreground"
+          ],
+          "markdownDescription": "%config.captureMethod%"
+        },
         "okScriptToolkit.characterProjectPath": {
           "type": "string",
           "default": "",

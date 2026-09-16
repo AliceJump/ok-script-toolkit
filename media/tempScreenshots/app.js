@@ -26,6 +26,14 @@
   document.getElementById('pasteBtn').title = t('tempPasteTooltip');
   document.getElementById('captureBtn').textContent = t('tempCapture');
   document.getElementById('captureBtn').title = t('tempCaptureTooltip');
+  const hardForegroundChk = document.getElementById('hardForegroundChk');
+  document.getElementById('hardForegroundLabel').textContent = t('hardForeground');
+  document.getElementById('fgCheck').title = t('hardForegroundHint');
+  const savedState = vscode.getState() || {};
+  hardForegroundChk.checked = !!savedState.hardForeground;
+  hardForegroundChk.addEventListener('change', () => {
+    vscode.setState(Object.assign({}, vscode.getState() || {}, { hardForeground: hardForegroundChk.checked }));
+  });
   document.getElementById('clearBtn').textContent = t('tempClear');
   carouselBtn.textContent = t('tempCarousel');
   carouselBtn.title = t('tempCarouselTooltip');
@@ -625,7 +633,7 @@
     vscode.postMessage({ type: 'pasteClipboard' });
   });
   document.getElementById('captureBtn').addEventListener('click', () => {
-    vscode.postMessage({ type: 'capture' });
+    vscode.postMessage({ type: 'capture', hardForeground: hardForegroundChk.checked });
   });
   document.getElementById('clearBtn').addEventListener('click', () => {
     if (!temps.length) return;

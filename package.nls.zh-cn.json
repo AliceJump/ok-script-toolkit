@@ -34,6 +34,7 @@
   "config.effectsFile": "相对于工作区根目录的 EffectType 与 EFFECT_DESCRIPTIONS Python 文件。",
   "config.okScriptProjectPath": "包含 src/config.py 的 ok-script 项目根目录，供任务启动器使用。",
   "config.okScriptPython": "运行 ok-script 任务的 Python 解释器；留空时 Windows 优先使用目标项目 .venv。",
+  "config.captureMethod": "游戏窗口截图方式。auto 先尝试 Windows Graphics Capture，失败回退 BitBlt。若启动器/登录界面截出来是空白，改用 foreground：它会把窗口激活到前台再读取屏幕（会抢焦点）。",
   "config.characterProjectPath": "角色技能管理器使用的项目根目录；留空时回退到 okScriptProjectPath 和当前工作区。",
   "config.characterMasterFile": "角色主表 JSON（相对于角色项目根目录）。",
   "config.characterSkillsDirectory": "角色技能 JSON 目录（相对于角色项目根目录）。",

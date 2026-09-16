@@ -33,6 +33,7 @@ const dictionary = {
   tempEmpty: 'Empty', tempDelete: 'Delete',
   tempSendToAssets: 'Send', tempDragHint: 'Drag tip',
   tempCoordCopied: 'Copied: {text}', cancel: 'Cancel',
+  hardForeground: 'Hard foreground', hardForegroundHint: 'Foreground tip',
 };
 
 let html = fs.readFileSync(path.join(componentRoot, 'index.html'), 'utf8');
@@ -43,6 +44,7 @@ html = html
   .replace('<link rel="stylesheet" href="__STYLE_URI__">', '')
   .replace('<script src="__APP_SCRIPT_URI__"></script>', `<script>${fs.readFileSync(path.join(componentRoot, 'app.js'), 'utf8')}</script>`);
 
+let webviewState = {};
 const sent = [];
 const virtualConsole = new VirtualConsole();
 virtualConsole.on('jsdomError', (error) => { throw error; });
@@ -57,7 +59,11 @@ const dom = new JSDOM(html, {
   pretendToBeVisual: true,
   virtualConsole,
   beforeParse(window) {
-    window.acquireVsCodeApi = () => ({ postMessage: (message) => sent.push(message) });
+    window.acquireVsCodeApi = () => ({
+      postMessage: (message) => sent.push(message),
+      getState: () => webviewState,
+      setState: (state) => { webviewState = state || {}; },
+    });
     // 用确定性桩替换 setInterval，便于断言 0.1s 周期并手动推进帧
     const realSetInterval = window.setInterval.bind(window);
     window.setInterval = (fn, ms) => {
@@ -314,6 +320,28 @@ function mouse(type, target, x, y, button = 0) {
   await flush();
   assert(document.getElementById('emptyHint').style.display === 'flex', 'empty hint must show when no temps');
   assert(grid.querySelectorAll('.card').length === 0, 'grid must be cleared');
+
+  /* ---------- 7. 硬前台复选框 ---------- */
+  const fgChk = document.getElementById('hardForegroundChk');
+  assert(fgChk, 'the toolbar must expose a hard-foreground checkbox');
+  assert(document.getElementById('hardForegroundLabel').textContent === 'Hard foreground',
+    'the checkbox label must come from i18n');
+  assert(document.getElementById('fgCheck').title === 'Foreground tip',
+    'the checkbox tooltip must come from i18n');
+  assert(fgChk.checked === false, 'the checkbox must start unchecked');
+
+  const captureBtnEl = document.getElementById('captureBtn');
+  captureBtnEl.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+  assert(lastPost('capture').hardForeground === false,
+    'capturing with an unchecked box must not request the foreground path');
+
+  fgChk.checked = true;
+  fgChk.dispatchEvent(new window.Event('change', { bubbles: true }));
+  assert(webviewState.hardForeground === true, 'ticking the box must persist it in webview state');
+
+  captureBtnEl.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+  assert(lastPost('capture').hardForeground === true,
+    'capturing with a ticked box must request the foreground path');
 
   console.log('test_temp_screenshots: OK');
 })().catch((error) => {

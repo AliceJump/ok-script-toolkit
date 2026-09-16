@@ -35,6 +35,17 @@
   #search:focus { border-color: var(--vscode-focusBorder); }
   #count { opacity: .75; font-size: 11px; white-space: nowrap; }
   .spacer { flex: 1; }
+  .toolbar .fg-check {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    color: var(--vscode-foreground);
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+  }
+  .toolbar .fg-check input { margin: 0; }
   #grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));

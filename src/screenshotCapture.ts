@@ -91,7 +91,7 @@ export type CaptureOutcome =
  * 读取失败时回退到让用户输入窗口标题正则（取消则返回 cancelled）。
  * 只负责把图片写到 outputPath，落库/入库由调用方处理。
  */
-export async function captureGameWindow(outputPath: string): Promise<CaptureOutcome> {
+export async function captureGameWindow(outputPath: string, methodOverride?: string): Promise<CaptureOutcome> {
   const { projectDir, pythonPath } = getProjectConfig();
   let windowConfig: WindowConfig | undefined;
   if (projectDir) {
@@ -131,7 +131,7 @@ export async function captureGameWindow(outputPath: string): Promise<CaptureOutc
     ? JSON.stringify({ exe: exeNames, title: titleRegex, hwnd_class: hwndClass })
     : undefined;
 
-  return runCaptureScript(captureScript, outputPath, titleRegex, windowConfigJson, projectDir || undefined);
+  return runCaptureScript(captureScript, outputPath, titleRegex, windowConfigJson, projectDir || undefined, methodOverride);
 }
 
 function runCaptureScript(
@@ -140,6 +140,7 @@ function runCaptureScript(
   titlePattern: string | undefined,
   configJson?: string,
   projectDir?: string,
+  methodOverride?: string,
 ): Promise<CaptureOutcome> {
   return new Promise<CaptureOutcome>((resolve) => {
     const args: string[] = [scriptPath, outputPath];
@@ -152,8 +153,13 @@ function runCaptureScript(
       args.push('--project-dir', projectDir);
     }
 
+    const method = methodOverride
+      || vscode.workspace.getConfiguration('okScriptToolkit').get<string>('captureMethod')
+      || 'auto';
+    args.push('--method', method);
+
     const { pythonPath } = getProjectConfig();
-    execFile(pythonPath, args, { timeout: 10000 }, (error) => {
+    execFile(pythonPath, args, { timeout: 30000 }, (error) => {
       if (error) {
         resolve({ ok: false, reason: 'failed', error: error.message });
         return;

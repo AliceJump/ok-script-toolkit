@@ -136,6 +136,7 @@ class TempScreenshotController {
     id?: string;
     data?: string;
     text?: string;
+    hardForeground?: boolean;
   }): Promise<void> {
     switch (msg.type) {
       case 'ready':
@@ -155,7 +156,7 @@ class TempScreenshotController {
       }
 
       case 'capture': {
-        await this.handleCapture();
+        await this.handleCapture(msg.hardForeground);
         break;
       }
 
@@ -217,12 +218,12 @@ class TempScreenshotController {
     }
   }
 
-  private async handleCapture(): Promise<void> {
+  private async handleCapture(hardForeground?: boolean): Promise<void> {
     if (this.busy) return;
     this.busy = true;
     try {
       const outputPath = this.store.newFilePath();
-      const outcome = await captureGameWindow(outputPath);
+      const outcome = await captureGameWindow(outputPath, hardForeground ? 'foreground' : undefined);
       if (outcome.ok) {
         this.store.register(outputPath);
         void vscode.window.showInformationMessage(tr('Screenshot saved: {name}', { name: path.basename(outputPath) }));

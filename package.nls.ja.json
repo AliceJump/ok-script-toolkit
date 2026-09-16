@@ -34,6 +34,7 @@
   "config.effectsFile": "EffectType と EFFECT_DESCRIPTIONS を含む Python ファイル。",
   "config.okScriptProjectPath": "タスク起動で使用する ok-script プロジェクトルート。",
   "config.okScriptPython": "ok-script タスク実行に使用する Python。",
+  "config.captureMethod": "ゲームウィンドウのキャプチャ方式。auto は Windows Graphics Capture を試し、失敗したら BitBlt に戻します。ランチャーやログイン画面が空白になる場合は foreground を使ってください。ウィンドウを前面に出して画面を読み取るため、フォーカスが奪われます。",
   "config.characterProjectPath": "キャラクター・スキル管理で使用するプロジェクトルート。",
   "config.characterMasterFile": "キャラクターマスター JSON。",
   "config.characterSkillsDirectory": "キャラクタースキル JSON ディレクトリ。",
