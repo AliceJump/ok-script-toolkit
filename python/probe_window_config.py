@@ -19,7 +19,8 @@ sys.stderr.reconfigure(encoding="utf-8")
 
 # 需要从 config dict 中提取的窗口匹配相关字段
 # config["windows"] 下的键
-WINDOWS_SUB_KEYS = ("exe", "title", "hwnd_class", "top_hwnd_class", "capture_method")
+# args 是启动参数：插件自己拉起游戏时直接带上（框架 start_device() 没有 args 入口）
+WINDOWS_SUB_KEYS = ("exe", "title", "hwnd_class", "top_hwnd_class", "capture_method", "args")
 
 
 def _resolve_config_path_from_main(project_dir):

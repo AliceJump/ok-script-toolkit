@@ -10,6 +10,10 @@ selected_exe / selected_hwnd / pc_full_path（DeviceManager 启动时原生优�
 pc_full_path 记录的游戏（与 StartController.start_device 同源），然后轮询等待
 窗口出现再连接。pc_full_path 在每次连接成功后回写，因此首次成功后即可始终自动启动。
 
+拉起时会把 config['windows']['args'] 一并传给 execute()。框架 start_device() 只认
+全局配置 "Launch with DX11"，没有读 windows.args 的入口；项目以往靠 main.py 里的
+猴子补丁补这一步，而插件不走 main.py —— 所以由插件自己读、自己带上。
+
 用法:
     python connect_game.py <project_dir>               # 连接（未运行则自动启动）
     python connect_game.py <project_dir> --disconnect  # 断开（清除选中）
@@ -96,6 +100,19 @@ def main():
     hwnd_class = _plain(win.get("hwnd_class")) if isinstance(win.get("hwnd_class"), str) else None
     top_hwnd_class = _plain(win.get("top_hwnd_class")) if isinstance(win.get("top_hwnd_class"), str) else None
 
+    # 游戏启动参数：插件自己读 config 的 windows.args，拉起 exe 时直接带上。
+    # 框架 StartController.start_device() 拼启动命令时只认全局配置 "Launch with DX11"，
+    # **没有读 windows.args 的入口**；项目以往靠 main.py 里的猴子补丁补这一步，而插件
+    # 不走 main.py —— 所以这条启动路径必须由插件自己读、自己传，否则启动器类游戏
+    # （需要 -start=xxx_launcher 之类参数）根本起不来。
+    raw_args = win.get("args")
+    if isinstance(raw_args, str):
+        launch_args = _plain(raw_args) or ""
+    elif isinstance(raw_args, list):
+        launch_args = " ".join(str(a) for a in raw_args if _plain(a) is not None)
+    else:
+        launch_args = ""
+
     from ok.util.config import Config
 
     devices = Config("devices", DEVICES_DEFAULTS, folder=os.path.join(project_dir, "configs"))
@@ -130,8 +147,10 @@ def main():
         if not exe_path or str(exe_path).lower() == "none" or not os.path.isfile(str(exe_path)):
             _emit_error("游戏未运行，且没有可用的游戏路径（configs/devices.json 的 pc_full_path）。"
                         "请先手动运行一次游戏并连接，或在该文件中填写游戏完整路径。")
-        if not execute(str(exe_path), start_method=WINDOWS_START_METHOD_START):
+        if not execute(str(exe_path), arguments=launch_args or None,
+                       start_method=WINDOWS_START_METHOD_START):
             _emit_error(f"游戏启动失败：{exe_path}")
+        print(f"已启动游戏：{exe_path}" + (f" {launch_args}" if launch_args else ""), flush=True)
         started = True
 
         timeout = _extract_start_timeout(config_path) or 120
