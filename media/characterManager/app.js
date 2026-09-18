@@ -93,11 +93,32 @@ function readonlyControl(value, multiline) {
   node.setAttribute('aria-readonly', 'true');
   return node;
 }
+const SKILL_TYPE_IDS = ['normal_attack', 'skill', 'combo', 'ultimate', 'talent', 'potential'];
+const SKILL_TYPE_I18N_KEYS = {
+  normal_attack: 'skillTypeNormalAttack',
+  skill: 'skillTypeSkill',
+  combo: 'skillTypeCombo',
+  ultimate: 'skillTypeUltimate',
+  talent: 'skillTypeTalent',
+  potential: 'skillTypePotential',
+};
+function skillTypeLabel(id) { return t(SKILL_TYPE_I18N_KEYS[id] || id); }
+function skillTypeOptions() { return SKILL_TYPE_IDS.map((id) => ({ value: id, label: skillTypeLabel(id) })); }
+
 function selectControl(value, options) {
   const select = document.createElement('select');
-  const all = [...new Set([value, ...options].filter(Boolean))];
-  for (const option of all) select.appendChild(new Option(option, option));
-  select.value = value || all[0] || '';
+  const isObjArray = Array.isArray(options) && options.length > 0 && typeof options[0] === 'object' && options[0] !== null && 'value' in options[0];
+  if (isObjArray) {
+    const all = new Map();
+    if (value) all.set(value, value);
+    for (const opt of options) all.set(opt.value, opt.label);
+    for (const [v, lbl] of all) select.appendChild(new Option(lbl, v));
+    select.value = value || options[0]?.value || '';
+  } else {
+    const all = [...new Set([value, ...options].filter(Boolean))];
+    for (const option of all) select.appendChild(new Option(option, option));
+    select.value = value || all[0] || '';
+  }
   return select;
 }
 
@@ -213,7 +234,7 @@ function skillTypeOptions() { return [t('skillTypeNormalAttack'), t('skillTypeSk
 function showSkillEditor(character, skill) {
   const editing = !!skill;
   const synced = editing && skill.source !== 'custom';
-  const value = skill || { skillId: `${character.characterId}_skill`, name: '', skillType: t('skillTypeSkill'), element: character.element, description: '', damageMultiplier: '', staggerValue: 0, cooldown: '', spiritCost: 0, effects: [] };
+  const value = skill || { skillId: `${character.characterId}_skill`, name: '', skillType: 'skill', element: character.element, description: '', damageMultiplier: '', staggerValue: 0, cooldown: '', spiritCost: 0, effects: [] };
   showModal(editing ? t('modifySkill') : t('addSkill'), (form) => {
     const controls = {
       skillId: inputControl(value.skillId), name: inputControl(value.name), skillType: selectControl(value.skillType, skillTypeOptions()),
@@ -291,11 +312,19 @@ function fillSelect(select, values, label) {
   for (const value of [...new Set(values.filter(Boolean))].sort((a, b) => text(a).localeCompare(text(b)))) select.appendChild(new Option(value, value));
   if ([...select.options].some((option) => option.value === selected)) select.value = selected;
 }
+function fillSelectWithLabels(select, items, label) {
+  const selected = select.value;
+  select.replaceChildren(new Option(label, ''));
+  const entries = [...new Map(items.map((item) => [item.value, item.label])).entries()].sort((a, b) => a[1].localeCompare(b[1]));
+  for (const [value, lbl] of entries) select.appendChild(new Option(lbl, value));
+  if ([...select.options].some((option) => option.value === selected)) select.value = selected;
+}
 function setupFilters() {
   fillSelect($('starFilter'), snapshot.characters.map((item) => item.star ? String(item.star) : t('unknownStar')), t('allStars'));
   fillSelect($('elementFilter'), snapshot.characters.map((item) => item.element || t('unknownElement')), t('allElements'));
   fillSelect($('professionFilter'), snapshot.characters.map((item) => item.profession || t('unknownProfession')), t('allProfessions'));
-  fillSelect($('skillTypeFilter'), snapshot.characters.flatMap((item) => item.skills.map((skill) => skill.skillType)), t('allSkillTypes'));
+  const skillTypes = [...new Set(snapshot.characters.flatMap((item) => item.skills.map((skill) => skill.skillType)).filter(Boolean))];
+  fillSelectWithLabels($('skillTypeFilter'), skillTypes.map((id) => ({ value: id, label: skillTypeLabel(id) })), t('allSkillTypes'));
   fillSelect($('effectCategory'), snapshot.effectCategories || snapshot.effects.map((item) => item.category).filter((category) => category !== '__undefined__'), t('allCategories'));
 }
 function characterHaystack(character) {
@@ -414,7 +443,7 @@ function renderCharacterDetail(character) {
     const id = element('div', 'skill-id clickable-id', skill.skillId);
     id.title = t('clickCopySkillId'); id.addEventListener('click', () => postCopy(skill.skillId)); title.appendChild(id); head.appendChild(title);
     const skillMeta = element('div', 'skill-meta');
-    skillMeta.appendChild(makeChip(skill.skillType));
+    skillMeta.appendChild(makeChip(skillTypeLabel(skill.skillType)));
     if (skill.element) skillMeta.appendChild(makeChip(skill.element));
     if (skill.hasEnhancement) skillMeta.appendChild(makeChip(t('enhancedState')));
     skillMeta.appendChild(button(`✎ ${t('modify')}`, 'action-button action-edit compact', () => showSkillEditor(character, skill), t('modifySkill')));
@@ -438,8 +467,6 @@ function renderCharacterDetail(character) {
       enhancementHead.append(name, enhancementActions); block.appendChild(enhancementHead);
       if (enhancement.triggerText) block.appendChild(element('div', 'enhancement-trigger', enhancement.triggerText));
       if (enhancement.enhancementEffect) block.appendChild(element('div', 'item-sub', enhancement.enhancementEffect));
-      const anySvg = '<svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><path d="M12 3v4"/><path d="M8 7l4 4 4-4"/><path d="M6 14l6 5 6-5" opacity=".5"/><circle cx="12" cy="20" r="1.5" fill="currentColor" stroke="none"/></svg>';
-      const allSvg = '<svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><path d="M5 12h14"/><path d="M9 8l-4 4 4 4"/><path d="M15 8l4 4-4 4"/><circle cx="5" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.5" fill="currentColor" stroke="none"/></svg>';
       for (const [label, refs, mode] of [[t('triggerEffects'), enhancement.triggerEffects, enhancement.triggerEffectMode], [t('outputEffects'), enhancement.effects, null]]) {
         if (mode) {
           if (refs.length <= 1) {
@@ -453,7 +480,13 @@ function renderCharacterDetail(character) {
             const wrap = element('div', `trigger-mode-wrap mode-${mode}`);
             wrap.title = mode === 'any' ? t('triggerEffectModeAnyHint') : t('triggerEffectModeAllHint');
             const iconCol = element('div', 'trigger-mode-icon');
-            iconCol.innerHTML = mode === 'any' ? anySvg : allSvg;
+            const iconPath = mode === 'any' ? 'icons/trigger-any.svg' : 'icons/trigger-all.svg';
+            const img = document.createElement('img');
+            img.src = iconPath;
+            img.alt = mode === 'any' ? 'ANY' : 'ALL';
+            img.style.width = '24px';
+            img.style.height = '24px';
+            iconCol.appendChild(img);
             const lbl = element('div', 'trigger-mode-label', mode === 'any' ? 'ANY' : 'ALL');
             iconCol.appendChild(lbl);
             const body = element('div', 'trigger-mode-body');
