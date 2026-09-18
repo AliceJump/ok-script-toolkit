@@ -1,0 +1,95 @@
+# 演示素材
+
+README 里引用的演示图放在这个目录。当前 6 张已全部就位并在 README 中启用：
+
+| 文件名 | 大小 | 时长 | 用在 README 的位置 |
+|---|---|---|---|
+| `hero.gif` | 1.24 MB | 23.6s | 顶部（`## 功能` 之前） |
+| `code-hints.gif` | 0.29 MB | 8.2s | `### 代码开发辅助` |
+| `template-panel.gif` | 3.58 MB | 57.4s | `### 模板管理` |
+| `temp-shots.gif` | 0.47 MB | 17.1s | `### 临时截图` |
+| `task-launcher.gif` | 1.27 MB | 28.3s | `### 任务启动` |
+| `character-manager.gif` | 2.18 MB | 31.4s | `### 角色技能管理` |
+
+全部为 **900×476 / 12fps**，合计 **9.0 MB**。
+
+底部已统一裁掉 **86px** 录屏黑边（原始 2560×1440 → 裁到 1354 → 缩放后 900×476）。
+未裁边时是 900×506 / 9.2 MB。
+
+> [!NOTE]
+> `template-panel.gif` 是 `template-panel-14s.mkv`（前 14s）+ `template-panel.mkv` 拼接而成，
+> 覆盖「模板面板 → 模板素材 → 标注编辑器」的完整链路。它是唯一超过 30s 的一张，
+> 若嫌太长，可用 `-s` / `-e` 重新裁剪。
+
+源录制文件在 `C:\Users\26309\Videos`（2560×1440 @ 60fps），本目录的 GIF 由它们转换而来。
+重新生成用仓库根目录的 `scripts/make-gif.sh`，工具链说明见
+[`../scripts/README-gif.md`](../scripts/README-gif.md)。
+
+## 制作要求
+
+- **宽度**：统一 **900px**（hero 可用 1000px）。GitHub README 正文栏约 1012px 宽，
+  超过会被压缩，小于 800px 会显得空。手机端会自动缩放，无需额外处理。
+- **体积**：单个 GIF **控制在 5MB 以内**。GitHub 对单文件超过 10MB 的仓库会告警，
+  超过 50MB 直接拒绝 push。GIF 体积 = 帧数 × 画面复杂度，所以——
+- **压缩技巧**：
+  - 录制时**只框选需要展示的区域**，不要整屏录，这是最有效的减重手段。
+  - 帧率降到 **10–12 fps** 就够，演示操作不需要 30/60 fps。
+  - 颜色数降到 **128 色**（`gifsicle --colors 128`）。
+  - 优先用 `gifsicle -O3 --lossy=80` 优化；体积仍超标就考虑改录 MP4 + 转 WebP，
+    或截成两张静态 PNG。
+  - 单 GIF 超过 10 秒建议拆成两段，观众注意力撑不住。
+- **裁掉黑边**：窗口捕获常在画面下方多录进一条**纯黑区域**（捕获区域比窗口高时就会出现），
+  它对演示毫无价值，还会让图片下面拖一条黑带。用 `--crop-bottom` 一次解决，
+  本目录 6 张图都已裁掉底部 **86px**（1440 → 1354，缩放后 900×476）。
+  测量方法见 [`../scripts/README-gif.md`](../scripts/README-gif.md)。
+- **可读性**：VS Code 默认深色主题录出来对比度好；如果录浅色主题，注意
+  README 在 GitHub 深色模式下也能看，不要用低对比度的浅灰配浅灰。
+- **光标**：录屏时鼠标移动放慢、在关键位置停顿约 0.5s，方便观众跟上。
+
+## 推荐工作流：录 MP4 → 转 GIF
+
+直接用录制软件导出 GIF 画质通常偏差（默认调色板只有 216 色，容易出色带）。
+更好的做法是**录成 MP4，再用 ffmpeg 转 GIF**，本仓库已提供脚本：
+
+```bash
+# 基础用法（默认 900px 宽 / 12fps，输出到 screenshots/<同名>.gif）
+./scripts/make-gif.sh demo.mp4
+
+# 指定输出路径
+./scripts/make-gif.sh demo.mp4 -o screenshots/hero.gif
+
+# 只保留第 3~9 秒（演示前的准备工作剪掉）
+./scripts/make-gif.sh demo.mp4 -s 3 -e 9
+
+# 超过 4MB 就自动降帧率重试
+./scripts/make-gif.sh demo.mp4 --max-mb 4
+
+# 裁掉底部 86px 黑边（录屏时窗口下方多录进来的纯黑区域）
+./scripts/make-gif.sh demo.mp4 --crop-bottom 86
+
+# 减小体积的三板斧
+./scripts/make-gif.sh demo.mp4 -w 800 -f 10 -c 128
+```
+
+完整参数用 `./scripts/make-gif.sh -h` 查看。脚本内部用**两遍调色板法**
+（`palettegen` + `paletteuse`）——先从视频统计出最多 256 色的最优调色板，
+再用它做抖动映射，画质比"一步转 GIF"高一档；装了 `gifsicle` 还会再压一道。
+超出体积上限时脚本会自动逐档降帧率（最低 6fps），仍超标则给出具体调整建议。
+
+> [!TIP]
+> `gifsicle` 能再减 **35~46%** 体积，强烈建议装。注意 **它不在 winget 源里**，
+> `winget install gifsicle` 会失败 —— 可行的安装方式见
+> [`../scripts/README-gif.md`](../scripts/README-gif.md)。
+
+
+## 为什么这个目录不会被塞进 VSIX
+
+根目录 `.vscodeignore` 里已经有 `screenshots/**`，所以这里的图片**只服务于 GitHub 上的
+README 展示，不会被打进扩展安装包**。可以放心放高分辨率素材。
+
+## 注意
+
+`jetbrains/screenshots/` 是给子仓库 README 用的独立目录（子仓库是独立 git 仓库，
+无法引用父仓库的 `.vscodeignore` 规则，但因为子仓库整体在 `.vscodeignore` 里被
+`jetbrains/**` 排除，同样不会进 VSIX）。子仓库那个目录里用的是英文文件名：
+`hero.gif`、`code-hints.gif`、`tool-windows.gif`、`character-manager.gif`。

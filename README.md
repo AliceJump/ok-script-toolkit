@@ -1,18 +1,67 @@
+<div align="center">
+
+<img src="icon.png" alt="ok-script Toolkit" width="128" height="128">
+
 # ok-script Toolkit
+
+**把 ok-script 的语言、OCR、模板、技能和任务数据，直接搬进 VS Code 的开发流程。**
+
+语言键补全 · OCR 修正提示 · 模板浏览 · 任务启动 · 角色技能管理
+
+[![VS Code Marketplace](https://img.shields.io/badge/VS%20Code%20Marketplace-ok--script%20Toolkit-007ACC?logo=visualstudiocode&logoColor=white)](https://marketplace.visualstudio.com/items?itemName=AliceJump.ok-script-toolkit)
+[![JetBrains Marketplace](https://img.shields.io/badge/JetBrains%20Marketplace-ok--script%20Toolkit-000000?logo=jetbrains&logoColor=white)](https://plugins.jetbrains.com/plugin/34091-ok-script-toolkit)
+[![Version](https://img.shields.io/badge/version-1.4.0-blue)](package.json)
+[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![VS Code](https://img.shields.io/badge/VS%20Code-%5E1.85.0-007ACC)](package.json)
+
+[功能](#功能) · [数据来源](#数据来源) · [配置](#配置) · [命令](#命令) · [常见问题](#更新后不生效)
+
+</div>
+
+---
 
 VS Code 扩展，为 ok-script 项目的 Python 开发提供语言键、OCR 修正、模板和技能效果的数据提示，同时内置模板浏览、任务启动和角色技能管理面板，让 ok-script 的语言、OCR、模板、技能和任务数据直接进入开发流程。
 
+> [!TIP]
+> 下面每个功能章节开头的演示图都是可点的——如果动图没加载出来，直接点开链接看。
+
+<p align="center">
+  <a href="screenshots/hero.gif"><img src="screenshots/hero.gif" alt="ok-script Toolkit 整体演示" width="900"></a>
+</p>
+
 ## 功能
+
+| 模块 | 一句话说明 |
+|---|---|
+| [代码开发辅助](#代码开发辅助) | 在编辑器内补全和解释 `self.lang`、OCR 正则与技能效果 ID |
+| [模板管理](#模板管理) | 网格浏览模板，单击插入 `fL.<名称>`，支持缩略图预览 |
+| [临时截图](#临时截图) | 活动栏里的 10 张暂存区，框选即可复制归一化坐标 |
+| [任务启动](#任务启动) | 从 `config.py` 自动生成参数表单并运行任务 |
+| [角色技能管理](#角色技能管理) | 角色 / 技能 / 效果 / 强化组的可视化管理与诊断 |
+| [多语言支持](#多语言支持) | 界面支持 6 种语言，数据提示跟随目标项目 |
 
 ### 代码开发辅助
 
 在编辑 Python 代码时，扩展自动识别 ok-script 特有的 API 上下文，提供精准的数据提示和补全：
 
-- **`self.lang` 语言键**：输入 `self.lang.` 补全语言模块和语言键，补全详情和行内幽灵注释显示当前语言的值（`string` 类型用 `「值」`、`pattern` 类型用 `~值~` 标记），悬停可查看 `zh_CN`、`zh_TW`、`en_US`、`ja_JP`、`ko_KR`、`es_ES` 全部语言的值。
-- **OCR 修正**：在 `ocr`、`wait_ocr`、`wait_click_ocr`、`find_boxes` 等函数的 `match` 参数处，悬停可查看正则 pattern 在 `ocr.po` 中的全部语言修正映射，行内显示修正后的值（如 `→ 体力[0-9]+`），引号内输入可补全 `ocr.po` 中的 key。
-- **技能效果 ID**：悬停 `EffectType.XXX` 或 `"effect_id": "XXX"` 显示效果 ID、分类和中文描述，行内幽灵注释显示中文说明（如 `「敌人被施加寒冷元素」`），在 `effect_id: "` 的引号内输入可补全全部效果 ID，按分类展示。数据从 `src/data/effects.py` 自动解析，无需手动维护。
+<p align="center">
+  <a href="screenshots/code-hints.gif"><img src="screenshots/code-hints.gif" alt="self.lang 语言键补全与多语言 hover" width="900"></a>
+</p>
+
+- **`self.lang` 语言键**
+  输入 `self.lang.` 补全语言模块和语言键，补全详情和行内幽灵注释显示当前语言的值（`string` 类型用 `「值」`、`pattern` 类型用 `~值~` 标记），悬停可查看 `zh_CN`、`zh_TW`、`en_US`、`ja_JP`、`ko_KR`、`es_ES` 全部语言的值。
+
+- **OCR 修正**
+  在 `ocr`、`wait_ocr`、`wait_click_ocr`、`find_boxes` 等函数的 `match` 参数处，悬停可查看正则 pattern 在 `ocr.po` 中的全部语言修正映射，行内显示修正后的值（如 `→ 体力[0-9]+`），引号内输入可补全 `ocr.po` 中的 key。
+
+- **技能效果 ID**
+  悬停 `EffectType.XXX` 或 `"effect_id": "XXX"` 显示效果 ID、分类和中文描述，行内幽灵注释显示中文说明（如 `「敌人被施加寒冷元素」`），在 `effect_id: "` 的引号内输入可补全全部效果 ID，按分类展示。数据从 `src/data/effects.py` 自动解析，无需手动维护。
 
 ### 模板管理
+
+<p align="center">
+  <a href="screenshots/template-panel.gif"><img src="screenshots/template-panel.gif" alt="模板面板：搜索、缩略图预览与快速插入" width="900"></a>
+</p>
 
 - **模板面板**：通过侧边栏图标或 `Ctrl+Alt+T` 快捷键（需聚焦 Python 编辑器时生效）打开，网格展示工作区全部模板的缩略图，支持按名称实时搜索和过滤。
 - **快速插入**：单击卡片将 `fL.<模板名>` 插入编辑器光标处，双击复制到剪贴板，点击缩略图打开来源原图。
@@ -20,43 +69,63 @@ VS Code 扩展，为 ok-script 项目的 Python 开发提供语言键、OCR 修�
 - 也可通过命令 **ok-script 工具箱: 在编辑器中打开模板面板** 在编辑器区打开更大的网格视图。
 - 支持侧边栏（模板面板和模板素材两个视图）和编辑器大窗口两种浏览方式。
 
-#### 临时截图
+```python
+self.wait_click_feature(feature=fL.give_gift, time_out=10)
+```
 
-- **ok-script 临时截图** 是活动栏上的**独立容器**（有自己的图标），里面是一个最多 10 张的暂存区（超出自动淘汰最早一张），用于快速取素材：
-  `Ctrl+V` 粘贴剪贴板图片、点「截屏」截取游戏窗口，或直接把图片文件拖进来。
-- **0.1s 轮播**：按 100ms 间隔循环播放全部截图，方便观察有移动界限的按钮等目标。
-  轮播与框选相互独立——框选期间轮播不停，选框松手后保留在原位，便于反复比对微调。
-- **框选复制归一化坐标**：在「框选坐标」模式下框选，会把 `x,y,tox,toy`（左上 / 右下，按图片宽高归一化到 0..1，
-  保留 4 位小数）复制到剪贴板。同样支持滚轮缩放、中键/空白拖拽平移。
-- 框选完成后**框会保留并可继续调整**（带 8 向手柄、可整体拖动，交互与模板标注框一致）：
-  **创建时与每次调整结束都会重新复制一次当前框的坐标**；框本身不写入标注数据、不落盘。
-  点击图片的非交互部分（框体与手柄之外）即清除。
-- 缩略图卡片右上角的 **→** 按钮把该张导入「标注管理」（即复制进 `ok_templates` 并登记 COCO）。
-  注：VS Code 的跨 Webview 拖拽不可用（各 webview 是不同 origin 的 iframe，`dataTransfer` 被屏蔽），
-  所以这个按钮是导入的可靠入口。
-- **标注编辑器**同样支持该模式：工具栏「坐标 (C)」或按 `C` 键后框选，直接复制同样的
-  `x,y,tox,toy` 归一化坐标，不会创建标注框、不改动 COCO。得到的框同样带手柄可继续微调，
-  每次调整结束重新复制；点击图片非交互部分清除。快捷键可用
-  `okScriptToolkit.annotationKeybindings` 的 `copyCoords` 覆盖。
+悬停 `fL.give_gift` 可查看对应模板裁剪图；输入 `fL.` 可从模板名称列表中选择。
+
+### 临时截图
+
+<p align="center">
+  <a href="screenshots/temp-shots.gif"><img src="screenshots/temp-shots.gif" alt="临时截图：轮播与框选复制归一化坐标" width="900"></a>
+</p>
+
+**ok-script 临时截图** 是活动栏上的**独立容器**（有自己的图标），里面是一个最多 10 张的暂存区（超出自动淘汰最早一张），用于快速取素材：
+
+| 能力 | 说明 |
+|---|---|
+| 入列 | `Ctrl+V` 粘贴剪贴板图片、点「截屏」截取游戏窗口，或直接把图片文件拖进来 |
+| 0.1s 轮播 | 按 100ms 间隔循环播放全部截图，方便观察有移动界限的按钮等目标 |
+| 框选复制 | 在「框选坐标」模式下框选，把 `x,y,tox,toy` 归一化坐标复制到剪贴板 |
+| 导入标注 | 缩略图卡片右上角的 **→** 按钮把该张导入「标注管理」（即复制进 `ok_templates` 并登记 COCO） |
+
+细节说明：
+
+- 轮播与框选相互独立——框选期间轮播不停，选框松手后保留在原位，便于反复比对微调。
+- 归一化坐标按图片宽高归一化到 0..1，保留 4 位小数，同样支持滚轮缩放、中键/空白拖拽平移。
+- 框选完成后**框会保留并可继续调整**（带 8 向手柄、可整体拖动，交互与模板标注框一致）：**创建时与每次调整结束都会重新复制一次当前框的坐标**；框本身不写入标注数据、不落盘。点击图片的非交互部分（框体与手柄之外）即清除。
+- 注：VS Code 的跨 Webview 拖拽不可用（各 webview 是不同 origin 的 iframe，`dataTransfer` 被屏蔽），所以 **→** 按钮是导入的可靠入口。
+- **标注编辑器**同样支持该模式：工具栏「坐标 (C)」或按 `C` 键后框选，直接复制同样的 `x,y,tox,toy` 归一化坐标，不会创建标注框、不改动 COCO。得到的框同样带手柄可继续微调，每次调整结束重新复制；点击图片非交互部分清除。快捷键可用 `okScriptToolkit.annotationKeybindings` 的 `copyCoords` 覆盖。
 
 ### 任务启动
+
+<p align="center">
+  <a href="screenshots/task-launcher.gif"><img src="screenshots/task-launcher.gif" alt="任务启动：参数表单与运行日志" width="900"></a>
+</p>
 
 - 从目标项目的 `src/config.py` / `config.py` 自动解析所有一次性任务和触发任务，生成完整的参数配置表单。
 - 支持布尔、数字、文本、多行文本、下拉、多选、列表、项目级联下拉和结构化条件序列等多种参数类型。
 - 任务名、说明、参数名和选项标签自动读取目标项目 i18n 翻译显示；支持递归可折叠的子任务配置树。
-- 每个项目、每个任务独立保存参数覆盖，参数修改后自动保存，覆盖仅对启动的子进程生效，不写回目标项目配置文件。
-- 可为单个任务设置自动停止超时，运行日志输出到专属输出频道。
-- 任务运行中可随时暂停/恢复：卡片按钮在 ⏸ 暂停与 ▶ 恢复间切换，走 ok-script 框架的 executor 暂停机制（与 GUI 暂停按钮语义一致，任务可安全恢复，不影响计时统计）。
+- **单一常驻执行器**：整个项目只维持一个进程——连接一次游戏后，由 ok-script 框架原生的 `TaskExecutor` 循环轮询全部已启用的触发任务，实现多触发任务串连轮询（旧版逐个启动会让框架把触发任务列表收窄成单个）。
+- **触发任务勾选启用**：卡片上的「启用」勾选框即入列 / 出列，勾选状态按项目持久化，重开面板或重启 IDE 自动入列，不再需要逐个「启动」。
+- **一次性任务入队**：点「启动」把任务送进同一个执行器的队列，执行一次后自动出队，不会另起进程争抢游戏窗口。
+- 每个项目、每个任务独立保存参数覆盖，参数修改后自动保存并即时推送给运行中的执行器；覆盖只作用于执行器进程的内存，不写回目标项目配置文件。
+- 执行器可随时暂停/恢复（全局挂起轮询与任务），也可以「停止当前任务」而不关闭执行器；运行日志输出到专属输出频道。
 
 ### 角色技能管理
 
+<p align="center">
+  <a href="screenshots/character-manager.gif"><img src="screenshots/character-manager.gif" alt="角色技能管理：筛选、编辑与数据诊断" width="900"></a>
+</p>
+
 执行命令 **ok-script 工具箱: 打开角色技能管理面板**，在编辑器区打开角色数据库总览：
 
-- 按星级、元素、职业、技能类型、强化组和诊断状态筛选角色，查看角色基础信息、多语言名称、技能说明、倍率、失衡、冷却和技力等数据。
-- 管理技能和强化组：添加、修改、删除自定义技能；为任意技能配置强化组的基础效果、触发条件和产出效果，均从效果定义中按类别多选。
-- 效果索引：按效果分类汇总，并反向列出每个效果被哪些角色、技能和强化组引用；支持添加新的效果类别和效果定义。
-- 名称本地化矩阵：横向比较全部 locale 的角色名称，突出显示缺失翻译。
-- 数据诊断：检查角色主表与技能文件覆盖、重复技能 ID、未知效果 ID、强化声明不一致和缺失语言等问题，诊断结果可一键跳转到对应文件。
+- **筛选与查看**：按星级、元素、职业、技能类型、强化组和诊断状态筛选角色，查看角色基础信息、多语言名称、技能说明、倍率、失衡、冷却和技力等数据。
+- **技能与强化组管理**：添加、修改、删除自定义技能；为任意技能配置强化组的基础效果、触发条件和产出效果，均从效果定义中按类别多选。
+- **效果索引**：按效果分类汇总，并反向列出每个效果被哪些角色、技能和强化组引用；支持添加新的效果类别和效果定义。
+- **名称本地化矩阵**：横向比较全部 locale 的角色名称，突出显示缺失翻译。
+- **数据诊断**：检查角色主表与技能文件覆盖、重复技能 ID、未知效果 ID、强化声明不一致和缺失语言等问题，诊断结果可一键跳转到对应文件。
 - 写入前自动生成备份，通过临时文件校验后原子替换源文件；源文件保存后面板自动刷新。
 
 ### 多语言支持
@@ -65,19 +134,25 @@ VS Code 扩展，为 ok-script 项目的 Python 开发提供语言键、OCR 修�
 - 侧边栏分为 **ok-script 工具**（工具箱 + 任务启动）、**ok-script 模板**（模板面板 + 模板素材）和 **ok-script 临时截图** 三个独立活动栏容器。
 - 代码提示中的语言数据始终使用目标项目自身的 locale 和原始协议值，不受插件界面语言影响。
 
-语言与模板提示只针对 `python` 文件生效；效果 ID 提示（hover、补全、幽灵注释）额外覆盖 `json` 和 `jsonc` 文件。扩展不修改源代码，也不生成存根文件。
+> [!NOTE]
+> 语言与模板提示只针对 `python` 文件生效；效果 ID 提示（hover、补全、幽灵注释）额外覆盖 `json` 和 `jsonc` 文件。扩展不修改源代码，也不生成存根文件。
 
 ## 数据来源
 
 默认从当前工作区读取：
 
-- `assets/lang/*.json`：语言数据，节点格式为 `{ "string": "..." }` 或 `{ "pattern": "..." }`。
-- `i18n/<locale>/LC_MESSAGES/*.po`：gettext PO 数据（`okScriptToolkit.enablePoData` 控制，默认开启）。仅加载 `okScriptToolkit.poDomains` 白名单内的 domain（默认 `ocr`，排除 `ok.po` 等 UI 通用文案）。`msgid`（如 `借 款 金 额`、`体力.*`）作为 key，`msgstr` 作为对应语言的 `string` 值；含空格的 `msgid` 会自动生成去空格副本（`借款金额`）。该数据用于 OCR 函数 `match` 参数的提示，不作为 `self.lang` 模块。
-- `assets/coco_annotations.json`：模板名称、原图和 `bbox`。
-- `assets/images/*.png`：模板预览使用的原图。
-- 如果存在，也会读取 `ok_tasks/assets/coco_annotations.json` 与 `ok_tasks/assets/images/*.png`。
-- `src/data/effects.py`：技能效果 ID 数据源（`EffectType` 枚举 + `EFFECT_DESCRIPTIONS` 中文描述），用于 `EffectType.XXX` / `"effect_id": "XXX"` 的提示。
-- `assets/lang/effect_names.json`：角色技能管理面板中的效果本地化名称；缺失时回退到效果描述和原始 ID。
+| 路径 | 用途 |
+|---|---|
+| `assets/lang/*.json` | 语言数据，节点格式为 `{ "string": "..." }` 或 `{ "pattern": "..." }` |
+| `i18n/<locale>/LC_MESSAGES/*.po` | gettext PO 数据（`okScriptToolkit.enablePoData` 控制，默认开启） |
+| `assets/coco_annotations.json` | 模板名称、原图和 `bbox` |
+| `assets/images/*.png` | 模板预览使用的原图 |
+| `ok_tasks/assets/coco_annotations.json` | 可选，存在时一并读取 |
+| `ok_tasks/assets/images/*.png` | 可选，存在时一并读取 |
+| `src/data/effects.py` | 技能效果 ID 数据源（`EffectType` 枚举 + `EFFECT_DESCRIPTIONS` 中文描述） |
+| `assets/lang/effect_names.json` | 角色技能管理面板中的效果本地化名称；缺失时回退到效果描述和原始 ID |
+
+关于 PO 数据：仅加载 `okScriptToolkit.poDomains` 白名单内的 domain（默认 `ocr`，排除 `ok.po` 等 UI 通用文案）。`msgid`（如 `借 款 金 额`、`体力.*`）作为 key，`msgstr` 作为对应语言的 `string` 值；含空格的 `msgid` 会自动生成去空格副本（`借款金额`）。该数据用于 OCR 函数 `match` 参数的提示，不作为 `self.lang` 模块。
 
 保存 JSON（包括效果名称）、COCO 标注、PNG 或 `effects.py` 后，扩展会自动刷新，无需重启项目。
 
@@ -99,6 +174,7 @@ VS Code 扩展，为 ok-script 项目的 Python 开发提供语言键、OCR 修�
 | `okScriptToolkit.effectsFile` | `src/data/effects.py` | 技能效果 ID 定义文件（`EffectType` 枚举与 `EFFECT_DESCRIPTIONS`），相对工作区根目录 |
 | `okScriptToolkit.okScriptProjectPath` | 空 | 任务启动器使用的 ok-script 项目根目录；为空时尝试使用当前工作区 |
 | `okScriptToolkit.okScriptPython` | 空 | 任务启动器使用的 Python；为空时优先使用目标项目 `.venv/Scripts/python.exe` |
+| `okScriptToolkit.captureMethod` | `auto` | 游戏窗口截图方式：`auto` / `wgc` / `bitblt` / `foreground` |
 | `okScriptToolkit.characterProjectPath` | 空 | 角色技能管理面板的数据项目；为空时使用 `okScriptProjectPath` 或当前工作区 |
 | `okScriptToolkit.characterMasterFile` | `assets/data/characters.json` | 角色主表 JSON |
 | `okScriptToolkit.characterSkillsDirectory` | `assets/data/character_skills` | 角色技能 JSON 目录 |
@@ -106,18 +182,6 @@ VS Code 扩展，为 ok-script 项目的 Python 开发提供语言键、OCR 修�
 | `okScriptToolkit.characterAvatarTemplateRegex` | `^battle[_-]?icon[_-]?` | 角色头像模板名正则；有捕获组时使用第一组，否则使用匹配前缀后的剩余名称，与角色主表英文 slug 匹配；默认兼容 `battleicon`、`battle_icon` 和 `battle-icon` 前缀 |
 | `okScriptToolkit.okTemplatesDirectory` | `ok_templates` | ok_templates 文件夹名（相对工作区根），供模板素材管理器使用 |
 | `okScriptToolkit.annotationKeybindings` | 见默认值 | 标注编辑器的键盘快捷键；值为按键名，支持 `ctrl+z` 等修饰符前缀 |
-
-**命令**（命令分类随界面语言显示为"ok-script 工具箱" / "ok-script Toolkit"）：
-
-| 命令 | 快捷键 | 说明 |
-|---|---|---|
-| `ok-script 工具箱: 打开模板面板` | `Ctrl+Alt+T`（macOS `Cmd+Alt+T`，需聚焦 Python 编辑器） | 聚焦活动栏中的模板侧边栏视图 |
-| `ok-script 工具箱: 在编辑器中打开模板面板` | — | 在编辑器区打开大窗口网格视图 |
-| `ok-script 工具箱: 打开任务启动` | — | 聚焦活动栏中的任务启动器视图 |
-| `ok-script 工具箱: 打开角色技能管理面板` | — | 打开角色、技能、效果、强化组和名称本地化管理页 |
-| `ok-script 工具箱: 打开模板素材` | — | 在编辑器区打开模板素材管理大窗口面板 |
-| `ok-script 工具箱: 打开标注编辑器` | — | 提示在模板素材面板中点击图片以进入 COCO 标注编辑器（命令本身不直接打开编辑器） |
-| `ok-script 工具箱: 打开临时截图` | — | 聚焦活动栏中的临时截图视图 |
 
 ### 配置示例
 
@@ -144,7 +208,7 @@ VS Code 扩展，为 ok-script 项目的 Python 开发提供语言键、OCR 修�
 }
 ```
 
-示例效果：在代码中
+**示例效果**——在代码中：
 
 ```python
 self.wait_click_ocr(match=self.lang.zip_line_mixin.k_2f4f4a2f, ...)
@@ -152,13 +216,19 @@ self.wait_click_ocr(match=self.lang.zip_line_mixin.k_2f4f4a2f, ...)
 
 幽灵注释会在 `k_2f4f4a2f` 后面显示 `「向目标移动」`；hover 会弹出包含 zh_CN / zh_TW / en_US / ja_JP / ko_KR / es_ES 全部值的表格。
 
-模板示例：
+## 命令
 
-```python
-self.wait_click_feature(feature=fL.give_gift, time_out=10)
-```
+命令分类随界面语言显示为「ok-script 工具箱」/「ok-script Toolkit」。
 
-悬停 `fL.give_gift` 可查看对应模板裁剪图；输入 `fL.` 可从模板名称列表中选择。
+| 命令 | 快捷键 | 说明 |
+|---|---|---|
+| `ok-script 工具箱: 打开模板面板` | `Ctrl+Alt+T`（macOS `Cmd+Alt+T`，需聚焦 Python 编辑器） | 聚焦活动栏中的模板侧边栏视图 |
+| `ok-script 工具箱: 在编辑器中打开模板面板` | — | 在编辑器区打开大窗口网格视图 |
+| `ok-script 工具箱: 打开任务启动` | — | 聚焦活动栏中的任务启动器视图 |
+| `ok-script 工具箱: 打开角色技能管理面板` | — | 打开角色、技能、效果、强化组和名称本地化管理页 |
+| `ok-script 工具箱: 打开模板素材` | — | 在编辑器区打开模板素材管理大窗口面板 |
+| `ok-script 工具箱: 打开标注编辑器` | — | 提示在模板素材面板中点击图片以进入 COCO 标注编辑器（命令本身不直接打开编辑器） |
+| `ok-script 工具箱: 打开临时截图` | — | 聚焦活动栏中的临时截图视图 |
 
 ## 更新后不生效
 
@@ -167,3 +237,13 @@ self.wait_click_feature(feature=fL.give_gift, time_out=10)
 `Ctrl+Shift+P` → **Developer: Reload Window**
 
 如果刚修改了扩展的 `package.json` 配置声明，必须 reload 窗口后设置项才会出现在设置界面中。
+
+---
+
+<div align="center">
+
+**相关项目**
+
+[ok-script Toolkit for JetBrains](jetbrains/README.md) · [开发指南](DEVELOPMENT.md) · [发布流程](RELEASING.md)
+
+</div>
