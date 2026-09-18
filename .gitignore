@@ -3,8 +3,17 @@ out/
 *.vsix
 *.log
 .vscode-test/
-.vscode/
+# .vscode/ 只共享调试入口（F5 用的 launch.json、构建用的 tasks.json、推荐扩展）。
+# 必须写 .vscode/* 而不是 .vscode/ —— git 无法在整目录被排除后重新纳入其中的文件。
+# 其余（settings.json、本地状态等）保持本地不提交。
+.vscode/*
+!.vscode/launch.json
+!.vscode/tasks.json
+!.vscode/extensions.json
 configs/
 .vscodeignore
 __pycache__
 .workbuddy-ai
+
+# GIF 制作工具链的本地依赖（gifsicle 便携版，GPL-2.0 二进制，不进仓库）
+.tools/

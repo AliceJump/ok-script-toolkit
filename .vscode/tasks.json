@@ -1,0 +1,42 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "插件·编译（主仓库 VS Code 扩展）",
+      "type": "npm",
+      "script": "compile",
+      "problemMatcher": "$tsc",
+      "group": { "kind": "build", "isDefault": true },
+      "presentation": { "reveal": "silent", "panel": "dedicated" }
+    },
+    {
+      "label": "插件·watch 编译（主仓库 VS Code 扩展）",
+      "type": "npm",
+      "script": "watch",
+      "isBackground": true,
+      "problemMatcher": "$tsc-watch",
+      "group": "build",
+      "presentation": { "reveal": "silent", "panel": "dedicated" }
+    },
+    {
+      "label": "插件·运行沙箱 IDE（子仓库 JetBrains 插件）",
+      "type": "shell",
+      "command": "./gradlew",
+      "args": ["runIde"],
+      "options": { "cwd": "${workspaceFolder}/jetbrains" },
+      "windows": { "command": "gradlew.bat" },
+      "problemMatcher": [],
+      "presentation": { "reveal": "always", "panel": "dedicated" }
+    },
+    {
+      "label": "插件·调试沙箱 IDE（子仓库 JetBrains 插件，5005 等待附加）",
+      "type": "shell",
+      "command": "./gradlew",
+      "args": ["runIde", "--debug-jvm"],
+      "options": { "cwd": "${workspaceFolder}/jetbrains" },
+      "windows": { "command": "gradlew.bat" },
+      "problemMatcher": [],
+      "presentation": { "reveal": "always", "panel": "dedicated" }
+    }
+  ]
+}

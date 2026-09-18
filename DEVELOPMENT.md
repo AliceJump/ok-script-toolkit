@@ -19,7 +19,7 @@ media/
 	templatePanel/             模板面板 Webview（index.html、CSS、交互脚本）
 	taskLauncher/              任务启动器 Webview（index.html、CSS、组件脚本）
 	characterManager/          角色技能管理 Webview（index.html、CSS、交互脚本）
-python/                      随扩展发布的辅助脚本：任务发现、探测与执行（parse_config_tasks.py、probe_task_schemas.py、run_task.py），以及模板素材面板的游戏窗口截图与配置探测（capture_game_window.py、probe_window_config.py）
+python/                      随扩展发布的辅助脚本：任务发现、探测与执行（parse_config_tasks.py、probe_task_schemas.py、run_executor.py），以及模板素材面板的游戏窗口截图与配置探测（capture_game_window.py、probe_window_config.py）
 scripts/                     开发期生成与回归测试工具，不打入 VSIX
 l10n/                        扩展宿主运行时本地化资源
 package.nls*.json            扩展清单本地化资源
@@ -27,6 +27,22 @@ out/                         TypeScript 编译产物（由构建生成）
 ```
 
 每个外置 Webview 的 HTML、CSS 和 JavaScript 均放在同一功能目录中；宿主通过 CSP 限制和 `asWebviewUri()` 加载资源。
+
+## 任务启动：常驻执行器模型
+
+任务启动器**不是「一次启动 = 一个任务进程」**，而是**一个项目一个常驻执行器进程**：`python/run_executor.py` 只启动一次，连接一次游戏，之后由 ok-script 框架原生的 `TaskExecutor` 循环轮询全部已启用的触发任务；一次性任务以入队方式交给同一个进程执行。
+
+- **为什么不能用 `ok.run_task(config, task=<单个任务>)` 跑触发任务**：框架会转调 `OK.run_trigger_task()`，把 `executor.trigger_tasks` 收窄成单个任务并 `disable()` 其余触发任务，多触发任务串连轮询直接失效。旧的 `python/run_task.py` 因此只保留给手动单任务调试（已标注废弃）。
+- **轮询在哪**：`ok/task/TaskExecutor.py` 的 `next_task()` —— onetime 队列 → 任一 enabled 的一次性任务 → 触发任务按 `trigger_task_index` 轮转，命中 `enabled and should_trigger()` 即执行。
+- **stdin 命令**：`trigger_enable|trigger_disable <module::Class>`、`onetime_enqueue <module::Class>`、`task_disable`（停当前任务、轮询继续）、`params <全量 json>`、`pause|resume`、`overlay_on|off`、`stop`。
+- **stdout 标记**：`OK_TOOLKIT_EXECUTOR_CONNECTING / _READY / _STOPPED`、`OK_TOOLKIT_STATE:<json>`（`current / currentIsTrigger / paused / triggers[] / onetimeQueue[]`，快照变化时推送）、沿用 `OK_TOOLKIT_PAUSED / RESUMED / OVERLAY_* / ERROR:`。
+- **启用集合的权威来源**是启动环境变量 `OK_TOOLKIT_TRIGGERS`（JSON 数组）：未列出的触发任务一律置为未启用，避免项目 `configs/*.json` 里残留的 `_enabled: true` 把任务带起来。启用集合持久化在 VSCode 的 `.vscode/ok-script-toolkit-tasks.json` / JetBrains 的 `.idea/ok-script-toolkit-tasks.json` 的 `projects[<dir>].enabledTriggers`。
+- **不污染项目配置**：触发任务的 `_enabled` 一律走 `dict.__setitem__(task.config, "_enabled", v)`；框架的 `TriggerTask.enable/disable` 会经 `Config.__setitem__` → `save_file()` 写回项目 `configs/*.json`，所以 `run_executor.py` 在导入任务前替换掉这两个方法。参数覆盖同理，只改内存。
+- **任务类型**由 `python/parse_config_tasks.py` 的 AST 结果直接给出（每个条目带 `kind`），宿主不必等 schema 采集完成就能区分「触发任务勾选启用」与「一次性任务入队执行」。
+- **注意 `enable_after_start`**：`do_start(None)` 会按框架约定自动启用项目里声明了 `enable_after_start` 的任务（例如 ok-neverness-to-everness 的 `LauncherTask`），所以刚启动执行器就可能看到有一次性任务在跑 —— 这是 GUI 的既有行为，不是 bug。
+- **验证方式**（不需要真游戏）：用 `windows.start_exe=False` 的项目（如 `ok-neverness-to-everness`）跑
+  `(sleep 40; echo stop) | OK_TOOLKIT_TRIGGERS='["<module::Class>"]' ./.venv/Scripts/python.exe -u <repo>/python/run_executor.py --config-module src.config`，
+  确认输出 `CONNECTING → READY → STATE → STOPPED`；把 stdout 重定向到文件再 grep（管道里常拿不到内容）。
 
 ## 临时截图与归一化坐标
 
@@ -64,7 +80,7 @@ Windows 使用 `gradlew.bat`。生成的 ZIP 位于 `jetbrains/build/distributio
 
 ## 安装
 
-方式一（打包安装，推荐）：
+打包安装（推荐）：
 
 ```bash
 cd ok-script-toolkit
@@ -73,11 +89,61 @@ npm run compile
 npx @vscode/vsce package --allow-missing-repository
 ```
 
-然后在 VS Code 中：`Ctrl+Shift+P` → **Extensions: Install from VSIX...** → 选择生成的 `ok-script-toolkit-0.6.10.vsix`。
+然后在 VS Code 中：`Ctrl+Shift+P` → **Extensions: Install from VSIX...** → 选择生成的 `ok-script-toolkit-<版本>.vsix`。
 
-方式二（开发调试）：
+想直接改代码调试、不打包安装，见下面的「启动调试」。
 
-用 VS Code 打开本项目根目录，按 `F5`（使用 `ok-script-toolkit/.vscode/launch.json` 的配置）启动扩展开发宿主，在宿主窗口打开任意 Python 文件即可看到效果。
+## 启动调试
+
+两端都随仓库提供了开箱可用的启动/调试入口。这些配置属于开发文件，**不会进打包产物**：
+`.vscode/` 被 `.vscodeignore` 排除，`jetbrains/.run/` 也不参与 `buildPlugin`。
+
+### 主仓库：VS Code 扩展
+
+用 VS Code 打开本项目根目录，按 `F5` 启动扩展开发宿主，在宿主窗口打开任意 Python 文件即可看到效果。
+
+| 入口 | 说明 |
+|---|---|
+| `F5` → **运行扩展（主仓库 VS Code 扩展）** | 先跑 `npm run compile`，再起扩展开发宿主 |
+| **运行扩展·watch 热重载** | 后台跑 `npm run watch`，改 TS 后重载宿主窗口即生效 |
+| 命令面板 → **Tasks: Run Task** | `插件·编译（主仓库 VS Code 扩展）`、`插件·watch 编译（…）` |
+
+`.vscode/` 只共享这三个文件（`launch.json` / `tasks.json` / `extensions.json`）——
+`.gitignore` 里必须写成 `.vscode/*` 再加 `!` 放行，因为 git 无法在整目录被排除后
+重新纳入其中的文件；`settings.json` 等仍保持本地不提交。
+
+### 子仓库：JetBrains 插件
+
+沙箱 IDE 由 Gradle 的 `runIde` 拉起；`build.gradle.kts` 里 `autoReload = true`，
+重新构建后沙箱会自动加载新版本，不必重启沙箱。
+
+**A. IntelliJ / PyCharm（`.run/` 配置已随仓库提供，Run/Debug 下拉框直接选）**
+
+| 配置 | 用途 |
+|---|---|
+| `Run Plugin (runIde)` | 普通运行：起一个装着本插件的沙箱 IDE |
+| `Debug Plugin 1 - start sandbox` | 等价 `runIde --debug-jvm`：沙箱 JVM 在 5005 等待调试器 |
+| `Debug Plugin 2 - attach 5005` | 附加到上面那个 5005，下断点 |
+
+顺序是先 **1** 后 **2**：跑 1 之后终端会停在
+`Listening for transport dt_socket at address: 5005`，这时再跑 2 才连得上。
+
+**B. 命令行 / VS Code**
+
+```bash
+cd jetbrains
+./gradlew runIde              # 普通运行
+./gradlew runIde --debug-jvm  # 调试：在 5005 等待调试器附加
+```
+
+VS Code 的 **Tasks: Run Task** 里同样有
+`插件·运行沙箱 IDE（子仓库 JetBrains 插件）` 与
+`插件·调试沙箱 IDE（子仓库 JetBrains 插件，5005 等待附加）`；
+后者配合 `.vscode/launch.json` 的 **附加到沙箱 IDE（子仓库 JetBrains 插件，5005）**
+即可断点调试（需要 `vscjava.vscode-java-debug`）。
+
+> 沙箱数据在 `jetbrains/.intellijPlatform/sandbox/`（已 gitignore）。
+> `runIde` 首次会下载目标 IDE（PyCharm 2025.1），之后走本地缓存。
 
 ## 自动发布
 

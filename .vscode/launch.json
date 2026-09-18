@@ -1,0 +1,30 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "运行扩展（主仓库 VS Code 扩展）",
+      "type": "extensionHost",
+      "request": "launch",
+      "args": ["--extensionDevelopmentPath=${workspaceFolder}"],
+      "outFiles": ["${workspaceFolder}/out/**/*.js"],
+      "preLaunchTask": "插件·编译（主仓库 VS Code 扩展）",
+      "sourceMaps": true
+    },
+    {
+      "name": "运行扩展·watch 热重载（主仓库 VS Code 扩展）",
+      "type": "extensionHost",
+      "request": "launch",
+      "args": ["--extensionDevelopmentPath=${workspaceFolder}"],
+      "outFiles": ["${workspaceFolder}/out/**/*.js"],
+      "preLaunchTask": "插件·watch 编译（主仓库 VS Code 扩展）",
+      "sourceMaps": true
+    },
+    {
+      "name": "附加到沙箱 IDE（子仓库 JetBrains 插件，5005）",
+      "type": "java",
+      "request": "attach",
+      "hostName": "localhost",
+      "port": 5005
+    }
+  ]
+}
