@@ -81,7 +81,8 @@ GitHub Secret 支持多行文本，可直接粘贴 PEM/CRT 全文；也可先 Ba
 例如发布 `0.6.0`：
 
 ```bash
-# 1. 同步 VS Code、lockfile、JetBrains 三处版本
+# 1. 同步全部五处版本：package.json、package-lock.json、jetbrains/gradle.properties
+#    以及两个 README 的 version 徽章（少提交任何一处，Release 的 validate 都会失败）
 npm run version:sync -- 0.6.0
 
 # 2. 验证
@@ -97,9 +98,11 @@ git commit -m "chore(release): prepare v0.6.0"
 git push origin main
 cd ..
 
-# 4. 再提交父仓库版本和子模块指针
+# 4. 再提交父仓库版本、README 徽章和子模块指针
+#    注意 README.md 必须一起提交：version:sync 会改它的徽章，
+#    而 verify-version.js 会在标签流水线里校验它（2026-09 就漏提交过一次，导致 v1.6.0 校验失败）
 npm run verify:version
-git add package.json package-lock.json jetbrains
+git add package.json package-lock.json README.md jetbrains
 git commit -m "chore(release): prepare v0.6.0"
 git push origin main
 
