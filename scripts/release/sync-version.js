@@ -33,4 +33,19 @@ fs.writeFileSync(packagePath, `${JSON.stringify(packageJson, null, 2)}\n`, 'utf8
 fs.writeFileSync(lockPath, `${JSON.stringify(packageLock, null, 2)}\n`, 'utf8');
 fs.writeFileSync(jetbrainsPath, updatedJetbrains, 'utf8');
 
+// README 的版本徽章也要跟着走，否则每次发版都会漂
+// （2026-09 实测：两个 README 都还停在 1.4.0，而实际已是 1.5.0）。
+const readmePaths = [path.join(root, 'README.md'), path.join(root, 'jetbrains', 'README.md')];
+for (const readmePath of readmePaths) {
+  if (!fs.existsSync(readmePath)) {
+    continue;
+  }
+  const readme = fs.readFileSync(readmePath, 'utf8');
+  const badge = /(badge\/version-)\d+\.\d+\.\d+(-blue)/;
+  if (!badge.test(readme)) {
+    throw new Error(`${path.relative(root, readmePath)} is missing the version badge`);
+  }
+  fs.writeFileSync(readmePath, readme.replace(badge, `$1${version}$2`), 'utf8');
+}
+
 console.log(JSON.stringify({ version, tag: `v${version}` }));

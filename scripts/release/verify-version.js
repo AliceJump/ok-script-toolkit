@@ -40,6 +40,22 @@ if (jetbrainsVersion !== version) {
   throw new Error(`Version mismatch: package.json=${version}, jetbrains pluginVersion=${jetbrainsVersion || '<empty>'}`);
 }
 
+// README 的版本徽章同样属于「版本必须一致」的范围。之前漏检，导致两个 README
+// 长期停在 1.4.0 而无人发现（2026-09）。
+for (const readmePath of [path.join(root, 'README.md'), path.join(root, 'jetbrains', 'README.md')]) {
+  const relative = path.relative(root, readmePath);
+  if (!fs.existsSync(readmePath)) {
+    throw new Error(`Missing ${relative}`);
+  }
+  const badge = fs.readFileSync(readmePath, 'utf8').match(/badge\/version-(\d+\.\d+\.\d+)-blue/);
+  if (!badge) {
+    throw new Error(`${relative} is missing the version badge`);
+  }
+  if (badge[1] !== version) {
+    throw new Error(`Version mismatch: package.json=${version}, ${relative} badge=${badge[1]}`);
+  }
+}
+
 const tag = `v${version}`;
 const vsix = `${packageJson.name}-${version}.vsix`;
 const jetbrainsZip = `ok-script-toolkit-jetbrains-${version}.zip`;
