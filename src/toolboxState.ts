@@ -71,3 +71,40 @@ export function onToolboxStateChange(listener: Listener): vscode.Disposable {
   listeners.add(listener);
   return new vscode.Disposable(() => listeners.delete(listener));
 }
+
+// ── 执行器运行状态（浮层互斥用）─────────────────────────────────────
+
+type ExecutorRunningListener = (running: boolean, projectDir: string) => void;
+const executorRunningListeners = new Set<ExecutorRunningListener>();
+
+/**
+ * 执行器是否在跑。放在这里而不是各面板里，是为了让工具箱面板能判断「该不该拉独立浮层宿主」
+ * 而不用反向依赖任务启动器。
+ */
+let executorRunning = false;
+
+export function isExecutorRunning(): boolean {
+  return executorRunning;
+}
+
+/**
+ * 任务启动器在执行器启停时调用（重复调用同一状态会被忽略 —— child 的 error/close
+ * 会各触发一次）。
+ *
+ * 用途：**浮层互斥**。执行器进程自己持有 Win32GdiOverlay，独立浮层宿主
+ * （overlay_host.py）必须让位，否则同一个游戏窗口上会有两个 overlay 重复绘制边框 /
+ * 识别框，Alt+右键框选也会互相抢占。
+ */
+export function notifyExecutorRunning(running: boolean, projectDir: string): void {
+  if (executorRunning === running) return;
+  executorRunning = running;
+  for (const listener of executorRunningListeners) {
+    try { listener(running, projectDir); } catch { /* 订阅者异常互不影响 */ }
+  }
+}
+
+/** 订阅执行器启停；返回取消订阅的可释放对象 */
+export function onExecutorRunningChange(listener: ExecutorRunningListener): vscode.Disposable {
+  executorRunningListeners.add(listener);
+  return new vscode.Disposable(() => executorRunningListeners.delete(listener));
+}

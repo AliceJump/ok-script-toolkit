@@ -20,7 +20,9 @@ import {
 } from './taskLauncher';
 import {
   GameConnection,
+  isExecutorRunning,
   loadToolboxState,
+  onExecutorRunningChange,
   onToolboxStateChange,
   saveToolboxState,
 } from './toolboxState';
@@ -747,10 +749,14 @@ export class CharacterManagerLauncherViewProvider implements vscode.WebviewViewP
 
   private view?: vscode.WebviewView;
   private busSubscription?: vscode.Disposable;
+  /** 执行器启停订阅（浮层互斥） */
+  private executorSubscription?: vscode.Disposable;
   /** 常驻浮层宿主进程（连接游戏后拉起，断开/关浮层/项目切换时停止） */
   private overlayHost?: childProcess.ChildProcess;
   private overlayHostProjectDir = '';
   private overlayHostChannel?: vscode.OutputChannel;
+  /** 已 dispose：不再拉起新的浮层宿主（见 startOverlayHost） */
+  private disposed = false;
 
   constructor(private readonly dependencies: CharacterManagerDependencies) {}
 
@@ -759,6 +765,10 @@ export class CharacterManagerLauncherViewProvider implements vscode.WebviewViewP
     view.webview.options = { enableScripts: true };
     this.busSubscription?.dispose();
     this.busSubscription = onToolboxStateChange(() => this.postToolboxState());
+    this.executorSubscription?.dispose();
+    this.executorSubscription = onExecutorRunningChange((running, projectDir) => {
+      this.syncOverlayHostWithExecutor(running, projectDir);
+    });
     const nonce = getNonce();
     const strings = JSON.stringify(webviewStrings()).replace(/</g, '\\u003c');
     view.webview.html = `<!DOCTYPE html>
@@ -972,9 +982,39 @@ export class CharacterManagerLauncherViewProvider implements vscode.WebviewViewP
     this.postStatus('');
   }
 
-  /** 拉起常驻浮层宿主（同项目已运行则复用） */
+  /**
+   * 浮层互斥的另一半：执行器启停时让独立宿主让位 / 归位。
+   *
+   * 执行器一起来就停掉宿主（它自带 overlay）；执行器退出后，若浮层开关仍开着、
+   * 且工具箱这边还连着游戏，就把宿主拉回来 —— 否则会出现「跑完一次任务，浮层就没了」。
+   */
+  private syncOverlayHostWithExecutor(running: boolean, projectDir: string): void {
+    if (running) {
+      this.stopOverlayHost();
+      return;
+    }
+    const dir = projectDir || this.currentProjectDir();
+    if (!dir) return;
+    const state = loadToolboxState(dir);
+    if (state.overlay && state.game) {
+      this.startOverlayHost(dir);
+    }
+  }
+
+  /**
+   * 拉起常驻浮层宿主（同项目已运行则复用）。
+   *
+   * **浮层互斥**：执行器进程自己持有 Win32GdiOverlay，它跑着的时候独立宿主必须让位，
+   * 否则同一个游戏窗口上会有两个 overlay 重复绘制边框/识别框，Alt+右键框选也会互相
+   * 抢占。执行器退出后由 syncOverlayHostWithExecutor 把宿主拉回来。
+   */
   private startOverlayHost(projectDir: string): void {
     if (!projectDir) return;
+    if (isExecutorRunning()) return;
+    // 扩展正在关闭时不要再去 spawn：可能是「任务面板先 dispose → 执行器被杀 →
+    // notifyExecutorRunning(false) → 这里被拉起来」，紧接着又被 dispose 停掉，
+    // 白起一个 Python 进程还可能在输出频道留下错误噪声。
+    if (this.disposed) return;
     if (this.overlayHost && this.overlayHostProjectDir === projectDir && !this.overlayHost.killed) return;
     this.stopOverlayHost();
 
@@ -1049,8 +1089,11 @@ export class CharacterManagerLauncherViewProvider implements vscode.WebviewViewP
   }
 
   dispose(): void {
+    this.disposed = true;
     this.busSubscription?.dispose();
     this.busSubscription = undefined;
+    this.executorSubscription?.dispose();
+    this.executorSubscription = undefined;
     this.stopOverlayHost();
     this.overlayHostChannel?.dispose();
     this.overlayHostChannel = undefined;
