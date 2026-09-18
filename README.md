@@ -14,7 +14,7 @@
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![VS Code](https://img.shields.io/badge/VS%20Code-%5E1.85.0-007ACC)](package.json)
 
-[功能](#功能) · [数据来源](#数据来源) · [配置](#配置) · [命令](#命令) · [常见问题](#更新后不生效)
+[安装](#安装) · [功能](#功能) · [数据来源](#数据来源) · [配置](#配置) · [命令](#命令) · [常见问题](#更新后不生效)
 
 </div>
 
@@ -28,6 +28,18 @@ VS Code 扩展，为 ok-script 项目的 Python 开发提供语言键、OCR 修�
 <p align="center">
   <a href="screenshots/hero.gif"><img src="screenshots/hero.gif" alt="ok-script Toolkit 整体演示" width="900"></a>
 </p>
+
+## 安装
+
+| 方式 | 操作 |
+|---|---|
+| **VS Code 内** | `Ctrl+Shift+X` 打开扩展视图，搜索 `ok-script Toolkit`，点 **Install** |
+| **网页** | 打开 [VS Code Marketplace 页面](https://marketplace.visualstudio.com/items?itemName=AliceJump.ok-script-toolkit)，点 **Install** |
+| **命令行** | `code --install-extension AliceJump.ok-script-toolkit` |
+
+需要 VS Code **1.85.0** 或更高版本。安装后若提示不生效，见 [更新后不生效](#更新后不生效)。
+
+PyCharm / IntelliJ IDEA 用户请装 JetBrains 版：[ok-script Toolkit for JetBrains](jetbrains/README.md)（[Marketplace 页面](https://plugins.jetbrains.com/plugin/34091-ok-script-toolkit)）。
 
 ## 功能
 
