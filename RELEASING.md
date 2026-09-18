@@ -40,7 +40,7 @@ vMAJOR.MINOR.PATCH
 2. 选择 **Add new plugin**。
 3. 在本地构建 ZIP：`cd jetbrains && ./gradlew buildPlugin`。
 4. 上传 `build/distributions/ok-script-toolkit-jetbrains-<version>.zip`。
-5. 确认 Plugin XML ID 是 `com.alicejump.oklanghints`，完成许可、源码、问题反馈等资料并提交审核。
+5. 确认 Plugin XML ID 是 `com.alicejump.okscripttoolkit`，完成许可、源码、问题反馈等资料并提交审核。
 
 第一次创建成功之后，标签工作流才能通过 API 上传后续版本。
 
