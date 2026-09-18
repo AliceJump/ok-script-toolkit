@@ -3,6 +3,9 @@
 
 用法: python parse_config_tasks.py <project_dir>
 输出(最后一行 JSON): {"ok": true, "config_module": "src.config", "onetime": [...], "trigger": [...]}
+
+每个条目形如 {"module": ..., "class": ..., "kind": "onetime" | "trigger"}。
+kind 让宿主不必等 schema 采集完成就能区分触发任务（勾选启用）与一次性任务（入队执行）。
 """
 import ast
 import json
@@ -34,8 +37,9 @@ def extract_tasks(src_path):
                     mod = el.elts[0].value if isinstance(el.elts[0], ast.Constant) else None
                     cls = el.elts[1].value if isinstance(el.elts[1], ast.Constant) else None
                     if mod and cls:
-                        (onetime if key == "onetime_tasks" else trigger).append(
-                            {"module": mod, "class": cls})
+                        kind = "onetime" if key == "onetime_tasks" else "trigger"
+                        (onetime if kind == "onetime" else trigger).append(
+                            {"module": mod, "class": cls, "kind": kind})
     return onetime, trigger
 
 

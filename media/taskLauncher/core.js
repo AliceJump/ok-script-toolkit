@@ -4,15 +4,20 @@
   const vscode = acquireVsCodeApi();
 
   const state = {
-    running: false,
-    paused: false,
-    stopping: false,
     schemas: {},
     taskConfigs: {},
     currentTasks: [],
-    runningTaskKey: '',
     openPanels: new Set(),
     openConfigGroups: new Map(),
+    // 常驻执行器会话：整个项目只有一个进程，连接一次后按启用集合轮询触发任务
+    executor: {
+      status: 'idle',
+      paused: false,
+      current: '',
+      currentIsTrigger: false,
+      onetimeQueue: [],
+      enabledTriggers: [],
+    },
   };
 
   const elements = {
@@ -20,10 +25,16 @@
     status: document.getElementById('status'),
     empty: document.getElementById('empty'),
     refresh: document.getElementById('refresh'),
+    executorState: document.getElementById('executorState'),
+    pauseToggle: document.getElementById('pauseToggle'),
+    stopCurrent: document.getElementById('stopCurrent'),
+    stopExecutor: document.getElementById('stopExecutor'),
   };
 
   const taskKey = task => `${task.module}::${task.className}`;
   const post = message => vscode.postMessage(message);
+  const taskKind = task => task.kind || state.schemas[taskKey(task)]?.kind || 'onetime';
+  const triggerEnabled = key => state.executor.enabledTriggers.indexOf(key) >= 0;
 
   function setStatus(level, text) {
     if (!text) {
@@ -42,6 +53,7 @@
     elements.refresh.textContent = '↻';
     elements.refresh.title = t('refresh');
     elements.refresh.setAttribute('aria-label', t('refresh'));
+    elements.stopExecutor.textContent = `✕ ${t('stopExecutor')}`;
     elements.empty.textContent = t('noTasks');
   }
 
@@ -51,6 +63,8 @@
     state,
     elements,
     taskKey,
+    taskKind,
+    triggerEnabled,
     setStatus,
     initializeStaticUi,
   };

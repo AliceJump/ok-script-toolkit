@@ -1,5 +1,11 @@
 # -*- coding: utf-8 -*-
-"""在 ok-script 项目目录下运行单个任务（headless，不启动 GUI）。
+"""【已废弃 · 请改用 run_executor.py】在 ok-script 项目目录下运行单个任务（headless）。
+
+保留原因：手动调试单个任务时仍可用（`python run_task.py --task X --task-module m`）。
+插件不再调用本脚本 —— 它走 `ok.run_task(config, task=<单个任务>)`，框架对触发任务会
+转调 `OK.run_trigger_task()`，把 `executor.trigger_tasks` 收窄成单个任务并 disable
+其余触发任务，因此无法实现「多触发任务串连轮询」。插件现在统一由 run_executor.py
+启动常驻执行器：一次连接，全部启用中的触发任务交给框架原生 TaskExecutor 循环轮询。
 
 用法（在项目目录下）:
     python run_task.py --task TaskClassName --task-module module.path --config-module src.config -- [额外参数]

@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { injectWebviewLocalization, projectLocale, tr } from './localization';
-import { loadToolboxState, saveToolboxState } from './toolboxState';
+import { loadToolboxState, notifyExecutorRunning, saveToolboxState } from './toolboxState';
 
 /** 单个任务的元信息 */
 interface TaskInfo {
@@ -11,6 +11,11 @@ interface TaskInfo {
   className: string;
   /** 显示名：优先任务的 name，回退类名 */
   displayName: string;
+  /**
+   * 任务类型：触发任务走「勾选启用 → 入列轮询」，一次性任务走「启动 → 入队执行一次」。
+   * 由 parse_config_tasks.py 直接给出，不依赖 schema 采集完成。
+   */
+  kind?: 'onetime' | 'trigger';
 }
 
 /** 任务列表请求结果 */
@@ -55,19 +60,29 @@ interface TaskSchema {
   locale?: string;
 }
 
-/** 每个任务的独立配置（持久化到 .vscode/ok-script-toolkit-tasks.json） */
+/**
+ * 每个任务的独立配置（持久化到 .vscode/ok-script-toolkit-tasks.json）。
+ *
+ * extraArgs / env 是历史字段：常驻执行器把全部任务跑在同一个进程里，进程级参数
+ * 无法再按任务区分，因此不再生效（仅保留数据，不做删除）。UI 早已移除这两项。
+ */
 interface TaskConfig {
-  /** 透传给 ok-script / 项目级 argparse 的额外命令行参数（UI 已移除，历史配置仍生效）。 */
   extraArgs?: string;
-  /** 仅对当前任务子进程生效的环境变量（UI 已移除，历史配置仍生效）。 */
   env?: Record<string, string>;
   /** 任务参数覆盖：key=任务 default_config 的 key，value=覆盖值 */
   params?: Record<string, unknown>;
 }
 
+/** 单个项目的持久化数据 */
+interface ProjectStore {
+  tasks: Record<string, TaskConfig>;
+  /** 已勾选「启用」的触发任务 key（module::Class），重开面板 / IDE 自动入列 */
+  enabledTriggers?: string[];
+}
+
 /** 所有任务配置的持久化结构 */
 interface TaskConfigStore {
-  projects: Record<string, { tasks: Record<string, TaskConfig> }>;
+  projects: Record<string, ProjectStore>;
 }
 
 /** schema 采集结果（刷新时全量 import 项目任务后落盘缓存） */
@@ -77,6 +92,18 @@ interface SchemaProbeResult {
   schemas?: Record<string, TaskSchema>;
   /** 参与采集的任务总数 */
   total?: number;
+}
+
+/** 常驻执行器回推的状态快照（对应 run_executor.py 的 OK_TOOLKIT_STATE 标记行） */
+interface ExecutorSnapshot {
+  paused?: boolean;
+  /** 当前正在执行的任务 key（module::Class），空闲时为 null */
+  current?: string | null;
+  currentIsTrigger?: boolean;
+  /** 执行器侧的触发任务启用状态（权威值，宿主据此回写勾选集合） */
+  triggers?: { key?: string; enabled?: boolean }[];
+  /** 一次性任务等待队列 */
+  onetimeQueue?: string[];
 }
 
 /** 扩展根目录下 python/ 脚本的绝对路径 */
@@ -93,47 +120,6 @@ export function parseJsonFromStdout(stdout: string): any {
     } catch { /* 跳过非 JSON 行 */ }
   }
   return null;
-}
-
-/** 解析额外参数：优先接受 JSON 字符串数组，否则按 shell 风格引号拆分。 */
-function parseExtraArgs(value: string | undefined): string[] {
-  const text = value?.trim();
-  if (!text) return [];
-  try {
-    const parsed = JSON.parse(text);
-    if (Array.isArray(parsed) && parsed.every((item) => typeof item === 'string')) {
-      return parsed;
-    }
-  } catch { /* 回退到引号拆分 */ }
-
-  const args: string[] = [];
-  let current = '';
-  let quote: '"' | "'" | '' = '';
-  let escaped = false;
-  for (const char of text) {
-    if (escaped) {
-      current += char;
-      escaped = false;
-    } else if (char === '\\') {
-      escaped = true;
-    } else if (quote) {
-      if (char === quote) quote = '';
-      else current += char;
-    } else if (char === '"' || char === "'") {
-      quote = char;
-    } else if (/\s/.test(char)) {
-      if (current) {
-        args.push(current);
-        current = '';
-      }
-    } else {
-      current += char;
-    }
-  }
-  if (escaped) current += '\\';
-  if (quote) throw new Error(tr('Extra arguments contain an unclosed quote'));
-  if (current) args.push(current);
-  return args;
 }
 
 interface PythonResult {
@@ -191,12 +177,13 @@ async function parseConfigTasks(extensionUri: vscode.Uri, projectDir: string, py
     }
     const configModule = parsed.config_module || 'src.config';
     const tasks: TaskInfo[] = [
-      ...(parsed.onetime || []),
-      ...(parsed.trigger || []),
+      ...(parsed.onetime || []).map((t: any) => ({ ...t, kind: 'onetime' })),
+      ...(parsed.trigger || []).map((t: any) => ({ ...t, kind: 'trigger' })),
     ].map((t: any) => ({
       module: t.module,
       className: t['class'] || t.class,
       displayName: t.name || t['class'] || t.module,
+      kind: t.kind === 'trigger' ? 'trigger' : 'onetime',
     }));
     return { ok: true, tasks, configModule };
   } catch (e) {
@@ -205,17 +192,15 @@ async function parseConfigTasks(extensionUri: vscode.Uri, projectDir: string, py
 }
 
 /**
- * 运行单个任务（headless，不启动 GUI）——spawn python/run_task.py。
+ * 常驻执行器命令行：单一进程连接游戏并轮询全部已启用的触发任务。
  *
- * 参数覆盖经环境变量 OK_LANG_HINTS_INJECT 传入：{"module::TaskClassName": {key: value}}。
- * run_task.py 内猴子补丁 BaseTask.load_config，在任务加载配置后把 params 覆盖进
- * self.config（仅内存，不写 configs/*.json，不污染项目配置）。
+ * 与旧 run_task.py 的差异见 python/run_executor.py 顶部说明——旧路径走
+ * `ok.run_task(config, task=<单个任务>)`，框架会把 executor.trigger_tasks 收窄成
+ * 单个任务并 disable 其余触发任务，因此无法多触发任务串连轮询。
  */
-function buildRunTaskCommand(extensionUri: vscode.Uri, task: TaskInfo, configModule: string): string[] {
+function buildExecutorCommand(extensionUri: vscode.Uri, configModule: string): string[] {
   return [
-    pythonScript(extensionUri, 'run_task.py'),
-    '--task', task.className,
-    '--task-module', task.module,
+    pythonScript(extensionUri, 'run_executor.py'),
     '--config-module', configModule,
   ];
 }
@@ -279,7 +264,20 @@ export function resolveProjectContext(): { projectDir: string; pythonPath: strin
   return { projectDir, pythonPath, fromConfig };
 }
 
-/** 侧边栏任务启动视图 */
+/** 强制结束执行器进程的超时（秒）：收到 stop 后仍未退出则 taskkill 兜底 */
+const FORCE_KILL_DELAY_MS = 12000;
+
+/** 参数覆盖推送防抖（毫秒）：表单自动保存很频繁，合并后再推给执行器 */
+const PARAMS_PUSH_DEBOUNCE_MS = 400;
+
+/**
+ * 侧边栏任务启动视图。
+ *
+ * 进程模型：整个项目只维持 **一个常驻执行器进程**（python/run_executor.py）——
+ * 它连接一次游戏，然后按 ok-script 框架原生的 TaskExecutor 循环轮询所有已启用的
+ * 触发任务；一次性任务以入队方式交给同一个执行器跑一次。
+ * 因此本类不再有「当前任务 / 单进程」语义，改为维护执行器会话与启用集合。
+ */
 export class TaskLauncherViewProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'okScriptToolkit.taskLauncher';
 
@@ -287,11 +285,7 @@ export class TaskLauncherViewProvider implements vscode.WebviewViewProvider {
   static current: TaskLauncherViewProvider | undefined;
 
   private readonly output: vscode.OutputChannel;
-  private running = false;
-  private currentTask: TaskInfo | undefined;
   private configModule = 'src.config';
-  private childProcess: cp.ChildProcess | null = null;
-  private stopRequested = false;
   private view: vscode.WebviewView | null = null;
   private currentProjectDir = '';
   private refreshGeneration = 0;
@@ -300,12 +294,24 @@ export class TaskLauncherViewProvider implements vscode.WebviewViewProvider {
   private knownTasks: TaskInfo[] = [];
   /** 采集到的任务参数 schema（缓存到 .vscode/ok-script-toolkit-schema.json） */
   private schemas: Record<string, TaskSchema> = {};
-  /** 任务是否已被 run_task.py 确认暂停（以 stdout 标记行为准） */
-  private paused = false;
+
+  // ── 执行器会话 ───────────────────────────────────────────────────────
+  /** 常驻执行器子进程；null 表示执行器未启动 */
+  private executor: cp.ChildProcess | null = null;
+  /** 已发出启动命令、尚未收到 OK_TOOLKIT_EXECUTOR_READY */
+  private connecting = false;
+  /** 执行器回推的最新状态快照 */
+  private snapshot: ExecutorSnapshot = {};
+  /** 已勾选「启用」的触发任务 key；执行器启动时作为 OK_TOOLKIT_TRIGGERS 传入 */
+  private enabledTriggers = new Set<string>();
   /** 调试浮层当前是否生效（启动沿用工具箱状态，运行中经 overlay_* 标记同步） */
   private overlayActive = false;
   /** stdout 按行扫描的未完结残留（标记行可能跨 chunk 到达） */
   private stdoutRemainder = '';
+  /** stop 之后的强制结束兜底定时器 */
+  private forceKillTimer: NodeJS.Timeout | undefined;
+  /** 参数覆盖推送防抖定时器 */
+  private paramsTimer: NodeJS.Timeout | undefined;
 
   constructor(
     private readonly extensionUri: vscode.Uri,
@@ -326,31 +332,35 @@ export class TaskLauncherViewProvider implements vscode.WebviewViewProvider {
       switch (msg.type) {
         case 'ready':
           await this.refreshTasks(view);
-          // webview 重建后同步当前运行状态，避免切换侧边栏再回来时按钮状态丢失
-          if (this.running && this.currentTask) {
-            void view.webview.postMessage({ type: 'running', task: this.currentTask, running: true, paused: this.paused });
-          }
+          // webview 重建后同步执行器状态，避免切换侧边栏再回来时状态丢失
+          this.pushExecutorState(view);
           break;
         case 'refresh':
           await this.refreshTasks(view);
           break;
-        case 'launch':
-          if (this.isKnownTask(msg.task)) await this.launchTask(view, msg.task);
+        case 'triggerSet':
+          if (this.isKnownTask(msg.task)) await this.setTriggerEnabled(view, msg.task, msg.enabled === true);
           break;
-        case 'stop':
-          await this.stopTask();
+        case 'enqueue':
+          if (this.isKnownTask(msg.task)) await this.enqueueOnetime(view, msg.task);
           break;
         case 'pause':
-          this.sendControlCommand(view, 'pause');
+          this.writeCommand('pause');
           break;
         case 'resume':
-          this.sendControlCommand(view, 'resume');
+          this.writeCommand('resume');
+          break;
+        case 'stopCurrent':
+          this.writeCommand('task_disable');
+          break;
+        case 'stopExecutor':
+          this.stopExecutor();
           break;
         case 'saveConfig':
-          if (this.isKnownTask(msg.task)) await this.saveTaskConfig(msg.task, this.sanitizeTaskConfig(msg.task, msg.config));
+          if (this.isKnownTask(msg.task)) this.saveTaskConfig(msg.task, this.sanitizeTaskConfig(msg.task, msg.config));
           break;
         case 'loadConfigs':
-          await this.loadTaskConfigs();
+          this.loadTaskConfigs();
           break;
       }
     });
@@ -364,6 +374,7 @@ export class TaskLauncherViewProvider implements vscode.WebviewViewProvider {
   }
 
   private sanitizeTaskConfig(task: TaskInfo, value: unknown): TaskConfig {
+    const existing = this.taskConfigs[this.taskKey(task)] || {};
     if (!value || typeof value !== 'object') return {};
     const raw = value as Record<string, unknown>;
     const config: TaskConfig = {};
@@ -389,6 +400,9 @@ export class TaskLauncherViewProvider implements vscode.WebviewViewProvider {
       }
       if (Object.keys(params).length) config.params = params;
     }
+    // 历史字段（extraArgs/env）即使 UI 不再提交也保留，避免自动保存把旧数据清掉
+    if (!config.extraArgs && existing.extraArgs) config.extraArgs = existing.extraArgs;
+    if (!config.env && existing.env) config.env = existing.env;
     return config;
   }
 
@@ -398,19 +412,27 @@ export class TaskLauncherViewProvider implements vscode.WebviewViewProvider {
     return path.join(root, '.vscode', name);
   }
 
-  /** 读取 .vscode/ok-script-toolkit-tasks.json（每任务独立配置持久化） */
+  /** 读取 .vscode/ok-script-toolkit-tasks.json（每任务配置 + 触发任务启用集合） */
   private loadTaskConfigs(projectDir = this.currentProjectDir): void {
     try {
       const p = this.dataFile('ok-script-toolkit-tasks.json');
       if (fs.existsSync(p)) {
-        const raw = JSON.parse(fs.readFileSync(p, 'utf-8')) as Partial<TaskConfigStore> & { tasks?: Record<string, TaskConfig> };
+        const raw = JSON.parse(fs.readFileSync(p, 'utf-8')) as Partial<TaskConfigStore> & {
+          tasks?: Record<string, TaskConfig>;
+          enabledTriggers?: string[];
+        };
         // 兼容旧版顶层 tasks 格式；保存后自动迁移为按项目隔离的 projects。
-        this.taskConfigs = raw.projects?.[projectDir]?.tasks || raw.tasks || {};
+        const entry = raw.projects?.[projectDir];
+        this.taskConfigs = entry?.tasks || raw.tasks || {};
+        const triggers = entry?.enabledTriggers || raw.enabledTriggers || [];
+        this.enabledTriggers = new Set(triggers.filter((key) => typeof key === 'string'));
       } else {
         this.taskConfigs = {};
+        this.enabledTriggers = new Set();
       }
     } catch (e) {
       this.taskConfigs = {};
+      this.enabledTriggers = new Set();
       void vscode.window.showWarningMessage(tr('Failed to read task configuration: {error}', {
         error: e instanceof Error ? e.message : String(e),
       }));
@@ -420,10 +442,16 @@ export class TaskLauncherViewProvider implements vscode.WebviewViewProvider {
     }
   }
 
-  /** 保存单个任务的配置到 .vscode/ok-script-toolkit-tasks.json */
-  private async saveTaskConfig(task: TaskInfo, config: TaskConfig): Promise<void> {
-    const key = `${task.module}::${task.className}`;
-    const nextConfigs = { ...this.taskConfigs, [key]: config };
+  /** 保存单个任务的配置（内存更新 + 落盘 + 推送参数覆盖给运行中的执行器） */
+  private saveTaskConfig(task: TaskInfo, config: TaskConfig): void {
+    this.taskConfigs = { ...this.taskConfigs, [this.taskKey(task)]: config };
+    if (!this.saveStore()) return;
+    // 执行器是常驻进程，参数覆盖必须即时推送才能生效（否则要重启执行器）
+    this.scheduleParamsPush();
+  }
+
+  /** 把任务配置与启用集合写回 .vscode/ok-script-toolkit-tasks.json */
+  private saveStore(): boolean {
     try {
       const p = this.dataFile('ok-script-toolkit-tasks.json');
       fs.mkdirSync(path.dirname(p), { recursive: true });
@@ -434,21 +462,22 @@ export class TaskLauncherViewProvider implements vscode.WebviewViewProvider {
           store = { projects: raw.projects };
         }
       }
-      store.projects[this.currentProjectDir] = { tasks: nextConfigs };
+      const existing = store.projects[this.currentProjectDir] || { tasks: {} };
+      store.projects[this.currentProjectDir] = {
+        ...existing,
+        tasks: this.taskConfigs,
+        enabledTriggers: [...this.enabledTriggers],
+      };
       fs.writeFileSync(p, JSON.stringify(store, null, 2), 'utf-8');
+      return true;
     } catch (e) {
       const message = tr('Failed to save task configuration: {error}', {
         error: e instanceof Error ? e.message : String(e),
       });
       void vscode.window.showErrorMessage(message);
-      if (this.view) {
-        void this.view.webview.postMessage({ type: 'status', level: 'error', text: message });
-      }
-      return;
+      this.view?.webview.postMessage({ type: 'status', level: 'error', text: message });
+      return false;
     }
-    this.taskConfigs = nextConfigs;
-    // webview 在发送 saveConfig 前已自行同步内存状态并显示“已自动保存”，
-    // 这里不再回推 taskConfigs（回推会触发整列表重渲染，打断正在进行的编辑）。
   }
 
   /** 读取 schema 缓存；无缓存时返回空 */
@@ -522,9 +551,11 @@ export class TaskLauncherViewProvider implements vscode.WebviewViewProvider {
     const tasks = (result.tasks || []).map((task) => ({
       ...task,
       displayName: this.schemas[this.taskKey(task)]?.displayName || task.displayName,
+      kind: task.kind || this.schemas[this.taskKey(task)]?.kind,
     }));
     this.knownTasks = tasks;
     await view.webview.postMessage({ type: 'tasks', tasks, schemas: this.schemas });
+    this.pushExecutorState(view);
     void view.webview.postMessage({
       type: 'status',
       level: 'ok',
@@ -569,7 +600,7 @@ export class TaskLauncherViewProvider implements vscode.WebviewViewProvider {
     const brokenCount = Object.values(probe.schemas).filter((s) => s.broken).length;
     // 只回推 schema 更新，让 UI 把已展开的任务卡片渲染出参数表单
     void view.webview.postMessage({ type: 'schemas', schemas: this.schemas });
-    if (!this.running) {
+    if (!this.executor) {
       void view.webview.postMessage({
         type: 'status',
         level: 'ok',
@@ -583,63 +614,69 @@ export class TaskLauncherViewProvider implements vscode.WebviewViewProvider {
     }
   }
 
-  private async launchTask(view: vscode.WebviewView, task: TaskInfo): Promise<void> {
-    if (this.running) {
-      void vscode.window.showWarningMessage(tr('A task is already running. Wait for it to finish or stop it first.'));
+  // ── 执行器生命周期 ───────────────────────────────────────────────────
+
+  /** 勾选 / 取消勾选触发任务：更新持久化集合，执行器运行中则即时入列 / 出列 */
+  private async setTriggerEnabled(view: vscode.WebviewView, task: TaskInfo, enabled: boolean): Promise<void> {
+    const key = this.taskKey(task);
+    if (enabled) this.enabledTriggers.add(key);
+    else this.enabledTriggers.delete(key);
+    this.saveStore();
+    this.pushExecutorState(view);
+    // 执行器没起过：只记状态，等下次启动时按集合入列
+    if (!this.executor) {
+      if (!enabled) return;
+      if (!(await this.ensureExecutor(view))) return;
+      this.pushExecutorState(view);
       return;
     }
+    this.writeCommand(enabled ? `trigger_enable ${key}` : `trigger_disable ${key}`);
+  }
+
+  /** 一次性任务入队：由常驻执行器执行一次后自动出队 */
+  private async enqueueOnetime(view: vscode.WebviewView, task: TaskInfo): Promise<void> {
+    if (!(await this.ensureExecutor(view))) return;
+    this.writeCommand(`onetime_enqueue ${this.taskKey(task)}`);
+  }
+
+  /** 确保执行器已启动；返回 false 表示环境不满足（已在 UI 提示） */
+  private async ensureExecutor(view: vscode.WebviewView): Promise<boolean> {
+    if (this.executor) return true;
     const { projectDir, pythonPath } = this.getConfig();
     if (!projectDir) {
       void vscode.window.showErrorMessage(tr('The ok-script project path is not configured.'));
-      return;
+      return false;
     }
     if (!fs.existsSync(projectDir)) {
       void vscode.window.showErrorMessage(tr('Project directory does not exist: {path}', { path: projectDir }));
-      return;
+      return false;
     }
     if (!fs.existsSync(pythonPath) && pythonPath !== 'python') {
       void vscode.window.showErrorMessage(tr('Python interpreter does not exist: {path}', { path: pythonPath }));
-      return;
+      return false;
     }
-    this.currentTask = task;
-    this.running = true;
-    this.stopRequested = false;
-    this.paused = false;
-    this.stdoutRemainder = '';
-    this.output.clear();
-    this.output.appendLine(tr('▶ Launch task: {task} ({module})', { task: task.displayName, module: task.module }));
-    this.output.appendLine(tr('Project: {path}', { path: projectDir }));
-    this.output.appendLine(tr('Python: {path}', { path: pythonPath }));
-    // 带出该任务的独立配置（params 参数覆盖注入运行时）
-    const cfg = this.getTaskConfig(task);
-    if (cfg?.params && Object.keys(cfg.params).length > 0) {
-      this.output.appendLine(tr('Parameter overrides: {count}', { count: Object.keys(cfg.params).length }));
-    }
-    this.output.show(true);
-    void view.webview.postMessage({ type: 'running', task, running: true });
 
-    let extraArgs: string[];
-    try {
-      extraArgs = parseExtraArgs(cfg.extraArgs);
-    } catch (e) {
-      this.running = false;
-      const message = e instanceof Error ? e.message : String(e);
-      void vscode.window.showErrorMessage(tr('Failed to launch task: {error}', { error: message }));
-      void view.webview.postMessage({ type: 'running', task, running: false, error: message });
-      return;
-    }
-    const args = [...buildRunTaskCommand(this.extensionUri, task, this.configModule), '--', ...extraArgs];
+    this.currentProjectDir = projectDir;
+    this.output.clear();
+    this.output.appendLine(tr('▶ Starting executor · project: {path}', { path: projectDir }));
+    this.output.appendLine(tr('Python: {path}', { path: pythonPath }));
+    const overrides = this.collectOverrides();
+    const overrideCount = Object.keys(overrides).length;
+    if (overrideCount) this.output.appendLine(tr('Parameter overrides: {count}', { count: overrideCount }));
+    this.warnLegacyPerTaskSettings();
+    this.output.show(true);
+
     const childEnv: NodeJS.ProcessEnv = {
       ...process.env,
       PYTHONIOENCODING: 'utf-8',
       PYTHONUTF8: '1',
-      ...(cfg.env || {}),
+      // 触发任务启用集合：执行器以它为准，项目 configs 里残留的 _enabled 会被覆盖
+      OK_TOOLKIT_TRIGGERS: JSON.stringify([...this.enabledTriggers]),
     };
-    // 参数注入通过环境变量传递（避免命令行长度/转义问题）
-    if (cfg?.params && Object.keys(cfg.params).length > 0) {
-      childEnv.OK_LANG_HINTS_INJECT = JSON.stringify({ [this.taskKey(task)]: cfg.params });
-    }
-    // 工具箱共享配置：任务启动无感沿用调试浮层开关与游戏连接
+    // 参数注入通过环境变量传递（避免命令行长度/转义问题）；key 是 module::Class，
+    // 执行器按任务各自取自己的覆盖，因此可以整体合并后一次性传入。
+    if (overrideCount) childEnv.OK_LANG_HINTS_INJECT = JSON.stringify(overrides);
+    // 工具箱共享配置：执行器启动无感沿用调试浮层开关与游戏连接
     const toolbox = loadToolboxState(projectDir);
     this.overlayActive = toolbox.overlay === true;
     if (this.overlayActive) {
@@ -648,179 +685,118 @@ export class TaskLauncherViewProvider implements vscode.WebviewViewProvider {
     }
     if (toolbox.game) {
       // 实际复用由 connect_game.py 写入的 configs/devices.json selected_hwnd 驱动，
-      // 这里仅记录连接来源，便于确认任务与工具箱操作的是同一个窗口。
+      // 这里仅记录连接来源，便于确认执行器与工具箱操作的是同一个窗口。
       this.output.appendLine(tr('Reusing game connection from toolbox: {title} (PID {pid})', {
         title: toolbox.game.title || String(toolbox.game.hwnd),
         pid: toolbox.game.pid,
       }));
     }
-    this.childProcess = cp.spawn(pythonPath, args, {
+
+    this.connecting = true;
+    this.stdoutRemainder = '';
+    this.snapshot = {};
+    const child = cp.spawn(pythonPath, buildExecutorCommand(this.extensionUri, this.configModule), {
       cwd: projectDir,
       windowsHide: true,
       // 强制子进程以 UTF-8 编码输出，与 Python 端 reconfigure 配合彻底解决乱码
       env: childEnv,
     });
+    this.executor = child;
+    // 浮层互斥：执行器进程自己持有 Win32GdiOverlay，通知工具箱停掉独立浮层宿主
+    notifyExecutorRunning(true, projectDir);
     // 子进程退出瞬间向 stdin 写入会以 error 事件异步报错（EPIPE），
     // 不挂监听会变成扩展宿主未捕获异常
-    this.childProcess.stdin?.on('error', () => { /* 忽略 EPIPE */ });
-    this.childProcess.stdout?.on('data', (d) => {
+    child.stdin?.on('error', () => { /* 忽略 EPIPE */ });
+    child.stdout?.on('data', (d) => {
       const text = d.toString('utf8');
       this.scanControlMarkers(text);
       this.output.append(text);
     });
-    this.childProcess.stderr?.on('data', (d) => this.output.append(d.toString('utf8')));
-    this.childProcess.on('error', (err) => {
-      this.running = false;
-      this.childProcess = null;
+    child.stderr?.on('data', (d) => this.output.append(d.toString('utf8')));
+    child.on('error', (err) => {
       this.output.appendLine('');
       this.output.appendLine(tr('❌ Failed to start Python process: {error}', { error: err.message }));
       void vscode.window.showErrorMessage(tr('Failed to launch task: {error}', { error: err.message }));
-      void view.webview.postMessage({ type: 'running', task, running: false, error: err.message });
+      this.resetExecutorState();
+      this.setStatus('error', tr('Failed to launch task: {error}', { error: err.message }));
     });
-    this.childProcess.on('close', (code) => {
-      const stopped = this.stopRequested;
-      this.running = false;
-      this.paused = false;
-      this.overlayActive = false;
-      this.stdoutRemainder = '';
-      this.childProcess = null;
+    child.on('close', (code) => {
+      const wasStopping = this.forceKillTimer !== undefined;
+      this.resetExecutorState();
       this.output.appendLine('');
-      this.output.appendLine(stopped
-        ? tr('⏹ Task stopped')
-        : code === 0
-          ? tr('✅ Task completed')
-          : tr('❌ Task exit code: {code}', { code: code ?? 'null' }));
-      void view.webview.postMessage({
-        type: 'running',
-        task,
-        running: false,
-        code,
-        stopped,
-        error: !stopped && code !== 0 ? tr('Task exit code: {code}', { code: code ?? 'null' }) : undefined,
-      });
+      this.output.appendLine(code === 0
+        ? tr('✅ Executor closed')
+        : tr('❌ Executor exit code: {code}', { code: code ?? 'null' }));
+      this.setStatus(code === 0 ? 'ok' : 'error', code === 0
+        ? tr('✅ Executor closed')
+        : tr('❌ Executor exit code: {code}', { code: code ?? 'null' }));
+      if (!wasStopping && code !== 0) {
+        void vscode.window.showErrorMessage(tr('❌ Executor exit code: {code}', { code: code ?? 'null' }));
+      }
     });
-  }
-
-  /** 向任务子进程 stdin 发送运行期控制命令（run_task.py 按行读取 pause/resume） */
-  private sendControlCommand(view: vscode.WebviewView, command: 'pause' | 'resume'): void {
-    if (!this.running || !this.childProcess) {
-      void vscode.window.showWarningMessage(tr('No task is currently running.'));
-      return;
-    }
-    const stdin = this.childProcess.stdin;
-    if (!stdin || !stdin.writable) {
-      const message = tr('Failed to send command to the task process: {error}', { error: 'stdin unavailable' });
-      void vscode.window.showErrorMessage(message);
-      this.output.appendLine(message);
-      return;
-    }
-    this.output.appendLine('');
-    this.output.appendLine(command === 'pause' ? tr('⏸ Pausing task…') : tr('▶ Resuming task…'));
-    try {
-      stdin.write(`${command}\n`);
-    } catch (err) {
-      const message = tr('Failed to send command to the task process: {error}', {
-        error: err instanceof Error ? err.message : String(err),
-      });
-      void vscode.window.showErrorMessage(message);
-      this.output.appendLine(message);
-    }
-  }
-
-  /** 暂停状态以 run_task.py 的确认标记为准；翻转时同步日志与 webview */
-  private setPaused(paused: boolean): void {
-    if (this.paused === paused) return;
-    this.paused = paused;
-    this.output.appendLine(paused ? tr('⏸ Task paused') : tr('▶ Task resumed'));
-    if (this.view) {
-      void this.view.webview.postMessage({ type: 'paused', paused });
-    }
-  }
-
-  /** 调试浮层以 run_task.py 的确认标记为准；翻转时同步日志并回写工具箱共享状态 */
-  private setOverlayActive(active: boolean): void {
-    if (this.overlayActive === active) return;
-    this.overlayActive = active;
-    this.output.appendLine(active ? tr('▶ Debug overlay: enabled') : tr('⏹ Debug overlay: disabled'));
-    if (this.currentProjectDir) {
-      saveToolboxState(this.currentProjectDir, { overlay: active });
-    }
-  }
-
-  /**
-   * 工具箱浮层开关 → 运行中任务即时生效（stdin overlay_on/off 命令）。
-   * 无运行任务时返回 false，开关状态由工具箱直接持久化、下次启动沿用。
-   */
-  setOverlayEnabled(enabled: boolean): boolean {
-    const stdin = this.childProcess?.stdin;
-    if (!this.running || !stdin || !stdin.writable) return false;
-    this.output.appendLine(enabled ? tr('▶ Enabling debug overlay…') : tr('⏹ Disabling debug overlay…'));
-    try {
-      stdin.write(enabled ? 'overlay_on\n' : 'overlay_off\n');
-    } catch (err) {
-      this.output.appendLine(tr('Failed to send command to the task process: {error}', {
-        error: err instanceof Error ? err.message : String(err),
-      }));
-      return false;
-    }
+    this.pushExecutorState(view);
     return true;
   }
 
-  /** 按行扫描 stdout，识别 run_task.py 输出的控制标记（标记行可能跨 chunk 到达） */
-  private scanControlMarkers(text: string): void {
-    const combined = this.stdoutRemainder + text;
-    const lines = combined.split(/\r?\n/);
-    this.stdoutRemainder = lines.pop() ?? '';
-    for (const line of lines) {
-      if (line.includes('OK_TOOLKIT_PAUSED')) {
-        this.setPaused(true);
-      } else if (line.includes('OK_TOOLKIT_RESUMED')) {
-        this.setPaused(false);
-      } else if (line.includes('OK_TOOLKIT_OVERLAY_ON')) {
-        this.setOverlayActive(true);
-      } else if (line.includes('OK_TOOLKIT_OVERLAY_OFF')) {
-        this.setOverlayActive(false);
-      } else if (line.includes('OK_TOOLKIT_ERROR:')) {
-        const error = line.slice(line.indexOf('OK_TOOLKIT_ERROR:') + 'OK_TOOLKIT_ERROR:'.length).trim();
-        if (this.view && error) {
-          void this.view.webview.postMessage({
-            type: 'status',
-            level: 'error',
-            text: tr('Task control command failed: {error}', { error }),
-          });
-        }
-      }
+  /** 收集全部任务的参数覆盖：{module::Class: {key: value}} */
+  private collectOverrides(): Record<string, Record<string, unknown>> {
+    const overrides: Record<string, Record<string, unknown>> = {};
+    for (const [key, config] of Object.entries(this.taskConfigs)) {
+      if (config?.params && Object.keys(config.params).length) overrides[key] = config.params;
     }
+    return overrides;
   }
 
-  /** 读取某任务的独立配置（无则返回默认空配置） */
-  private getTaskConfig(task: TaskInfo): TaskConfig {
-    return this.taskConfigs[this.taskKey(task)] || {};
+  /** 参数覆盖防抖推送：常驻执行器里改参数要即时生效 */
+  private scheduleParamsPush(): void {
+    if (!this.executor) return;
+    if (this.paramsTimer) clearTimeout(this.paramsTimer);
+    this.paramsTimer = setTimeout(() => {
+      this.paramsTimer = undefined;
+      if (!this.executor) return;
+      this.writeCommand(`params ${JSON.stringify(this.collectOverrides())}`);
+    }, PARAMS_PUSH_DEBOUNCE_MS);
   }
 
-  private taskKey(task: TaskInfo): string {
-    return `${task.module}::${task.className}`;
+  /** 历史配置里的 extraArgs / env 在单进程模型下无法按任务生效，启动时提示一次 */
+  private warnLegacyPerTaskSettings(): void {
+    const affected = Object.values(this.taskConfigs)
+      .filter((config) => config?.extraArgs || (config?.env && Object.keys(config.env).length))
+      .length;
+    if (!affected) return;
+    this.output.appendLine(tr(
+      'Extra arguments or environment variables are configured for {count} task(s); the executor runs every task in one process, so they no longer apply.',
+      { count: affected },
+    ));
   }
 
-  private async stopTask(): Promise<void> {
-    if (!this.running || !this.childProcess || !this.view) {
-      void vscode.window.showWarningMessage(tr('No task is currently running.'));
+  /** 关闭执行器：先请它自己退出，超时再强杀进程树 */
+  private stopExecutor(): void {
+    if (!this.executor) {
+      void vscode.window.showWarningMessage(tr('The executor is not running.'));
       return;
     }
-    
     this.output.appendLine('');
-    this.output.appendLine(tr('⏹ Stopping task...'));
-    this.stopRequested = true;
-    void this.view.webview.postMessage({ type: 'running', task: this.currentTask, running: true, stopping: true });
-    
-    // 尝试优雅终止
+    this.output.appendLine(tr('⏹ Stopping executor...'));
+    if (!this.writeCommand('stop')) {
+      void this.forceKillExecutor();
+      return;
+    }
+    if (this.forceKillTimer) clearTimeout(this.forceKillTimer);
+    this.forceKillTimer = setTimeout(() => {
+      this.forceKillTimer = undefined;
+      if (this.executor) void this.forceKillExecutor();
+    }, FORCE_KILL_DELAY_MS);
+  }
+
+  /** 强制结束执行器进程树（Windows 用 taskkill /T） */
+  private async forceKillExecutor(): Promise<void> {
+    const child = this.executor;
+    if (!child) return;
     try {
       if (process.platform === 'win32') {
-        // Windows: 使用 taskkill（异步 spawn，避免阻塞扩展宿主）
-        const pid = this.childProcess.pid;
-        if (!pid) {
-          throw new Error(tr('Unable to get the process PID'));
-        }
+        const pid = child.pid;
+        if (!pid) throw new Error(tr('Unable to get the process PID'));
         await new Promise<void>((resolve, reject) => {
           const taskkill = cp.spawn('taskkill', ['/F', '/T', '/PID', pid.toString()], {
             windowsHide: true,
@@ -830,37 +806,177 @@ export class TaskLauncherViewProvider implements vscode.WebviewViewProvider {
           taskkill.stderr?.on('data', (d) => { stderr += d.toString(); });
           taskkill.on('error', reject);
           taskkill.on('close', (code) => {
-            if (code === 0) {
-              resolve();
-            } else {
-              reject(new Error(stderr.trim() || tr('taskkill exit code {code}', { code: code ?? 'null' })));
-            }
+            if (code === 0) resolve();
+            else reject(new Error(stderr.trim() || tr('taskkill exit code {code}', { code: code ?? 'null' })));
           });
         });
       } else {
-        // Unix-like: 发送 SIGTERM
-        this.childProcess.kill('SIGTERM');
+        child.kill('SIGTERM');
       }
     } catch (err) {
-      this.stopRequested = false;
       const error = err instanceof Error ? err.message : String(err);
-      this.output.appendLine(tr('❌ Failed to stop task: {error}', { error }));
-      void vscode.window.showErrorMessage(tr('Failed to stop task: {error}', { error }));
-      void this.view.webview.postMessage({
-        type: 'running',
-        task: this.currentTask,
-        running: true,
-        error: tr('Failed to stop: {error}', { error }),
-      });
+      this.output.appendLine(tr('❌ Failed to stop executor: {error}', { error }));
+      void vscode.window.showErrorMessage(tr('❌ Failed to stop executor: {error}', { error }));
     }
+  }
+
+  /** 清空执行器会话状态（进程已结束或启动失败） */
+  private resetExecutorState(): void {
+    if (this.forceKillTimer) {
+      clearTimeout(this.forceKillTimer);
+      this.forceKillTimer = undefined;
+    }
+    if (this.paramsTimer) {
+      clearTimeout(this.paramsTimer);
+      this.paramsTimer = undefined;
+    }
+    this.executor = null;
+    this.connecting = false;
+    this.snapshot = {};
+    this.stdoutRemainder = '';
+    this.overlayActive = false;
+    // 浮层互斥：执行器退出后把独立浮层宿主交还给工具箱（error / close 都会走到这里，
+    // notifyExecutorRunning 内部会去重）
+    notifyExecutorRunning(false, this.currentProjectDir);
+    this.pushExecutorState();
+  }
+
+  /** 向执行器 stdin 写入命令（run_executor.py 按行读取） */
+  private writeCommand(command: string): boolean {
+    const stdin = this.executor?.stdin;
+    if (!stdin || !stdin.writable) {
+      void vscode.window.showWarningMessage(tr('The executor is not running.'));
+      return false;
+    }
+    try {
+      stdin.write(`${command}\n`);
+      return true;
+    } catch (err) {
+      const message = tr('Failed to send command to the task process: {error}', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+      void vscode.window.showErrorMessage(message);
+      this.output.appendLine(message);
+      return false;
+    }
+  }
+
+  /** 把执行器状态推给 webview */
+  private pushExecutorState(view?: vscode.WebviewView): void {
+    const target = view ?? this.view;
+    if (!target) return;
+    void target.webview.postMessage({
+      type: 'executor',
+      status: this.executor ? (this.connecting ? 'connecting' : 'running') : 'idle',
+      paused: this.snapshot.paused === true,
+      current: this.snapshot.current || '',
+      currentIsTrigger: this.snapshot.currentIsTrigger === true,
+      onetimeQueue: this.snapshot.onetimeQueue || [],
+      enabledTriggers: [...this.enabledTriggers],
+    });
+  }
+
+  private setStatus(level: 'ok' | 'warn' | 'error', text: string): void {
+    void this.view?.webview.postMessage({ type: 'status', level, text });
+  }
+
+  /**
+   * 工具箱浮层开关 → 运行中执行器即时生效（stdin overlay_on/off 命令）。
+   * 无运行执行器时返回 false，开关状态由工具箱直接持久化、下次启动沿用。
+   */
+  setOverlayEnabled(enabled: boolean): boolean {
+    if (!this.executor) return false;
+    this.output.appendLine(enabled ? tr('▶ Enabling debug overlay…') : tr('⏹ Disabling debug overlay…'));
+    return this.writeCommand(enabled ? 'overlay_on' : 'overlay_off');
+  }
+
+  /** 按行扫描 stdout，识别 run_executor.py 输出的控制标记（标记行可能跨 chunk 到达） */
+  private scanControlMarkers(text: string): void {
+    const combined = this.stdoutRemainder + text;
+    const lines = combined.split(/\r?\n/);
+    this.stdoutRemainder = lines.pop() ?? '';
+    for (const line of lines) {
+      if (line.includes('OK_TOOLKIT_STATE:')) {
+        this.applySnapshot(line.slice(line.indexOf('OK_TOOLKIT_STATE:') + 'OK_TOOLKIT_STATE:'.length).trim());
+      } else if (line.includes('OK_TOOLKIT_EXECUTOR_READY')) {
+        this.connecting = false;
+        this.output.appendLine(tr('Executor ready · {count} trigger task(s) enabled', {
+          count: this.enabledTriggers.size,
+        }));
+        this.pushExecutorState();
+      } else if (line.includes('OK_TOOLKIT_PAUSED')) {
+        this.setPaused(true);
+      } else if (line.includes('OK_TOOLKIT_RESUMED')) {
+        this.setPaused(false);
+      } else if (line.includes('OK_TOOLKIT_OVERLAY_ON')) {
+        this.setOverlayActive(true);
+      } else if (line.includes('OK_TOOLKIT_OVERLAY_OFF')) {
+        this.setOverlayActive(false);
+      } else if (line.includes('OK_TOOLKIT_ERROR:')) {
+        const error = line.slice(line.indexOf('OK_TOOLKIT_ERROR:') + 'OK_TOOLKIT_ERROR:'.length).trim();
+        if (error) this.setStatus('error', tr('Task control command failed: {error}', { error }));
+      }
+    }
+  }
+
+  /**
+   * 应用执行器状态快照。
+   * 执行器侧的触发任务启用状态是权威值（用户在执行器里停掉某任务也会反映到这里），
+   * 因此把勾选集合与它对齐后再推给 UI。
+   */
+  private applySnapshot(payload: string): void {
+    if (!payload) return;
+    let parsed: ExecutorSnapshot;
+    try {
+      parsed = JSON.parse(payload) as ExecutorSnapshot;
+    } catch {
+      return;
+    }
+    this.snapshot = parsed;
+    let changed = false;
+    for (const item of parsed.triggers || []) {
+      const key = item?.key;
+      if (typeof key !== 'string' || !key) continue;
+      const enabled = item.enabled === true;
+      if (enabled === this.enabledTriggers.has(key)) continue;
+      if (enabled) this.enabledTriggers.add(key);
+      else this.enabledTriggers.delete(key);
+      changed = true;
+    }
+    if (changed) this.saveStore();
+    this.pushExecutorState();
+  }
+
+  /** 暂停状态以执行器确认标记为准；翻转时同步日志与 webview */
+  private setPaused(paused: boolean): void {
+    if (this.snapshot.paused === paused) return;
+    this.snapshot = { ...this.snapshot, paused };
+    this.output.appendLine(paused ? tr('⏸ Task paused') : tr('▶ Task resumed'));
+    this.pushExecutorState();
+  }
+
+  /** 调试浮层以执行器确认标记为准；翻转时同步日志并回写工具箱共享状态 */
+  private setOverlayActive(active: boolean): void {
+    if (this.overlayActive === active) return;
+    this.overlayActive = active;
+    this.output.appendLine(active ? tr('▶ Debug overlay: enabled') : tr('⏹ Debug overlay: disabled'));
+    if (this.currentProjectDir) {
+      saveToolboxState(this.currentProjectDir, { overlay: active });
+    }
+  }
+
+  private taskKey(task: TaskInfo): string {
+    return `${task.module}::${task.className}`;
   }
 
   /** 释放资源（output channel 由扩展生命周期统一关闭） */
   dispose(): void {
     if (TaskLauncherViewProvider.current === this) TaskLauncherViewProvider.current = undefined;
-    if (this.childProcess) {
-      this.childProcess.kill();
-      this.childProcess = null;
+    if (this.forceKillTimer) clearTimeout(this.forceKillTimer);
+    if (this.paramsTimer) clearTimeout(this.paramsTimer);
+    if (this.executor) {
+      this.executor.kill();
+      this.executor = null;
     }
     this.output.dispose();
   }
