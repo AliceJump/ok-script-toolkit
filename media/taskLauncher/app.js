@@ -41,6 +41,7 @@
 
   initializeStaticUi();
   elements.refresh.addEventListener('click', () => post({ type: 'refresh' }));
+  elements.startExecutor.addEventListener('click', () => post({ type: 'startExecutor' }));
   elements.pauseToggle.addEventListener('click', () => {
     post({ type: state.executor.paused ? 'resume' : 'pause' });
   });

@@ -17,11 +17,12 @@ const dictionary = {
   taskTitle: 'Tasks', refresh: 'Refresh', noTasks: 'No tasks', launch: 'Launch', stop: 'Stop',
   pause: 'Pause', resume: 'Resume', parameters: 'Parameters', collapseParameters: 'Collapse',
   oneTimeTask: 'One-time', triggerTask: 'Trigger',
-  enableTrigger: 'Enable', triggerDisabled: 'Not enabled', triggerEnqueued: 'Enqueued',
+  enableTrigger: 'Enable', triggerDisabled: 'Not enabled', triggerArmed: 'Armed',
+  triggerEnqueued: 'Enqueued',
   triggerPolling: 'Polling', taskQueued: 'Waiting', taskRunning: 'Running',
   executorIdle: 'Executor stopped', executorConnecting: 'Starting executor…',
   executorRunning: 'Executor running · {count} trigger task(s) enqueued',
-  executorPaused: 'Paused', stopExecutor: 'Close executor', stopCurrent: 'Stop current task',
+  executorPaused: 'Paused', startExecutor: 'Start executor', stopExecutor: 'Close executor', stopCurrent: 'Stop current task',
   launchSettings: 'Launch Settings', reset: 'Reset', saved: 'Auto-saved', noConfigParameters: 'None',
   schemaFailed: 'Failed {error}', current: 'Current', currentValue: '{value}',
   selectedOptionsHint: '{values}', structuredJsonHint: '', holdCtrlMulti: '', confirm: 'Confirm',
@@ -145,6 +146,29 @@ assert(sent.length === 1 && sent[0].type === 'resume', 'pause toggle must post r
 // 执行器关闭后回到 idle
 send({ type: 'executor', status: 'idle', paused: false, current: '', onetimeQueue: [], enabledTriggers: [TRIGGER_A] });
 assert(document.getElementById('stopExecutor').hidden, 'close-executor button must hide once stopped');
-assert(badgeOf(TRIGGER_A).textContent === 'Enqueued', 'enqueued trigger task must keep its badge after the executor stops');
+// 执行器没跑时不能显示「已入列」——那时根本没在轮询，会误导用户。
+// 改成「已启用」表达「已记录，待启动」。
+assert(badgeOf(TRIGGER_A).textContent === 'Armed', 'enabled trigger must show armed (not enqueued) while executor is idle');
+
+// ── 显式启动按钮 ──────────────────────────────────────────────────────
+// idle 时可见，点击发 startExecutor；执行器起来后隐藏
+const startExecutorButton = document.getElementById('startExecutor');
+assert(!startExecutorButton.hidden, 'start-executor button must be visible while idle');
+sent.length = 0;
+startExecutorButton.click();
+assert(sent.length === 1 && sent[0].type === 'startExecutor', 'start-executor button must post startExecutor');
+
+send({ type: 'executor', status: 'connecting', paused: false, current: '', onetimeQueue: [], enabledTriggers: [] });
+assert(startExecutorButton.hidden, 'start-executor button must hide while connecting');
+send({ type: 'executor', status: 'running', paused: false, current: '', onetimeQueue: [], enabledTriggers: [TRIGGER_A] });
+assert(startExecutorButton.hidden, 'start-executor button must hide while running');
+assert(badgeOf(TRIGGER_A).textContent === 'Enqueued', 'enabled trigger must show enqueued once the executor runs');
+
+// 勾选触发任务只发 triggerSet，绝不顺带启动执行器（裸 webview 无宿主，这里只验证不发额外消息）
+sent.length = 0;
+const toggleB = toggleOf(TRIGGER_B);
+toggleB.checked = true;
+toggleB.dispatchEvent(new window.Event('change', { bubbles: true }));
+assert(sent.length === 1 && sent[0].type === 'triggerSet', 'checking a trigger must only post triggerSet');
 
 console.log(JSON.stringify({ executorUi: 'ok', lastMessages: sent }));

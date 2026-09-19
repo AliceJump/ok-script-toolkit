@@ -26,6 +26,7 @@
     empty: document.getElementById('empty'),
     refresh: document.getElementById('refresh'),
     executorState: document.getElementById('executorState'),
+    startExecutor: document.getElementById('startExecutor'),
     pauseToggle: document.getElementById('pauseToggle'),
     stopCurrent: document.getElementById('stopCurrent'),
     stopExecutor: document.getElementById('stopExecutor'),

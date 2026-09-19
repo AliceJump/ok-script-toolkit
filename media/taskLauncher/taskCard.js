@@ -4,6 +4,7 @@
 
   const BADGE_LABELS = {
     disabled: 'triggerDisabled',
+    armed: 'triggerArmed',
     enqueued: 'triggerEnqueued',
     polling: 'triggerPolling',
     queued: 'taskQueued',
@@ -120,8 +121,19 @@
     const isTrigger = card.dataset.kind === 'trigger';
     const current = executor.current === key;
     if (current) return isTrigger ? 'polling' : 'running';
-    if (isTrigger) return triggerEnabled(key) ? 'enqueued' : 'disabled';
+    if (isTrigger) {
+      // 只有勾了「启用」才算数；但执行器没跑时不能显示「已入列」——
+      // 否则会让人误以为在轮询。此时用「已启用」表达「已记录，待启动」。
+      if (!triggerEnabled(key)) return 'disabled';
+      return executorRunning() ? 'enqueued' : 'armed';
+    }
     return executor.onetimeQueue.indexOf(key) >= 0 ? 'queued' : '';
+  }
+
+  /** 执行器是否已拉起（含连接中） */
+  function executorRunning() {
+    const status = state.executor.status;
+    return status === 'running' || status === 'connecting';
   }
 
   function updateRunningState() {
@@ -165,6 +177,10 @@
     elements.executorState.textContent = text;
     elements.executorState.className = `executor-state is-${level}`;
 
+    // 显式启动：执行器起来之前才显示，起来后让位给暂停/停止
+    elements.startExecutor.hidden = active;
+    elements.startExecutor.disabled = active;
+    elements.startExecutor.textContent = `▶ ${t('startExecutor')}`;
     elements.pauseToggle.hidden = !active;
     elements.pauseToggle.disabled = executor.status !== 'running';
     elements.pauseToggle.textContent = executor.paused ? `▶ ${t('resume')}` : `⏸ ${t('pause')}`;

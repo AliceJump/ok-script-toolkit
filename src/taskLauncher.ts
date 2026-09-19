@@ -344,6 +344,9 @@ export class TaskLauncherViewProvider implements vscode.WebviewViewProvider {
         case 'enqueue':
           if (this.isKnownTask(msg.task)) await this.enqueueOnetime(view, msg.task);
           break;
+        case 'startExecutor':
+          await this.startExecutor(view);
+          break;
         case 'pause':
           this.writeCommand('pause');
           break;
@@ -616,21 +619,28 @@ export class TaskLauncherViewProvider implements vscode.WebviewViewProvider {
 
   // ── 执行器生命周期 ───────────────────────────────────────────────────
 
-  /** 勾选 / 取消勾选触发任务：更新持久化集合，执行器运行中则即时入列 / 出列 */
+  /**
+   * 勾选 / 取消勾选触发任务：更新持久化集合，执行器运行中则即时入列 / 出列。
+   *
+   * 注意这里**不会**拉起执行器 —— 勾选只是「记录我要跑哪些触发任务」的意图，
+   * 不等于「现在开始跑」。想真正启动请点工具栏的启动按钮（`startExecutor`）。
+   * 执行器已在运行时勾选依然即时生效。
+   */
   private async setTriggerEnabled(view: vscode.WebviewView, task: TaskInfo, enabled: boolean): Promise<void> {
     const key = this.taskKey(task);
     if (enabled) this.enabledTriggers.add(key);
     else this.enabledTriggers.delete(key);
     this.saveStore();
     this.pushExecutorState(view);
-    // 执行器没起过：只记状态，等下次启动时按集合入列
-    if (!this.executor) {
-      if (!enabled) return;
-      if (!(await this.ensureExecutor(view))) return;
-      this.pushExecutorState(view);
-      return;
-    }
+    // 执行器没起过：只记状态，等显式启动时按集合入列
+    if (!this.executor) return;
     this.writeCommand(enabled ? `trigger_enable ${key}` : `trigger_disable ${key}`);
+  }
+
+  /** 显式启动执行器（工具栏按钮）：环境不满足时会在 UI 提示 */
+  private async startExecutor(view: vscode.WebviewView): Promise<void> {
+    if (!(await this.ensureExecutor(view))) return;
+    this.pushExecutorState(view);
   }
 
   /** 一次性任务入队：由常驻执行器执行一次后自动出队 */
