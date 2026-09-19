@@ -52,6 +52,16 @@ stdout 标记行（宿主按行扫描）:
 工具箱的 connect_game.py 是自己读、自己拉起游戏的，所以一直带参数；而执行器走框架的
 `start_device()`，只有 ok-script 313b28e（2026-09-16）之后才原生支持 windows.args。
 补丁在旧版上包一层 start_device，在新版上自动失效。
+
+配置沙箱：调试插件绝不允许改动目标项目的 `configs/`。宿主经
+`OK_TOOLKIT_RUN_DIR` 传入沙箱根目录（如 `<workspace>/.vscode/ok-script-toolkit`），
+`config['config_folder']` 与 `config['screenshots_folder']` 一并改道，ok 框架的读写
+全部落在沙箱内。任务因此读到的是默认值 —— 调试场景可接受。
+
+`devices.json` 是唯一例外：工具箱的 connect_game.py 把连接结果写在
+`<项目>/configs/devices.json`（`folder=` 硬指定，不受 config_folder 影响），
+而执行器需要读到同一个窗口。故启动时把它**拷进沙箱**做桥接；此后执行器对它的
+写入只落沙箱，项目侧文件保持原样。
 """
 import argparse
 import functools
@@ -103,6 +113,59 @@ def _note(message: str) -> None:
 def task_key(task) -> str:
     cls = task.__class__
     return f"{cls.__module__}::{cls.__name__}"
+
+
+# ── 配置沙箱 ──────────────────────────────────────────────────────────
+
+def apply_config_sandbox(config: dict) -> str:
+    """把 ok 框架的配置读写改道到沙箱目录，避免污染目标项目的 configs/。
+
+    必须在 `OK(config)` 之前调用：任务在 `OK()` 内部实例化，而 `Config.__init__`
+    （ok/util/config.py）一执行就以 `Config.config_folder` 定下 `config_file` 路径，
+    之后 `save_file()` 永远写它，再改就晚了。
+
+    传导不需要我们插手 —— `OK.__init__`（ok/__init__.py）会执行
+    `Config.config_folder = config["config_folder"]`。这里只要把值塞进 config。
+
+    绝对路径可直接用：`get_relative_path`（ok/util/file.py）是
+    `os.path.join(os.getcwd(), *files)`，传入绝对路径时按路径语义直接采用。
+    相对路径会落到 `os.getcwd()`（= 项目根）下，这样也能工作。
+
+    返回沙箱根目录（未启用时返回空串）。
+    """
+    run_dir = os.environ.get("OK_TOOLKIT_RUN_DIR", "").strip()
+    if not run_dir:
+        return ""
+    run_dir = os.path.abspath(run_dir)
+    config_folder = os.path.join(run_dir, "configs")
+    screenshots_folder = os.path.join(run_dir, "screenshots")
+    try:
+        os.makedirs(config_folder, exist_ok=True)
+        os.makedirs(screenshots_folder, exist_ok=True)
+    except OSError as e:  # noqa: BLE001 — 建不出沙箱就退回旧行为，绝不因它起不来
+        _note(f"配置沙箱创建失败，回退为不隔离：{e}")
+        return ""
+
+    config["config_folder"] = config_folder
+    # 截图目录必须一起改道：ok 启动时会清空它（会真的删文件）。
+    config["screenshots_folder"] = screenshots_folder
+
+    # devices.json 是唯一需要桥接的：connect_game.py 用 `folder=` 硬写到项目
+    # configs/ 下（不受 config_folder 影响），执行器要读到同一个窗口。拷一份进沙箱，
+    # 此后执行器对它的写入只落沙箱，项目侧文件保持原样。
+    source_devices = os.path.join(os.getcwd(), "configs", "devices.json")
+    target_devices = os.path.join(config_folder, "devices.json")
+    if os.path.isfile(source_devices):
+        try:
+            with open(source_devices, "r", encoding="utf-8") as src:
+                payload = src.read()
+            with open(target_devices, "w", encoding="utf-8") as dst:
+                dst.write(payload)
+        except OSError as e:  # noqa: BLE001 — 桥接失败只影响自动连游戏，不阻断启动
+            _note(f"devices.json 桥接失败：{e}")
+
+    _note(f"配置沙箱已启用：{config_folder}")
+    return run_dir
 
 
 # ── 猴子补丁 ──────────────────────────────────────────────────────────
@@ -646,6 +709,9 @@ def main() -> None:
     config_module = __import__(args.config_module, fromlist=["config"])
     config = dict(config_module.config)
     config["check_mutex"] = False
+    # 调试插件绝不改动目标项目的 configs/：把框架读写整体改道到沙箱。
+    # 必须在 OK(config) 之前 —— 任务是在 OK() 内部实例化的。
+    apply_config_sandbox(config)
     # ok-script 2.x：config['gui']={'type':'qt'} 会让 OK 创建完整 Qt App 并安装
     # QtEventDispatcher，headless 下没有事件循环，communicate.window/overlay 信号
     # 全部排队丢失，浮层收不到窗口更新。置 None 强制 HeadlessApp（同步分发）。

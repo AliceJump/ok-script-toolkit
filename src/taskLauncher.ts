@@ -672,6 +672,9 @@ export class TaskLauncherViewProvider implements vscode.WebviewViewProvider {
       PYTHONUTF8: '1',
       // 触发任务启用集合：执行器以它为准，项目 configs 里残留的 _enabled 会被覆盖
       OK_TOOLKIT_TRIGGERS: JSON.stringify([...this.enabledTriggers]),
+      // 配置沙箱：执行器把 ok 框架的配置/截图读写全部改道到这里，绝不碰项目 configs/。
+      // 放在 .vscode 下是因为它已被项目 .gitignore 忽略，且插件自身数据也在此处。
+      OK_TOOLKIT_RUN_DIR: path.join(projectDir, '.vscode', 'ok-script-toolkit'),
     };
     // 参数注入通过环境变量传递（避免命令行长度/转义问题）；key 是 module::Class，
     // 执行器按任务各自取自己的覆盖，因此可以整体合并后一次性传入。
