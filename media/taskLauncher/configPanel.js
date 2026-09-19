@@ -208,7 +208,12 @@
 
       if (headerField && inlineRules[headerField]) {
         const checking = new Set(options.checking || []); checking.add(headerField);
+        // 该标题字段自身的内联子项（boolean sub_configs）默认渲染在组内。
+        // 但若同一批 key 也出现在 configGroups 的 children 里，下面的循环会渲染它们，
+        // 此处必须跳过，否则每个子项都会被渲染两遍（喝水/吃饭曾因此重复）。
+        const declared = new Set(childKeys);
         for (const child of [...new Set(Object.values(inlineRules[headerField]).flat())]) {
+          if (declared.has(child)) continue;
           renderFieldTree(child, body, [...path, child], { subConfig: true, checking });
         }
       }

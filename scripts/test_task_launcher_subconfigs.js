@@ -66,13 +66,23 @@ const fields = [
   { key: 'groupSelector', default: 'A', value: 'A', displayKey: 'Hidden selector', type: { type: 'drop_down', options: ['A', 'B'], sub_configs: { A: ['aField'], B: ['bField'] } } },
   { key: 'aField', default: 'a', value: 'a', displayKey: 'A field', type: {} },
   { key: 'bField', default: 'b', value: 'b', displayKey: 'B field', type: {} },
+  // 复现 ok-gf2「活动层」：组头字段自身的 sub_configs 子项与其 configGroups children
+  // 是同一批 key。两个渲染来源重合时，子项曾被渲染两遍（喝水/吃饭各出现两次）。
+  { key: 'overlapGroup', default: true, value: true, displayKey: 'Overlap group', type: { sub_configs: { True: ['overlapChildA', 'overlapChildB'] } } },
+  { key: 'overlapChildA', default: '1', value: '1', displayKey: 'Overlap child A', type: {} },
+  { key: 'overlapChildB', default: '2', value: '2', displayKey: 'Overlap child B', type: {} },
 ];
 const schema = {
   fields,
   kind: 'onetime',
   groupSelector: 'groupSelector',
-  configGroups: { A: ['aField'], B: ['bField'], titleField: ['titleField', 'plainChild'] },
-  groupLabels: { A: 'A Group', B: 'B Group', titleField: 'Title Group' },
+  configGroups: {
+    A: ['aField'],
+    B: ['bField'],
+    titleField: ['titleField', 'plainChild'],
+    overlapGroup: ['overlapChildA', 'overlapChildB'],
+  },
+  groupLabels: { A: 'A Group', B: 'B Group', titleField: 'Title Group', overlapGroup: 'Overlap Group' },
 };
 window.dispatchEvent(new window.MessageEvent('message', { data: { type: 'tasks', tasks: [task], schemas: { 'demo::DemoTask': schema } } }));
 
@@ -80,6 +90,20 @@ const labels = [...window.document.querySelectorAll('.config-group__title')].map
 const fieldRows = key => [...window.document.querySelectorAll(`.config-field[data-key="${key}"]`)];
 const groupByTitle = title => [...window.document.querySelectorAll('.config-group')].find(group => group.querySelector(':scope > .config-group__header .config-group__title')?.textContent.trim() === title);
 const assert = (condition, message) => { if (!condition) throw new Error(message); };
+// 统计每个 key 的渲染行数：除「共享子项」外，同一 key 不应渲染多次。
+// 曾经的 bug：分组标题字段自身的内联子项（inlineRules）与其 configGroups children 是同一批 key 时，
+// 两个循环各渲染一遍，导致「喝水/吃饭」等在每个分组内重复出现。
+const duplicateRows = (allowed = []) => {
+  const allowedSet = new Set(allowed);
+  const counts = {};
+  for (const row of window.document.querySelectorAll('.config-field[data-key]')) {
+    const key = row.getAttribute('data-key');
+    counts[key] = (counts[key] || 0) + 1;
+  }
+  return Object.entries(counts)
+    .filter(([key, count]) => count > 1 && !allowedSet.has(key))
+    .map(([key, count]) => `${key}x${count}`);
+};
 
 assert(fieldRows('groupSelector').length === 0, 'register_config_groups selector must be hidden');
 assert(labels.includes('A Group') && labels.includes('B Group'), 'all registered groups must be rendered');
@@ -108,6 +132,20 @@ titleSwitch.checked = true;
 titleSwitch.dispatchEvent(new window.Event('change', { bubbles: true }));
 assert(!fieldRows('titleChild')[0].hidden, 'config-title switch must reveal inline children without changing fold state');
 assert(fieldRows('plainChild').length === 1, 'title group regular child must render');
+// shared 是 shared/oneOnly/twoOnly 中唯一被两个 option 组共用的项，允许出现多次；
+// 其余每个 key 都必须只渲染一次 —— 分组标题字段的内联子项不得重复。
+const syntheticDupes = duplicateRows(['shared']);
+assert(!syntheticDupes.length, `fields must not be rendered twice: ${syntheticDupes.join(', ')}`);
+assert(fieldRows('titleChild').length === 1, 'config-title switch child must not duplicate via inline rules');
+assert(fieldRows('plainChild').length === 1, 'title group child declared in configGroups must not duplicate');
+// ok-gf2 场景：组头字段的 sub_configs 子项 == 该组 configGroups children，必须各渲染一次
+assert(fieldRows('overlapChildA').length === 1, 'overlap group child A must render exactly once');
+assert(fieldRows('overlapChildB').length === 1, 'overlap group child B must render exactly once');
+const overlapGroup = [...window.document.querySelectorAll('.config-group')].find(
+  group => group.querySelector(':scope > .config-group__header .config-field[data-key="overlapGroup"]'),
+);
+assert(overlapGroup, 'overlap group must exist and use its field as header');
+assert(overlapGroup.querySelectorAll('.config-field[data-key="overlapChildA"]').length === 1, 'overlap child A must live inside the group exactly once');
 
 const realSchemaFile = process.argv[2];
 let realSummary = null;
@@ -135,7 +173,31 @@ if (realSchemaFile) {
   if (missingGroups.length) console.log('REAL_DEBUG', JSON.stringify({ dailyLabels, missingGroups }));
   assert(!missingGroups.length, 'all real registered groups must be rendered together');
   assert(!dailyLabels.some(label => boolSubConfigLabels.has(label)), 'boolean True/False sub_configs must not become collapse groups');
-  realSummary = { dailyGroups: dailyLabels.length, expectedGroups: expectedGroups.length };
+
+  // 真实项目回归：只有「被多个 configGroups 共用的 key」允许出现多次。
+  // 分组标题字段自身的 sub_configs 子项若同时是它 configGroups 的 children，
+  // 必须只渲染一次（ok-gf2 的「活动层 -> 喝水/吃饭」重复渲染即此类）。
+  const childGroupCount = {};
+  for (const children of Object.values(dailySchema.configGroups || {})) {
+    if (!Array.isArray(children)) continue;
+    for (const child of children) childGroupCount[child] = (childGroupCount[child] || 0) + 1;
+  }
+  const sharedKeys = Object.entries(childGroupCount).filter(([, n]) => n > 1).map(([key]) => key);
+  const realDupes = duplicateRows(sharedKeys);
+  if (realDupes.length) console.log('REAL_DUP_DEBUG', JSON.stringify({ realDupes, sharedKeys }));
+  assert(!realDupes.length, `real schema fields must not be rendered twice: ${realDupes.join(', ')}`);
+
+  // 逐一断言：每个 configGroups 子项都恰好渲染一次（除非被多个分组共用）。
+  for (const [group, children] of Object.entries(dailySchema.configGroups || {})) {
+    if (!Array.isArray(children)) continue;
+    for (const child of children) {
+      if (sharedKeys.includes(child)) continue;
+      const rows = window.document.querySelectorAll(`.config-field[data-key="${child}"]`);
+      assert(rows.length <= 1, `group "${group}" child "${child}" must render exactly once, got ${rows.length}`);
+    }
+  }
+
+  realSummary = { dailyGroups: dailyLabels.length, expectedGroups: expectedGroups.length, sharedKeys };
 }
 
 console.log(JSON.stringify({ groups: labels, sharedCopies: fieldRows('shared').length, hiddenSelector: fieldRows('groupSelector').length, realSummary, sent }));
