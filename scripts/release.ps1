@@ -5,10 +5,12 @@
 .DESCRIPTION
     Automates:
       1. Read current version and auto-increment
-      2. Sync new version to package.json / package-lock.json / jetbrains/gradle.properties
-      3. Commit and push jetbrains submodule
-      4. Commit and push parent repo (with submodule pointer update)
-      5. Create and push v{newVersion} tag
+      2. Sync new version to five places: package.json / package-lock.json /
+         jetbrains/gradle.properties / the README.md and jetbrains/README.md badges
+      3. Verify version consistency
+      4. Commit and push jetbrains submodule
+      5. Commit and push parent repo (with README badge and submodule pointer update)
+      6. Create and push the v{newVersion} tag (this is what triggers the release pipeline)
 
 .PARAMETER Version
     Explicit version number (MAJOR.MINOR.PATCH). If omitted, auto-increments minor.
