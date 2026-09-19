@@ -142,7 +142,7 @@ Invoke-Cmd 'git push origin main' 'git push (jetbrains)' $JetbrainsDir
 
 # 5. Commit parent repo (with submodule pointer update)
 Write-Host "> Committing parent repo..."
-Invoke-Cmd 'git add package.json package-lock.json jetbrains' 'git add (parent)'
+Invoke-Cmd 'git add package.json package-lock.json README.md jetbrains' 'git add (parent)'
 Invoke-Cmd "git commit -m `"$commitMsg`"" 'git commit (parent)'
 Invoke-Cmd 'git push origin main' 'git push (parent)'
 

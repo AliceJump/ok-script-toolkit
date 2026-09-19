@@ -130,7 +130,10 @@ run 'git push (jetbrains)' git -C "$JETBRAINS_DIR" push origin main
 
 # ⑤ 提交父仓库（含子模块指针更新）
 echo '▸ 提交父仓库...'
-run 'git add (parent)' git -C "$ROOT" add package.json package-lock.json jetbrains
+# README.md 也必须显式纳入：sync-version.js 会改写它的版本徽章，但它是未跟踪文件，
+# `git commit`（非 -a）不会带上它，于是徽章更新会滞留在工作区——
+# 下次 release.sh 的「工作区必须干净」检查又会直接报错卡住。
+run 'git add (parent)' git -C "$ROOT" add package.json package-lock.json README.md jetbrains
 run 'git commit (parent)' git -C "$ROOT" commit -m "chore(release): prepare v$NEW_VERSION"
 run 'git push (parent)' git -C "$ROOT" push origin main
 
