@@ -170,5 +170,8 @@
   "saveToAssetsCustomScripts": "自訂腳本",
   "saveToAssetsStandaloneApp": "獨立應用",
   "screenshotWindowPlaceholder": "例如 EndField|Unity",
-  "uncategorized": "未分類"
+  "uncategorized": "未分類",
+  "LabelEnum.py file path (relative to workspace root, leave empty to skip)": "LabelEnum.py 檔案路徑（相對於工作區根目錄，留空則略過）",
+  "e.g. assets/data/LabelEnum.py or src/label_enum.py": "例如 assets/data/LabelEnum.py 或 src/label_enum.py",
+  "Please click an image in the Template Assets panel to open the annotation editor.": "請先在「範本資源」面板中點選一張圖片，以開啟標註編輯器。"
 }

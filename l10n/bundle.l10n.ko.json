@@ -170,5 +170,8 @@
   "saveToAssetsCustomScripts": "사용자 스크립트",
   "saveToAssetsStandaloneApp": "독립 실행 앱",
   "screenshotWindowPlaceholder": "예: EndField|Unity",
-  "uncategorized": "미분류"
+  "uncategorized": "미분류",
+  "LabelEnum.py file path (relative to workspace root, leave empty to skip)": "LabelEnum.py 파일 경로(워크스페이스 루트 기준, 비워 두면 건너뜀)",
+  "e.g. assets/data/LabelEnum.py or src/label_enum.py": "예: assets/data/LabelEnum.py 또는 src/label_enum.py",
+  "Please click an image in the Template Assets panel to open the annotation editor.": "주석 편집기를 열려면 \"템플릿 에셋\" 패널에서 이미지를 클릭하세요."
 }

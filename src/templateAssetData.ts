@@ -555,18 +555,34 @@ export class TemplateAssetData {
     fs.writeFileSync(task.outPath, encodePngRgb(task.W, task.H, canvasRgba));
   }
 
-  /** Generate a Python enum file from category labels. */
+  /**
+   * Generate a Python enum file from category labels.
+   *
+   * 标签来自用户输入的分类名，会**直接拼进 Python 源码**，所以两处都必须处理：
+   *
+   * 1. **值**用 `JSON.stringify` 序列化 —— JSON 字符串字面量与 Python 单引号字符串在
+   *    转义规则上不完全等价（`'` 在 JSON 里不必转义、在 Python 里必须转义），所以这里
+   *    保留单引号外壳、只替换会破坏字面量的字符，并统一走显式转义函数。
+   * 2. **成员名**必须是合法 Python 标识符。分类名带空格 / 连字符 / 中文时，
+   *    `   洗手 台 = '...'` 这种行会让整个文件 `SyntaxError`，用户拿到的枚举文件直接不能用。
+   */
   private generateLabelEnum(filePath: string, labels: string[]): void {
     const dir = path.dirname(filePath);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 
-    const className = path.basename(filePath, '.py');
+    const rawClassName = path.basename(filePath, '.py');
+    // 类名同样进源码：非法标识符直接退回一个安全的默认名，而不是生成坏文件
+    const className = /^[A-Za-z_][A-Za-z0-9_]*$/.test(rawClassName) ? rawClassName : 'LabelEnum';
     let content = 'from enum import Enum\n\n\n';
     content += `class ${className}(str, Enum):\n`;
-    for (const label of labels) {
-      content += `    ${label} = '${label}'\n`;
+    if (labels.length === 0) {
+      // 空枚举的类体不能什么都没有 —— 否则是 `IndentationError: expected an indented block`
+      content += '    pass\n';
     }
-    fs.writeFileSync(filePath, content, 'utf-8');
+    for (const label of labels) {
+      // 值：单引号包裹，转义反斜杠与单引号（其余控制字符由 pythonLiteral 兜住）
+      content += `    ${memberNameFor(label)} = ${pythonStringLiteral(label)}\n`;
+    }    fs.writeFileSync(filePath, content, 'utf-8');
   }
 
   /* ---------- 导入外部图片文件 ---------- */
@@ -612,4 +628,60 @@ export class TemplateAssetData {
       return undefined;
     }
   }
+}
+
+/* ---------------- Python 源码生成助手 ---------------- */
+
+/**
+ * 把一段用户输入变成合法的 Python 单引号字符串字面量（含引号）。
+ *
+ * 为什么不用 `JSON.stringify`：JSON 与 Python 的字符串转义规则**不完全重合**。
+ * JSON 里单引号无需转义（`"\u0027"` 反而可选），而 Python 单引号字面量里 `\'` 是必需的；
+ * 反之 JSON 允许裸的 `\/`，Python 也接受但语义微妙。所以这里逐字符显式转义，
+ * 只保留两边都安全的表示，避免"看起来能跑、换一个标签就炸"。
+ */
+export function pythonStringLiteral(value: string): string {
+  let out = "'";
+  for (const ch of value) {
+    switch (ch) {
+      case '\\': out += '\\\\'; break;
+      case '\'': out += '\\\''; break;
+      case '\n': out += '\\n'; break;
+      case '\r': out += '\\r'; break;
+      case '\t': out += '\\t'; break;
+      default: {
+        const code = ch.codePointAt(0)!;
+        // 控制字符（含 \x00-\x1f 与 \x7f）一律走 \xNN，避免源文件里出现裸控制字符
+        if (code < 0x20 || code === 0x7f) {
+          // 代理对不需要处理：上面已按码点判断，控制字符都是单码元
+          out += `\\x${code.toString(16).padStart(2, '0')}`;
+        } else {
+          out += ch;
+        }
+      }
+    }
+  }
+  return `${out}'`;
+}
+
+/**
+ * 把分类名转成合法的 Python 枚举成员名。
+ *
+ * Python 标识符不允许空格、连字符、数字开头；非 ASCII 中文虽然**语法上**能当标识符，
+ * 但枚举成员会被 `LabelEnum.洗手台` 这样引用，中文成员名在大多数工具链里都是坑，
+ * 因此统一规范化成 `cat_<hex>` 形式的纯 ASCII 名。
+ *
+ * **成员名与值相互独立**：值保留原始标签（`pythonStringLiteral(label)`），
+ * 所以 `LabelEnum.cat_6d17_53f0.value == '洗手台'` 依然成立 —— 规范化不丢信息。
+ */
+export function memberNameFor(label: string): string {
+  const ascii = label.replace(/[^A-Za-z0-9_]/g, '_');
+  if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(ascii)) return ascii;
+
+  // 剩下两类：以数字开头，或规范化后一个有效字符都没有（全中文 / 全符号）
+  const codepoints = [...label].map((c) => c.codePointAt(0)!);
+  const suffix = codepoints.map((c) => c.toString(16)).join('_');
+  const prefix = /^[0-9]/.test(ascii) ? 'n' : 'cat';
+  const candidate = suffix ? `${prefix}_${suffix}` : prefix;
+  return /^[A-Za-z_][A-Za-z0-9_]*$/.test(candidate) ? candidate : 'cat';
 }
