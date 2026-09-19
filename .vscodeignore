@@ -32,3 +32,5 @@ ok_tasks/**
 **/__pycache__/**
 **/*.pyc
 out/tmp_test/**
+python/tests/**
+python/test_*.py

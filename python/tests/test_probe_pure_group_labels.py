@@ -7,12 +7,14 @@
 （`{'sub_configs': {True: [...]}}`），于是它带着 type 元数据混进了字段列表。
 前端 `buildField` 取不到值会落到 `buildText` 兜底分支，凭空渲染一个输入框。
 
-跑法：python python/test_probe_pure_group_labels.py
+跑法：python python/tests/test_probe_pure_group_labels.py
 """
 import os
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# 测试放在 tests/ 子目录，被测脚本在上一级 python/。加 .. 而不是 .，
+# 这样测试文件不会被随插件发布的 `python/*.py` 通配打包收进去。
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.stdout.reconfigure(encoding="utf-8")
 
 from probe_task_schemas import find_pure_group_labels  # noqa: E402

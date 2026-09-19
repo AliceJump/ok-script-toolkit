@@ -2,7 +2,7 @@
 """apply_config_sandbox 的行为测试。
 
 覆盖：启用/未启用、目录创建、devices.json 桥接、绝对/相对路径、失败回退。
-不依赖 ok 框架，可直接跑：python python/test_run_executor_sandbox.py
+不依赖 ok 框架，可直接跑：python python/tests/test_run_executor_sandbox.py
 """
 import importlib.util
 import json
@@ -12,7 +12,9 @@ import sys
 import tempfile
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent
+# 测试放在 tests/ 子目录，被测脚本在上一级 python/。加 .. 而不是 .，
+# 这样测试文件不会被随插件发布的 `python/*.py` 通配打包收进去。
+ROOT = Path(__file__).resolve().parent.parent
 SPEC = importlib.util.spec_from_file_location("run_executor_under_test", ROOT / "run_executor.py")
 mod = importlib.util.module_from_spec(SPEC)
 # run_executor 顶层只做 import + 常量定义，import 时不会启动任何东西。
