@@ -73,7 +73,7 @@ For PyCharm / IntelliJ IDEA users, install the JetBrains version: [ok-script Too
 | [代码开发辅助](#代码开发辅助) | 在编辑器内补全和解释 `self.lang`、OCR 正则与技能效果 ID |
 | [模板管理](#模板管理) | 网格浏览模板，单击插入 `fL.<名称>`，支持缩略图预览 |
 | [临时截图](#临时截图) | 活动栏里的 10 张暂存区，框选即可复制归一化坐标 |
-| [任务启动](#任务启动) | 从 `config.py` 自动生成参数表单并运行任务 |
+| [任务启动](#任务启动) | 从 `config.py` 自动生成参数表单并运行任务，全程不写目标项目配置 |
 | [角色技能管理](#角色技能管理) | 角色 / 技能 / 效果 / 强化组的可视化管理与诊断 |
 | [多语言支持](#多语言支持) | 界面支持 6 种语言，数据提示跟随目标项目 |
 
@@ -84,7 +84,7 @@ For PyCharm / IntelliJ IDEA users, install the JetBrains version: [ok-script Too
 | [Code development assistance](#代码开发辅助) | Complete and explain `self.lang`, OCR regex, and skill effect IDs in the editor |
 | [Template management](#模板管理) | Browse templates in a grid, click to insert `fL.<name>`, with thumbnail preview |
 | [Temp screenshots](#临时截图) | 10-slot scratch area in the activity bar — box-select to copy normalized coordinates |
-| [Task launcher](#任务启动) | Auto-generate parameter forms from `config.py` and run tasks |
+| [Task launcher](#任务启动) | Auto-generate parameter forms from `config.py` and run tasks, without writing to the target project's config |
 | [Character skill management](#角色技能管理) | Visual management and diagnostics for characters / skills / effects / enhancement groups |
 | [Multi-language support](#多语言支持) | UI supports 6 languages; data hints follow the target project |
 
@@ -222,9 +222,11 @@ Details:
 - 支持布尔、数字、文本、多行文本、下拉、多选、列表、项目级联下拉和结构化条件序列等多种参数类型。
 - 任务名、说明、参数名和选项标签自动读取目标项目 i18n 翻译显示；支持递归可折叠的子任务配置树。
 - **单一常驻执行器**：整个项目只维持一个进程——连接一次游戏后，由 ok-script 框架原生的 `TaskExecutor` 循环轮询全部已启用的触发任务，实现多触发任务串连轮询（旧版逐个启动会让框架把触发任务列表收窄成单个）。
-- **触发任务勾选启用**：卡片上的「启用」勾选框即入列 / 出列，勾选状态按项目持久化，重开面板或重启 IDE 自动入列，不再需要逐个「启动」。
+- **执行器显式启动**：勾选触发任务只是「记录我要跑哪些」，**不会**自动拉起执行器；点工具栏的「启动执行器」按钮才开始运行，运行中勾选依然即时生效。执行器未运行时，已勾选的任务显示「已启用」而非「已入列」，避免误以为正在轮询。
+- **触发任务勾选启用**：卡片上的「启用」勾选框即入列 / 出列，勾选状态按项目持久化，重开面板或重启 IDE 后仍是勾选状态，下次启动执行器时按此集合入列。
 - **一次性任务入队**：点「启动」把任务送进同一个执行器的队列，执行一次后自动出队，不会另起进程争抢游戏窗口。
 - 每个项目、每个任务独立保存参数覆盖，参数修改后自动保存并即时推送给运行中的执行器；覆盖只作用于执行器进程的内存，不写回目标项目配置文件。
+- **不污染目标项目配置**：执行器运行时，ok 框架对 `configs/` 与截图的读写全部改道到工作区的沙箱目录 `.vscode/ok-script-toolkit/`，**目标项目的配置文件与截图全程保持原样**（`devices.json` 做桥接拷贝以复用游戏连接）。调试时可以放心地改参数试跑，不会弄脏项目。
 - 执行器可随时暂停/恢复（全局挂起轮询与任务），也可以「停止当前任务」而不关闭执行器；运行日志输出到专属输出频道。
 
 #### English
@@ -237,9 +239,11 @@ Details:
 - Supports multiple parameter types: boolean, number, text, multiline text, dropdown, multi-select, list, cascading dropdown, and structured condition sequences.
 - Task names, descriptions, parameter names, and option labels are automatically read from the target project's i18n translations; supports recursively collapsible sub-task configuration trees.
 - **Single persistent executor**: Only one process per project — after connecting to the game once, the ok-script framework's native `TaskExecutor` polls all enabled trigger tasks in rotation, enabling multi-trigger task chained polling (the old per-task launch would narrow the trigger task list to a single task).
-- **Trigger task toggle**: The "Enable" checkbox on each card enqueues/dequeues the task. Check state is persisted per project; re-opening the panel or restarting the IDE auto-enqueues — no more individual "Launch" clicks.
+- **Explicit executor start**: Checking a trigger task only records "which tasks I want to run" — it does **not** auto-launch the executor. Click "Start Executor" in the toolbar to begin; toggling while running still takes effect immediately. When the executor is not running, checked tasks show "Enabled" rather than "Enqueued", so you don't mistake them for actively polling.
+- **Trigger task toggle**: The "Enable" checkbox on each card enqueues/dequeues the task. Check state is persisted per project — reopening the panel or restarting the IDE restores it, and the set is applied when you next start the executor.
 - **One-time task enqueue**: Click "Launch" to send the task into the same executor's queue; it auto-dequeues after one execution, without spawning a separate process competing for the game window.
 - Each project and task has independent parameter overrides. Changes are auto-saved and instantly pushed to the running executor; overrides only affect the executor process's memory and are never written back to the target project's config file.
+- **No target-project config pollution**: While the executor runs, all ok-framework reads/writes to `configs/` and screenshots are redirected into the workspace sandbox `.vscode/ok-script-toolkit/`, so **the target project's config files and screenshots stay untouched** (`devices.json` is bridged by copy so the game connection is reused). Tweak parameters freely while debugging without dirtying the project.
 - The executor can be paused/resumed at any time (globally suspending polling and tasks), and you can "stop the current task" without closing the executor. Run logs are output to a dedicated output channel.
 
 ### 角色技能管理 / Character Skill Management

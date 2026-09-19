@@ -26,6 +26,7 @@ media/
 	taskLauncher/              任务启动器 Webview（index.html、CSS、组件脚本）
 	characterManager/          角色技能管理 Webview（index.html、CSS、交互脚本）
 python/                      随扩展发布的辅助脚本：任务发现、探测与执行（parse_config_tasks.py、probe_task_schemas.py、run_executor.py），以及模板素材面板的游戏窗口截图与配置探测（capture_game_window.py、probe_window_config.py）
+	python/tests/              开发期 Python 回归测试（test_probe_pure_group_labels.py、test_run_executor_sandbox.py）；按 AGENT.md 打包规范不进 VSIX / JetBrains JAR
 scripts/                     开发期生成与回归测试工具，不打入 VSIX
 l10n/                        扩展宿主运行时本地化资源
 package.nls*.json            扩展清单本地化资源
@@ -68,8 +69,9 @@ out/                         TypeScript 编译产物（由构建生成）
 - Python / JSON 效果与语言值行内提示。
 - 可搜索的原生模板工具窗口，可插入、复制表达式或打开来源图片。
 - 项目级数据目录、locale、模板别名和提示开关设置。
-- 标注编辑器（`AnnotationDialog`）：画框/删除/坐标模式、边缘手柄、撤销重做、
-  ←/→ 跨图导航，OK 时统一写回 `coco_annotations.json`。
+- 标注编辑器（`AnnotationDialog`）：画框/删除/坐标模式、边缘 8 向手柄、拖动移框、
+  缩放平移、撤销重做、Ctrl+C/V 复制粘贴、双击数值编辑、←/→ 跨图导航，
+  改动在 OK 时统一写回 `coco_annotations.json`（Cancel 全部放弃）。
 - 临时截图工具窗口（`ok-script Temp Shots`）：与 VS Code 端能力对齐（10 张上限、
   粘贴/截屏入列、0.1s 轮播、框选复制归一化坐标、缩略图拖到素材面板导入）。
   拖拽在这里**可用**——两个工具窗口同处一个 JVM，用自定义 `DataFlavor` 传路径；
@@ -82,7 +84,7 @@ cd jetbrains
 ./gradlew test buildPlugin verifyPluginStructure verifyPluginConfiguration
 ```
 
-Windows 使用 `gradlew.bat`。生成的 ZIP 位于 `jetbrains/build/distributions/`，可在 JetBrains IDE 的 **Settings / Plugins / Install Plugin from Disk...** 中安装。详细状态和后续移植范围见 `jetbrains/README.md`。
+Windows 使用 `gradlew.bat`。生成的 ZIP 位于 `jetbrains/build/distributions/`，可在 JetBrains IDE 的 **Settings / Plugins / Install Plugin from Disk...** 中安装。逐功能的对齐状态与剩余差异见 [`jetbrains/docs/parity-review.md`](jetbrains/docs/parity-review.md)（2026-09-20 已按代码逐条重核，基线 v1.7.1）。
 
 ### 安装
 
@@ -155,11 +157,14 @@ VS Code 的 **Tasks: Run Task** 里同样有
 
 - Pull Request 和 `main` 推送只运行 `CI`，同时测试并打包 VS Code 与 JetBrains 两端，不会发布。
 - **发布的唯一触发方式是推送一个尚不存在的 `vX.Y.Z` 标签**。工作流不提供手动发布，也不会因 `main` 推送自动发布。
-- `package.json`、`package-lock.json` 和 `jetbrains/gradle.properties` 的版本必须完全一致；标签必须等于 `v<version>`。
+- `package.json`、`package-lock.json`、`jetbrains/gradle.properties` 与两个 README 的版本徽章必须完全一致；标签必须等于 `v<version>`。少同步或漏提交任何一处，Release 的 `validate` 都会失败。
 - 标签工作流会测试两端，构建 VSIX 和 JetBrains ZIP，在同一个 GitHub Release 中上传两个安装包，然后按已配置的 Secret 发布两个 Marketplace。
 - GitHub Release 使用仓库内置 `GITHUB_TOKEN`；Marketplace 所需 Secret 统一配置在父仓库 `AliceJump/ok-script-toolkit`，子仓库不保存发布凭据。
 
 发布示例：
+
+> 也可以直接跑一键脚本：`npm run release -- --minor`（等价 `sh scripts/release.sh --minor`，
+> Windows 用 `scripts/release.ps1`），它会自动完成下面全部步骤；加 `--dry-run` 先预览。
 
 ```bash
 # 一次更新 package.json、package-lock.json 和 JetBrains pluginVersion
@@ -171,8 +176,9 @@ git -C jetbrains add .
 git -C jetbrains commit -m "chore(release): prepare v0.6.0"
 git -C jetbrains push origin main
 
-# 再提交父仓库版本和新的子模块指针
-git add package.json package-lock.json jetbrains
+# 再提交父仓库版本、README 徽章和新的子模块指针
+# 注意 README.md 必须一起提交：version:sync 会改它的徽章，漏了就校验失败
+git add package.json package-lock.json README.md jetbrains
 git commit -m "chore(release): prepare v0.6.0"
 git push origin main
 
@@ -221,6 +227,7 @@ media/
 	taskLauncher/              Task launcher Webview (index.html, CSS, component scripts)
 	characterManager/          Character skill management Webview (index.html, CSS, interaction scripts)
 python/                      Helper scripts shipped with the extension: task discovery, probing & execution (parse_config_tasks.py, probe_task_schemas.py, run_executor.py), plus game window capture & config probing for the template asset panel (capture_game_window.py, probe_window_config.py)
+	python/tests/              Development-time Python regression tests (test_probe_pure_group_labels.py, test_run_executor_sandbox.py); excluded from VSIX / JetBrains JAR per AGENT.md packaging rules
 scripts/                     Development-time generation & regression test tools, not included in VSIX
 l10n/                        Extension host runtime localization resources
 package.nls*.json            Extension manifest localization resources
@@ -263,8 +270,10 @@ The `jetbrains/` directory contains a standalone Kotlin + IntelliJ Platform plug
 - Python / JSON effect and language value inline hints.
 - Searchable native template tool window with insert, copy expression, or open source image.
 - Project-level data directory, locale, template aliases, and hint toggle settings.
-- Annotation editor (`AnnotationDialog`): draw/delete/coords modes, edge handles, undo/redo,
-  ←/→ cross-image navigation, unified write-back to `coco_annotations.json` on OK.
+- Annotation editor (`AnnotationDialog`): draw/delete/coords modes, 8-way edge handles,
+  drag-to-move, zoom/pan, undo/redo, Ctrl+C/V copy-paste, double-click value edit,
+  ←/→ cross-image navigation; changes are written back to `coco_annotations.json` on OK
+  (Cancel discards all).
 - Temp shots tool window (`ok-script Temp Shots`): aligned with VS Code capabilities (10-shot limit,
   paste/screenshot enqueue, 0.1s carousel, box-select normalized coordinates, thumbnail drag to asset panel import).
   Drag **works here** — the two tool windows share the same JVM and use a custom `DataFlavor` to pass paths;
@@ -277,7 +286,7 @@ cd jetbrains
 ./gradlew test buildPlugin verifyPluginStructure verifyPluginConfiguration
 ```
 
-Use `gradlew.bat` on Windows. The generated ZIP is at `jetbrains/build/distributions/` and can be installed via **Settings / Plugins / Install Plugin from Disk...** in a JetBrains IDE. See `jetbrains/README.md` for detailed status and future porting scope.
+Use `gradlew.bat` on Windows. The generated ZIP is at `jetbrains/build/distributions/` and can be installed via **Settings / Plugins / Install Plugin from Disk...** in a JetBrains IDE. For per-feature alignment status and remaining gaps, see [`jetbrains/docs/parity-review.md`](jetbrains/docs/parity-review.md) (re-verified line by line against the code on 2026-09-20, baseline v1.7.1).
 
 ### Installation
 
@@ -350,11 +359,15 @@ enables breakpoint debugging (requires `vscjava.vscode-java-debug`).
 
 - Pull Requests and `main` pushes only run `CI`, testing and packaging both VS Code and JetBrains editions without publishing.
 - **The only way to trigger a release is pushing a new `vX.Y.Z` tag**. The workflow provides no manual release and does not auto-release on `main` push.
-- Versions in `package.json`, `package-lock.json`, and `jetbrains/gradle.properties` must be identical; the tag must equal `v<version>`.
+- Versions in `package.json`, `package-lock.json`, `jetbrains/gradle.properties`, and both README badges must be identical; the tag must equal `v<version>`. Missing or uncommitted any one of them fails the Release `validate` job.
 - The tag workflow tests both editions, builds VSIX and JetBrains ZIP, uploads both installers in a single GitHub Release, then publishes to both Marketplaces using the configured Secrets.
 - GitHub Releases use the repo's built-in `GITHUB_TOKEN`; Marketplace secrets are configured in the parent repo `AliceJump/ok-script-toolkit` only — the sub-repo stores no release credentials.
 
 Release example:
+
+> You can also run the one-shot script: `npm run release -- --minor` (equivalent to
+> `sh scripts/release.sh --minor`; on Windows use `scripts/release.ps1`). It performs every
+> step below automatically — add `--dry-run` to preview first.
 
 ```bash
 # Sync versions across all five places: package.json, package-lock.json, jetbrains/gradle.properties
@@ -368,7 +381,8 @@ git -C jetbrains commit -m "chore(release): prepare v0.6.0"
 git -C jetbrains push origin main
 
 # Then commit parent repo version, README badge, and new submodule pointer
-git add package.json package-lock.json jetbrains
+# Note: README.md must be committed too — version:sync rewrites its badge, and missing it fails validation
+git add package.json package-lock.json README.md jetbrains
 git commit -m "chore(release): prepare v0.6.0"
 git push origin main
 
