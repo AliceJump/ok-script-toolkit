@@ -4,6 +4,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { injectWebviewLocalization, projectLocale, tr } from './localization';
 import { loadToolboxState, notifyExecutorRunning, saveToolboxState } from './toolboxState';
+import { errorPage, getNonce } from './webviewHtml';
 
 /** 单个任务的元信息 */
 interface TaskInfo {
@@ -996,13 +997,17 @@ export class TaskLauncherViewProvider implements vscode.WebviewViewProvider {
 
   /** 读取任务启动器 Webview 外壳并注入 CSP 与本地资源 URI。 */
   private buildHtml(webview: vscode.Webview): string {
-    const nonce = Math.random().toString(36).slice(2, 14);
+    const nonce = getNonce();
     const htmlPath = path.join(this.extensionUri.fsPath, 'media', 'taskLauncher', 'index.html');
     let html = '';
     try {
       html = fs.readFileSync(htmlPath, 'utf-8');
     } catch (e) {
-      return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${tr('Error')}</title></head><body style="font-family:var(--vscode-font-family);color:var(--vscode-foreground);padding:16px">${tr('Unable to read view file: {error}', { error: e instanceof Error ? e.message : String(e) })}</body></html>`;
+      // 错误消息里会带文件路径，路径可合法包含 < > & " —— 必须转义后再拼进 HTML
+      return errorPage(
+        tr('Error'),
+        tr('Unable to read view file: {error}', { error: e instanceof Error ? e.message : String(e) }),
+      );
     }
     const resource = (name: string) => webview.asWebviewUri(
       vscode.Uri.joinPath(this.extensionUri, 'media', 'taskLauncher', name),

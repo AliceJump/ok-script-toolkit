@@ -1,5 +1,6 @@
 import * as childProcess from 'child_process';
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import {
@@ -34,6 +35,7 @@ import {
   warmCropCache,
   THUMB_HEIGHT,
 } from './pngCrop';
+import { errorPage, getNonce } from './webviewHtml';
 
 export interface CharacterManagerDependencies {
   extensionUri: vscode.Uri;
@@ -83,13 +85,6 @@ function effectArray(value: unknown, name: string): unknown[] {
       throw new Error(tr('Each item in {name} must be an effect ID string or an object containing effect_id', { name }));
     }
   }
-  return value;
-}
-
-function getNonce(): string {
-  const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-  let value = '';
-  for (let index = 0; index < 32; index++) value += possible.charAt(Math.floor(Math.random() * possible.length));
   return value;
 }
 
@@ -243,7 +238,13 @@ export class CharacterManagerPanel implements vscode.Disposable {
           .split('__APP_SCRIPT_URI__').join(resource('app.js')),
       );
     } catch (error) {
-      return `<!DOCTYPE html><html><meta charset="UTF-8"><body style="font-family:var(--vscode-font-family);color:var(--vscode-foreground);padding:20px">${tr('Unable to read character manager panel: {error}', { error: error instanceof Error ? error.message : String(error) })}</body></html>`;
+      // 错误消息里会带文件路径，路径可合法包含 < > & " —— 必须转义后再拼进 HTML
+      return errorPage(
+        tr('Error'),
+        tr('Unable to read character manager panel: {error}', {
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      );
     }
   }
 
@@ -344,11 +345,22 @@ export class CharacterManagerPanel implements vscode.Disposable {
     };
   }
 
+  /**
+   * 原子写 JSON。
+   *
+   * 两处细节都是踩过坑才有的：
+   *
+   * 1. **`.bak` 放临时目录，不放目标文件旁边**。原先写 `<file>.bak`，也就是把备份丢进
+   *    用户的 `ok_templates/` 源码树里 —— 既会污染项目、被误提交，也会在多次写入后
+   *    堆一堆没人清理的文件。备份的作用只是"这次写坏了能捞回来"，放在系统临时目录足够。
+   * 2. **`copyFileSync` 必须在 `try` 内**。原先它在 `try` 之外，源文件不存在 / 无读权限时
+   *    抛出的异常不会走下面的 `.tmp` 清理分支，也拿不到统一的错误上下文。
+   */
   private atomicWriteJson(file: string, root: JsonObject): void {
-    const backup = `${file}.bak`;
+    const backup = path.join(os.tmpdir(), `ok-script-toolkit-${path.basename(file)}.bak`);
     const temporary = `${file}.ok-script-toolkit.tmp`;
-    fs.copyFileSync(file, backup);
     try {
+      if (fs.existsSync(file)) fs.copyFileSync(file, backup);
       fs.writeFileSync(temporary, `${JSON.stringify(root, null, 2)}\n`, 'utf-8');
       JSON.parse(fs.readFileSync(temporary, 'utf-8'));
       fs.renameSync(temporary, file);
@@ -451,11 +463,12 @@ export class CharacterManagerPanel implements vscode.Disposable {
     return file;
   }
 
+  /** 原子写文本；备份位置与 `copyFileSync` 位置的取舍见 [atomicWriteJson] 的注释 */
   private atomicWriteText(file: string, content: string): void {
-    const backup = `${file}.bak`;
+    const backup = path.join(os.tmpdir(), `ok-script-toolkit-${path.basename(file)}.bak`);
     const temporary = `${file}.ok-script-toolkit.tmp`;
-    fs.copyFileSync(file, backup);
     try {
+      if (fs.existsSync(file)) fs.copyFileSync(file, backup);
       fs.writeFileSync(temporary, content, 'utf-8');
       fs.renameSync(temporary, file);
     } catch (error) {

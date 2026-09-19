@@ -3,6 +3,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { TemplateAssetData } from './templateAssetData';
 import { injectWebviewLocalization, tr } from './localization';
+import { getNonce } from './webviewHtml';
 
 /* ---------------- 标注数据类型 ---------------- */
 
@@ -241,15 +242,6 @@ export class AnnotationPanel {
       AnnotationPanel.current = undefined;
     });
   }
-}
-
-/* ---------------- Nonce 生成 ---------------- */
-
-function getNonce(): string {
-  const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-  let value = '';
-  for (let i = 0; i < 32; i++) value += possible.charAt(Math.floor(Math.random() * possible.length));
-  return value;
 }
 
 /* ---------------- HTML ---------------- */

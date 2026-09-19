@@ -8,6 +8,7 @@ import { injectWebviewLocalization, tr } from './localization';
 import { TempScreenshotStore } from './tempScreenshotStore';
 import { captureGameWindow } from './screenshotCapture';
 import { takePendingDrag } from './tempDrag';
+import { getNonce } from './webviewHtml';
 
 /* ---------------- 控制器 ---------------- */
 
@@ -391,15 +392,6 @@ export class TemplateAssetPanel {
       TemplateAssetPanel.current = undefined;
     });
   }
-}
-
-/* ---------------- HTML ---------------- */
-
-function getNonce(): string {
-  const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-  let value = '';
-  for (let i = 0; i < 24; i++) value += possible.charAt(Math.floor(Math.random() * possible.length));
-  return value;
 }
 
 function assetGalleryHtml(webview: vscode.Webview, extensionUri: vscode.Uri): string {

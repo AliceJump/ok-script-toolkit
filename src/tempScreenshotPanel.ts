@@ -9,6 +9,7 @@ import { captureGameWindow } from './screenshotCapture';
 import { clearPendingDrag, setPendingDrag } from './tempDrag';
 import { cropTemplateThumbFileAsync, readImageSize, removeTemplateThumbFile, THUMB_HEIGHT } from './pngCrop';
 import { injectWebviewLocalization, tr } from './localization';
+import { getNonce } from './webviewHtml';
 
 /* ---------------- 剪贴板读图（Windows 回退路径） ---------------- */
 
@@ -308,15 +309,6 @@ export class TempScreenshotViewProvider implements vscode.WebviewViewProvider {
     view.onDidChangeVisibility(() => { if (view.visible) void controller.refresh(); });
     view.onDidDispose(() => controller.dispose());
   }
-}
-
-/* ---------------- HTML ---------------- */
-
-function getNonce(): string {
-  const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-  let value = '';
-  for (let i = 0; i < 24; i++) value += possible.charAt(Math.floor(Math.random() * possible.length));
-  return value;
 }
 
 function tempScreenshotHtml(webview: vscode.Webview, extensionUri: vscode.Uri): string {

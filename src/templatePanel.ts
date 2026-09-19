@@ -5,6 +5,7 @@ import { FeatureData } from './featureData';
 import { cropTemplateThumbFileAsync, openAnnotatedImage, THUMB_HEIGHT } from './pngCrop';
 import { featureAliases } from './providers';
 import { injectWebviewLocalization, tr } from './localization';
+import { getNonce } from './webviewHtml';
 
 /** 发送给 webview 的模板元数据（不含图片） */
 interface TemplateMeta {
@@ -284,17 +285,6 @@ export class TemplateGalleryPanel {
       TemplateGalleryPanel.current = undefined;
     });
   }
-}
-
-/* ---------------- HTML（两种视图共用） ---------------- */
-
-function getNonce(): string {
-  let text = '';
-  const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-  for (let i = 0; i < 24; i++) {
-    text += possible.charAt(Math.floor(Math.random() * possible.length));
-  }
-  return text;
 }
 
 function galleryHtml(webview: vscode.Webview, cspSource: string, extensionUri: vscode.Uri): string {
