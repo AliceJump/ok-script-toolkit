@@ -155,6 +155,28 @@ def normalize_group_map(value):
     return groups
 
 
+def find_pure_group_labels(config_groups, default_config, runtime_config):
+    """挑出「纯分组标签」：只作为分组容器、自身没有任何可编辑值的分组名。
+
+    `_init_default_config_group` 会把每个分组名也写进 ``config_type``
+    （``{'sub_configs': {True: [...]}}``），所以分组名在 config_type 里总是
+    带 type 元数据。但对于像 ok-gf2「自主循环跳过项」这类 key —— 它既不在
+    ``default_config`` 也不在运行期 ``config`` 里 —— 它没有值可编辑，
+    只是子项的容器。
+
+    这类 key 若照常作为字段输出，前端 ``buildField`` 取到 ``undefined``
+    会一路落到 ``buildText`` 兜底分支，凭空渲染出一个无意义的输入框。
+
+    判定必须同时看 default_config 与 runtime_config：分组名恰好又是一个
+    真实开关的情况（如「活动层」「班组」）必须保留为字段。
+    """
+    return {
+        group_name
+        for group_name in config_groups
+        if group_name not in default_config and group_name not in runtime_config
+    }
+
+
 def find_group_selector(config_type, declared_groups):
     """识别 register_config_groups 生成的分组下拉，而非普通条件下拉。"""
     for key, type_meta in config_type.items():
@@ -286,6 +308,10 @@ def main():
                 group_selector, selector_groups = find_group_selector(config_type, config_groups)
                 config_groups.update(selector_groups)
                 fields = []
+                # 纯分组标签只作容器，不作为字段输出（否则前端会多渲染输入框）。
+                pure_group_labels = find_pure_group_labels(
+                    config_groups, default_config, runtime_config
+                )
                 ordered_keys = list(dict.fromkeys([
                     *runtime_config.keys(),
                     *default_config.keys(),
@@ -296,6 +322,8 @@ def main():
                     type_meta = config_type.get(key)
                     resolved_type = type_meta.get("type") if isinstance(type_meta, dict) else None
                     if str(key).startswith("_"):
+                        continue
+                    if key in pure_group_labels:
                         continue
                     if isinstance(type_meta, dict) and type_meta.get("hidden"):
                         continue

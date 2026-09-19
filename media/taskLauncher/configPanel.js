@@ -128,7 +128,36 @@
     const renderedGroups = new Set();
     const inlineRules = {};
 
+    // 分组优先、显隐其次：同一个 key 不能既是折叠分组又带显隐 —— 折叠有权「吸收」显隐。
+    //
+    // 任务项目常给每个分组名也挂一份 sub_configs（如 ok-gf2 的
+    // `_init_default_config_group` 循环把 `{group: {'sub_configs': {True: children}}}`
+    // 写进 config_type），此时两套机制会打架：折叠展开了、子项却仍被显隐判定为 hidden。
+    //
+    // 规则：
+    //   1. 分组名的 sub_configs 一律不再作为显隐规则（该分组的可见性只由折叠决定）；
+    //   2. 其 sub_configs 里的子项**全部吸收进该分组的 children**，避免「只在显隐里、
+    //      不在 children 里」的子项因为规则 1 而彻底失去渲染通道（字段凭空消失）；
+    //   3. 分组名自身的配置值仍照常渲染成控件（如「社区每日」的开关）。
+    //
+    // 注意：不在 configGroups 里的字段（如 ok-gf2「多账户模式」）显隐照常生效。
+    const groupNames = new Set(Object.keys(groups));
+    const absorbedChildren = {};
     for (const field of schema.fields) {
+      if (!groupNames.has(field.key)) continue;
+      const rules = booleanRules(field);
+      if (!rules) continue;
+      const declared = new Set(groups[field.key] || []);
+      const extra = [...new Set(Object.values(rules).flat())].filter(child => !declared.has(child));
+      if (extra.length) absorbedChildren[field.key] = extra;
+    }
+    // 吸收进分组 children：此后所有消费方（渲染、嵌套判定、兜底通道）都看到完整列表。
+    for (const [key, extra] of Object.entries(absorbedChildren)) {
+      groups[key] = [...(groups[key] || []), ...extra];
+    }
+
+    for (const field of schema.fields) {
+      if (groupNames.has(field.key)) continue;
       const rules = booleanRules(field);
       if (rules) inlineRules[field.key] = rules;
     }
@@ -274,7 +303,6 @@
     for (const field of schema.fields) for (const group of optionGroups(field)) for (const key of group.children) optionControlled.add(key);
     const inlineControlled = new Set();
     for (const rules of Object.values(inlineRules)) for (const keys of Object.values(rules)) for (const key of keys) inlineControlled.add(key);
-    const groupNames = new Set(Object.keys(groups));
     const groupChildren = new Set();
     for (const children of Object.values(groups)) if (Array.isArray(children)) for (const key of children) groupChildren.add(key);
 
