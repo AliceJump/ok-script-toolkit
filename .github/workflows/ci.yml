@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   vscode:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
 
     steps:
@@ -40,6 +40,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # 单独一步而不是塞进 `npm test`：语言包对等与代码无关，
+      # 失败信息要一眼能看出是「漏翻译」而不是「测试挂了」。
+      - name: Verify localization parity
+        run: npm run verify:l10n
+
       - name: Verify, compile, and test
         run: npm test
 
@@ -59,7 +64,7 @@ jobs:
           retention-days: 14
 
   jetbrains:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
 
     steps:
@@ -79,7 +84,7 @@ jobs:
         run: npm run --silent verify:version
 
       - name: Set up Java
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '21'

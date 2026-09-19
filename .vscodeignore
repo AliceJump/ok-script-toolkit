@@ -34,3 +34,10 @@ ok_tasks/**
 out/tmp_test/**
 python/tests/**
 python/test_*.py
+**/*.bak
+**/*.ok-script-toolkit.tmp
+# 审查/修复计划类的一次性工作目录（verification-<日期> at <时间>/ 等）。
+# 这些是开发过程产物，按 AGENT.md 的打包红线不得进产物。用通配而不是逐个列名 ——
+# 每次审查都会新建一个带时间戳的目录，逐个列名必然漏（2026-09-20 实测漏了 107 KB）。
+verification-*/
+verification */*

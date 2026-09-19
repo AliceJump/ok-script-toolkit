@@ -17,3 +17,7 @@ __pycache__
 
 # GIF 制作工具链的本地依赖（gifsicle 便携版，GPL-2.0 二进制，不进仓库）
 .tools/
+
+# 原子写的临时产物（写入中的 .tmp 与旧版备份）
+*.ok-script-toolkit.tmp
+*.bak
