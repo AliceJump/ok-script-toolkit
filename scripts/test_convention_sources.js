@@ -406,6 +406,57 @@ async function main() {
     check(new Set(keys).size === keys.length, '登记表里没有重复键');
   }
 
+  // ── 6.5 登记表必须覆盖每一个「有个人偏好层」的设置 ────────────────
+  //
+  // 上面那组是"登记表里的键都合法"，这一组是**反方向**：`projectConfig.ts` 里每一个
+  // 传给 `ideSetting('x')` 的键，都必须在登记表里出现。
+  //
+  // 漏一行的后果：那一项**有**个人偏好层、能被用户覆盖，却**无法溯源、也无法一键恢复**
+  // —— 用户改了之后再也看不到团队声明、也回不去。这正是溯源面板存在的理由（§3）。
+  //
+  // 反向不成立（登记表可以有 ideSetting 之外的键）：`featureAliases` 另有一套
+  // "上次保存"机制（`globalState`），它的个人偏好不走 `ideSetting` 的字面量调用。
+  console.log('\n登记表覆盖所有走 ideSetting 的设置');
+  {
+    const readSrc = (rel) => fs.readFileSync(path.join(__dirname, '..', rel), 'utf-8');
+
+    // 只看**字面量**调用：登记表内部是用登记表里的 key 动态调 `ideSetting(args.key)`，
+    // 那是"消费方"，不是"声明方"。
+    const ideSettingKeys = new Set(
+      [...readSrc('src/projectConfig.ts').matchAll(/ideSetting<[^>]*>\(\s*'([^']+)'\s*\)/g)]
+        .map((m) => m[1]),
+    );
+    const registryKeys = new Set(
+      [...readSrc('src/conventionSources.ts').matchAll(/^\s*key:\s*'([^']+)',/gm)].map((m) => m[1]),
+    );
+
+    check(
+      ideSettingKeys.size >= 5,
+      `扫到了 ${ideSettingKeys.size} 个 ideSetting 字面量键 —— **不能让扫描静默扫空**，` +
+        '空集包含于任何集合，断言会恒真',
+    );
+    check(registryKeys.size >= 5, `扫到了 ${registryKeys.size} 个登记表键 —— 同上`);
+
+    const missing = [...ideSettingKeys].filter((k) => !registryKeys.has(k));
+    check(
+      missing.length === 0,
+      missing.length === 0
+        ? `每个走 ideSetting 的设置都在登记表里（${ideSettingKeys.size} 个）`
+        : `**这些设置没有登记表行**：${missing.join(', ')} —— 它们的个人偏好层无法溯源、也无法恢复`,
+    );
+
+    // 对照：把登记表里的**一个 ideSetting 键**抽掉，上面那条断言必须变红。
+    // 刻意挑一个 `ideSettingKeys` 里的键 —— 挑 `featureAliases`（不在那个集合里）会让对照恒真。
+    const victim = [...ideSettingKeys][0];
+    check(registryKeys.has(victim), `前置：${victim} 确实在登记表里（否则对照没意义）`);
+    const afterDrop = new Set([...registryKeys].filter((x) => x !== victim));
+    const dropped = [...ideSettingKeys].filter((k) => !afterDrop.has(k));
+    check(
+      dropped.includes(victim) && dropped.length === missing.length + 1,
+      `对照：抽掉登记表里的 ${victim} 后**正好多漏一个** —— 证明上面那条断言确实在约束"覆盖"这件事`,
+    );
+  }
+
   // ── 7. 破坏性对照 ──────────────────────────────────────────────────
   //
   // 就地改造编译产物再求值。若对照跑出来的结果与期望相同，说明对应断言没在约束任何东西。
