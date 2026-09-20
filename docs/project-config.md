@@ -315,6 +315,19 @@ IntelliJ 各有原生 keymap 编辑器，用户改键位本来就该走那里 �
 
 ## 9. 未决事项
 
-1. `captureMethod` 归"项目约定"还是"机器相关"？取决于它是否随机器/驱动变化
-2. 是否提供「生成项目配置文件」命令？（当前设计为**只读**，需显式操作才写）
+1. ~~`captureMethod` 归"项目约定"还是"机器相关"？~~
+   → **已定**：归**机器相关**，不进配置文件（见 §5 的「不进配置文件的」清单，
+   与 `okScriptPython` / `okScriptProjectPath` 同列）。它随机器/驱动/游戏窗口行为变化，
+   提交进仓库会强加给同事。
+2. 是否提供「生成项目配置文件」命令？（当前设计为**只读**，需显式操作才写）—— **仍未做**。
 3. `characters.projectPath` 指向另一个仓库时，那边的 `ok-script-toolkit.json` 是否也参与取值？
+   → **实测当前行为：不参与。** 两端 `characters.*`（含 `characters.projectPath` 本身）都从
+   **当前工作区**的约定文件读（`charactersMasterFileSetting()` 等一律 `loadProjectConfig()`
+   不传根）。`characters.projectPath` 只决定**数据在哪**，不决定**配置从哪读**。
+   ⚠️ **但模板数据那边是反的**：`TemplateAssetData` **刻意传自己的根**
+   （`templatesDirectory(this.rootDir)`，源码注释写着"模板数据可能来自另一个仓库，
+   用错根会读到别人的约定文件"）。**两处不一致**，是"待统一"而不是"已定"：
+   - 若认为 `characters.masterFile` 描述的是**那个仓库**的布局 → 应读那个仓库的文件（与模板一致）
+   - 若认为它描述的是"调试当前项目时去哪找角色数据" → 读当前工作区是对的（现状）
+
+   统一前先明确这条语义；两种解释都能自圆其说，别只改一边。
