@@ -39,7 +39,7 @@ out/                         TypeScript 编译产物（由构建生成）
 
 任务启动器**不是「一次启动 = 一个任务进程」**，而是**一个项目一个常驻执行器进程**：`python/run_executor.py` 只启动一次，连接一次游戏，之后由 ok-script 框架原生的 `TaskExecutor` 循环轮询全部已启用的触发任务；一次性任务以入队方式交给同一个进程执行。
 
-- **为什么不能用 `ok.run_task(config, task=<单个任务>)` 跑触发任务**：框架会转调 `OK.run_trigger_task()`，把 `executor.trigger_tasks` 收窄成单个任务并 `disable()` 其余触发任务，多触发任务串连轮询直接失效。旧的 `python/run_task.py` 因此只保留给手动单任务调试（已标注废弃）。
+- **为什么不能用 `ok.run_task(config, task=<单个任务>)` 跑触发任务**：框架会转调 `OK.run_trigger_task()`，把 `executor.trigger_tasks` 收窄成单个任务并 `disable()` 其余触发任务，多触发任务串连轮询直接失效。曾有一个只跑单任务的 `python/run_task.py` 走这条旧路径，**已于 2026-09 删除** —— 它既没有任何插件调用，又**没接配置沙箱**（手动跑会直接写目标项目的 `configs/`，违反「插件绝不改写被调试项目配置」这条红线）。要手动跑单个一次性任务，请改用常驻执行器的 stdin 命令 `onetime_enqueue <module::Class>`，那条路径有沙箱。
 - **轮询在哪**：`ok/task/TaskExecutor.py` 的 `next_task()` —— onetime 队列 → 任一 enabled 的一次性任务 → 触发任务按 `trigger_task_index` 轮转，命中 `enabled and should_trigger()` 即执行。
 - **stdin 命令**：`trigger_enable|trigger_disable <module::Class>`、`onetime_enqueue <module::Class>`、`task_disable`（停当前任务、轮询继续）、`params <全量 json>`、`pause|resume`、`overlay_on|off`、`stop`。
 - **stdout 标记**：`OK_TOOLKIT_EXECUTOR_CONNECTING / _READY / _STOPPED`、`OK_TOOLKIT_STATE:<json>`（`current / currentIsTrigger / paused / triggers[] / onetimeQueue[]`，快照变化时推送）、沿用 `OK_TOOLKIT_PAUSED / RESUMED / OVERLAY_* / ERROR:`。
@@ -240,7 +240,7 @@ Each externalized Webview's HTML, CSS, and JavaScript live in the same feature d
 
 The task launcher is **not "one launch = one task process"** but rather **one persistent executor process per project**: `python/run_executor.py` starts only once, connects to the game once, and then the ok-script framework's native `TaskExecutor` polls all enabled trigger tasks in rotation; one-time tasks are enqueued to the same process.
 
-- **Why you can't use `ok.run_task(config, task=<single task>)` for trigger tasks**: The framework calls `OK.run_trigger_task()`, narrowing `executor.trigger_tasks` to a single task and `disable()`-ing the rest, breaking multi-trigger chained polling. The old `python/run_task.py` is retained only for manual single-task debugging (marked deprecated).
+- **Why you can't use `ok.run_task(config, task=<single task>)` for trigger tasks**: The framework calls `OK.run_trigger_task()`, narrowing `executor.trigger_tasks` to a single task and `disable()`-ing the rest, breaking multi-trigger chained polling. A single-task `python/run_task.py` used to cover that legacy path; it was **deleted in 2026-09** — nothing invoked it, and it **bypassed the config sandbox** (running it by hand wrote straight into the target project's `configs/`, violating the "the plugin never rewrites the debugged project's config" rule). To run one one-time task by hand, use the persistent executor's stdin command `onetime_enqueue <module::Class>` instead — that path is sandboxed.
 - **Where polling happens**: `ok/task/TaskExecutor.py`'s `next_task()` — onetime queue → any enabled one-time task → trigger tasks rotate by `trigger_task_index`, executing when `enabled and should_trigger()` matches.
 - **stdin commands**: `trigger_enable|trigger_disable <module::Class>`, `onetime_enqueue <module::Class>`, `task_disable` (stops current task, polling continues), `params <full json>`, `pause|resume`, `overlay_on|off`, `stop`.
 - **stdout markers**: `OK_TOOLKIT_EXECUTOR_CONNECTING / _READY / _STOPPED`, `OK_TOOLKIT_STATE:<json>` (`current / currentIsTrigger / paused / triggers[] / onetimeQueue[]`, pushed on snapshot changes), reuses `OK_TOOLKIT_PAUSED / RESUMED / OVERLAY_* / ERROR:`.
