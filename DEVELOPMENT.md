@@ -11,26 +11,54 @@ This document is for extension developers and covers the project structure, loca
 ### 项目结构
 
 ```text
-src/                         VS Code 扩展宿主 TypeScript 源码
+src/                         VS Code 扩展宿主 TypeScript 源码（30 个模块，下列为入口与主要模块）
+	projectConfig.ts           项目约定文件 ok-script-toolkit.json 的读盘侧（定位 + 缓存 + 个人偏好）
+	projectConfigPure.ts       取值链纯逻辑（不依赖 vscode，可单测）：解析 + 优先级 + 来源层
+	conventionSources.ts       「项目约定 vs 我的设置」溯源面板的数据源
+	cocoFeaturePath.ts         运行时模板库路径的读盘侧（config.py 的 coco_feature_json 探测缓存）
+	cocoFeaturePathPure.ts     同上，纯逻辑（优先级 + 候选过滤）
+	extension.ts               入口：激活、文件监听与刷新派发、命令注册
+	langData.ts                语言 JSON + gettext PO 数据源（幽灵注释/补全/hover）
+	featureData.ts             模板库（COCO）解析 + 按模板名反查原图
+	effectData.ts              效果 ID 映射（解析 effects.py）
+	characterData.ts           角色/技能数据读写（含同步技能保护）
+	characterPanel.ts          角色技能管理面板宿主侧
+	providers.ts               补全 / hover / inlay 提供器
+	taskLauncher.ts            任务启动器宿主侧（schema 探测、常驻执行器、参数通道）
+	templateAssetData.ts       模板素材数据（读写 <模板目录>/coco_annotations.json）
+	templateAssetPanel.ts      模板素材面板宿主侧（含「保存到 assets」导出流程）
+	saveToAssetsPure.ts        导出流程的纯逻辑（目标列表 + 枚举路径要不要问）
+	templatePanel.ts           模板画廊面板
 	annotationPanel.ts         标注编辑器面板（画框标注 + 框选复制归一化坐标）
 	tempScreenshotStore.ts     临时截图存储（最多 10 张，按工作区隔离落盘）
 	tempScreenshotPanel.ts     临时截图侧边栏视图（粘贴/截屏、0.1s 轮播、框选坐标）
-	screenshotCapture.ts       游戏窗口截图采集（窗口探测 + capture_game_window.py 调用）
 	tempDrag.ts                跨 Webview 拖拽中介（临时截图 → 标注管理；VS Code 端实测无效，见下）
-media/
+	screenshotCapture.ts       游戏窗口截图采集（窗口探测 + capture_game_window.py 调用）
+	pngCrop.ts                 缩略图裁剪 + content-hash 磁盘缓存（配 pngCropWorker.ts）
+	pngCropWorker.ts           缩略图裁剪的 Worker 线程
+	assetPack.ts               「保存到 assets」的 PNG 打包（配 assetPackWorker.ts）
+	assetPackWorker.ts         打包的 Worker 线程
+	localization.ts            宿主文案与 Webview 字典（两层 i18n）
+	webviewHtml.ts             Webview HTML 组装（nonce / CSP 这些**安全边界**收在一处）
+	toolboxState.ts            工具箱连接状态持久化（同时写入项目 configs/devices.json）
+media/                        每个外置 Webview 的 HTML/CSS/JS（宿主经 CSP + asWebviewUri 加载）
 	icons/                     活动栏与视图图标（templates.svg、toolbox.svg、task.svg）
-	annotationPanel/           标注编辑器 Webview（index.html、CSS、交互脚本）
-	tempScreenshots/           临时截图侧边栏 Webview（index.html、CSS、交互脚本）
-	templateAssetPanel/        模板素材管理 Webview（index.html、CSS、交互脚本）
-	templatePanel/             模板面板 Webview（index.html、CSS、交互脚本）
-	taskLauncher/              任务启动器 Webview（index.html、CSS、组件脚本）
-	characterManager/          角色技能管理 Webview（index.html、CSS、交互脚本）
-python/                      随扩展发布的辅助脚本：任务发现、探测与执行（parse_config_tasks.py、probe_task_schemas.py、run_executor.py），以及模板素材面板的游戏窗口截图与配置探测（capture_game_window.py、probe_window_config.py）
+	annotationPanel/           标注编辑器
+	tempScreenshots/           临时截图侧边栏
+	templateAssetPanel/        模板素材管理
+	templatePanel/             模板面板
+	taskLauncher/              任务启动器
+	characterManager/          角色技能管理
+python/                       随扩展发布的辅助脚本：任务发现、探测与执行（parse_config_tasks.py、probe_task_schemas.py、run_executor.py），以及模板素材面板的游戏窗口截图与配置探测（capture_game_window.py、probe_window_config.py）
 	python/tests/              开发期 Python 回归测试（test_probe_pure_group_labels.py、test_run_executor_sandbox.py）；按 AGENT.md 打包规范不进 VSIX / JetBrains JAR
-scripts/                     开发期生成与回归测试工具，不打入 VSIX
-l10n/                        扩展宿主运行时本地化资源
-package.nls*.json            扩展清单本地化资源
-out/                         TypeScript 编译产物（由构建生成）
+jetbrains/                    JetBrains 插件的**独立公开仓库**（git submodule），有自己的 README / CI / 发版流程
+schemas/                      ok-script-toolkit.json 的 JSON Schema（编辑器补全与校验）
+docs/                         设计文档（项目约定文件设计、可直接复制的示例配置）
+scripts/                      开发期生成与回归测试工具，不打入 VSIX
+l10n/                         扩展宿主运行时本地化资源
+package.nls*.json             扩展清单本地化资源
+screenshots/                  README 用的演示 GIF（**VS Code 版界面**；子仓 README 不能复用）
+out/                          TypeScript 编译产物（由构建生成）
 ```
 
 每个外置 Webview 的 HTML、CSS 和 JavaScript 均放在同一功能目录中；宿主通过 CSP 限制和 `asWebviewUri()` 加载资源。
@@ -212,26 +240,54 @@ git push origin v0.6.0
 ### Project Structure
 
 ```text
-src/                         VS Code extension host TypeScript source
+src/                         VS Code extension host TypeScript source (30 modules; entry points and major ones listed)
+	projectConfig.ts           Read side of the project convention file ok-script-toolkit.json (locate + cache + personal preference)
+	projectConfigPure.ts       Pure precedence-chain logic (no vscode dependency, unit-testable): parse + precedence + winning layer
+	conventionSources.ts       Data source for the "Project Convention vs My Settings" tracing panel
+	cocoFeaturePath.ts         Read side of the runtime template library path (cached probe of config.py's coco_feature_json)
+	cocoFeaturePathPure.ts     Same, pure logic (precedence + candidate filtering)
+	extension.ts               Entry point: activation, file watching & refresh dispatch, command registration
+	langData.ts                Language JSON + gettext PO data source (inlay hints / completion / hover)
+	featureData.ts             Template library (COCO) parsing + reverse lookup of source images by template name
+	effectData.ts              Effect ID mapping (parses effects.py)
+	characterData.ts           Character/skill data read-write (incl. synced-skill protection)
+	characterPanel.ts          Character & skill manager panel host side
+	providers.ts               Completion / hover / inlay providers
+	taskLauncher.ts            Task launcher host side (schema probing, persistent executor, parameter channel)
+	templateAssetData.ts       Template asset data (reads/writes <templates dir>/coco_annotations.json)
+	templateAssetPanel.ts      Template asset panel host side (incl. the "save to assets" export flow)
+	saveToAssetsPure.ts        Pure export-flow logic (target list + whether to prompt for the enum path)
+	templatePanel.ts           Template gallery panel
 	annotationPanel.ts         Annotation editor panel (draw/delete annotations + box-select normalized coords)
 	tempScreenshotStore.ts     Temp screenshot store (up to 10, isolated per workspace on disk)
 	tempScreenshotPanel.ts     Temp screenshot sidebar view (paste/screenshot, 0.1s carousel, box-select coords)
+	tempDrag.ts                Cross-Webview drag relay (temp shots -> annotation manager; ineffective on VS Code side, see below)
 	screenshotCapture.ts       Game window screenshot capture (window detection + capture_game_window.py call)
-	tempDrag.ts                Cross-Webview drag relay (temp shots → annotation manager; ineffective on VS Code side, see below)
-media/
+	pngCrop.ts                 Thumbnail cropping + content-hash disk cache (pairs with pngCropWorker.ts)
+	pngCropWorker.ts           Worker thread for thumbnail cropping
+	assetPack.ts               PNG packing for "save to assets" (pairs with assetPackWorker.ts)
+	assetPackWorker.ts         Worker thread for packing
+	localization.ts            Host strings and Webview dictionaries (two-layer i18n)
+	webviewHtml.ts             Webview HTML assembly (nonce / CSP security boundaries live in one place)
+	toolboxState.ts            Toolbox connection state (also written to the project's configs/devices.json)
+media/                        Per-Webview HTML/CSS/JS (loaded by the host via CSP + asWebviewUri)
 	icons/                     Activity bar & view icons (templates.svg, toolbox.svg, task.svg)
-	annotationPanel/           Annotation editor Webview (index.html, CSS, interaction scripts)
-	tempScreenshots/           Temp screenshot sidebar Webview (index.html, CSS, interaction scripts)
-	templateAssetPanel/        Template asset management Webview (index.html, CSS, interaction scripts)
-	templatePanel/             Template panel Webview (index.html, CSS, interaction scripts)
-	taskLauncher/              Task launcher Webview (index.html, CSS, component scripts)
-	characterManager/          Character skill management Webview (index.html, CSS, interaction scripts)
+	annotationPanel/           Annotation editor
+	tempScreenshots/           Temp screenshot sidebar
+	templateAssetPanel/        Template asset management
+	templatePanel/             Template panel
+	taskLauncher/              Task launcher
+	characterManager/          Character skill management
 python/                      Helper scripts shipped with the extension: task discovery, probing & execution (parse_config_tasks.py, probe_task_schemas.py, run_executor.py), plus game window capture & config probing for the template asset panel (capture_game_window.py, probe_window_config.py)
 	python/tests/              Development-time Python regression tests (test_probe_pure_group_labels.py, test_run_executor_sandbox.py); excluded from VSIX / JetBrains JAR per AGENT.md packaging rules
-scripts/                     Development-time generation & regression test tools, not included in VSIX
-l10n/                        Extension host runtime localization resources
-package.nls*.json            Extension manifest localization resources
-out/                         TypeScript compilation output (generated by build)
+jetbrains/                    The JetBrains plugin's **separate public repository** (git submodule), with its own README / CI / release flow
+schemas/                      JSON Schema for ok-script-toolkit.json (editor completion and validation)
+docs/                         Design documents (convention-file design, copy-pasteable example config)
+scripts/                      Development-time generation & regression test tools, not included in VSIX
+l10n/                         Extension host runtime localization resources
+package.nls*.json             Extension manifest localization resources
+screenshots/                  Demo GIFs for the README (**VS Code UI**; must NOT be reused in the sub-repo README)
+out/                          TypeScript compilation output (generated by build)
 ```
 
 Each externalized Webview's HTML, CSS, and JavaScript live in the same feature directory; the host loads resources via CSP restrictions and `asWebviewUri()`.
