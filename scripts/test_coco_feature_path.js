@@ -17,6 +17,7 @@
  */
 const assert = require('assert');
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 
 const root = path.resolve(__dirname, '..');
@@ -80,17 +81,27 @@ console.log('\n边界写法');
     pure.resolveCocoFeaturePlan(ROOT, '', '   ').layer === 'probe',
     '两侧都是空白时退回探测',
   );
-  const abs = pure.resolveCocoFeaturePlan(ROOT, undefined, 'D:/elsewhere/coco.json');
+  // 绝对路径原样保留。
+  // **不要写 `D:/…` 或 `/srv/…` 这类平台专属字面量** —— 它们在另一个平台上根本不是绝对路径
+  // （Node `path.isAbsolute('D:/x')` 在 Linux 上是 false），而 CI 跑在 Linux、本地在 Windows，
+  // 写死了只有一边会过（本次就这么踩了一次）。用 `os.homedir()` 构造平台原生的绝对路径。
+  const nativeAbs = path.join(os.homedir(), 'ok-coco-outside', 'coco.json');
+  check(path.isAbsolute(nativeAbs), '前置条件：homedir 拼出来的必须是绝对路径');
   check(
-    abs.preferred === 'D:/elsewhere/coco.json',
+    pure.resolveCocoFeaturePlan(ROOT, undefined, nativeAbs).preferred === nativeAbs,
     '**config.py 给的绝对路径原样返回** —— 不做任何改写（改了就与项目声明的不是同一个文件）',
   );
-  const posixAbs = pure.resolveCocoFeaturePlan(ROOT, undefined, '/srv/coco.json');
-  check(
-    posixAbs.preferred === '/srv/coco.json',
-    '**POSIX 绝对路径的开头斜杠必须保住** —— config.py 的值可能是 `os.path.join(项目根, ...)` 拼出来的，' +
-      '走归一化会变成相对路径 srv/coco.json，指到不存在的地方',
-  );
+  if (process.platform === 'win32') {
+    check(
+      pure.resolveCocoFeaturePlan(ROOT, undefined, 'D:/elsewhere/coco.json').preferred === 'D:/elsewhere/coco.json',
+      'Windows：`D:/…` 正斜杠写法同样算绝对路径，原样保留',
+    );
+  } else {
+    check(
+      pure.resolveCocoFeaturePlan(ROOT, undefined, '/srv/coco.json').preferred === '/srv/coco.json',
+      'POSIX：绝对路径的开头斜杠必须保住',
+    );
+  }
   check(
     pure.resolveCocoFeaturePlan(ROOT, 'custom/coco.json').preferred === path.join(ROOT, 'custom', 'coco.json'),
     '项目约定那一侧传进来时**已经归一化过**（`templatesCocoAnnotationsSetting` 负责），这里只管绝对化',
