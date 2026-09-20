@@ -92,6 +92,13 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      # ⚠️ 这里**刻意没有** `verifyPlugin`（Plugin Verifier：真的下载 IDE 去查
+      # 废弃 / 实验性 / internal API）。它慢且要联网，只在 `release.yml` 里跑。
+      # 本 job 其实具备条件（`submodules: recursive` 让 `../python` 存在，
+      # 能过 build.gradle.kts 的 `distributableTasks` 守卫），是**刻意的取舍**，不是遗漏。
+      #
+      # ⚠️ 注意 `verifyPluginStructure` 只查 JAR / plugin.xml 的**结构**，
+      # **不查 API 兼容性** —— 别把它当成"API 已经在每次推送时验过了"。
       - name: Test and package JetBrains plugin
         working-directory: jetbrains
         run: ./gradlew test buildPlugin verifyPluginStructure verifyPluginConfiguration
