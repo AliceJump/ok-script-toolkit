@@ -149,7 +149,7 @@
   function buildList(typeMeta, rawValue, setValue, field) {
     // 复刻框架 ModifyListItem + ModifyListDialog 语义：
     // 折叠态显示当前项摘要 + 「修改」按钮；弹窗内按有无 options_available 分两种模式。
-    const items = Array.isArray(rawValue) ? rawValue : [];
+    let items = Array.isArray(rawValue) ? rawValue : [];
     const available = Array.isArray(typeMeta.options_available) ? typeMeta.options_available : null;
     const labels = Array.isArray(typeMeta.options_available_labels) ? typeMeta.options_available_labels : [];
     const allowDup = typeMeta.allow_duplication === true;
@@ -162,12 +162,19 @@
     const wrapper = document.createElement('div');
     wrapper.className = 'list-editor';
 
-    const summaryText = items.map(labelFor);
     const summary = document.createElement('div');
     summary.className = 'list-editor__summary';
-    summary.textContent = summaryText.join('').length > 30 || items.length > 3
-      ? summaryText.join('\n')
-      : (summaryText.join(', ') || '—');
+    // 编辑发生在**独立弹窗**里，这个控件自身不持有值 —— 所以确认后必须手动重画摘要。
+    // 否则会出现「磁盘已写入、界面仍显示旧值」：对比 buildMultiSelection 的 <select>
+    // 与 buildStructuredList 的 textarea，它们自身就是控件、天然同步；
+    // 只有 list 因为值在别处编辑而需要显式刷新。
+    const renderSummary = () => {
+      const parts = items.map(labelFor);
+      summary.textContent = parts.join('').length > 30 || items.length > 3
+        ? parts.join('\n')
+        : (parts.join(', ') || '—');
+    };
+    renderSummary();
     wrapper.appendChild(summary);
 
     const modify = document.createElement('button');
@@ -182,7 +189,12 @@
         labels,
         allowDup,
         labelFor,
-        apply: value => setValue(value),
+        apply: value => {
+          // 先更新本地快照，再落模型、最后重画 —— 顺序反了摘要会拿到旧 items。
+          items = value;
+          setValue(value);
+          renderSummary();
+        },
       });
     });
     wrapper.appendChild(modify);
