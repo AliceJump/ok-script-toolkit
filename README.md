@@ -394,6 +394,16 @@ See [DEVELOPMENT.md](DEVELOPMENT.md) for project structure, JetBrains version, l
 | `characterProjectPath` / `characterMasterFile` / `characterSkillsDirectory` / `characterLocaleFile` / `characterAvatarTemplateRegex` | `characters.projectPath` / `characters.masterFile` / `characters.skillsDirectory` / `characters.localeFile` / `characters.avatarTemplateRegex` |
 | `effectsFile` | `effects.file` |
 
+> `templates.cocoAnnotations` 没有对应的 IDE 设置（所以没有"个人偏好"层）：它声明的是
+> **运行时模板库**（ok 框架加载的那份 COCO）的路径，取值链为
+> `templates.cocoAnnotations` → 项目 `config.py` 的 `template_matching.coco_feature_json`
+> → 依次探测 `assets/coco_annotations.json`、`ok_tasks/assets/coco_annotations.json`（即旧行为）。
+> 实测 6 个 ok 系项目全都在 `config.py` 里声明了它，其中一个的文件名是 `coco_detection.json`
+> —— 没有这条链时插件在那类项目上找不到模板库。
+>
+> ⚠️ 素材面板自己的 `<模板目录>/coco_annotations.json` 是**另一个文件**，路径由
+> `templates.directory` 决定，不受 `cocoAnnotations` 影响。
+
 > ⚠️ **个人偏好排最高**有个副作用：一旦你手动改过某一项，项目声明的那一项就对你
 > **永久失效**，界面上毫无提示。命令 **`okScriptToolkit.showConventionSources`**
 > （「项目约定 vs 我的设置」）会把每一项的生效值来自哪一层列出来，并支持一键恢复为项目约定。

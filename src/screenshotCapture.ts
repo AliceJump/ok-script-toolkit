@@ -11,6 +11,13 @@ export interface WindowConfig {
   title?: string;
   hwnd_class?: string;
   top_hwnd_class?: string;
+  /**
+   * `config.py` 的 `template_matching.coco_feature_json` —— **运行时模板库**路径
+   * （ok 框架自己也是读这一项）。相对项目根或绝对路径，原样返回、不做归一化。
+   * 见 `cocoFeaturePathPure.ts` 的说明：它和素材面板的 `<模板目录>/coco_annotations.json`
+   * 是两个不同的文件。
+   */
+  cocoFeatureJson?: string;
 }
 
 /** probe_window_config.py 返回结构 */
@@ -22,6 +29,7 @@ interface ProbeWindowConfigResult {
   title?: string;
   hwnd_class?: string;
   top_hwnd_class?: string;
+  coco_feature_json?: string | null;
 }
 
 /** 读取 okScriptToolkit 扩展配置中的项目路径和 Python 解释器 */
@@ -66,6 +74,8 @@ export async function probeWindowConfig(projectDir: string, pythonPath: string):
             title: parsed.title,
             hwnd_class: parsed.hwnd_class,
             top_hwnd_class: parsed.top_hwnd_class,
+            // 探针解不出来时给的是 `null`（AST 里掺了变量），这里归一成 `undefined`
+            cocoFeatureJson: parsed.coco_feature_json ?? undefined,
           };
         }
         return undefined;

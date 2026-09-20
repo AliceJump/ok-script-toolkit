@@ -3,6 +3,7 @@ import * as crypto from 'crypto';
 import * as vscode from 'vscode';
 import { LangData, poDirectorySetting } from './langData';
 import { tr } from './localization';
+import { cocoFeatureRelPaths, refreshCocoFeaturePath } from './cocoFeaturePath';
 import { effectsFileSetting, i18nLangDirectorySetting, templatesDirectory } from './projectConfig';
 import { showConventionSources } from './conventionSources';
 import { FeatureData } from './featureData';
@@ -75,7 +76,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
   // ---- 各数据源独立防抖刷新（300ms） ----
   /** 哪些数据源需要刷新（由 getAffectedSources 判定） */
-  type RefreshTarget = { lang: boolean; features: boolean; effects: boolean };
+  type RefreshTarget = { lang: boolean; features: boolean; effects: boolean; coco: boolean };
 
   const DEBOUNCE_MS = 300;
 
@@ -170,7 +171,15 @@ export function activate(context: vscode.ExtensionContext): void {
     // langDirectory 同样可配（IDE 设置 → 项目约定 `i18n.langDirectory`），所以也不能写死。
     const langGlob = i18nLangDirectorySetting().split('/').map(escapeGlobSeg).join('/');
     const effectsFile = effectsFileSetting();
-    return `**/{${langGlob}/*.json,${poGlob}/**/*.po,assets/coco_annotations.json,assets/images/*.png,ok_tasks/assets/coco_annotations.json,ok_tasks/assets/images/*.png,${tplGlob}/*.png,${effectsFile}}`;
+    // 运行时模板库路径可配（项目约定 `templates.cocoAnnotations` → config.py 的
+    // `template_matching.coco_feature_json` → 两个惯例位置），所以也不能写死。
+    const cocoGlobs = cocoFeatureRelPaths(folder?.uri.fsPath ?? '')
+      .map((rel) => rel.split('/').map(escapeGlobSeg).join('/'))
+      .join(',');
+    // 末尾的 `config.py`：它决定运行时模板库放在哪，改了要重探 + 重建监听。
+    // 放在 `**/{...}` 里等价于 `**/config.py`（任意深度的同名文件都会派发进来，
+    // `getAffectedSources` 再按路径筛一次）。
+    return `**/{${langGlob}/*.json,${poGlob}/**/*.po,${cocoGlobs},assets/images/*.png,ok_tasks/assets/images/*.png,${tplGlob}/*.png,${effectsFile},config.py}`;
   };
 
   /**
@@ -180,7 +189,7 @@ export function activate(context: vscode.ExtensionContext): void {
    * 代码都重载模板库。
    */
   const getAffectedSources = (uri: vscode.Uri): RefreshTarget => {
-    const empty: RefreshTarget = { lang: false, features: false, effects: false };
+    const empty: RefreshTarget = { lang: false, features: false, effects: false, coco: false };
     const wsFolder = vscode.workspace.getWorkspaceFolder(uri);
     const rel = (wsFolder ? path.relative(wsFolder.uri.fsPath, uri.fsPath) : uri.fsPath)
       .replace(/[\\/]+/g, '/')
@@ -199,9 +208,16 @@ export function activate(context: vscode.ExtensionContext): void {
       return { ...empty, lang: true };
     }
     const pngRe = /\.png$/i;
+    // 运行时模板库：路径可配（项目约定 → config.py → 两个惯例位置），所以不能写死。
+    if (cocoFeatureRelPaths(folder?.uri.fsPath ?? '').includes(rel)) {
+      return { ...empty, features: true };
+    }
+    // `config.py` 决定库放在哪 —— 它一变就要**重探 + 重建监听**，不只是刷新数据。
+    // 只认 `_resolve_config_path` 会看的两个位置（任意深度的 config.py 都会派发进来，这里再筛一次）。
+    if (rel === 'config.py' || rel === 'src/config.py') {
+      return { ...empty, coco: true };
+    }
     if (
-      rel === 'assets/coco_annotations.json' ||
-      rel === 'ok_tasks/assets/coco_annotations.json' ||
       (rel.startsWith('assets/images/') && pngRe.test(rel)) ||
       (rel.startsWith('ok_tasks/assets/images/') && pngRe.test(rel)) ||
       (rel.startsWith(`${templatesDirectory(folder?.uri.fsPath)}/`) && pngRe.test(rel))
@@ -229,8 +245,19 @@ export function activate(context: vscode.ExtensionContext): void {
 
   const dispatchRefresh = (target: RefreshTarget, uri?: vscode.Uri) => {
     if (target.lang) refreshLang();
-    if (target.features) refreshFeatures(uri ? [uri] : undefined);
     if (target.effects) refreshEffects();
+    if (target.coco) {
+      // 先重探库路径再刷新特征 —— 顺序反了会拿旧路径白读一遍。
+      // 用 setTimeout 跳出当前 watcher 回调再重建监听：不想在自己的事件处理里同步 dispose 自己。
+      void refreshCocoFeaturePath(folder?.uri.fsPath).then(() => {
+        setTimeout(() => {
+          recreateWatcher();
+          refreshFeatures(uri ? [uri] : undefined);
+        }, 0);
+      });
+      return;
+    }
+    if (target.features) refreshFeatures(uri ? [uri] : undefined);
   };
 
   let watcher: vscode.FileSystemWatcher | undefined;
@@ -243,6 +270,13 @@ export function activate(context: vscode.ExtensionContext): void {
     return watcher;
   };
   recreateWatcher();
+  // 运行时模板库的路径可能来自 config.py 的 `template_matching.coco_feature_json`
+  // （异步探测）。探到之后要**重建监听并刷新一次** —— 否则首次激活用的是兜底探测，
+  // 探到的真实路径要等到下次文件变动才生效，而"配置生效不了"是静默的。
+  void refreshCocoFeaturePath(folder?.uri.fsPath).then(() => {
+    recreateWatcher();
+    refreshFeatures();
+  });
   context.subscriptions.push({
     dispose: () => {
       disposeCropWorkerPool();

@@ -1,12 +1,17 @@
 # -*- coding: utf-8 -*-
-"""用 AST 安全解析 ok-script 项目的 config.py，提取窗口匹配信息（exe_names, title 等）。
+"""用 AST 安全解析 ok-script 项目的 config.py，提取窗口匹配与模板匹配信息。
 
 查找策略：先通过 main.py 内的 import 信息定位 config.py 的实际路径，
 再回退到常见的 src/config.py 或 config.py。
 
+**为什么两类信息共用一个探针**：每次调用都要拉起一个 Python 进程（百毫秒级），
+拆成两个脚本就要付两次启动成本，而它们读的是同一个文件、同一棵 AST。
+（脚本名保留了历史名字 `probe_window_config`；它现在也返回模板匹配信息。）
+
 用法: python probe_window_config.py <project_dir>
 输出(最后一行 JSON):
-  {"ok": true, "exe_names": [...], "title": "...", "player_id": N, "hwnd_class": "..."}
+  {"ok": true, "config_path": "...", "exe_names": [...], "title": "...",
+   "player_id": N, "hwnd_class": "...", "coco_feature_json": "assets/coco_annotations.json"}
 """
 import ast
 import json
@@ -21,6 +26,13 @@ sys.stderr.reconfigure(encoding="utf-8")
 # config["windows"] 下的键
 # args 是启动参数：插件自己拉起游戏时直接带上（框架 start_device() 没有 args 入口）
 WINDOWS_SUB_KEYS = ("exe", "title", "hwnd_class", "top_hwnd_class", "capture_method", "args")
+
+# config["template_matching"] 下的键。
+# `coco_feature_json` 是 ok 框架加载的**运行时模板库**（ok/__init__.py 里
+# `self.config.get('template_matching').get('coco_feature_json')`），
+# 实测 5/5 个 ok 系项目都声明了它，写法统一是
+# `os.path.join("assets", "coco_annotations.json")`。
+TEMPLATE_MATCHING_SUB_KEYS = ("coco_feature_json",)
 
 
 def _resolve_config_path_from_main(project_dir):
@@ -86,47 +98,52 @@ def _resolve_config_path(project_dir):
     return None
 
 
-def _extract_config_dict_keys(config_path):
-    """用 AST 解析 config.py，找到顶层 config dict，提取 windows 子字典的窗口匹配字段。"""
-    with open(config_path, encoding="utf-8") as f:
-        tree = ast.parse(f.read(), filename=config_path)
+def _find_config_dict(tree):
+    """找到顶层 `config = {...}` 字典节点；找不到返回 None。
 
-    config_dict = None
-    # 寻找 config = {...}
+    先只看顶层赋值（正常写法），再回退到 `ast.walk`（有些项目把它写在条件分支里）。
+    """
     for node in ast.iter_child_nodes(tree):
         if not isinstance(node, ast.Assign):
             continue
         for target in node.targets:
-            if isinstance(target, ast.Name) and target.id == "config":
-                if isinstance(node.value, ast.Dict):
-                    config_dict = node.value
-                break
-        if config_dict:
-            break
-    # 回退
-    if not config_dict:
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.Assign):
-                continue
-            for target in node.targets:
-                if isinstance(target, ast.Name) and target.id == "config" and isinstance(node.value, ast.Dict):
-                    config_dict = node.value
-                    break
-            if config_dict:
-                break
+            if isinstance(target, ast.Name) and target.id == "config" and isinstance(node.value, ast.Dict):
+                return node.value
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Assign):
+            continue
+        for target in node.targets:
+            if isinstance(target, ast.Name) and target.id == "config" and isinstance(node.value, ast.Dict):
+                return node.value
+    return None
 
+
+def _extract_sub_dict(config_dict, name, allowed_keys):
+    """从 config dict 里取出 `name` 子字典中 [allowed_keys] 覆盖的那些键。"""
     if not config_dict:
         return {}
-
-    # 从 config dict 中提取 "windows" 子字典
     for key, value in zip(config_dict.keys, config_dict.values):
-        if isinstance(key, ast.Constant) and key.value == "windows" and isinstance(value, ast.Dict):
+        if isinstance(key, ast.Constant) and key.value == name and isinstance(value, ast.Dict):
             result = {}
-            for wk, wv in zip(value.keys, value.values):
-                if isinstance(wk, ast.Constant) and wk.value in WINDOWS_SUB_KEYS:
-                    result[wk.value] = _extract_value(wv)
+            for sub_key, sub_value in zip(value.keys, value.values):
+                if isinstance(sub_key, ast.Constant) and sub_key.value in allowed_keys:
+                    result[sub_key.value] = _extract_value(sub_value)
             return result
     return {}
+
+
+def _extract_config_dict_keys(config_path):
+    """用 AST 解析 config.py，提取 windows 子字典的窗口匹配字段。"""
+    with open(config_path, encoding="utf-8") as f:
+        tree = ast.parse(f.read(), filename=config_path)
+    return _extract_sub_dict(_find_config_dict(tree), "windows", WINDOWS_SUB_KEYS)
+
+
+def _extract_template_matching_keys(config_path):
+    """用 AST 解析 config.py，提取 template_matching 子字典的键（运行时模板库路径）。"""
+    with open(config_path, encoding="utf-8") as f:
+        tree = ast.parse(f.read(), filename=config_path)
+    return _extract_sub_dict(_find_config_dict(tree), "template_matching", TEMPLATE_MATCHING_SUB_KEYS)
 
 
 def _extract_value(node):
@@ -146,7 +163,19 @@ def _extract_value(node):
         if isinstance(func, ast.Attribute) and func.attr == "compile":
             if node.args and isinstance(node.args[0], ast.Constant):
                 return node.args[0].value
-        if isinstance(func, ast.Name) and func.id in ("str", "int", "float"):
+        # 常见模式: os.path.join("assets", "coco_annotations.json") → 拼成 `/` 分隔的路径。
+        # **5/5 个真实项目声明 coco_feature_json 都是这个写法**，不认它等于没接。
+        # 只在**全是字面量**时才拼 —— 掺了变量就无从静态求值，交给调用方走兜底。
+        if (
+            isinstance(func, ast.Attribute)
+            and func.attr == "join"
+            and isinstance(func.value, ast.Attribute)
+            and func.value.attr == "path"
+        ):
+            parts = [_extract_value(arg) for arg in node.args]
+            if parts and all(isinstance(p, str) and not p.startswith("<") for p in parts):
+                return "/".join(p.replace("\\", "/").strip("/") for p in parts if p.strip("/"))
+        if isinstance(func, ast.Name) and func.id in ("str", "int", "float", "Path", "PurePath", "PurePosixPath"):
             if node.args and isinstance(node.args[0], ast.Constant):
                 return node.args[0].value
         # 返回函数名标记
@@ -154,9 +183,27 @@ def _extract_value(node):
             return f"<call:{func.id}>"
         if isinstance(func, ast.Attribute):
             return f"<call:{func.attr}>"
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Div):
+        # pathlib 写法: Path("assets") / "coco_annotations.json"
+        left = _extract_value(node.left)
+        right = _extract_value(node.right)
+        if (
+            isinstance(left, str) and isinstance(right, str)
+            and not left.startswith("<") and not right.startswith("<")
+        ):
+            return left.replace("\\", "/").rstrip("/") + "/" + right.replace("\\", "/").lstrip("/")
     if isinstance(node, ast.Dict):
         return {_extract_value(k): _extract_value(v) for k, v in zip(node.keys, node.values)}
     return None
+
+
+def _clean(value):
+    """把 `<ref:...>` / `<call:...>` 标记替换为 None（无法静态解析的值）。"""
+    if isinstance(value, str) and (value.startswith("<ref:") or value.startswith("<call:")):
+        return None
+    if isinstance(value, list):
+        return [_clean(item) for item in value]
+    return value
 
 
 def main():
@@ -179,22 +226,17 @@ def main():
         sys.exit(1)
 
     window_config = _extract_config_dict_keys(config_path)
+    template_matching = _extract_template_matching_keys(config_path)
 
     # 把 <ref:...> 和 <call:...> 标记替换为 None（无法静态解析的值）
-    for k, v in window_config.items():
-        if isinstance(v, str) and (v.startswith("<ref:") or v.startswith("<call:")):
-            window_config[k] = None
-        if isinstance(v, list):
-            window_config[k] = [
-                item if item is not None and not (isinstance(item, str) and (item.startswith("<ref:") or item.startswith("<call:")))
-                else None
-                for item in v
-            ]
+    window_config = {k: _clean(v) for k, v in window_config.items()}
+    coco_feature_json = _clean(template_matching.get("coco_feature_json"))
 
     print(json.dumps({
         "ok": True,
         "config_path": config_path,
         **window_config,
+        "coco_feature_json": coco_feature_json,
     }, ensure_ascii=False))
     sys.exit(0)
 

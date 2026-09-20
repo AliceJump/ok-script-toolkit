@@ -12,7 +12,7 @@
 > | `templates.directory`（§8.1 的死设置） | ✅ 两端 |
 > | 「项目约定 vs 我的设置」溯源面板（§3） | ✅ 两端 |
 > | `i18n` / `characters` / `effects` 各组 | ✅ 两端 |
-> | `templates.cocoAnnotations` | ⏳ 未实现（schema 已声明） |
+> | `templates.cocoAnnotations`（含 `config.py` 事实层） | ✅ 两端 |
 
 ## 1. 要解决的问题
 
@@ -163,14 +163,24 @@
 | `executor.startupHooks` | `beforeConfigImport` | **无此信息** | 空（整段跳过 —— 现状） |
 | | `afterConfigImport` | **无此信息** | 按约定试 `src.patches.startup_patches:install_startup_patches` |
 | `templates` | `directory` | 无（插件侧约定） | IDE 设置 → `ok_templates` |
-| | `cocoAnnotations` | 5/5 有 | config.py → 依次探测两个候选（⏳ 未接线） |
+| | `cocoAnnotations` | **6/6 有** | `config.py` 的 `template_matching.coco_feature_json` → 依次探测两个候选 |
 | `i18n` | `enabled` / `langDirectory` / `poDirectory` / `poDomains` | 无 | IDE 设置 → 内置默认 |
 | `characters` | `projectPath` / `masterFile` / `skillsDirectory` / `localeFile` / `avatarTemplateRegex` | 无 | IDE 设置 → 内置默认 |
 | `effects` | `file` | 无 | IDE 设置 → `src/data/effects.py` |
 
-**接线状态**：`templates.directory`、`labelEnum.*`、`i18n`、`characters`、`effects` 已接线；
-只有 `templates.cocoAnnotations` 未接（它的消费点散在 6 个文件里，且**两端现在都不再读
-`config.py` 的 `template_matching.coco_feature_json`**，只有执行器侧会经 AST 读它）。
+**接线状态**：全部字段已接线（`templates.directory` / `templates.cocoAnnotations` /
+`labelEnum.*` / `i18n` / `characters` / `effects`）。
+
+**⚠️ 两个同名的 `coco_annotations.json` 不是一回事** —— 接错会静默指向错的文件：
+
+| 文件 | 是什么 | 谁读写 | 路径由谁决定 |
+|---|---|---|---|
+| `assets/coco_annotations.json`（或 config.py 指的别处） | ok 框架加载的**运行时模板库** | `featureData` / `OkProjectDataService` 读，文件监听盯它 | `templates.cocoAnnotations` → config.py → 两个惯例位置 |
+| `<模板目录>/coco_annotations.json` | 素材面板自己的**标注工作文件** | `templateAssetData` / `TemplateAssetDataService` 读写 | `templates.directory`（**不受** `cocoAnnotations` 影响） |
+
+`cocoAnnotations` 是**唯一**一层"`config.py` 已声明的事实"真正落地的字段 ——
+其余字段 `config.py` 要么不声明，要么（`labelEnum.path`）插件至今没读。
+它也是唯一**没有 IDE 设置**的链（没有"个人偏好"层），所以不进溯源面板。
 
 **按字段类型选归一化方式**（做错是**静默**的，所以这里写死）：
 

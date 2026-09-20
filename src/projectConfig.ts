@@ -23,8 +23,10 @@ import {
   i18nLangDirectory,
   i18nPoDirectory,
   i18nPoDomains,
+  normalizeRelPath,
   parseProjectConfig,
   templatesDirectoryOf,
+  templatesOf,
 } from './projectConfigPure';
 
 export const PROJECT_CONFIG_FILE = 'ok-script-toolkit.json';
@@ -246,4 +248,19 @@ export function charactersAvatarTemplateRegexSetting(): string {
 /** 效果定义源文件，相对项目根。 */
 export function effectsFileSetting(): string {
   return effectsFile(loadProjectConfig(), ideSetting<string>('effectsFile'), DEFAULT_EFFECTS_FILE);
+}
+
+/**
+ * **运行时模板库**路径的项目约定声明（`templates.cocoAnnotations`，相对项目根，已归一化）。
+ * 没声明返回 `undefined`。
+ *
+ * ⚠️ 它指向的是 ok 框架加载的那份 COCO（`config.py` 的
+ * `template_matching.coco_feature_json`），**不是**素材面板自己的
+ * `<模板目录>/coco_annotations.json`。见 `cocoFeaturePathPure.ts` 的对照表。
+ *
+ * 这一项**没有对应的 IDE 设置**（所以没有"个人偏好"层）—— 链是
+ * `项目约定 > config.py > 依次探测两个候选`，见 `cocoFeaturePath.ts`。
+ */
+export function templatesCocoAnnotationsSetting(projectDir?: string): string | undefined {
+  return normalizeRelPath(templatesOf(loadProjectConfig(projectDir)).cocoAnnotations);
 }

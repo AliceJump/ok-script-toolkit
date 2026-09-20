@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
+import { cocoFeatureFiles } from './cocoFeaturePath';
 import { templatesDirectory } from './projectConfig';
 
 /** COCO 中一个 feature 模板条目：来源原图 + 裁剪框 */
@@ -30,12 +31,13 @@ export class FeatureData {
     this.rootDir = typeof root === 'string' ? root : root ? root.uri.fsPath : '';
   }
 
-  /** 需要扫描的 coco 标注文件列表（主库 + 可选的 ok_tasks 扩展库） */
+  /** 需要扫描的 coco 标注文件列表（运行时模板库） */
   private cocoFiles(): string[] {
-    const list = [path.join(this.rootDir, 'assets', 'coco_annotations.json')];
-    const okTasks = path.join(this.rootDir, 'ok_tasks', 'assets', 'coco_annotations.json');
-    if (fs.existsSync(okTasks)) list.push(okTasks);
-    return list;
+    // 取值链：项目约定 `templates.cocoAnnotations` > config.py 的
+    // `template_matching.coco_feature_json` > 依次探测两个候选（改动前的行为）。
+    // 见 `cocoFeaturePathPure.ts`：config.py 的值才是 ok 框架真正加载的那份库，
+    // 实测有项目把它放在 `assets/coco_detection.json`（旧硬编码探测找不到）。
+    return cocoFeatureFiles(this.rootDir);
   }
 
   refresh(force = false): void {

@@ -67,7 +67,7 @@
         },
         "cocoAnnotations": {
           "type": "string",
-          "description": "COCO 标注文件路径，相对项目根。\n\n实测 5 个项目都在 config.py 里用 template_matching.coco_feature_json 声明了它，所以通常不必写；需要临时指向别处时才用。\n\n缺席时：config.py 的 template_matching.coco_feature_json → 依次探测 `assets/coco_annotations.json`、`ok_tasks/assets/coco_annotations.json`。"
+          "description": "**运行时模板库**（ok 框架加载的那份 COCO，`ok/__init__.py` 里读 `template_matching.coco_feature_json`）的路径，相对项目根。\n\n⚠️ 别和素材面板自己的 `<模板目录>/coco_annotations.json` 搞混 —— 那是**另一个文件**，路径由 `templates.directory` 派生，不由本字段控制。\n\n实测 6 个 ok 系项目**全都在 config.py 里声明了它**（其中 ok-infinity-nikki 的文件名是 `coco_detection.json`），所以通常不必写；需要临时指向别处时才用。\n\n取值链：本字段 → config.py 的 `template_matching.coco_feature_json` → 依次探测 `assets/coco_annotations.json`、`ok_tasks/assets/coco_annotations.json`（即引入本文件之前的行为）。"
         }
       }
     },
