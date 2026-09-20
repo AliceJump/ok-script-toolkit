@@ -50,7 +50,7 @@ A VS Code extension that brings ok-script language keys, OCR fixes, templates, s
 
 需要 VS Code **1.85.0** 或更高版本。安装后若提示不生效，见 [更新后不生效](#更新后不生效)。
 
-PyCharm / IntelliJ IDEA 用户请装 JetBrains 版：[ok-script Toolkit for JetBrains](jetbrains/README.md)（[Marketplace 页面](https://plugins.jetbrains.com/plugin/34091-ok-script-toolkit)）。
+PyCharm / IntelliJ IDEA 用户请装 JetBrains 版：[ok-script Toolkit for JetBrains](https://github.com/AliceJump/ok-script-toolkit-jetbrains)（[Marketplace 页面](https://plugins.jetbrains.com/plugin/34091-ok-script-toolkit)）。
 
 ### English
 
@@ -62,7 +62,7 @@ PyCharm / IntelliJ IDEA 用户请装 JetBrains 版：[ok-script Toolkit for JetB
 
 Requires VS Code **1.85.0** or later. If the extension doesn't take effect after installation, see [Update not taking effect](#更新后不生效).
 
-For PyCharm / IntelliJ IDEA users, install the JetBrains version: [ok-script Toolkit for JetBrains](jetbrains/README.md) ([Marketplace page](https://plugins.jetbrains.com/plugin/34091-ok-script-toolkit)).
+For PyCharm / IntelliJ IDEA users, install the JetBrains version: [ok-script Toolkit for JetBrains](https://github.com/AliceJump/ok-script-toolkit-jetbrains) ([Marketplace page](https://plugins.jetbrains.com/plugin/34091-ok-script-toolkit)).
 
 ## 功能 / Features
 
@@ -593,6 +593,6 @@ If you just modified the extension's `package.json` configuration declarations, 
 
 **相关项目 / Related**
 
-[ok-script Toolkit for JetBrains](jetbrains/README.md) · [开发指南 / Development Guide](DEVELOPMENT.md) · [发布流程 / Release Process](RELEASING.md)
+[ok-script Toolkit for JetBrains](https://github.com/AliceJump/ok-script-toolkit-jetbrains) · [开发指南 / Development Guide](DEVELOPMENT.md) · [发布流程 / Release Process](RELEASING.md)
 
 </div>

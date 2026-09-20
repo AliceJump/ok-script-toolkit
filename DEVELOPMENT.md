@@ -112,7 +112,7 @@ cd jetbrains
 ./gradlew test buildPlugin verifyPluginStructure verifyPluginConfiguration
 ```
 
-Windows 使用 `gradlew.bat`。生成的 ZIP 位于 `jetbrains/build/distributions/`，可在 JetBrains IDE 的 **Settings / Plugins / Install Plugin from Disk...** 中安装。逐功能的对齐状态与剩余差异见 [`jetbrains/docs/parity-review.md`](jetbrains/docs/parity-review.md)（2026-09-20 已按代码逐条重核，基线 v1.7.1）。
+Windows 使用 `gradlew.bat`。生成的 ZIP 位于 `jetbrains/build/distributions/`，可在 JetBrains IDE 的 **Settings / Plugins / Install Plugin from Disk...** 中安装。逐功能的对齐状态与剩余差异见 [`jetbrains/docs/parity-review.md`](https://github.com/AliceJump/ok-script-toolkit-jetbrains/blob/main/docs/parity-review.md)（2026-09-21 已按代码逐条重核，基线 v1.8.0）。
 
 ### 安装
 
@@ -342,7 +342,7 @@ cd jetbrains
 ./gradlew test buildPlugin verifyPluginStructure verifyPluginConfiguration
 ```
 
-Use `gradlew.bat` on Windows. The generated ZIP is at `jetbrains/build/distributions/` and can be installed via **Settings / Plugins / Install Plugin from Disk...** in a JetBrains IDE. For per-feature alignment status and remaining gaps, see [`jetbrains/docs/parity-review.md`](jetbrains/docs/parity-review.md) (re-verified line by line against the code on 2026-09-20, baseline v1.7.1).
+Use `gradlew.bat` on Windows. The generated ZIP is at `jetbrains/build/distributions/` and can be installed via **Settings / Plugins / Install Plugin from Disk...** in a JetBrains IDE. For per-feature alignment status and remaining gaps, see [`jetbrains/docs/parity-review.md`](https://github.com/AliceJump/ok-script-toolkit-jetbrains/blob/main/docs/parity-review.md) (re-verified line by line against the code on 2026-09-21, baseline v1.8.0).
 
 ### Installation
 
