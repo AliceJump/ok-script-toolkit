@@ -51,10 +51,13 @@ stdout 标记行（宿主按行扫描）:
 一个漏洞：`Config.save_file()` 是整个字典 dump，任务自己写任意一个 config 键时会把
 内存里的覆盖值一起写盘 —— 那个补丁在写盘前把被覆盖的键换回磁盘当前值。
 
-游戏启动参数：`config['windows']['args']` 由 `install_launch_args_patch()` 保证生效。
-工具箱的 connect_game.py 是自己读、自己拉起游戏的，所以一直带参数；而执行器走框架的
-`start_device()`，只有 ok-script 313b28e（2026-09-16）之后才原生支持 windows.args。
-补丁在旧版上包一层 start_device，在新版上自动失效。
+游戏启动参数：执行器**不替框架处理** `config['windows']['args']`。启动参数属于目标项目
+自己的事 —— 项目在 `main.py` 里怎么补，执行器就怎么补（经
+`install_project_startup_patches()` 装同一套补丁）。工具箱的 `connect_game.py` 是插件
+自己的启动实现，仍自己读 `windows.args`。
+
+注意执行器走的是框架 `start_device()`，只有 ok-script 313b28e（2026-09-16）之后才原生
+支持 `windows.args`；更早的框架版本上，需要启动参数的项目必须自己补这一环。
 
 配置沙箱：调试插件绝不允许改动目标项目的 `configs/`。宿主经
 `OK_TOOLKIT_RUN_DIR` 传入沙箱根目录（如 `<workspace>/.vscode/ok-script-toolkit`），
@@ -285,107 +288,6 @@ def install_trigger_persistence_patch() -> None:
     TriggerTask.enable = enable
     TriggerTask.disable = disable
     TriggerTask._toolkit_memory_only_enabled = True
-
-
-# ── 游戏启动参数（windows.args）兼容 ──────────────────────────────────
-
-def normalize_launch_args(args):
-    """与框架 StartController._normalize_launch_args 同语义：str / 可迭代 → 单行参数串。
-
-    空值一律折叠成 None，避免拼出多余空格。
-    """
-    if args is None:
-        return None
-    if isinstance(args, str):
-        tokens = args.split()
-    else:
-        try:
-            tokens = list(args)
-        except TypeError:
-            tokens = [args]
-    tokens = [str(token).strip() for token in tokens]
-    tokens = [token for token in tokens if token]
-    return " ".join(tokens) if tokens else None
-
-
-def merge_project_launch_args(controller, arguments, device):
-    """把项目 config.py 的 windows.args 合并进启动参数。
-
-    与框架新实现的语义保持一致：只在启动 Windows 客户端时附加（启动模拟器时不附加，
-    避免参数误传给模拟器）；框架已经带过就不重复拼。
-    """
-    if device is not None and device.get("device") != "windows":
-        return arguments
-    config = getattr(controller, "config", None) or {}
-    extra = normalize_launch_args((config.get("windows") or {}).get("args"))
-    if not extra:
-        return arguments
-    if not arguments:
-        return extra
-    if extra in arguments:
-        return arguments
-    return f"{arguments} {extra}"
-
-
-def install_launch_args_patch() -> bool:
-    """让执行器拉起游戏时带上 config.py 的 windows.args —— 与工具箱「连接游戏」一致。
-
-    背景
-    ----
-    工具箱的 connect_game.py 是自己 AST 读 windows.args、自己 execute() 拉起游戏的，
-    所以那条路一直带参数；执行器走的是框架
-    StartController.start_device() → ok.util.process.execute()，而
-    **只有 ok-script 313b28e（2026-09-16）之后的版本才会读 windows.args**
-    （框架那次提交的说明就是「下游脚本此前需要用猴子补丁改写 start_device」）。
-    之前的 start_device 里 arguments 只由全局开关「Launch with DX11」决定，
-    于是启动器类游戏（需要 -start=xxx_launcher 之类参数）点「启动执行器」起不来，
-    必须先点一次「连接游戏」——两条路径行为不一致。
-
-    做法
-    ----
-    框架已支持（存在 _build_launch_arguments）则完全不动，补丁自动失效；
-    否则包一层 start_device，只在它调用 execute() 的这段窗口里把 windows.args 拼进去，
-    调用结束立刻还原，不污染其他 execute() 调用点。
-
-    返回是否真的安装了补丁。
-    """
-    from ok.core import start_controller as start_controller_module
-    from ok.core.start_controller import StartController
-
-    if getattr(StartController, "_toolkit_launch_args_patched", False):
-        return False
-    StartController._toolkit_launch_args_patched = True
-
-    if hasattr(StartController, "_build_launch_arguments"):
-        return False
-
-    original_start_device = StartController.start_device
-
-    def start_device(self, initial_refresh_done=False):
-        from ok import og
-
-        original_execute = start_controller_module.execute
-
-        def execute_with_project_args(path, arguments=None, start_method=None):
-            try:
-                device = og.device_manager.get_preferred_device()
-            except Exception:  # noqa: BLE001 — 拿不到设备就按框架默认（附加）处理
-                device = None
-            return original_execute(
-                path,
-                arguments=merge_project_launch_args(self, arguments, device),
-                start_method=start_method,
-            )
-
-        start_controller_module.execute = execute_with_project_args
-        try:
-            return original_start_device(self, initial_refresh_done)
-        finally:
-            start_controller_module.execute = original_execute
-
-    StartController.start_device = start_device
-    return True
-
 
 def apply_overrides_to(task) -> None:
     """把插件侧覆盖应用到任务内存配置上（只改内存，绝不落盘）。
@@ -771,9 +673,8 @@ def main() -> None:
     install_trigger_persistence_patch()
     # 任务自己写盘时别把插件覆盖值一起带出去（Config.save_file 是整个字典 dump）
     install_override_save_patch()
-    # 旧版框架的 start_device() 不读 windows.args，补成与工具箱「连接游戏」一致
-    if install_launch_args_patch():
-        _note("已安装 windows.args 启动参数兼容补丁（当前 ok-script 版本尚未原生支持）")
+    # 注：这里**不再**有 windows.args 启动参数补丁。执行器只用目标项目自己的补丁
+    # （见 install_project_startup_patches），启动参数由项目在 src/patches/ 里自行处理。
 
     config_module = __import__(args.config_module, fromlist=["config"])
     config = dict(config_module.config)

@@ -156,5 +156,6 @@ with tempfile.TemporaryDirectory() as tmp:
     finally:
         sys.path.remove(tmp)
 
+
 print("\n" + ("全部通过" if not failures else f"失败 {len(failures)} 项"))
 sys.exit(1 if failures else 0)
