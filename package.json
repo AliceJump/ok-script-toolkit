@@ -2,7 +2,7 @@
   "name": "ok-script-toolkit",
   "displayName": "%extension.displayName%",
   "description": "%extension.description%",
-  "version": "1.8.0",
+  "version": "1.9.0",
   "publisher": "AliceJump",
   "license": "MIT",
   "icon": "icon.png",
@@ -345,8 +345,7 @@
     "test:executor-project-config": "python python/tests/test_run_executor_project_config.py",
     "vscode:prepublish": "npm run compile",
     "package": "vsce package",
-    "publish:marketplace": "vsce publish --skip-duplicate --packagePath ok-script-toolkit-${npm_package_version}.vsix",
-    "test:asset-pack-worker": "node scripts/test_asset_pack_worker.js"
+    "publish:marketplace": "vsce publish --skip-duplicate --packagePath ok-script-toolkit-${npm_package_version}.vsix"
   },
   "devDependencies": {
     "@types/jpeg-js": "^0.3.0",
