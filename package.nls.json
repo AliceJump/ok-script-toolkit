@@ -3,6 +3,7 @@
   "extension.description": "IntelliSense, inline hints, template previews, task launching, character data tools, and more for ok-script projects.",
   "command.category": "ok-script Toolkit",
   "command.showTemplates": "Open Template Gallery",
+  "command.screenshotToTemplate": "Screenshot to Template Assets",
   "command.openTemplatesEditor": "Open Template Gallery in Editor",
   "command.showTaskLauncher": "Open Task Launcher",
   "command.openCharacterManager": "Open Character & Skill Manager",

@@ -79,50 +79,74 @@ check(
   '声明为空串等同于没声明',
 );
 
-// ── 5. 路径：上次保存 > 项目声明 > 无 ───────────────────────────────
+// ── 5. 枚举文件路径：上次保存 > 项目声明 > 无（且模块路径必须补 .py）────
 //
 // 个人偏好最高（用户明确纠正过）——项目文件是团队开箱默认，我手动指定过就以我的为准。
-console.log('\nlabelEnumPath');
-check(pure.labelEnumPath({}, undefined) === undefined, '都没有时返回 undefined（交给调用方用内置默认）');
-check(pure.labelEnumPath({}, '上次/存的.py') === '上次/存的.py', '只有上次保存时用它');
+console.log('\nlabelEnumFile');
+check(pure.labelEnumFile({}, undefined) === undefined, '都没有时返回 undefined（交给调用方用内置默认）');
 check(
-  pure.labelEnumPath({ labelEnum: { path: 'src/data/FeatureList' } }, undefined) === 'src/data/FeatureList',
-  '没有个人偏好时，项目声明生效',
+  pure.labelEnumFile({}, '上次/存的.py') === '上次/存的.py',
+  '只有上次保存时用它（它已是文件路径，原样返回、不重复补后缀）',
 );
 check(
-  pure.labelEnumPath({ labelEnum: { path: 'src/data/FeatureList' } }, '上次/存的.py') === '上次/存的.py',
+  pure.labelEnumFile({ labelEnum: { path: 'src/data/FeatureList' } }, undefined) === 'src/data/FeatureList.py',
+  '**项目声明是模块路径，必须补 .py** —— 否则会生成一个没有扩展名的文件，Python import 不到',
+);
+check(
+  pure.labelEnumFile({ labelEnum: { path: 'src/data/FeatureList.py' } }, undefined) === 'src/data/FeatureList.py',
+  '声明里已经带了 .py 就不重复补（对写法宽容）',
+);
+check(
+  pure.labelEnumFile({ labelEnum: { path: 'src/data/FeatureList' } }, '上次/存的.py') === '上次/存的.py',
   '**个人偏好压过项目声明** —— 与全局取值链一致（个人偏好最高）',
 );
 check(
-  pure.labelEnumPath({ labelEnum: { path: '' } }, '上次/存的.py') === '上次/存的.py',
+  pure.labelEnumFile({ labelEnum: { path: '' } }, '上次/存的.py') === '上次/存的.py',
   '项目声明为空串时仍用上次保存',
 );
 
-// ── 6. 破坏性对照：把优先级反过来，断言应当不成立 ────────────────────
+// ── 6. 破坏性对照 ────────────────────────────────────────────────────
 //
-// 纯函数的"改回旧写法"不好做，于是**就地改造编译产物**再求值一次：
-// 把 labelEnumPath 的优先级对调（项目声明优先），看它是否真的给出相反的结果。
-// 若这里拿到的仍是"上次保存"，说明第 5 组其实没在约束优先级。
+// 纯函数的"改回旧写法"不好做，于是**就地改造编译产物**再求值。
+// 两组对照，分别钉住这一块的两条不变量：优先级顺序、模块路径必须补 .py。
+// 若对照跑出来的结果与期望相同，说明对应的那组断言其实没在约束任何东西。
 console.log('\n破坏性对照');
 {
   const fs = require('fs');
   const outDir = path.join(path.resolve(__dirname, '..'), 'out');
   const source = fs.readFileSync(path.join(outDir, 'projectConfigPure.js'), 'utf-8');
-  const swapped = source.replace(
-    /nonEmpty\(lastSaved\)\s*\?\?\s*nonEmpty\(labelEnumOf\(config\)\.path\)/,
-    'nonEmpty(labelEnumOf(config).path) ?? nonEmpty(lastSaved)',
-  );
-  check(swapped !== source, '对照源码确实被改动了（替换命中）—— 否则对照是假的');
 
-  const sandbox = { exports: {} };
-  new Function('module', 'exports', 'require', swapped)(sandbox, sandbox.exports, require);
-  const reversed = sandbox.exports.labelEnumPath(
+  function evalSandbox(code) {
+    const sandbox = { exports: {} };
+    new Function('module', 'exports', 'require', code)(sandbox, sandbox.exports, require);
+    return sandbox.exports;
+  }
+
+  // 对照一：优先级反转（项目声明优先）
+  const swapped = source.replace(
+    /const saved = nonEmpty\(lastSaved\);\s*if \(saved\)\s*return saved;/,
+    'const saved = undefined;',
+  );
+  check(swapped !== source, '对照一源码确实被改动了（替换命中）—— 否则对照是假的');
+  const reversed = evalSandbox(swapped).labelEnumFile(
     { labelEnum: { path: 'src/data/FeatureList' } },
     '上次/存的.py',
   );
   check(
-    reversed === 'src/data/FeatureList',
-    '对照：优先级反转后，个人偏好被项目声明压过 —— 与第 5 组的期望相反，证明该组确实在约束优先级',
+    reversed === 'src/data/FeatureList.py',
+    '对照一：拿掉个人偏好后，项目声明生效 —— 与第 5 组的期望相反，证明该组确实在约束优先级',
+  );
+
+  // 对照二：不补 .py（= 修复前的行为）
+  const noExt = source.replace(
+    /return declared\.toLowerCase\(\)\.endsWith\('\.py'\) \? declared : `\$\{declared\}\.py`;/,
+    'return declared;',
+  );
+  check(noExt !== source, '对照二源码确实被改动了（替换命中）—— 否则对照是假的');
+  const bare = evalSandbox(noExt).labelEnumFile({ labelEnum: { path: 'src/data/FeatureList' } }, undefined);
+  check(
+    bare === 'src/data/FeatureList',
+    '对照二：不补 .py 时拿到的正是"没有扩展名的文件"—— 即修复前会把项目弄坏的那个值',
   );
 }
 

@@ -8,7 +8,7 @@ import { injectWebviewLocalization, tr } from './localization';
 import { TempScreenshotStore } from './tempScreenshotStore';
 import { captureGameWindow } from './screenshotCapture';
 import { takePendingDrag } from './tempDrag';
-import { labelEnumPath, loadProjectConfig } from './projectConfig';
+import { labelEnumFile, loadProjectConfig } from './projectConfig';
 import { getNonce } from './webviewHtml';
 
 /* ---------------- 控制器 ---------------- */
@@ -144,7 +144,15 @@ class AssetGalleryController {
   }
 
   /* ---------- 截图处理 ---------- */
-  private async handleScreenshot(hardForeground?: boolean): Promise<void> {
+
+  /**
+   * 截图并登记进 COCO。
+   *
+   * **public 是刻意的**：快捷键命令（`okScriptToolkit.screenshotToTemplate`）要复用它 ——
+   * 截图实现只此一处，命令只负责"打开面板 + 调这里"，绝不另造一套，
+   * 否则两条路径的截图行为（落盘位置、COCO 登记）迟早漂移。
+   */
+  async handleScreenshot(hardForeground?: boolean): Promise<void> {
     const folder = vscode.workspace.workspaceFolders?.[0];
     if (!folder) {
       void vscode.window.showWarningMessage(tr('No workspace folder open.'));
@@ -197,11 +205,15 @@ class AssetGalleryController {
     );
     if (!pick) return;
 
-    // 默认路径：**项目约定文件的 labelEnum.path 优先**（团队约定、随仓库走），
-    // 缺席才退回"上次保存的"（个人偏好、仅本机）。
-    // 两者都没有时留空 —— 留空即跳过生成枚举，与旧行为一致。
+    // 默认路径的取值链：**上次保存的（个人偏好）> 项目约定文件的 labelEnum.path > 留空**。
+    // 个人偏好排最高是用户定的：项目文件是"团队开箱默认"，我改过就用我的。
+    // 留空即跳过生成枚举，与旧行为一致。
+    //
+    // 注意必须走 `labelEnumFile` 而不是直接拿 `labelEnum.path` —— 后者是**模块路径**
+    // （`src/data/FeatureList`，不带 .py，与 config.py 的 label_enum_relative_path 同形），
+    // 而下面这个输入框要的是**文件路径**；直接塞进去会生成一个没有扩展名的文件。
     const lastEnumPath = this.globalState?.get<string>('okScriptToolkit.lastEnumFilePath') || '';
-    const defaultEnumPath = labelEnumPath(loadProjectConfig(), lastEnumPath) || '';
+    const defaultEnumPath = labelEnumFile(loadProjectConfig(), lastEnumPath) || '';
     const enumFilePath = await vscode.window.showInputBox({
       prompt: tr('LabelEnum.py file path (relative to workspace root, leave empty to skip)'),
       placeHolder: tr('e.g. assets/data/LabelEnum.py or src/label_enum.py'),
@@ -381,6 +393,23 @@ export class TemplateAssetPanel {
       tempStore,
     );
     TemplateAssetPanel.current = new TemplateAssetPanel(panel, controller);
+  }
+
+  /**
+   * 打开面板并**立即触发它的截图动作**（快捷键入口）。
+   *
+   * 复用面板自己的 [AssetGalleryController.handleScreenshot] —— 不新增截图实现。
+   * 面板已开着时 `show()` 只 reveal，随后照样截图，行为一致。
+   */
+  static showScreenshot(
+    data: TemplateAssetData,
+    thumbDir: string,
+    extensionUri: vscode.Uri,
+    globalState?: vscode.Memento,
+    tempStore?: TempScreenshotStore,
+  ): void {
+    TemplateAssetPanel.show(data, thumbDir, extensionUri, globalState, tempStore);
+    void TemplateAssetPanel.current?.controller.handleScreenshot();
   }
 
   private constructor(

@@ -473,6 +473,7 @@ The ghost hint will display `「向目标移动」` after `k_2f4f4a2f`; hover wi
 | `ok-script 工具箱: 打开模板素材` | — | 在编辑器区打开模板素材管理大窗口面板 |
 | `ok-script 工具箱: 打开标注编辑器` | — | 提示在模板素材面板中点击图片以进入 COCO 标注编辑器（命令本身不直接打开编辑器） |
 | `ok-script 工具箱: 打开临时截图` | — | 聚焦活动栏中的临时截图视图 |
+| `ok-script 工具箱: 截图并打开模板素材` | `Ctrl+Alt+S`（macOS `Cmd+Alt+S`） | 打开模板素材管理面板并立即截图。复用面板自己的截图动作，截图会登记进 COCO。键位可在「键盘快捷方式」里改 |
 
 ### English
 
@@ -487,6 +488,7 @@ Command categories display as "ok-script 工具箱" / "ok-script Toolkit" depend
 | `ok-script 工具箱: Open Template Assets` | — | Open the template asset management panel in the editor area |
 | `ok-script 工具箱: Open Annotation Editor` | — | Prompts to click an image in the template asset panel to enter the COCO annotation editor (the command itself does not open the editor directly) |
 | `ok-script 工具箱: Open Temp Shots` | — | Focus the temp shots view in the activity bar |
+| `ok-script 工具箱: Screenshot to Template Assets` | `Ctrl+Alt+S` (macOS `Cmd+Alt+S`) | Open the template asset panel and take a screenshot immediately. Reuses the panel's own screenshot action; the shot is registered into COCO. Rebindable in Keyboard Shortcuts |
 
 ## 更新后不生效 / Update Not Taking Effect
 

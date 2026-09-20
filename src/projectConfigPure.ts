@@ -74,6 +74,13 @@ export function labelEnumOf(config: ProjectConfig): ProjectLabelEnum {
 /**
  * 枚举引用别名。`ideValue` 是调用方读到的个人偏好（IDE 设置）。
  *
+ * ⚠️ **`ideValue` 必须传"用户真正设置过的值"，不能传"带默认值的读取结果"。**
+ * `package.json` 里 `featureAliases` 的 `default` 就是 `['fL','FeatureList']`，
+ * 直接 `get()` 永远拿得到值 → 这一层永远命中 → **项目声明的 aliases 永远不生效**
+ * （即"接了等于没接"）。调用方要用 `inspect()` 只看用户真正写入的那几档 ——
+ * 见 `providers.featureAliases()`。子仓 `SettingsState` 有同一个陷阱，那边靠
+ * "默认值留空"来区分。
+ *
  * 别名是"代码里怎么写 import"这一项目约定 —— 项目 `config.py` **从不声明它**，
  * 所以此前只能靠内置的 fL/FeatureList 硬猜；项目把枚举导入成别的名字就完全失效。
  */
@@ -100,14 +107,28 @@ export function labelEnumName(
 }
 
 /**
- * 枚举文件路径（相对项目根，不带 .py）。
+ * 枚举文件的**文件路径**（相对项目根，带 `.py`）。
+ *
+ * ⚠️ 这里必须做一次「模块路径 → 文件路径」的转换，别直接返回声明值。
+ * `labelEnum.path` 与项目 `config.py` 的 `label_enum_relative_path` 一样是**模块路径**
+ * （`src/data/FeatureList`，**不带 .py**）—— 已核实 ok 框架的
+ * `_normalize_label_enum_relative_path()`（`ok/ui/qt/tasks/TemplateTab.py`）会把用户
+ * 输入的 `.py` 主动剥掉，以点分模块路径存盘。而消费端（生成枚举文件、拼绝对路径）
+ * 需要的是**文件路径**：拿模块路径直接去写，会产出一个叫 `FeatureList`、
+ * **没有扩展名**的文件 —— Python 根本 import 不到，等于把项目弄坏。
  *
  * 取值链与全局一致：**个人偏好（上次保存）> 项目约定文件 > 无**。
  *
  * 注意这里个人偏好排最高是**刻意的**（用户明确纠正过）：项目文件是"团队开箱默认"，
  * 我手动指定过就以我的为准。代价是项目之后改声明我看不到 —— 由 UI 的
  * 「当前值来自哪一层」+「恢复为项目约定」来抵消（见 docs/project-config.md §3）。
+ *
+ * 上次保存的值**已经是文件路径**（输入框就要求带 .py），原样返回、不再补后缀。
  */
-export function labelEnumPath(config: ProjectConfig, lastSaved?: unknown): string | undefined {
-  return nonEmpty(lastSaved) ?? nonEmpty(labelEnumOf(config).path);
+export function labelEnumFile(config: ProjectConfig, lastSaved?: unknown): string | undefined {
+  const saved = nonEmpty(lastSaved);
+  if (saved) return saved;
+  const declared = nonEmpty(labelEnumOf(config).path);
+  if (!declared) return undefined;
+  return declared.toLowerCase().endsWith('.py') ? declared : `${declared}.py`;
 }

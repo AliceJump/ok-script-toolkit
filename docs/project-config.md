@@ -1,7 +1,15 @@
 # 项目约定文件（`ok-script-toolkit.json`）设计
 
-> 状态：**设计稿，未实现**。配套产物：`schemas/ok-script-toolkit.schema.json`、
+> 状态：**部分实现**。配套产物：`schemas/ok-script-toolkit.schema.json`、
 > `docs/ok-script-toolkit.example.json`。
+>
+> | 范围 | 状态 |
+> |---|---|
+> | 执行器侧（`load_project_config` / `executor.startupHooks`） | ✅ `13f754b` |
+> | VS Code 侧加载器 + `labelEnum` 接入 | ✅ `df41a85` |
+> | JetBrains 侧加载器 + `labelEnum` 接入 | ✅ `core/ProjectConventionConfig.kt` + `core/ProjectConvention.kt` |
+> | 截图快捷键（§6.4） | ✅ 两端 |
+> | `templates` / `i18n` / `characters` / `effects` 各组的取值链接入 | ⏳ **未实现**（schema 已声明，插件暂不读） |
 
 ## 1. 要解决的问题
 
@@ -67,6 +75,26 @@
 **每一层都可缺席**：缺席就往下取；全缺则退回现有行为。**文件不存在时，行为与今天
 完全一致 —— 纯增量。**
 
+### ⚠️ 实现陷阱：④ 层必须区分「用户设过」与「只是默认值」
+
+**这是接线时踩到的真坑，两端都踩了，且症状完全静默。**
+
+两端的 IDE 设置**都带非空默认值**：
+
+- VS Code：`package.json` 里 `okScriptToolkit.featureAliases` 的 `default` 是 `["fL","FeatureList"]`
+- JetBrains：`SettingsState.init` 里把 `featureAliases` 填成 `["fL","FeatureList"]`
+
+于是"读一下 IDE 设置"这个动作**永远拿得到值** → ④ 层永远命中 → **③ 项目声明永远不生效**。
+界面上一切正常，只是"项目里配的东西不生效" —— 等于这一层白接了。
+
+| 端 | 正确判据 |
+|---|---|
+| VS Code | `getConfiguration().inspect('featureAliases')`，取 `workspaceFolderValue ?? workspaceValue ?? globalValue`；三者都为 `undefined` 才算"没设过" |
+| JetBrains | **state 默认值留空**（空列表 = 没设过）。旧版本填过默认值，用 `featureAliasesTouched` 标记区分"init 自动写的"与"用户手填的同样值"，做一次性迁移 |
+
+**通用规则**：凡是"默认值非空"的设置项，接取值链时都必须先找到"用户是否真的改过"这个信号 ——
+否则 ④ 层会把 ③ 层永久屏蔽。**动手接线前先看该设置的默认值是不是空的。**
+
 ## 4. 文件形态
 
 - 名称：**`ok-script-toolkit.json`**（不带点，可见，本来就该被提交）
@@ -94,6 +122,20 @@
 | `i18n` | `enabled` / `langDirectory` / `poDirectory` / `poDomains` | 无 | IDE 设置 → 内置默认 |
 | `characters` | `projectPath` / `masterFile` / `skillsDirectory` / `localeFile` / `avatarTemplateRegex` | 无 | IDE 设置 → 内置默认 |
 | `effects` | `file` | 无 | IDE 设置 → `src/data/effects.py` |
+
+### ⚠️ `labelEnum.path` 是**模块路径**（不带 `.py`），消费端必须补后缀
+
+`labelEnum.path` 与项目 `config.py` 的 `label_enum_relative_path` **同形** —— 都是
+点分模块路径（`src/data/FeatureList`）。这不是推测：ok 框架的
+`_normalize_label_enum_relative_path()`（`ok/ui/qt/tasks/TemplateTab.py`）会把用户输入的
+`.py` **主动剥掉**再存盘，三个真实项目（ok-end-field / OK-AzurPromilia / ok-gf2）的值
+也都是 `src/data/FeatureList`。
+
+而消费端（生成枚举文件、拼绝对路径）要的是**文件路径**。拿模块路径直接去写，会产出一个
+叫 `FeatureList`、**没有扩展名**的文件 —— Python 根本 import 不到，等于把项目弄坏。
+
+→ 两端各提供一次显式转换（`labelEnumFile()` / `LabelEnumConvention.filePathOr()`），
+**不要在消费点手工拼字符串**；已带 `.py` 的写法要容忍、不重复补。
 
 ### **不**进配置文件的
 
@@ -133,6 +175,16 @@
 | JetBrains | `settings/OkScriptToolkitSettings.kt:65` | `featureAliases()` 同上 |
 | | `editor/OkEditorSupport.kt:76,120`、`ui/TemplatesToolWindowFactory.kt` | 同上 |
 | | `core/TemplateAssetDataService.kt:495,510` | `enumPath` 默认、类名来源，同上 |
+
+> **实际落地的范围（以代码为准，别照上表逐项核对）：**
+>
+> - **`aliases`**：两端都接了。入口各只有一处 —— VS Code `providers.featureAliases()`、
+>   子仓 `OkScriptToolkitSettings.featureAliases()` —— 所以 `templatePanel` /
+>   `OkEditorSupport` 等消费点自动受益，不需要各自改。
+> - **`name`**：两端生成枚举时取 `labelEnum.name`，缺席才退回文件名。
+> - **`path`**：两端生成枚举时的默认值取它（经"模块路径 → 文件路径"转换，见 §5）。
+> - **未做**：`TEMPLATE_FOLDER`（`ok_templates` 目录名）仍不可配；
+>   "有值时不再弹框"未做 —— 仍会弹输入框，只是默认值变了。
 
 ### 执行器（`python/run_executor.py`）
 

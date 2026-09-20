@@ -3,6 +3,7 @@
   "extension.description": "為 ok-script 專案提供智慧補全、行內提示、模板預覽、任務啟動、角色資料工具等完整開發輔助。",
   "command.category": "ok-script 工具箱",
   "command.showTemplates": "開啟模板面板",
+  "command.screenshotToTemplate": "截圖並開啟模板素材",
   "command.openTemplatesEditor": "在編輯器中開啟模板面板",
   "command.showTaskLauncher": "開啟任務啟動",
   "command.openCharacterManager": "開啟角色技能管理面板",

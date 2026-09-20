@@ -3,6 +3,7 @@
   "extension.description": "ok-script プロジェクト向けの補完、インラインヒント、テンプレートプレビュー、タスク起動、キャラクターデータツールなど。",
   "command.category": "ok-script ツールキット",
   "command.showTemplates": "テンプレートギャラリーを開く",
+  "command.screenshotToTemplate": "スクリーンショットをテンプレート素材へ",
   "command.openTemplatesEditor": "テンプレートギャラリーをエディターで開く",
   "command.showTaskLauncher": "タスク起動を開く",
   "command.openCharacterManager": "キャラクター・スキル管理を開く",

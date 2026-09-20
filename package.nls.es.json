@@ -3,6 +3,7 @@
   "extension.description": "Autocompletado, sugerencias en línea, vista previa de plantillas, lanzamiento de tareas, herramientas de datos de personajes y más para proyectos ok-script.",
   "command.category": "ok-script Toolkit",
   "command.showTemplates": "Abrir galería de plantillas",
+  "command.screenshotToTemplate": "Capturar en Recursos de Plantilla",
   "command.openTemplatesEditor": "Abrir galería de plantillas en el editor",
   "command.showTaskLauncher": "Abrir lanzador de tareas",
   "command.openCharacterManager": "Abrir gestor de personajes y habilidades",
