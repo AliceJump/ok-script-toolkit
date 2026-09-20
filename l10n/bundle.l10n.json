@@ -167,6 +167,7 @@
   "Project file: {value}": "Project file: {value}",
   "Revert to project convention": "Revert to project convention",
   "Reverted {key} to the project convention.": "Reverted {key} to the project convention.",
+"Same as the current project": "Same as the current project",
   "Save COCO data + images to...": "Save COCO data + images to...",
   "Save failed: {error}": "Save failed: {error}",
   "Saved to: {path}": "Saved to: {path}",

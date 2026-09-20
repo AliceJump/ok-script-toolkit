@@ -10,8 +10,9 @@
 > | JetBrains 侧加载器 + `labelEnum` 接入 | ✅ `core/ProjectConventionConfig.kt` + `core/ProjectConvention.kt` |
 > | 截图快捷键（§6.4） | ✅ 两端 |
 > | `templates.directory`（§8.1 的死设置） | ✅ 两端 |
+> | 「项目约定 vs 我的设置」溯源面板（§3） | ✅ 两端 |
+> | `i18n` / `characters` / `effects` 各组 | ✅ 两端 |
 > | `templates.cocoAnnotations` | ⏳ 未实现（schema 已声明） |
-> | `i18n` / `characters` / `effects` 各组 | ⏳ 未实现（schema 已声明，插件暂不读） |
 
 ## 1. 要解决的问题
 
@@ -92,8 +93,14 @@
 > 新接一组设置时，在 `conventionSources()` 的登记表里补一行；`scripts/test_convention_sources.js`
 > 会对着 `package.json` 核对键名，拼错键名（会让"恢复"静默失效）跑测试就报错。
 >
-> ⏳ **JetBrains 侧对应实现未做**（需要一个 `AnAction` + 面板，并让
-> `ProjectConvention` 产出同样的 `{ value, layer }`）。
+> 面板上的 `declared`（"项目文件里写了什么"）**也不是另读一遍配置对象得来的** ——
+> 它把个人偏好置空、**再跑一次同一条链**，命中的是 `builtin` 层就说明没声明。
+> 这样展示值与生效值走同一套归一化：声明写 `./lang` 时两处都显示 `lang`，
+> 不会出现"面板显示一个样、实际匹配另一个样"。
+>
+> ✅ **JetBrains 侧对应实现已落地**：`core/ConventionSources.kt`（纯对象）+
+> `ui/ShowConventionSourcesAction.kt`（`AnAction` + `DialogWrapper`），
+> `ProjectConvention` 产出同样的 `{ value, layer }`，登记表在 `conventionSourceRows()`。
 
 **每一层都可缺席**：缺席就往下取；全缺则退回现有行为。**文件不存在时，行为与今天
 完全一致 —— 纯增量。**
@@ -127,9 +134,11 @@
 > `ok-script-toolkit.xml` 时不会被记账，那一项仍按"没设过"处理（让项目约定生效）。
 > 这是可接受的 —— 手改 xml 不是受支持的操作路径。
 
-> **UI 缓冲：VS Code 侧已完成，JetBrains 侧待补**（见上面 §3 的引用块）。
+> **UI 缓冲：两端都已完成**（见上面 §3 的引用块）。
 > 接线的新分组越多，"我改过一次就再也看不到团队改了什么"这个副作用的面就越大 ——
-> 子仓侧补上之前，新增分组时请一并在 `conventionSources()` 登记（VS Code 侧的成本只有一行）。
+> 所以**新增分组时必须一并在登记表里补行**：VS Code `conventionSources()`、
+> JetBrains `conventionSourceRows()`。两边的测试都会拿键名去核对
+> （VS Code 对着 `package.json`，JetBrains 对着登记表内容与顺序）。
 
 ## 4. 文件形态
 
@@ -158,6 +167,20 @@
 | `i18n` | `enabled` / `langDirectory` / `poDirectory` / `poDomains` | 无 | IDE 设置 → 内置默认 |
 | `characters` | `projectPath` / `masterFile` / `skillsDirectory` / `localeFile` / `avatarTemplateRegex` | 无 | IDE 设置 → 内置默认 |
 | `effects` | `file` | 无 | IDE 设置 → `src/data/effects.py` |
+
+**接线状态**：`templates.directory`、`labelEnum.*`、`i18n`、`characters`、`effects` 已接线；
+只有 `templates.cocoAnnotations` 未接（它的消费点散在 6 个文件里，且**两端现在都不再读
+`config.py` 的 `template_matching.coco_feature_json`**，只有执行器侧会经 AST 读它）。
+
+**按字段类型选归一化方式**（做错是**静默**的，所以这里写死）：
+
+| 字段类型 | 用哪个 | 为什么 |
+|---|---|---|
+| 相对路径（目录名、数据文件） | `relPathResolved` | 会被拼进 glob / 做目录段匹配；声明写 `assets\lang` 或 `./assets/lang` 会静默失配 |
+| 绝对路径（`characters.projectPath`） | `textResolved` | 归一化会吃掉 POSIX 绝对路径的开头斜杠 |
+| 正则（`characters.avatarTemplateRegex`） | `textResolved` | 归一化会把 `\d` 的反斜杠换成 `/`、把尾部 `/` 吃掉，正则当场废掉 |
+| 布尔 | `boolResolved` | 手写文件里 `"enabled": "false"` 是字符串**真值**，不守卫会把开关反向锁死 |
+| 字符串数组 | `listResolved` | 空数组 = "没声明"，否则用户没法用空值表达"回到项目约定" |
 
 ### ⚠️ `labelEnum.path` 是**模块路径**（不带 `.py`），消费端必须补后缀
 
@@ -197,8 +220,13 @@
 | VS Code | `src/langData.ts` | `langDirectory`、`poDirectory`、`poDomains`、`enablePoData` |
 | | `src/characterPanel.ts` | `characterMasterFile`、`characterSkillsDirectory`、`characterLocaleFile`、`characterAvatarTemplateRegex` |
 | | `src/characterData.ts`、`src/effectData.ts`、`src/extension.ts`、`src/taskLauncher.ts` | `effectsFile`、`poDirectory` |
-| JetBrains | `settings/OkScriptToolkitSettings.kt` | 全部访问器（`ifBlank { 默认 }` 之前插入项目层） |
-| | `core/OkProjectDataService.kt`、`core/OkDataChangeService.kt`、`core/CharacterDataService.kt`、`core/EffectDataMutations.kt`、`ui/*` | 各消费点 |
+| JetBrains | `settings/OkScriptToolkitSettings.kt` | 全部访问器（`ifBlank { 默认 }` 之前插入项目层）；标量/布尔/列表靠 `overriddenKeys` 记账区分"设过"与"默认值" |
+| | `core/OkProjectDataService.kt`、`core/OkDataChangeService.kt`、`ui/CharacterManagerPanel.kt`、`tasklauncher/TaskLauncherToolWindowFactory.kt` | 各消费点（都已收敛到设置访问器，接线时只改访问器本体） |
+
+> **两端对称**：`projectConfigPure.ts` ↔ `core/ProjectConvention.kt`（纯对象 + 取值链）、
+> `projectConfig.ts` ↔ `settings/OkScriptToolkitSettings.kt`（读盘 + 个人偏好归一）、
+> `conventionSources.ts` ↔ `core/ConventionSources.kt`（登记表）。
+> 改一侧记得改另一侧；两边的归一化语义必须一致（同一份 JSON，两端要给出同样的结论）。
 
 ### `labelEnum` 落地
 

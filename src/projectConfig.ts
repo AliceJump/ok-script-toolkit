@@ -11,7 +11,21 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { ProjectConfig, parseProjectConfig, templatesDirectoryOf } from './projectConfigPure';
+import {
+  ProjectConfig,
+  charactersAvatarTemplateRegex,
+  charactersLocaleFile,
+  charactersMasterFile,
+  charactersProjectPath,
+  charactersSkillsDirectory,
+  effectsFile,
+  i18nEnabled,
+  i18nLangDirectory,
+  i18nPoDirectory,
+  i18nPoDomains,
+  parseProjectConfig,
+  templatesDirectoryOf,
+} from './projectConfigPure';
 
 export const PROJECT_CONFIG_FILE = 'ok-script-toolkit.json';
 
@@ -26,6 +40,28 @@ export const DEFAULT_TEMPLATES_DIRECTORY = 'ok_templates';
  * 所以读它必须走 `ideSetting()`（`inspect()`），不能用 `get()`。
  */
 export const DEFAULT_FEATURE_ALIASES = ['fL', 'FeatureList'];
+
+/* ---------------- i18n / characters / effects 三组的兜底 ---------------- */
+
+/**
+ * 下面这些常量是各条取值链的**最后一层**，**不是** `package.json` 里对应设置的
+ * "个人偏好"值 —— 后者的 `default` 与它们同值（这是刻意的：用户没配过时行为不变），
+ * 所以读个人偏好必须走 `ideSetting()`（`inspect()`），**不能用 `get()`**。
+ * 用 `get()` 会让个人偏好层永远命中、项目声明永远不生效（静默）。
+ */
+export const DEFAULT_I18N_ENABLED = true;
+export const DEFAULT_LANG_DIRECTORY = 'assets/lang';
+export const DEFAULT_PO_DIRECTORY = 'i18n';
+export const DEFAULT_PO_DOMAINS = ['ocr'];
+
+/** `characters.projectPath` 的兜底是**空串**：空 = 与当前项目相同。 */
+export const DEFAULT_CHARACTER_PROJECT_PATH = '';
+export const DEFAULT_CHARACTER_MASTER_FILE = 'assets/data/characters.json';
+export const DEFAULT_CHARACTER_SKILLS_DIRECTORY = 'assets/data/character_skills';
+export const DEFAULT_CHARACTER_LOCALE_FILE = 'assets/lang/characters.json';
+export const DEFAULT_AVATAR_TEMPLATE_REGEX = '^battle[_-]?icon[_-]?';
+
+export const DEFAULT_EFFECTS_FILE = 'src/data/effects.py';
 
 export * from './projectConfigPure';
 
@@ -128,4 +164,86 @@ export function templatesDirectory(projectDir?: string): string {
     ideSetting<string>('okTemplatesDirectory'),
     DEFAULT_TEMPLATES_DIRECTORY,
   );
+}
+
+/* ---------------- i18n / characters / effects 三组的便捷访问器 ---------------- */
+
+/**
+ * 命名约定：**带 `Setting` 后缀的是"读 IDE 设置 + 走取值链"的便捷访问器**，
+ * 它们内部自己取 `ideSetting()` 与兜底；`projectConfigPure` 里那些
+ * `xxxResolved(config, ideValue, fallback)` / `xxxOf(...)` 是**纯函数**，
+ * 由调用方把三样东西都传进来。
+ *
+ * 为什么不统一名字：`projectConfig.ts` 里 `export * from './projectConfigPure'`，
+ * 同名会冲突。`templatesDirectory()` 是这个约定之前留下的，保持原样不动。
+ */
+
+/** 是否启用 gettext po 数据源。 */
+export function i18nEnabledSetting(): boolean {
+  return i18nEnabled(loadProjectConfig(), ideSetting<boolean>('enablePoData'), DEFAULT_I18N_ENABLED);
+}
+
+/** 语言 JSON 目录（角色名等），相对项目根。 */
+export function i18nLangDirectorySetting(): string {
+  return i18nLangDirectory(loadProjectConfig(), ideSetting<string>('langDirectory'), DEFAULT_LANG_DIRECTORY);
+}
+
+/** gettext .po 目录，相对项目根。 */
+export function i18nPoDirectorySetting(): string {
+  return i18nPoDirectory(loadProjectConfig(), ideSetting<string>('poDirectory'), DEFAULT_PO_DIRECTORY);
+}
+
+/** 参与索引的 po domain。 */
+export function i18nPoDomainsSetting(): string[] {
+  return i18nPoDomains(loadProjectConfig(), ideSetting<string[]>('poDomains'), DEFAULT_PO_DOMAINS);
+}
+
+/** 角色数据所在项目根（空 = 与当前项目相同）。消费端自行做 `~` 展开与 `path.resolve`。 */
+export function charactersProjectPathSetting(): string {
+  return charactersProjectPath(
+    loadProjectConfig(),
+    ideSetting<string>('characterProjectPath'),
+    DEFAULT_CHARACTER_PROJECT_PATH,
+  );
+}
+
+/** 角色主数据文件，相对角色项目根。 */
+export function charactersMasterFileSetting(): string {
+  return charactersMasterFile(
+    loadProjectConfig(),
+    ideSetting<string>('characterMasterFile'),
+    DEFAULT_CHARACTER_MASTER_FILE,
+  );
+}
+
+/** 技能 JSON 目录，相对角色项目根。 */
+export function charactersSkillsDirectorySetting(): string {
+  return charactersSkillsDirectory(
+    loadProjectConfig(),
+    ideSetting<string>('characterSkillsDirectory'),
+    DEFAULT_CHARACTER_SKILLS_DIRECTORY,
+  );
+}
+
+/** 角色名多语言文件，相对角色项目根。 */
+export function charactersLocaleFileSetting(): string {
+  return charactersLocaleFile(
+    loadProjectConfig(),
+    ideSetting<string>('characterLocaleFile'),
+    DEFAULT_CHARACTER_LOCALE_FILE,
+  );
+}
+
+/** 头像模板的命名正则。 */
+export function charactersAvatarTemplateRegexSetting(): string {
+  return charactersAvatarTemplateRegex(
+    loadProjectConfig(),
+    ideSetting<string>('characterAvatarTemplateRegex'),
+    DEFAULT_AVATAR_TEMPLATE_REGEX,
+  );
+}
+
+/** 效果定义源文件，相对项目根。 */
+export function effectsFileSetting(): string {
+  return effectsFile(loadProjectConfig(), ideSetting<string>('effectsFile'), DEFAULT_EFFECTS_FILE);
 }

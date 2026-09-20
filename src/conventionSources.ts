@@ -20,19 +20,35 @@
 import * as vscode from 'vscode';
 import { tr } from './localization';
 import {
+  DEFAULT_AVATAR_TEMPLATE_REGEX,
+  DEFAULT_CHARACTER_LOCALE_FILE,
+  DEFAULT_CHARACTER_MASTER_FILE,
+  DEFAULT_CHARACTER_PROJECT_PATH,
+  DEFAULT_CHARACTER_SKILLS_DIRECTORY,
+  DEFAULT_EFFECTS_FILE,
   DEFAULT_FEATURE_ALIASES,
+  DEFAULT_I18N_ENABLED,
+  DEFAULT_LANG_DIRECTORY,
+  DEFAULT_PO_DIRECTORY,
+  DEFAULT_PO_DOMAINS,
   DEFAULT_TEMPLATES_DIRECTORY,
   ProjectConfig,
   ResolvedSetting,
   SettingLayer,
+  charactersAvatarTemplateRegexResolved,
+  charactersLocaleFileResolved,
+  charactersMasterFileResolved,
+  charactersProjectPathResolved,
+  charactersSkillsDirectoryResolved,
+  effectsFileResolved,
+  i18nEnabledResolved,
+  i18nLangDirectoryResolved,
+  i18nPoDirectoryResolved,
+  i18nPoDomainsResolved,
   ideSetting,
   labelEnumAliasesResolved,
-  labelEnumOf,
   loadProjectConfig,
-  nonEmptyStrings,
-  normalizeRelPath,
   templatesDirectoryResolved,
-  templatesOf,
 } from './projectConfig';
 
 /** 溯源视图里的一行。 */
@@ -73,43 +89,126 @@ function row<T>(args: {
 }
 
 /**
+ * 造一行。`resolve` 由调用方传进来（绑好 config），三样展示值都从**同一条链**取。
+ *
+ * `declared`（项目文件里到底写了什么）**不是另读一遍配置对象得来的**，而是
+ * 把个人偏好置空、**再跑一次同一条链**：命中的是 `builtin` 层就说明项目没声明。
+ * 这样展示出来的值与生效值走的是同一套归一化与类型判断，不会出现
+ * "面板显示 `assets\lang`、实际按 `assets/lang` 匹配"那种错位 —— 手写文件里
+ * 多一个反斜杠就会踩到，而且两边看起来都"正常"。
+ */
+function rowOf<T>(args: {
+  key: string;
+  resolve: (ideValue: unknown, fallback: T) => ResolvedSetting<T>;
+  fallback: T;
+  render: (value: T) => string;
+}): ConventionSourceRow {
+  const probe = args.resolve(undefined, args.fallback);
+  return row({
+    key: args.key,
+    resolved: args.resolve(ideSetting(args.key), args.fallback),
+    render: args.render,
+    declared: probe.layer === 'builtin' ? undefined : args.render(probe.value),
+    builtin: args.render(args.fallback),
+  });
+}
+
+const joinList = (value: string[]): string => value.join(', ');
+const asText = (value: string): string => value;
+const asBool = (value: boolean): string => String(value);
+
+/**
  * 参与取值链的**设置清单**。
  *
- * 加一组新设置时在这里补一行 —— 溯源视图靠它保持同步。
- * 目前只收录"个人偏好层来自 IDE 设置"的键：`labelEnumFile` 的个人偏好层是
+ * 加一组新设置时在这里补一行 —— 溯源视图靠它保持同步，测试会拿这些键名
+ * 逐个去 `package.json` 里核对（拼错键名不报错，只会让「恢复」静默失效）。
+ *
+ * 只收录"个人偏好层来自 IDE 设置"的键：`labelEnumFile` 的个人偏好层是
  * `globalState` 里的"上次保存"（不是 IDE 设置），语义不同，暂不纳入。
+ *
+ * 键名是 IDE 设置名，不是项目约定文件里的字段名 —— 两者**刻意允许不同名**
+ * （`enablePoData` ↔ `i18n.enabled`：前者是"我这台机器要不要读它"，
+ * 后者是"这个项目的 i18n 长什么样"）。面板按设置名成行，用户能直接去设置界面找。
  */
 export function conventionSources(): ConventionSourceRow[] {
   const config: ProjectConfig = loadProjectConfig();
-
-  const aliases = labelEnumAliasesResolved(
-    config,
-    ideSetting<string[]>('featureAliases'),
-    DEFAULT_FEATURE_ALIASES,
-  );
-  const declaredAliases = nonEmptyStrings(labelEnumOf(config).aliases);
-
-  const templates = templatesDirectoryResolved(
-    config,
-    ideSetting<string>('okTemplatesDirectory'),
-    DEFAULT_TEMPLATES_DIRECTORY,
-  );
-  const declaredTemplates = normalizeRelPath(templatesOf(config).directory);
+  const resolve = <T>(fn: (c: ProjectConfig, ide: unknown, fallback: T) => ResolvedSetting<T>) =>
+    (ideValue: unknown, fallback: T) => fn(config, ideValue, fallback);
 
   return [
-    row({
+    rowOf({
       key: 'featureAliases',
-      resolved: aliases,
-      render: (value) => value.join(', '),
-      declared: declaredAliases.length ? declaredAliases.join(', ') : undefined,
-      builtin: DEFAULT_FEATURE_ALIASES.join(', '),
+      resolve: resolve(labelEnumAliasesResolved),
+      fallback: DEFAULT_FEATURE_ALIASES,
+      render: joinList,
     }),
-    row({
+    rowOf({
       key: 'okTemplatesDirectory',
-      resolved: templates,
-      render: (value) => value,
-      declared: declaredTemplates,
-      builtin: DEFAULT_TEMPLATES_DIRECTORY,
+      resolve: resolve(templatesDirectoryResolved),
+      fallback: DEFAULT_TEMPLATES_DIRECTORY,
+      render: asText,
+    }),
+    rowOf({
+      key: 'enablePoData',
+      resolve: resolve(i18nEnabledResolved),
+      fallback: DEFAULT_I18N_ENABLED,
+      render: asBool,
+    }),
+    rowOf({
+      key: 'langDirectory',
+      resolve: resolve(i18nLangDirectoryResolved),
+      fallback: DEFAULT_LANG_DIRECTORY,
+      render: asText,
+    }),
+    rowOf({
+      key: 'poDirectory',
+      resolve: resolve(i18nPoDirectoryResolved),
+      fallback: DEFAULT_PO_DIRECTORY,
+      render: asText,
+    }),
+    rowOf({
+      key: 'poDomains',
+      resolve: resolve(i18nPoDomainsResolved),
+      fallback: DEFAULT_PO_DOMAINS,
+      render: joinList,
+    }),
+    rowOf({
+      key: 'characterProjectPath',
+      resolve: resolve(charactersProjectPathResolved),
+      fallback: DEFAULT_CHARACTER_PROJECT_PATH,
+      // 兜底是**空串**（含义：与当前项目相同）。空值在面板上会显示成一个空白，
+      // 看着像坏了，所以这里渲染成一句人话。
+      render: (value) => value || tr('Same as the current project'),
+    }),
+    rowOf({
+      key: 'characterMasterFile',
+      resolve: resolve(charactersMasterFileResolved),
+      fallback: DEFAULT_CHARACTER_MASTER_FILE,
+      render: asText,
+    }),
+    rowOf({
+      key: 'characterSkillsDirectory',
+      resolve: resolve(charactersSkillsDirectoryResolved),
+      fallback: DEFAULT_CHARACTER_SKILLS_DIRECTORY,
+      render: asText,
+    }),
+    rowOf({
+      key: 'characterLocaleFile',
+      resolve: resolve(charactersLocaleFileResolved),
+      fallback: DEFAULT_CHARACTER_LOCALE_FILE,
+      render: asText,
+    }),
+    rowOf({
+      key: 'characterAvatarTemplateRegex',
+      resolve: resolve(charactersAvatarTemplateRegexResolved),
+      fallback: DEFAULT_AVATAR_TEMPLATE_REGEX,
+      render: asText,
+    }),
+    rowOf({
+      key: 'effectsFile',
+      resolve: resolve(effectsFileResolved),
+      fallback: DEFAULT_EFFECTS_FILE,
+      render: asText,
     }),
   ];
 }

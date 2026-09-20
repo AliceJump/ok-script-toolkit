@@ -164,6 +164,7 @@
   "Project file: {value}": "專案檔案：{value}",
   "Revert to project convention": "回復為專案約定",
   "Reverted {key} to the project convention.": "已將 {key} 回復為專案約定。",
+"Same as the current project": "與當前專案相同",
   "Save COCO data + images to...": "儲存 COCO 資料與圖片到…",
   "Save failed: {error}": "儲存失敗: {error}",
   "Saved to: {path}": "已儲存到: {path}",

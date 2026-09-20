@@ -372,7 +372,8 @@ See [DEVELOPMENT.md](DEVELOPMENT.md) for project structure, JetBrains version, l
 #### 项目约定文件 `ok-script-toolkit.json`
 
 把**随项目走**的约定写在被调试项目的**根目录**：枚举文件路径与类名、模板目录、
-执行器启动钩子等。提交进仓库后，团队成员、以及另一个 IDE（JetBrains 插件读同一份）
+执行器启动钩子、i18n（语言 / PO 目录与开关）、角色数据位置、效果定义文件等。
+提交进仓库后，团队成员、以及另一个 IDE（JetBrains 插件读同一份）
 都能直接用，不必各自在 IDE 设置里重配一遍。
 
 取值优先级（高 → 低）：
@@ -381,6 +382,21 @@ See [DEVELOPMENT.md](DEVELOPMENT.md) for project structure, JetBrains version, l
 - 文件**缺席时行为与不引入它时完全一致**（纯增量）
 - 插件**只读**本文件，**绝不写入**
 - 编辑器里对它提供悬浮说明与补全（来自 [`schemas/ok-script-toolkit.schema.json`](schemas/ok-script-toolkit.schema.json)）
+
+已经接入取值链的设置项 ↔ 文件里的字段：
+
+| IDE 设置 | 项目文件字段 |
+|---|---|
+| `okTemplatesDirectory` | `templates.directory` |
+| `featureAliases` | `labelEnum.aliases` |
+| `langDirectory` / `poDirectory` / `poDomains` | `i18n.langDirectory` / `i18n.poDirectory` / `i18n.poDomains` |
+| `enablePoData` | `i18n.enabled`（**名字不同是刻意的**：前者是"我这台机器要不要读它"，后者是"这个项目的 i18n 长什么样"） |
+| `characterProjectPath` / `characterMasterFile` / `characterSkillsDirectory` / `characterLocaleFile` / `characterAvatarTemplateRegex` | `characters.projectPath` / `characters.masterFile` / `characters.skillsDirectory` / `characters.localeFile` / `characters.avatarTemplateRegex` |
+| `effectsFile` | `effects.file` |
+
+> ⚠️ **个人偏好排最高**有个副作用：一旦你手动改过某一项，项目声明的那一项就对你
+> **永久失效**，界面上毫无提示。命令 **`okScriptToolkit.showConventionSources`**
+> （「项目约定 vs 我的设置」）会把每一项的生效值来自哪一层列出来，并支持一键恢复为项目约定。
 
 完整字段清单与设计说明见 [`docs/project-config.md`](docs/project-config.md)，
 可直接复制的示例见 [`docs/ok-script-toolkit.example.json`](docs/ok-script-toolkit.example.json)。
@@ -444,7 +460,9 @@ self.wait_click_ocr(match=self.lang.zip_line_mixin.k_2f4f4a2f, ...)
 #### Project Convention File `ok-script-toolkit.json`
 
 Put **project-scoped** conventions in the **root of the debugged project**: the label
-enum's path and class name, the templates directory, executor startup hooks, and so on.
+enum's path and class name, the templates directory, executor startup hooks, i18n
+(language / PO directories and the gettext toggle), character data locations, the
+effects definition file, and so on.
 Commit it to the repository and teammates — plus the other IDE (the JetBrains plugin
 reads the same file) — get it for free, with no per-machine reconfiguration.
 
@@ -454,6 +472,22 @@ Precedence (high → low):
 - When the file is absent, behaviour is **identical to not having it at all** (purely additive)
 - The plugins **only read** this file and **never write** to it
 - Hover docs and completion are provided in the editor via [`schemas/ok-script-toolkit.schema.json`](schemas/ok-script-toolkit.schema.json)
+
+Settings that take part in the precedence chain ↔ the field they map to:
+
+| IDE setting | Project file field |
+|---|---|
+| `okTemplatesDirectory` | `templates.directory` |
+| `featureAliases` | `labelEnum.aliases` |
+| `langDirectory` / `poDirectory` / `poDomains` | `i18n.langDirectory` / `i18n.poDirectory` / `i18n.poDomains` |
+| `enablePoData` | `i18n.enabled` (**deliberately different names**: the setting is "does this machine read it", the field is "what this project's i18n looks like") |
+| `characterProjectPath` / `characterMasterFile` / `characterSkillsDirectory` / `characterLocaleFile` / `characterAvatarTemplateRegex` | `characters.projectPath` / `characters.masterFile` / `characters.skillsDirectory` / `characters.localeFile` / `characters.avatarTemplateRegex` |
+| `effectsFile` | `effects.file` |
+
+> ⚠️ **Personal preference wins** has a side effect: once you change something yourself,
+> the project's declaration for that item is **permanently shadowed** for you, silently.
+> The **`okScriptToolkit.showConventionSources`** command ("Project Convention vs My Settings")
+> lists which layer each effective value comes from and lets you revert to the project convention.
 
 See [`docs/project-config.md`](docs/project-config.md) for the full field list and design notes,
 and [`docs/ok-script-toolkit.example.json`](docs/ok-script-toolkit.example.json) for a copy-paste example.

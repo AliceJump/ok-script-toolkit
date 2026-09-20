@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
+import { i18nEnabledSetting, i18nLangDirectorySetting, i18nPoDirectorySetting, i18nPoDomainsSetting } from './projectConfig';
 
 /** lang JSON 中的语言节点：{ "string": "..." } 或 { "pattern": "..." } */
 export interface LangNode {
@@ -75,20 +76,26 @@ export function pickValue(entry: LangEntry, locale: string): string | undefined 
 
 /* ---------------- gettext PO 支持（参考 ok-script 的 ocr.po 用法） ---------------- */
 
-/** PO 目录配置（相对工作区根，默认 i18n，按 <locale>/LC_MESSAGES/*.po 结构扫描） */
+/**
+ * PO 目录配置（相对工作区根，按 `<locale>/LC_MESSAGES/*.po` 结构扫描）。
+ *
+ * 走 `projectConfig` 的取值链：**个人偏好（IDE 设置 `poDirectory`）> 项目约定文件
+ * `i18n.poDirectory` > 内置默认 `i18n`**。个人偏好必须用 `inspect()` 读（见
+ * `projectConfig.ideSetting()`）—— 该设置的 `default` 非空，用 `get()` 会让
+ * 项目声明永远不生效（静默）。
+ */
 export function poDirectorySetting(): string {
-  return vscode.workspace.getConfiguration('okScriptToolkit').get<string>('poDirectory') || 'i18n';
+  return i18nPoDirectorySetting();
 }
 
-/** 是否启用 gettext PO 数据源 */
+/** 是否启用 gettext PO 数据源。取值链同上（IDE 设置 `enablePoData` → `i18n.enabled`）。 */
 export function enablePoData(): boolean {
-  return vscode.workspace.getConfiguration('okScriptToolkit').get<boolean>('enablePoData', true);
+  return i18nEnabledSetting();
 }
 
-/** PO domain 白名单（文件名不含 .po；默认只加载 ocr，排除 ok 等 UI 文案） */
+/** PO domain 白名单（文件名不含 .po；默认只加载 ocr，排除 ok 等 UI 文案）。取值链同上。 */
 export function poDomainsSetting(): string[] {
-  const cfg = vscode.workspace.getConfiguration('okScriptToolkit').get<string[]>('poDomains');
-  return cfg && cfg.length ? cfg : ['ocr'];
+  return i18nPoDomainsSetting();
 }
 
 /**
@@ -210,8 +217,8 @@ export class LangData {
   }
 
   private langDir(): string {
-    const rel = vscode.workspace.getConfiguration('okScriptToolkit').get<string>('langDirectory') || 'assets/lang';
-    return path.join(this.rootDir, rel);
+    // 取值链：IDE 设置 `langDirectory` → 项目约定 `i18n.langDirectory` → `assets/lang`
+    return path.join(this.rootDir, i18nLangDirectorySetting());
   }
 
   private poRoot(): string {

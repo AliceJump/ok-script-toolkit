@@ -305,7 +305,84 @@ async function main() {
     check(vscode.__test.writes.length === 0, '本来就没有覆盖时不写设置（幂等）');
   }
 
-  // ── 4. 登记表与 package.json 一致 ──────────────────────────────────
+  // ── 5. 后来接入的三组（i18n / characters / effects）────────────────
+  //
+  // 这三组此前是硬编码常量，接进取值链后每一行都多了一个"项目声明"的来源。
+  // 面板是用户唯一能看见来源的地方，所以这里按**用户看到的字符串**断言，
+  // 而不只是断言纯对象（纯对象那层在 test_project_config.js 里已经钉过）。
+  console.log('\n新接入的三组在登记表里可溯源');
+  {
+    writeConvention({
+      i18n: { enabled: false, langDirectory: './lang', poDirectory: 'i18n', poDomains: ['ocr', 'ui'] },
+      characters: {
+        projectPath: '/home/me/other_proj',
+        avatarTemplateRegex: '^icon\\d+/',
+        masterFile: 'data/chars.json',
+      },
+      effects: { file: 'src/data/effect_defs.py' },
+    });
+    vscode.__test.reset();
+    const rows = conv.conventionSources();
+
+    const NEW_KEYS = [
+      'enablePoData',
+      'langDirectory',
+      'poDirectory',
+      'poDomains',
+      'characterProjectPath',
+      'characterMasterFile',
+      'characterSkillsDirectory',
+      'characterLocaleFile',
+      'characterAvatarTemplateRegex',
+      'effectsFile',
+    ];
+    check(
+      NEW_KEYS.every((key) => rows.some((r) => r.key === key)),
+      `登记表收录了全部 ${NEW_KEYS.length} 个新键 —— 漏一行就等于那一项无法溯源、也无法一键恢复`,
+    );
+
+    check(rowOf(rows, 'enablePoData').effective === 'false', '布尔项展示的是项目声明里的 false');
+    check(rowOf(rows, 'enablePoData').layer === 'project', '布尔项同样标注为「项目约定」');
+    check(
+      rowOf(rows, 'langDirectory').effective === 'lang' && rowOf(rows, 'langDirectory').declared === 'lang',
+      '**归一化对生效值与声明值一致生效** —— 声明写 `./lang`，两边都展示 `lang`，不会出现"面板显示一个样、实际匹配另一个样"',
+    );
+    check(rowOf(rows, 'poDomains').effective === 'ocr, ui', '列表项用逗号连接展示');
+    check(
+      rowOf(rows, 'characterProjectPath').effective === '/home/me/other_proj',
+      '**绝对路径在面板上原样展示** —— 被归一化会显示成 home/me/other_proj，用户会以为声明写错了',
+    );
+    check(
+      rowOf(rows, 'characterAvatarTemplateRegex').effective === '^icon\\d+/',
+      '**正则在面板上原样展示** —— 归一化会显示成 ^icon/d+，用户照抄回去就把自己的正则改坏了',
+    );
+    check(rowOf(rows, 'effectsFile').effective === 'src/data/effect_defs.py', 'effects 组也接了链');
+    check(
+      rowOf(rows, 'characterSkillsDirectory').layer === 'builtin',
+      '项目文件里没声明的那几项仍然标注为「内置默认」（不能整组都报成项目约定）',
+    );
+
+    // 个人覆盖：只动一项，其余行不受影响；被覆盖时项目声明仍然可见
+    vscode.__test.setOverride('poDirectory', 'global', 'my_po');
+    const rows2 = conv.conventionSources();
+    const po2 = rowOf(rows2, 'poDirectory');
+    check(po2.effective === 'my_po' && po2.layer === 'personal', '新分组同样受个人偏好优先');
+    check(po2.declared === 'i18n', '被覆盖时仍然展示项目声明 —— 否则用户看不到团队改了什么');
+    check(rowOf(rows2, 'langDirectory').layer === 'project', '只覆盖一项时同组其它行不受影响');
+
+    // 项目文件缺席：`characterProjectPath` 的兜底是**空串**，面板必须给一句人话
+    writeConvention(undefined);
+    vscode.__test.reset();
+    const bare = rowOf(conv.conventionSources(), 'characterProjectPath');
+    check(bare.layer === 'builtin', '项目文件缺席时回到内置兜底');
+    check(
+      bare.effective.length > 0,
+      '**空兜底也要渲染成可读文案** —— 直接展示空串在 QuickPick 里是一段空白，看着像坏了',
+    );
+    check(bare.effective === 'Same as the current project', '空兜底的文案是「与当前项目相同」');
+  }
+
+  // ── 6. 登记表与 package.json 一致 ──────────────────────────────────
   //
   // 溯源视图的 settingId 是自己拼的（`okScriptToolkit.${key}`）。
   // 拼错键名不会报错，只会让"恢复"静默失效（update 一个不存在的键），
@@ -329,7 +406,7 @@ async function main() {
     check(new Set(keys).size === keys.length, '登记表里没有重复键');
   }
 
-  // ── 5. 破坏性对照 ──────────────────────────────────────────────────
+  // ── 7. 破坏性对照 ──────────────────────────────────────────────────
   //
   // 就地改造编译产物再求值。若对照跑出来的结果与期望相同，说明对应断言没在约束任何东西。
   console.log('\n破坏性对照');
@@ -369,14 +446,27 @@ async function main() {
       '对照二：来源层被写死后，项目声明的值也被报成「我的设置」—— 这正是"界面与实际生效值分叉"的样子',
     );
 
-    // 对照三：declared 不展示（= 被覆盖后用户看不到团队改了什么）
-    const noDeclared = source.replace('declared: declaredTemplates,', 'declared: undefined,');
-    check(noDeclared !== source, '对照三源码确实被改动了（替换命中）—— 否则对照是假的');
+    // 对照三：declared 不再由"同一条链再跑一遍"产出（= 声明值不再随链归一化）
+    //
+    // 第 1 组断言"被覆盖时仍然展示项目文件里的值"、第 5 组断言"声明写 ./lang、
+    // 面板也展示 lang"。若 declared 改成别的来源（比如直接读配置对象、不做归一化），
+    // 这些断言就会失效，且表现是"面板展示的值与实际生效的值不一致"
+    // —— 用户照面板去改项目文件，反而改坏。
+    const noProbe = source.replace(
+      'declared: probe.layer === \'builtin\' ? undefined : args.render(probe.value),',
+      'declared: undefined,',
+    );
+    check(noProbe !== source, '对照三源码确实被改动了（替换命中）—— 否则对照是假的');
+    writeConvention({ i18n: { langDirectory: './lang' }, templates: { directory: 'proj_tpl' } });
     vscode.__test.reset();
-    const noDeclaredRows = evalSandbox(noDeclared).conventionSources();
+    const noProbeRows = evalSandbox(noProbe).conventionSources();
     check(
-      rowOf(noDeclaredRows, 'okTemplatesDirectory').declared === undefined,
-      '对照三：不展示项目声明时 declared 变空 —— 证明第 1 组的 declared 断言确实在约束它',
+      rowOf(noProbeRows, 'langDirectory').declared === undefined,
+      '对照三：拿掉"同一条链再跑一遍"的 declared 探测后，项目声明的值整片消失 —— 与第 5 组的期望相反',
+    );
+    check(
+      rowOf(noProbeRows, 'okTemplatesDirectory').declared === undefined,
+      '对照三：同一杠杆也让模板目录那行失去声明值 —— 证明第 1 组的 declared 断言确实在约束它',
     );
   }
 

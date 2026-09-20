@@ -34,20 +34,41 @@ export interface ProjectConfig {
     };
   };
   templates?: ProjectTemplates;
-  i18n?: {
-    enabled?: boolean;
-    langDirectory?: string;
-    poDirectory?: string;
-    poDomains?: string[];
-  };
-  characters?: {
-    projectPath?: string;
-    masterFile?: string;
-    skillsDirectory?: string;
-    localeFile?: string;
-    avatarTemplateRegex?: string;
-  };
-  effects?: { file?: string };
+  i18n?: ProjectI18n;
+  characters?: ProjectCharacters;
+  effects?: ProjectEffects;
+}
+
+/** `i18n` 一组：gettext / 语言 JSON 的位置与开关。 */
+export interface ProjectI18n {
+  /** 是否读 po 数据 */
+  enabled?: boolean;
+  /** 语言 JSON 目录（角色名等），相对项目根 */
+  langDirectory?: string;
+  /** gettext .po 目录，相对项目根 */
+  poDirectory?: string;
+  /** 参与索引的 po domain */
+  poDomains?: string[];
+}
+
+/** `characters` 一组：角色数据的位置。 */
+export interface ProjectCharacters {
+  /** 角色数据所在项目根。**空 = 与当前项目相同**（角色数据放在另一个仓库时才需要填） */
+  projectPath?: string;
+  /** 角色主数据文件，相对 [projectPath] */
+  masterFile?: string;
+  /** 技能 JSON 目录，相对 [projectPath] */
+  skillsDirectory?: string;
+  /** 角色名多语言文件，相对 [projectPath] */
+  localeFile?: string;
+  /** 头像模板的命名正则（把模板名关联到角色） */
+  avatarTemplateRegex?: string;
+}
+
+/** `effects` 一组：效果定义源文件。 */
+export interface ProjectEffects {
+  /** 效果定义源文件（`EffectType` / `EFFECT_DESCRIPTIONS` 所在），相对项目根 */
+  file?: string;
 }
 
 /** 非空字符串取值：声明文件里写了空串等同于没写。 */
@@ -62,17 +83,19 @@ export function nonEmptyStrings(value: unknown): string[] {
 }
 
 /**
- * 相对路径归一化：统一成 `/` 分隔、去掉首尾斜杠；空（或只有斜杠）→ `undefined`。
+ * 相对路径归一化：统一成 `/` 分隔、去掉首尾斜杠与开头的 `./`；空（或只有斜杠）→ `undefined`。
  *
  * 为什么需要它：这个值会被**三种方式**消费 —— `path.join` 拼绝对路径、
  * `rel.startsWith(...)` 比较、以及**拼进 glob / 正则**（`extension.ts` 的文件监听）。
  * 声明文件里写 `ok_templates\` 或 `./ok_templates` 时，后两种都会失配，
  * 且失配是**静默**的（监听不触发，界面看着正常）。所以入口处统一归一化一次。
+ *
+ * 只剥开头的 `./`，**不碰 `../`** —— 后者是有意义的上跳，剥了就指到别处去了。
  */
 export function normalizeRelPath(value: unknown): string | undefined {
   const raw = nonEmpty(value);
   if (!raw) return undefined;
-  const cleaned = raw.replace(/\\/g, '/').replace(/^\/+/, '').replace(/\/+$/, '');
+  const cleaned = raw.replace(/\\/g, '/').replace(/^(?:\.?\/)+/, '').replace(/\/+$/, '');
   return cleaned.length > 0 ? cleaned : undefined;
 }
 
@@ -128,6 +151,59 @@ export function templatesOf(config: ProjectConfig): ProjectTemplates {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
 }
 
+/** `i18n` 一组（保证是对象）。 */
+export function i18nOf(config: ProjectConfig): ProjectI18n {
+  const value = config.i18n;
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+}
+
+/** `characters` 一组（保证是对象）。 */
+export function charactersOf(config: ProjectConfig): ProjectCharacters {
+  const value = config.characters;
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+}
+
+/** `effects` 一组（保证是对象）。 */
+export function effectsOf(config: ProjectConfig): ProjectEffects {
+  const value = config.effects;
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+}
+
+/**
+ * **相对路径类**字段的统一取值链：两侧都过一遍 [normalizeRelPath]。
+ *
+ * 为什么统一在这里归一化：这些值全部会被拼进路径，其中一部分还会被拿去
+ * **做目录段匹配 / 拼进 glob / 正则**（`OkDataChangeService.dirMatches`、
+ * `extension.ts` 的文件监听）。声明里写 `assets\lang` 或 `/assets/lang` 时，
+ * 后两种用法**静默**失配 —— 界面一切正常，只是"改了文件不刷新"。
+ *
+ * ⚠️ **绝对路径类字段不要用这个**（如 `characters.projectPath`）：
+ * 归一化会把 POSIX 绝对路径的开头斜杠吃掉（`/home/me/proj` → `home/me/proj`）。
+ * 那类字段用 [textResolved]，由消费端自己处理 `~` 与 `path.resolve`。
+ */
+function relPathResolved(ideValue: unknown, declared: unknown, fallback: string): ResolvedSetting<string> {
+  return resolveSetting(normalizeRelPath(ideValue), normalizeRelPath(declared), fallback);
+}
+
+/** 纯文本类字段（正则、绝对路径…）：只做"非空"判断，不做斜杠归一化。 */
+function textResolved(ideValue: unknown, declared: unknown, fallback: string): ResolvedSetting<string> {
+  return resolveSetting(nonEmpty(ideValue), nonEmpty(declared), fallback);
+}
+
+/** 布尔字段：非布尔一律当"没写"（手写文件里 `"enabled": "true"` 是写错了）。 */
+function boolResolved(ideValue: unknown, declared: unknown, fallback: boolean): ResolvedSetting<boolean> {
+  const ide = typeof ideValue === 'boolean' ? ideValue : undefined;
+  const dec = typeof declared === 'boolean' ? declared : undefined;
+  return resolveSetting(ide, dec, fallback);
+}
+
+/** 字符串数组字段：空数组 = "没声明"（与 `labelEnum.aliases` 同一条规则）。 */
+function listResolved(ideValue: unknown, declared: unknown, fallback: string[]): ResolvedSetting<string[]> {
+  const ide = nonEmptyStrings(ideValue);
+  const dec = nonEmptyStrings(declared);
+  return resolveSetting(ide.length ? ide : undefined, dec.length ? dec : undefined, fallback);
+}
+
 /**
  * 模板目录名（相对项目根），已归一化。**带来源层**。
  *
@@ -146,16 +222,119 @@ export function templatesDirectoryResolved(
   ideValue: unknown,
   fallback: string,
 ): ResolvedSetting<string> {
-  return resolveSetting(
-    normalizeRelPath(ideValue),
-    normalizeRelPath(templatesOf(config).directory),
-    fallback,
-  );
+  return relPathResolved(ideValue, templatesOf(config).directory, fallback);
 }
 
 /** 只要值时的薄封装（绝大多数消费点用这个）。 */
 export function templatesDirectoryOf(config: ProjectConfig, ideValue: unknown, fallback: string): string {
   return templatesDirectoryResolved(config, ideValue, fallback).value;
+}
+
+/* ---------------- i18n 一组 ---------------- */
+
+/**
+ * 是否启用 gettext po 数据源。
+ *
+ * 项目约定文件里叫 `i18n.enabled`，IDE 设置里叫 `enablePoData` —— **名字不同**，
+ * 因为前者是"这个项目的 i18n 长什么样"（团队约定），后者是"我这台机器要不要读它"。
+ */
+export function i18nEnabledResolved(config: ProjectConfig, ideValue: unknown, fallback: boolean): ResolvedSetting<boolean> {
+  return boolResolved(ideValue, i18nOf(config).enabled, fallback);
+}
+export function i18nEnabled(config: ProjectConfig, ideValue: unknown, fallback: boolean): boolean {
+  return i18nEnabledResolved(config, ideValue, fallback).value;
+}
+
+/** 语言 JSON 目录（角色名等），相对项目根。 */
+export function i18nLangDirectoryResolved(config: ProjectConfig, ideValue: unknown, fallback: string): ResolvedSetting<string> {
+  return relPathResolved(ideValue, i18nOf(config).langDirectory, fallback);
+}
+export function i18nLangDirectory(config: ProjectConfig, ideValue: unknown, fallback: string): string {
+  return i18nLangDirectoryResolved(config, ideValue, fallback).value;
+}
+
+/** gettext .po 目录，相对项目根。 */
+export function i18nPoDirectoryResolved(config: ProjectConfig, ideValue: unknown, fallback: string): ResolvedSetting<string> {
+  return relPathResolved(ideValue, i18nOf(config).poDirectory, fallback);
+}
+export function i18nPoDirectory(config: ProjectConfig, ideValue: unknown, fallback: string): string {
+  return i18nPoDirectoryResolved(config, ideValue, fallback).value;
+}
+
+/**
+ * 参与索引的 po domain。
+ *
+ * ⚠️ 空数组 = "没声明"，不是"清空" —— 否则用户没法用空值表达"回到项目约定"
+ * （与 `labelEnum.aliases` 同一条规则）。
+ */
+export function i18nPoDomainsResolved(config: ProjectConfig, ideValue: unknown, fallback: string[]): ResolvedSetting<string[]> {
+  return listResolved(ideValue, i18nOf(config).poDomains, fallback);
+}
+export function i18nPoDomains(config: ProjectConfig, ideValue: unknown, fallback: string[]): string[] {
+  return i18nPoDomainsResolved(config, ideValue, fallback).value;
+}
+
+/* ---------------- characters 一组 ---------------- */
+
+/**
+ * 角色数据所在项目根。
+ *
+ * **空字符串是合法的声明值**，含义是"与当前项目相同"（角色数据放在另一个仓库时才需要填）
+ * —— 所以这里不能用 [relPathResolved]（它会把空串当"没写"、还会吃掉绝对路径的开头斜杠）。
+ * 消费端照旧处理 `~` 展开与 `path.resolve`。
+ */
+export function charactersProjectPathResolved(config: ProjectConfig, ideValue: unknown, fallback: string): ResolvedSetting<string> {
+  return textResolved(ideValue, charactersOf(config).projectPath, fallback);
+}
+export function charactersProjectPath(config: ProjectConfig, ideValue: unknown, fallback: string): string {
+  return charactersProjectPathResolved(config, ideValue, fallback).value;
+}
+
+/** 角色主数据文件，相对 `characters.projectPath`。 */
+export function charactersMasterFileResolved(config: ProjectConfig, ideValue: unknown, fallback: string): ResolvedSetting<string> {
+  return relPathResolved(ideValue, charactersOf(config).masterFile, fallback);
+}
+export function charactersMasterFile(config: ProjectConfig, ideValue: unknown, fallback: string): string {
+  return charactersMasterFileResolved(config, ideValue, fallback).value;
+}
+
+/** 技能 JSON 目录，相对 `characters.projectPath`。 */
+export function charactersSkillsDirectoryResolved(config: ProjectConfig, ideValue: unknown, fallback: string): ResolvedSetting<string> {
+  return relPathResolved(ideValue, charactersOf(config).skillsDirectory, fallback);
+}
+export function charactersSkillsDirectory(config: ProjectConfig, ideValue: unknown, fallback: string): string {
+  return charactersSkillsDirectoryResolved(config, ideValue, fallback).value;
+}
+
+/** 角色名多语言文件，相对 `characters.projectPath`。 */
+export function charactersLocaleFileResolved(config: ProjectConfig, ideValue: unknown, fallback: string): ResolvedSetting<string> {
+  return relPathResolved(ideValue, charactersOf(config).localeFile, fallback);
+}
+export function charactersLocaleFile(config: ProjectConfig, ideValue: unknown, fallback: string): string {
+  return charactersLocaleFileResolved(config, ideValue, fallback).value;
+}
+
+/**
+ * 头像模板的命名正则。
+ *
+ * ⚠️ 走 [textResolved] 而**不是** [relPathResolved] —— 这是正则不是路径，
+ * 归一化会把 `\d` 里的反斜杠换掉、把首尾斜杠吃掉，正则就废了。
+ */
+export function charactersAvatarTemplateRegexResolved(config: ProjectConfig, ideValue: unknown, fallback: string): ResolvedSetting<string> {
+  return textResolved(ideValue, charactersOf(config).avatarTemplateRegex, fallback);
+}
+export function charactersAvatarTemplateRegex(config: ProjectConfig, ideValue: unknown, fallback: string): string {
+  return charactersAvatarTemplateRegexResolved(config, ideValue, fallback).value;
+}
+
+/* ---------------- effects 一组 ---------------- */
+
+/** 效果定义源文件（`EffectType` / `EFFECT_DESCRIPTIONS` 所在），相对项目根。 */
+export function effectsFileResolved(config: ProjectConfig, ideValue: unknown, fallback: string): ResolvedSetting<string> {
+  return relPathResolved(ideValue, effectsOf(config).file, fallback);
+}
+export function effectsFile(config: ProjectConfig, ideValue: unknown, fallback: string): string {
+  return effectsFileResolved(config, ideValue, fallback).value;
 }
 
 /**

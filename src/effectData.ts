@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
+import { effectsFileSetting } from './projectConfig';
 
 /**
  * 技能效果 ID -> 描述映射（解析 ok-end-field 的 src/data/effects.py）。
@@ -68,10 +69,10 @@ export class EffectData {
   }
 
   private effectsFile(): string {
-    const rel =
-      vscode.workspace.getConfiguration('okScriptToolkit').get<string>('effectsFile') ||
-      'src/data/effects.py';
-    return path.join(this.rootDir, rel);
+    // 取值链：IDE 设置 `effectsFile` → 项目约定 `effects.file` → `src/data/effects.py`。
+    // 个人偏好必须走 `inspect()`（见 `projectConfig.ideSetting()`）—— 该设置 `default` 非空，
+    // 用 `get()` 会让项目声明永远不生效（静默）。
+    return path.join(this.rootDir, effectsFileSetting());
   }
 
   refresh(force = false): void {

@@ -164,6 +164,7 @@
   "Project file: {value}": "Archivo del proyecto: {value}",
   "Revert to project convention": "Restaurar la convención del proyecto",
   "Reverted {key} to the project convention.": "Se restauró {key} a la convención del proyecto.",
+"Same as the current project": "Igual que el proyecto actual",
   "Save COCO data + images to...": "Guardar datos COCO e imágenes en…",
   "Save failed: {error}": "Error al guardar: {error}",
   "Saved to: {path}": "Guardado en: {path}",

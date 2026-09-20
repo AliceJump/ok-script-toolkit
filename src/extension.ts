@@ -3,7 +3,7 @@ import * as crypto from 'crypto';
 import * as vscode from 'vscode';
 import { LangData, poDirectorySetting } from './langData';
 import { tr } from './localization';
-import { templatesDirectory } from './projectConfig';
+import { effectsFileSetting, i18nLangDirectorySetting, templatesDirectory } from './projectConfig';
 import { showConventionSources } from './conventionSources';
 import { FeatureData } from './featureData';
 import { EffectData } from './effectData';
@@ -161,15 +161,16 @@ export function activate(context: vscode.ExtensionContext): void {
 
   /** 语言数据监听 glob：lang JSON + gettext PO + 模板数据 + 效果 ID */
   const langWatchPattern = () => {
-    const poDir = poDirectorySetting().replace(/[\/]+$/, '');
-    const poGlob = poDir.split(/[\\/]/).map(escapeGlobSeg).join('/');
+    // `poDirectorySetting()` / `i18nLangDirectorySetting()` / `effectsFileSetting()` 出来的
+    // 值都已过 `normalizeRelPath`（`\` → `/`、去首尾斜杠与开头 `./`），这里不再重复处理。
+    const poGlob = poDirectorySetting().split('/').map(escapeGlobSeg).join('/');
     // 模板目录名可配：拼进 glob 前按段转义（目录名可能含 `[`、`*` 等 glob 元字符）。
     // 不转义时 watcher 静默失配 —— 界面正常，但改了模板文件不刷新。
     const tplGlob = templatesDirectory(folder?.uri.fsPath).split('/').map(escapeGlobSeg).join('/');
-    const effectsFile = (vscode.workspace.getConfiguration('okScriptToolkit').get<string>('effectsFile') || 'src/data/effects.py')
-      .replace(/[\\]+/g, '/')
-      .replace(/^\//, '');
-    return `**/{assets/lang/*.json,${poGlob}/**/*.po,assets/coco_annotations.json,assets/images/*.png,ok_tasks/assets/coco_annotations.json,ok_tasks/assets/images/*.png,${tplGlob}/*.png,${effectsFile}}`;
+    // langDirectory 同样可配（IDE 设置 → 项目约定 `i18n.langDirectory`），所以也不能写死。
+    const langGlob = i18nLangDirectorySetting().split('/').map(escapeGlobSeg).join('/');
+    const effectsFile = effectsFileSetting();
+    return `**/{${langGlob}/*.json,${poGlob}/**/*.po,assets/coco_annotations.json,assets/images/*.png,ok_tasks/assets/coco_annotations.json,ok_tasks/assets/images/*.png,${tplGlob}/*.png,${effectsFile}}`;
   };
 
   /**
@@ -186,12 +187,12 @@ export function activate(context: vscode.ExtensionContext): void {
       .replace(/^\/+/, '');
     if (!rel) return empty;
 
-    const poDir = poDirectorySetting().replace(/[\\]+/g, '/').replace(/\/+$/, '');
-    const effectsFile = (vscode.workspace.getConfiguration('okScriptToolkit').get<string>('effectsFile') || 'src/data/effects.py')
-      .replace(/[\\]+/g, '/')
-      .replace(/^\//, '');
+    const poDir = poDirectorySetting();
+    // 同上：取值链已归一化，这里不再重复 replace
+    const effectsFile = effectsFileSetting();
+    const langDir = i18nLangDirectorySetting();
 
-    if (rel.startsWith('assets/lang/') && rel.endsWith('.json')) {
+    if (rel.startsWith(`${langDir}/`) && rel.endsWith('.json')) {
       return { ...empty, lang: true };
     }
     if (rel.startsWith(`${poDir}/`) && rel.endsWith('.po')) {

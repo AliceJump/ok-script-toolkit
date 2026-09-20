@@ -13,6 +13,15 @@ import {
 import { FeatureData, FeatureTemplate } from './featureData';
 import { injectWebviewLocalization, tr, webviewStrings } from './localization';
 import {
+  charactersAvatarTemplateRegexSetting,
+  charactersLocaleFileSetting,
+  charactersMasterFileSetting,
+  charactersProjectPathSetting,
+  charactersSkillsDirectorySetting,
+  DEFAULT_AVATAR_TEMPLATE_REGEX,
+  effectsFileSetting,
+} from './projectConfig';
+import {
   parseJsonFromStdout,
   pythonScript,
   resolveProjectContext,
@@ -42,8 +51,6 @@ export interface CharacterManagerDependencies {
   features: FeatureData;
   thumbDir: string;
 }
-
-const DEFAULT_AVATAR_TEMPLATE_REGEX = '^battle[_-]?icon[_-]?';
 
 interface CharacterManagerMessage {
   type?: string;
@@ -90,7 +97,10 @@ function effectArray(value: unknown, name: string): unknown[] {
 
 function resolveProjectDir(): string {
   const configuration = vscode.workspace.getConfiguration('okScriptToolkit');
-  const explicit = configuration.get<string>('characterProjectPath')?.trim();
+  // 取值链：IDE 设置 `characterProjectPath` → 项目约定 `characters.projectPath` → 空
+  // （空 = 与当前项目相同，于是退到 `okScriptProjectPath` 或自动探测）
+  const explicit = charactersProjectPathSetting();
+  // `okScriptProjectPath` 是**机器相关**设置，不进项目约定文件（见 docs/project-config.md §5）
   const taskProject = configuration.get<string>('okScriptProjectPath')?.trim();
   const selected = explicit || taskProject;
   if (selected) {
@@ -106,12 +116,12 @@ function resolveProjectDir(): string {
 }
 
 function configuredPaths(projectDir: string): CharacterDataPaths {
-  const configuration = vscode.workspace.getConfiguration('okScriptToolkit');
+  // 四个都走取值链（IDE 设置 → 项目约定 `characters.*` / `effects.file` → 内置默认）
   return configuredCharacterDataPaths(projectDir, {
-    masterFile: configuration.get<string>('characterMasterFile'),
-    skillsDirectory: configuration.get<string>('characterSkillsDirectory'),
-    localeFile: configuration.get<string>('characterLocaleFile'),
-    effectsFile: configuration.get<string>('effectsFile'),
+    masterFile: charactersMasterFileSetting(),
+    skillsDirectory: charactersSkillsDirectorySetting(),
+    localeFile: charactersLocaleFileSetting(),
+    effectsFile: effectsFileSetting(),
   });
 }
 
@@ -128,8 +138,10 @@ function samePath(first: string, second: string): boolean {
 }
 
 function avatarTemplateRegex(): RegExp | undefined {
-  const configured = vscode.workspace.getConfiguration('okScriptToolkit')
-    .get<string>('characterAvatarTemplateRegex')?.trim() || DEFAULT_AVATAR_TEMPLATE_REGEX;
+  // 取值链：IDE 设置 `characterAvatarTemplateRegex` → 项目约定
+  // `characters.avatarTemplateRegex` → 内置默认。声明写错（非法正则）时退回内置默认 ——
+  // 不能让一条手写正则把整个面板打挂。
+  const configured = charactersAvatarTemplateRegexSetting();
   try {
     return new RegExp(configured, 'i');
   } catch {

@@ -164,6 +164,7 @@
   "Project file: {value}": "プロジェクトファイル: {value}",
   "Revert to project convention": "プロジェクト規約に戻す",
   "Reverted {key} to the project convention.": "{key} をプロジェクト規約に戻しました。",
+"Same as the current project": "現在のプロジェクトと同じ",
   "Save COCO data + images to...": "COCO データと画像の保存先…",
   "Save failed: {error}": "保存に失敗: {error}",
   "Saved to: {path}": "保存しました: {path}",

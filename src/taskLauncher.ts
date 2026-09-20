@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { injectWebviewLocalization, projectLocale, tr } from './localization';
-import { resolveProjectDir } from './projectConfig';
+import { i18nPoDirectorySetting, resolveProjectDir } from './projectConfig';
 import { loadToolboxState, notifyExecutorRunning, saveToolboxState } from './toolboxState';
 import { errorPage, getNonce } from './webviewHtml';
 
@@ -573,7 +573,8 @@ export class TaskLauncherViewProvider implements vscode.WebviewViewProvider {
     locale: string,
     generation: number,
   ): Promise<void> {
-    const poDirectory = vscode.workspace.getConfiguration('okScriptToolkit').get<string>('poDirectory') || 'i18n';
+    // 取值链：IDE 设置 `poDirectory` → 项目约定 `i18n.poDirectory` → `i18n`
+    const poDirectory = i18nPoDirectorySetting();
     const probe = await probeTaskSchemas(
       this.extensionUri,
       projectDir,
