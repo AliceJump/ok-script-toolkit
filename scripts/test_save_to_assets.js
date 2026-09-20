@@ -18,14 +18,35 @@ const os = require('os');
 
 /* ---------- mock vscode 模块（TemplateAssetData 需要） ---------- */
 
+/**
+ * 桩必须覆盖 `TemplateAssetData` 真正会碰到的那几个 API —— **不是"能 require 就行"**。
+ *
+ * 2026-09-21：这份测试有段时间**跑不起来**（8 个用例全挂在
+ * `vscode.workspace.getConfiguration is not a function`），根因是 `templateAssetData`
+ * 接上「项目约定文件」取值链后开始读 `ideSetting()`，而桩里只有 `workspaceFolders`。
+ * 当时没修桩、只是把它从 `npm test` 链里摘了出去 —— **等于整份测试静默失效**。
+ * 现已补全并重新接入链（`test:save-to-assets`）。
+ *
+ * - `getConfiguration().inspect()` 返回 `undefined` = **没有个人覆盖**，
+ *   于是取值链落到项目约定 / 内置默认，正是这份测试要的干净起点。
+ */
+const VSCODE_STUB = `module.exports = {
+  workspace: {
+    workspaceFolders: undefined,
+    getConfiguration: () => ({
+      get: (_key, fallback) => fallback,
+      inspect: () => undefined,
+    }),
+  },
+  env: { language: 'en' },
+  CancellationError: class CancellationError extends Error {},
+};`;
+
 const vscodeMockPath = path.join(__dirname, '..', 'node_modules', 'vscode');
 const vscodeAlreadyExists = fs.existsSync(vscodeMockPath);
 if (!vscodeAlreadyExists) {
   fs.mkdirSync(vscodeMockPath, { recursive: true });
-  fs.writeFileSync(
-    path.join(vscodeMockPath, 'index.js'),
-    `module.exports = { workspace: { workspaceFolders: undefined } };`
-  );
+  fs.writeFileSync(path.join(vscodeMockPath, 'index.js'), VSCODE_STUB);
 }
 
 let TemplateAssetData;
@@ -122,7 +143,7 @@ function teardown() {
 
 /* ========== 测试 1：不重叠 bbox 打包到同一张 PNG ========== */
 
-function test_nonOverlappingBboxesPackToSamePage() {
+async function test_nonOverlappingBboxesPackToSamePage() {
   setup();
   try {
     fs.writeFileSync(path.join(templateDir, '1.png'), createPng(100, 100, 128, 128, 128));
@@ -142,7 +163,7 @@ function test_nonOverlappingBboxesPackToSamePage() {
 
     const data = new TemplateAssetData(tmpDir);
     data.load();
-    data.saveToAssets(targetDir);
+    await data.saveToAssets(targetDir);
 
     const outCoco = JSON.parse(fs.readFileSync(path.join(targetDir, 'coco_annotations.json'), 'utf-8'));
 
@@ -177,7 +198,7 @@ function test_nonOverlappingBboxesPackToSamePage() {
 
 /* ========== 测试 2：不同图片的重叠 bbox 分到不同 PNG ========== */
 
-function test_overlappingBboxesSplitToDifferentPages() {
+async function test_overlappingBboxesSplitToDifferentPages() {
   setup();
   try {
     // 两张不同源图（同尺寸 100x100），bbox 区域重叠
@@ -202,7 +223,7 @@ function test_overlappingBboxesSplitToDifferentPages() {
 
     const data = new TemplateAssetData(tmpDir);
     data.load();
-    data.saveToAssets(targetDir);
+    await data.saveToAssets(targetDir);
 
     const outCoco = JSON.parse(fs.readFileSync(path.join(targetDir, 'coco_annotations.json'), 'utf-8'));
 
@@ -231,7 +252,7 @@ function test_overlappingBboxesSplitToDifferentPages() {
 
 /* ========== 测试 3：COCO bbox 坐标保持不变 ========== */
 
-function test_bboxCoordinatesUnchanged() {
+async function test_bboxCoordinatesUnchanged() {
   setup();
   try {
     fs.writeFileSync(path.join(templateDir, '1.png'), createPng(200, 150, 100, 200, 50));
@@ -256,7 +277,7 @@ function test_bboxCoordinatesUnchanged() {
 
     const data = new TemplateAssetData(tmpDir);
     data.load();
-    data.saveToAssets(targetDir);
+    await data.saveToAssets(targetDir);
 
     const outCoco = JSON.parse(fs.readFileSync(path.join(targetDir, 'coco_annotations.json'), 'utf-8'));
 
@@ -281,7 +302,7 @@ function test_bboxCoordinatesUnchanged() {
 
 /* ========== 测试 4：无标注图片不放入 assets ========== */
 
-function test_unannotatedImageExcluded() {
+async function test_unannotatedImageExcluded() {
   setup();
   try {
     // 使用非数字名避免与 bin-pack 输出的 1.png 冲突
@@ -302,7 +323,7 @@ function test_unannotatedImageExcluded() {
 
     const data = new TemplateAssetData(tmpDir);
     data.load();
-    data.saveToAssets(targetDir);
+    await data.saveToAssets(targetDir);
 
     // 无标注的 unannotated.png 不应被复制
     assert(!fs.existsSync(path.join(targetDir, 'images', 'unannotated.png')),
@@ -326,7 +347,7 @@ function test_unannotatedImageExcluded() {
 
 /* ========== 测试 5：read_from_json 兼容性验证 ========== */
 
-function test_readFromJsonCompatibility() {
+async function test_readFromJsonCompatibility() {
   setup();
   try {
     fs.writeFileSync(path.join(templateDir, '1.png'), createPng(100, 100, 128, 128, 128));
@@ -346,7 +367,7 @@ function test_readFromJsonCompatibility() {
 
     const data = new TemplateAssetData(tmpDir);
     data.load();
-    data.saveToAssets(targetDir);
+    await data.saveToAssets(targetDir);
 
     const outCoco = JSON.parse(fs.readFileSync(path.join(targetDir, 'coco_annotations.json'), 'utf-8'));
 
@@ -383,7 +404,7 @@ function test_readFromJsonCompatibility() {
 
 /* ========== 测试 6：不同尺寸图片不应混合打包 ========== */
 
-function test_differentSizeImagesNotMixed() {
+async function test_differentSizeImagesNotMixed() {
   setup();
   try {
     fs.writeFileSync(path.join(templateDir, '1.png'), createPng(100, 100, 128, 128, 128));
@@ -407,7 +428,7 @@ function test_differentSizeImagesNotMixed() {
 
     const data = new TemplateAssetData(tmpDir);
     data.load();
-    data.saveToAssets(targetDir);
+    await data.saveToAssets(targetDir);
 
     const outCoco = JSON.parse(fs.readFileSync(path.join(targetDir, 'coco_annotations.json'), 'utf-8'));
 
@@ -426,7 +447,7 @@ function test_differentSizeImagesNotMixed() {
 
 /* ========== 测试 7：多张不同图片的不重叠 bbox 打包到同一 Canvas ========== */
 
-function test_multipleImagesNonOverlappingPackedTogether() {
+async function test_multipleImagesNonOverlappingPackedTogether() {
   setup();
   try {
     fs.writeFileSync(path.join(templateDir, '1.png'), createPng(100, 100, 200, 0, 0));
@@ -454,7 +475,7 @@ function test_multipleImagesNonOverlappingPackedTogether() {
 
     const data = new TemplateAssetData(tmpDir);
     data.load();
-    data.saveToAssets(targetDir);
+    await data.saveToAssets(targetDir);
 
     const outCoco = JSON.parse(fs.readFileSync(path.join(targetDir, 'coco_annotations.json'), 'utf-8'));
 
@@ -478,7 +499,7 @@ function test_multipleImagesNonOverlappingPackedTogether() {
 
 /* ========== 测试 8：同一图片的重叠 bbox 应在同一 Canvas ========== */
 
-function test_sameImageOverlappingBboxesStayTogether() {
+async function test_sameImageOverlappingBboxesStayTogether() {
   setup();
   try {
     fs.writeFileSync(path.join(templateDir, '1.png'), createPng(100, 100, 128, 128, 128));
@@ -498,7 +519,7 @@ function test_sameImageOverlappingBboxesStayTogether() {
 
     const data = new TemplateAssetData(tmpDir);
     data.load();
-    data.saveToAssets(targetDir);
+    await data.saveToAssets(targetDir);
 
     const outCoco = JSON.parse(fs.readFileSync(path.join(targetDir, 'coco_annotations.json'), 'utf-8'));
 
@@ -532,15 +553,21 @@ const tests = [
 let passed = 0;
 let failed = 0;
 
+// `saveToAssets` 是 **async**（迁移到 worker 线程池那次改造引入的），用例必须 `await` ——
+// 否则测试读到的是"还没写出来"的输出文件，报 ENOENT（8 个用例曾因此全部静默失效，
+// 后来整份测试被摘出 npm test 链；2026-09-21 修复并重新接入）。
+(async () => {
 for (const test of tests) {
   try {
-    test();
+    await test();
     passed++;
   } catch (e) {
     console.error(`[FAIL] ${test.name}: ${e.message}`);
+    console.error(e.stack.split('\n').slice(0,3).join('\n'));
     failed++;
   }
 }
 
 console.log(`\n========== Results: ${passed} passed, ${failed} failed ==========`);
 if (failed > 0) process.exit(1);
+})();

@@ -323,7 +323,7 @@
     "verify:version": "node scripts/release/verify-version.js",
     "verify:l10n": "node scripts/release/verify-l10n.js",
     "release": "sh scripts/release.sh",
-    "test": "npm run verify:version && npm run verify:l10n && npm run compile && npm run test:webview-html && npm run test:task-launcher && npm run test:task-launcher-executor && npm run test:temp-screenshots && npm run test:annotation-coords && npm run test:thumb-content-hash && npm run test:list-editor && npm run test:project-config && npm run test:convention-sources && npm run test:save-to-assets-flow && npm run test:coco-feature-path && npm run test:probe-schemas && npm run test:probe-window-config && npm run test:run-sandbox && npm run test:startup-patches && npm run test:executor-project-config",
+    "test": "npm run verify:version && npm run verify:l10n && npm run compile && npm run test:webview-html && npm run test:task-launcher && npm run test:task-launcher-executor && npm run test:temp-screenshots && npm run test:annotation-coords && npm run test:thumb-content-hash && npm run test:list-editor && npm run test:project-config && npm run test:convention-sources && npm run test:save-to-assets-flow && npm run test:save-to-assets && npm run test:asset-pack-worker && npm run test:coco-feature-path && npm run test:probe-schemas && npm run test:probe-window-config && npm run test:run-sandbox && npm run test:startup-patches && npm run test:executor-project-config",
     "test:webview-html": "node scripts/test_webview_html.js",
     "test:task-launcher": "node scripts/test_task_launcher_subconfigs.js",
     "test:task-launcher-executor": "node scripts/test_task_launcher_executor.js",
@@ -335,6 +335,8 @@
     "test:convention-sources": "node scripts/test_convention_sources.js",
     "test:save-to-assets-flow": "node scripts/test_save_to_assets_flow.js",
     "test:coco-feature-path": "node scripts/test_coco_feature_path.js",
+    "test:save-to-assets": "node scripts/test_save_to_assets.js",
+    "test:asset-pack-worker": "node scripts/test_asset_pack_worker.js",
     "test:probe-schemas": "python python/tests/test_probe_pure_group_labels.py",
     "test:probe-window-config": "python python/tests/test_probe_window_config.py",
     "test:run-sandbox": "python python/tests/test_run_executor_sandbox.py",
@@ -342,7 +344,8 @@
     "test:executor-project-config": "python python/tests/test_run_executor_project_config.py",
     "vscode:prepublish": "npm run compile",
     "package": "vsce package",
-    "publish:marketplace": "vsce publish --skip-duplicate --packagePath ok-script-toolkit-${npm_package_version}.vsix"
+    "publish:marketplace": "vsce publish --skip-duplicate --packagePath ok-script-toolkit-${npm_package_version}.vsix",
+    "test:asset-pack-worker": "node scripts/test_asset_pack_worker.js"
   },
   "devDependencies": {
     "@types/jpeg-js": "^0.3.0",
