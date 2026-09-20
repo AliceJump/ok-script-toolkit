@@ -20,7 +20,8 @@
   },
 
   "templates": {
-    "directory": "ok_templates"
+    "directory": "ok_templates",
+    "cocoAnnotations": "assets/coco_annotations.json"
   },
 
   "i18n": {
