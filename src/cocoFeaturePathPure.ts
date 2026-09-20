@@ -99,3 +99,29 @@ export function effectiveCocoFiles(plan: CocoFeaturePlan, exists: (file: string)
   if (plan.preferred && exists(plan.preferred)) return [plan.preferred];
   return plan.probeCandidates.filter(exists);
 }
+
+/**
+ * **所有**候选的相对路径（相对项目根、`/` 分隔），含首选与探测候选。
+ *
+ * 两个消费点都用它：
+ * - 文件监听 glob —— **不按存在性过滤**：监听要覆盖"文件还没创建"的情况，
+ *   否则第一次生成库时不会触发刷新；
+ * - 变更归属判定（`extension.ts` 的 `getAffectedSources`）—— 同样要覆盖尚未存在的那条。
+ *
+ * ⚠️ **项目外的候选必须剔除**，而这里有两个坑：
+ * 1. 同盘符/同根时 `path.relative` 给出 `../…` —— 用 `startsWith('..')` 拦；
+ * 2. **Windows 跨盘符时 `path.relative` 返回的是「绝对路径」而不是 `../…`**
+ *    （`path.win32.relative('C:\\a', 'D:\\b')` → `D:\\b`）—— `startsWith('..')` **拦不住**，
+ *    必须再判一次 `path.isAbsolute`。漏掉这条的后果：`templates.cocoAnnotations`
+ *    指向另一个盘的仓库时，一个绝对路径会漏进监听 glob 与变更归属比较，
+ *    于是"改那个文件不触发刷新"（静默）。
+ *
+ * （JetBrains 侧对应实现 `CocoFeaturePath.relPaths` 用 `Path.relativize`，
+ * 跨盘符会**抛异常**从而被丢掉 —— 那边天然没这个问题，别以为两边等价。）
+ */
+export function cocoFeatureRelPaths(plan: CocoFeaturePlan, rootDir: string): string[] {
+  const all = plan.preferred ? [plan.preferred, ...plan.probeCandidates] : plan.probeCandidates;
+  return [...new Set(all)]
+    .map((abs) => path.relative(rootDir, abs).replace(/\\/g, '/'))
+    .filter((rel) => rel.length > 0 && !rel.startsWith('..') && !path.isAbsolute(rel));
+}

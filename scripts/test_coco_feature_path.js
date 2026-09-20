@@ -143,6 +143,75 @@ console.log('\neffectiveCocoFiles');
   );
 }
 
+// ── 3.5 监听 / 变更归属用的相对路径 ─────────────────────────────────
+//
+// 这份列表同时喂给**文件监听 glob** 与**变更归属判定**，所以它有一条硬不变量：
+// **每一条都必须是「项目内相对路径」** —— 绝对路径或 `../…` 混进去，
+// 监听会盯到项目外、变更比较也永远匹配不上（表现为"改那个文件不触发刷新"，静默）。
+console.log('\ncocoFeatureRelPaths');
+{
+  const relsOf = (declared, fromConfigPy) =>
+    pure.cocoFeatureRelPaths(pure.resolveCocoFeaturePlan(ROOT, declared, fromConfigPy), ROOT);
+
+  check(
+    JSON.stringify(relsOf()) === JSON.stringify(['assets/coco_annotations.json', 'ok_tasks/assets/coco_annotations.json']),
+    '没声明时就是两个惯例位置',
+  );
+  check(
+    JSON.stringify(relsOf('custom/coco.json')) ===
+      JSON.stringify(['custom/coco.json', 'assets/coco_annotations.json', 'ok_tasks/assets/coco_annotations.json']),
+    '**首选与探测候选都要覆盖** —— 监听不能按存在性过滤，否则第一次生成库时不会触发刷新',
+  );
+  check(
+    JSON.stringify(relsOf('assets/coco_annotations.json')) ===
+      JSON.stringify(['assets/coco_annotations.json', 'ok_tasks/assets/coco_annotations.json']),
+    '首选恰好等于某个惯例位置时**去重**（同一路径不该出现两次）',
+  );
+
+  // 同盘符/同根的项目外路径 → `path.relative` 给出 `../…` → 剔除
+  const outsideSameRoot = relsOf(undefined, path.join(ROOT, '..', 'other', 'coco.json'));
+  check(
+    !outsideSameRoot.some((r) => r.includes('other')),
+    '**项目外的首选被剔除**（`../…` 不能当监听目标），但两个惯例候选仍在',
+  );
+
+  // 属性断言：不管哪种输入，返回的每一条都必须是项目内相对路径。
+  // 这条在两种平台上都成立，且正好覆盖"跨盘符"那个平台专属分支的**结果**。
+  const cases = [
+    { plan: pure.resolveCocoFeaturePlan(ROOT), root: ROOT },
+    { plan: pure.resolveCocoFeaturePlan(ROOT, 'custom/coco.json'), root: ROOT },
+    { plan: pure.resolveCocoFeaturePlan(ROOT, undefined, path.join(ROOT, '..', 'other', 'coco.json')), root: ROOT },
+  ];
+  if (process.platform === 'win32') {
+    // Windows 专属：**跨盘符**时 `path.relative` 返回的是**绝对路径**而不是 `../…`
+    cases.push({ plan: pure.resolveCocoFeaturePlan('C:/proj', undefined, 'D:/other/coco.json'), root: 'C:/proj' });
+  }
+  const offenders = [];
+  for (const { plan, root: caseRoot } of cases) {
+    for (const r of pure.cocoFeatureRelPaths(plan, caseRoot)) {
+      if (path.isAbsolute(r) || r.startsWith('..')) offenders.push(r);
+    }
+  }
+  check(
+    offenders.length === 0,
+    offenders.length === 0
+      ? '**返回的每一条都是项目内相对路径**（不含绝对路径、不以 `..` 开头）'
+      : `**有项目外的路径漏了出来**：${offenders.join(', ')} —— 监听会盯到项目外、变更比较永远匹配不上`,
+  );
+
+  if (process.platform === 'win32') {
+    const crossDrive = pure.cocoFeatureRelPaths(
+      pure.resolveCocoFeaturePlan('C:/proj', undefined, 'D:/other/coco.json'),
+      'C:/proj',
+    );
+    check(
+      !crossDrive.some((r) => path.isAbsolute(r)),
+      '**Windows 跨盘符的首选也要被剔除** —— `path.relative` 这时返回的是绝对路径（`D:/other/coco.json`），' +
+        '光判 `startsWith("..")` 拦不住，必须再判 `path.isAbsolute`',
+    );
+  }
+}
+
 // ── 4. 破坏性对照 ───────────────────────────────────────────────────
 console.log('\n破坏性对照');
 {
@@ -198,6 +267,26 @@ console.log('\n破坏性对照');
     noJoinPlan.preferred === 'custom/coco.json',
     '对照三：不绝对化时拿到的是相对路径 —— `fs.existsSync` 会按**进程 cwd** 去找，指到别处',
   );
+  // 对照四：去掉 `!path.isAbsolute(rel)` 这道守卫
+  const noAbsGuard = source.replace('&& !path.isAbsolute(rel)', '');
+  check(noAbsGuard !== source, '对照四源码确实被改动了（替换命中）—— 否则对照是假的');
+  if (process.platform === 'win32') {
+    const leaked = evalSandbox(noAbsGuard).cocoFeatureRelPaths(
+      pure.resolveCocoFeaturePlan('C:/proj', undefined, 'D:/other/coco.json'),
+      'C:/proj',
+    );
+    check(
+      leaked.some((r) => path.isAbsolute(r)),
+      '对照四：拿掉 isAbsolute 守卫后，**跨盘符的绝对路径会漏进监听列表** —— 与第 3.5 组的期望相反',
+    );
+  } else {
+    // ⚠️ POSIX 上 `path.relative` 永远给相对路径（"跨盘"不存在），这道守卫**不可观测**，
+    // 所以没法用行为对照 —— 退而断言"它还在源码里"，防止被当成冗余代码删掉（Windows 上会漏）。
+    check(
+      source.includes('!path.isAbsolute(rel)'),
+      'POSIX 上该守卫不可观测，改为断言它**仍在源码里** —— 删掉它 Windows 上会静默漏路径',
+    );
+  }
 }
 
 console.log('\n' + (failures.length ? `失败 ${failures.length} 项` : '全部通过'));

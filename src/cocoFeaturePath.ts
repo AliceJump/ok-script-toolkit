@@ -12,9 +12,9 @@
  * 于是最坏情况只是"没拿到新行为"，不会坏掉；这也是它能安全地做成"纯增量"的原因。
  */
 import * as fs from 'fs';
-import * as path from 'path';
 import {
   CocoFeaturePlan,
+  cocoFeatureRelPaths as cocoFeatureRelPathsOfPlan,
   effectiveCocoFiles,
   resolveCocoFeaturePlan,
 } from './cocoFeaturePathPure';
@@ -88,18 +88,12 @@ export function cocoFeatureFiles(rootDir: string): string[] {
 /**
  * 运行时模板库的**所有**候选相对路径（相对项目根、`/` 分隔），含首选与探测候选。
  *
- * 两个消费点都用它：
- * - 文件监听 glob —— **不按存在性过滤**，监听要覆盖"文件还没创建"的情况，
- *   否则第一次生成库时不会触发刷新；
- * - 变更归属判定（`extension.ts` 的 `getAffectedSources`）—— 同样要覆盖尚未存在的那条。
+ * 逻辑在纯模块里（`cocoFeatureRelPathsOfPlan`）—— 它有"Windows 跨盘符要剔除"这类
+ * 只在某些平台出现的分支，必须能单测。这里只是薄封装：取缓存里的计划喂给它。
  *
  * 与 [cocoFeatureFiles] 的区别就是"存不存在"这件事。
  */
 export function cocoFeatureRelPaths(rootDir: string): string[] {
   if (!rootDir) return [];
-  const plan = cocoFeaturePlan(rootDir);
-  const all = plan.preferred ? [plan.preferred, ...plan.probeCandidates] : plan.probeCandidates;
-  return [...new Set(all)]
-    .map((abs) => path.relative(rootDir, abs).replace(/\\/g, '/'))
-    .filter((rel) => rel.length > 0 && !rel.startsWith('..'));
+  return cocoFeatureRelPathsOfPlan(cocoFeaturePlan(rootDir), rootDir);
 }
