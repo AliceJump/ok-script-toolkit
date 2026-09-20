@@ -240,6 +240,76 @@ def install_project_startup_patches(config_module_name: str) -> bool:
     return True
 
 
+# ── 目标项目的约定文件 ────────────────────────────────────────────────
+
+# 放在被调试项目根目录，VS Code 扩展与 JetBrains 插件共用同一份。
+# 插件**只读**它 —— 由项目作者维护，插件绝不写入（见 docs/project-config.md）。
+PROJECT_CONFIG_FILE = "ok-script-toolkit.json"
+
+
+def load_project_config(project_dir: str) -> dict:
+    """读项目根的 `ok-script-toolkit.json`。缺席或损坏一律返回空 dict。
+
+    容错是刻意的：这个文件是可选的纯增量配置，**任何异常都不能影响启动**。
+    """
+    path = os.path.join(project_dir, PROJECT_CONFIG_FILE)
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except FileNotFoundError:
+        return {}
+    except Exception as e:  # noqa: BLE001 — 解析失败按"无约定"处理
+        _note(f"{PROJECT_CONFIG_FILE} 解析失败，按无约定处理：{type(e).__name__}: {e}")
+        return {}
+    if not isinstance(data, dict):
+        _note(f"{PROJECT_CONFIG_FILE} 顶层不是对象，按无约定处理")
+        return {}
+    return data
+
+
+def startup_hooks(project_config: dict, phase: str) -> list:
+    """取 `executor.startupHooks.<phase>` 里的 `module.path:function_name` 列表。
+
+    非法项直接丢掉而不是报错 —— 声明文件是手写的，容忍笔误比严格校验更有用。
+    """
+    executor = project_config.get("executor")
+    if not isinstance(executor, dict):
+        return []
+    hooks = executor.get("startupHooks")
+    if not isinstance(hooks, dict):
+        return []
+    value = hooks.get(phase)
+    if not isinstance(value, list):
+        return []
+    return [
+        item for item in value
+        if isinstance(item, str) and item.count(":") == 1 and all(item.split(":"))
+    ]
+
+
+def run_startup_hooks(hooks: list, phase_label: str) -> int:
+    """依次 import 并调用启动钩子，返回成功数。
+
+    失败**不阻断**：一个可选钩子跑不起来，不能让整个执行器起不来。
+    """
+    done = 0
+    for spec in hooks:
+        module_path, func_name = spec.split(":", 1)
+        try:
+            module = importlib.import_module(module_path)
+            func = getattr(module, func_name, None)
+            if not callable(func):
+                _note(f"启动钩子 {spec} 不存在，跳过（{module_path} 里没有 {func_name}）")
+                continue
+            func()
+            done += 1
+        except Exception as e:  # noqa: BLE001 — 见上
+            _note(f"启动钩子 {spec} 执行失败（继续执行）：{type(e).__name__}: {e}")
+    if done:
+        _note(f"已执行 {done} 个项目启动钩子（{phase_label}）")
+    return done
+
+
 # ── 猴子补丁 ──────────────────────────────────────────────────────────
 
 def install_override_patch() -> None:
@@ -668,6 +738,17 @@ def main() -> None:
     read_overrides()
     sys.path.insert(0, ".")
 
+    # 目标项目的约定文件（`ok-script-toolkit.json`，只读）。
+    # 项目 main.py 里的启动准备由它声明 —— config.py 里没有这类信息，
+    # 也没有通用约定可猜，不声明就会被整段跳过。
+    project_config = load_project_config(os.getcwd())
+    # 与项目 main.py 一致：这一批必须在 import config **之前**跑。
+    # 放在最前，是因为它们可能改环境（如 ok-end-field 的 pre_config_patch 设置 PATH）。
+    run_startup_hooks(
+        startup_hooks(project_config, "beforeConfigImport"),
+        "import config 之前",
+    )
+
     # 参数覆盖补丁必须在 import 任务前装好
     install_override_patch()
     install_trigger_persistence_patch()
@@ -686,8 +767,14 @@ def main() -> None:
     # 项目自己的 main.py 会在 OK(config) 之前调用它，执行器过去**漏了这一步** ——
     # 于是同一份代码"项目自己跑没事、用插件跑就崩"（典型：win32_gdi 污染
     # user32.GetCursorPos.argtypes，导致 Mouse.py 抛 ctypes.ArgumentError）。
-    # 详见 install_project_startup_patches() 的说明。
-    install_project_startup_patches(args.config_module)
+    #
+    # 约定文件里声明了就用声明的（顺序与项目 main.py 一致，可以放多个）；
+    # 没声明才退回按约定探测 —— 保持对老项目的兼容。
+    declared_after = startup_hooks(project_config, "afterConfigImport")
+    if declared_after:
+        run_startup_hooks(declared_after, "OK(config) 之前")
+    else:
+        install_project_startup_patches(args.config_module)
     # ok-script 2.x：config['gui']={'type':'qt'} 会让 OK 创建完整 Qt App 并安装
     # QtEventDispatcher，headless 下没有事件循环，communicate.window/overlay 信号
     # 全部排队丢失，浮层收不到窗口更新。置 None 强制 HeadlessApp（同步分发）。

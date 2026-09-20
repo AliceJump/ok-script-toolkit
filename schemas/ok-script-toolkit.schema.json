@@ -1,0 +1,140 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/AliceJump/ok-script-toolkit/main/schemas/ok-script-toolkit.schema.json",
+  "title": "ok-script-toolkit 项目约定",
+  "description": "放在被调试项目根目录的 ok-script-toolkit.json，VS Code 扩展与 JetBrains 插件共用同一份。本文件的每个字段在编辑器里都有悬浮说明（来自本 schema 的 description）。\n\n设计原则：项目 config.py 里**已经声明过**的事实，插件会优先去读，不必在这里重复；config.py 里**没有或不一定有**的，才由本文件承担。实测（5 个 ok 系项目）config.py 的声明情况并不一致：config_folder / screenshots_folder / template_matching.coco_feature_json 是 5/5 都有；而 template_tab.label_enum_relative_path 只有 3/5 有，且**没有任何项目**声明枚举的类名与引用别名。\n\n取值优先级（高 → 低）：个人偏好（IDE 设置 / 上次保存）> 本文件 > 项目 config.py 已声明的事实 > 插件内置默认。\n\n文件缺席时行为与不引入本文件时完全一致 —— 纯增量。",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "指向本 schema 的 URL，用于编辑器补全与校验。"
+    },
+
+    "labelEnum": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "模板标签枚举（如 FeatureList）。插件用它做模板名的补全、悬浮，以及「保存到项目 assets」时生成枚举文件。\n\n**这一组是 config.py 覆盖不到的核心缺口**：实测 5 个项目中只有 3 个在 config.py 里声明了枚举路径（template_tab.label_enum_relative_path），ok-infinity-nikki 与 ok-gm 连 template_tab 段都没有 —— 但它们的 src/data/FeatureList.py 是存在的。类名与引用别名则**没有任何项目**在 config.py 里声明。",
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "枚举文件路径，相对项目根，**不带 .py**。\n\n取值顺序：本项 → 项目 config.py 的 template_tab.label_enum_relative_path → 个人偏好（上次保存）→ <目标目录>/LabelEnum.py。\n\n因为 config.py 不一定有这一项，显式写出来更可靠。"
+        },
+        "name": {
+          "type": "string",
+          "description": "枚举类名。\n\nconfig.py 只可能给出路径，类名原先只能从文件名反推。显式声明后 path 与 name 解耦：文件可以叫 feature_labels.py，而类叫 FeatureList。\n\n缺席时取 path 的文件名（basename）—— 即今天的行为。"
+        },
+        "aliases": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "代码里引用该枚举的别名（如 fL），供 `(fL|FeatureList)\\.成员名` 这类正则匹配使用。\n\n例：ok-end-field 的 src/core/base_mixin/game_flow_mixin.py 里写的是 `from src.data.FeatureList import FeatureList as fL`。config.py 不记这类信息。\n\n缺席时用内置的 [\"fL\", \"FeatureList\"]。"
+        }
+      }
+    },
+
+    "executor": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "执行器的启动序列。项目 main.py 里做的准备工作，执行器必须复刻 —— 漏一步就会出现「项目自己跑没事、用插件跑就崩」（典型：ok 库 win32_gdi 污染 user32.GetCursorPos.argtypes，任务在 Mouse.py 抛 ctypes.ArgumentError）。\n\n**config.py 里没有这类信息，也没有通用约定可猜**，只能显式声明。",
+      "properties": {
+        "startupHooks": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "beforeConfigImport": {
+              "type": "array",
+              "items": { "type": "string", "pattern": "^[A-Za-z_][\\w.]*:[A-Za-z_][\\w.]*$" },
+              "description": "在 import config 模块**之前**调用。格式 `module.path:function_name`。\n\n例（ok-end-field/main.py）：\n  src.patches.pre_config_patch:install_pre_config_patch\n  src.patches.qfluent_mute_promo_patch:install_mute_promo_patch\n\n这一批**必须显式声明**：名字因项目而异，插件无从推断，不写就会被整段跳过。"
+            },
+            "afterConfigImport": {
+              "type": "array",
+              "items": { "type": "string", "pattern": "^[A-Za-z_][\\w.]*:[A-Za-z_][\\w.]*$" },
+              "description": "在 import config 之后、OK(config) **之前**调用。格式 `module.path:function_name`。\n\n例：src.patches.startup_patches:install_startup_patches\n\n缺席时插件会按约定自己试 `src.patches.startup_patches:install_startup_patches`（ok-end-field 与 OK-AzurPromilia 都是这个），写出来只是为了显式。"
+            }
+          }
+        }
+      }
+    },
+
+    "templates": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "模板与标注资源。",
+      "properties": {
+        "directory": {
+          "type": "string",
+          "description": "模板目录（png 切图 + coco_annotations.json）。\n\nconfig.py 不声明这一项，属插件侧约定。缺席时用 IDE 设置 → 内置默认 `ok_templates`。"
+        },
+        "cocoAnnotations": {
+          "type": "string",
+          "description": "COCO 标注文件路径，相对项目根。\n\n实测 5 个项目都在 config.py 里用 template_matching.coco_feature_json 声明了它，所以通常不必写；需要临时指向别处时才用。\n\n缺席时：config.py 的 template_matching.coco_feature_json → 依次探测 `assets/coco_annotations.json`、`ok_tasks/assets/coco_annotations.json`。"
+        }
+      }
+    },
+
+    "i18n": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "gettext / 语言文件索引。config.py 不涉及，属插件侧约定。项目不做 i18n 时把 enabled 设为 false。",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "是否读 po 数据。缺席时用 IDE 设置 → 默认 true。"
+        },
+        "langDirectory": {
+          "type": "string",
+          "description": "语言 JSON 目录（角色名等）。缺席时用 IDE 设置 → 默认 `assets/lang`。"
+        },
+        "poDirectory": {
+          "type": "string",
+          "description": "gettext .po 目录。缺席时用 IDE 设置 → 默认 `i18n`。"
+        },
+        "poDomains": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "参与索引的 po domain。缺席时用 IDE 设置 → 默认 [\"ocr\"]。"
+        }
+      }
+    },
+
+    "characters": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "角色 / 技能 / 效果管理面板的数据源。这些是插件特有功能的约定，项目 config.py 完全不涉及。",
+      "properties": {
+        "projectPath": {
+          "type": "string",
+          "description": "角色数据所在项目根。**留空表示与当前项目相同**；角色数据放在另一个仓库时才需要填。"
+        },
+        "masterFile": {
+          "type": "string",
+          "description": "角色主数据文件，相对 projectPath。缺席时用 IDE 设置 → 默认 `assets/data/characters.json`。"
+        },
+        "skillsDirectory": {
+          "type": "string",
+          "description": "技能 JSON 目录。缺席时用 IDE 设置 → 默认 `assets/data/character_skills`。"
+        },
+        "localeFile": {
+          "type": "string",
+          "description": "角色名多语言文件。缺席时用 IDE 设置 → 默认 `assets/lang/characters.json`。"
+        },
+        "avatarTemplateRegex": {
+          "type": "string",
+          "description": "头像模板的命名正则，用于把模板名关联到角色。缺席时用 IDE 设置 → 默认 `^battle[_-]?icon[_-]?`。"
+        }
+      }
+    },
+
+    "effects": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "效果索引的数据源（插件 AST 解析该文件）。config.py 不涉及，属插件侧约定。",
+      "properties": {
+        "file": {
+          "type": "string",
+          "description": "效果定义源文件，相对项目根。缺席时用 IDE 设置 → 默认 `src/data/effects.py`。"
+        }
+      }
+    }
+  }
+}
