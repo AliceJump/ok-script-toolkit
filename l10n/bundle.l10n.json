@@ -116,6 +116,7 @@
   "Failed to generate annotated image: source image could not be decoded or was missing": "Failed to generate annotated image: source image could not be decoded or was missing",
   "Template Gallery": "Template Gallery",
   "Category": "Category",
+"Change LabelEnum.py path...": "Change LabelEnum.py path...",
   "Description": "Description",
   "Current": "Current",
   "Language": "Language",

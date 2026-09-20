@@ -67,6 +67,7 @@
   "Failed to generate annotated image: source image could not be decoded or was missing": "產生標註圖失敗：原圖無法解碼或檔案遺失",
   "Template Gallery": "模板面板",
   "Category": "分類",
+"Change LabelEnum.py path...": "修改 LabelEnum.py 路徑…",
   "Description": "描述",
   "Current": "目前",
   "Language": "語言",

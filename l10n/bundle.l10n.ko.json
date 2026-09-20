@@ -67,6 +67,7 @@
   "Failed to generate annotated image: source image could not be decoded or was missing": "주석 이미지를 생성하지 못했습니다. 원본 이미지를 디코딩할 수 없거나 파일이 없습니다.",
   "Template Gallery": "템플릿 갤러리",
   "Category": "분류",
+"Change LabelEnum.py path...": "LabelEnum.py 경로 변경...",
   "Description": "설명",
   "Current": "현재",
   "Language": "언어",

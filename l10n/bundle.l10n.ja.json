@@ -67,6 +67,7 @@
   "Failed to generate annotated image: source image could not be decoded or was missing": "注釈画像を生成できませんでした。元画像をデコードできないか、ファイルがありません。",
   "Template Gallery": "テンプレートギャラリー",
   "Category": "カテゴリ",
+"Change LabelEnum.py path...": "LabelEnum.py のパスを変更…",
   "Description": "説明",
   "Current": "現在",
   "Language": "言語",

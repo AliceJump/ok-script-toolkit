@@ -9,6 +9,7 @@ import { TempScreenshotStore } from './tempScreenshotStore';
 import { captureGameWindow } from './screenshotCapture';
 import { takePendingDrag } from './tempDrag';
 import { labelEnumFile, loadProjectConfig, templatesDirectory } from './projectConfig';
+import { needsEnumPathPrompt, SaveTarget, saveToAssetsItems } from './saveToAssetsPure';
 import { getNonce } from './webviewHtml';
 
 /* ---------------- 控制器 ---------------- */
@@ -194,16 +195,10 @@ class AssetGalleryController {
       void vscode.window.showWarningMessage(tr('No workspace folder open.'));
       return;
     }
-    const targets = [
+    const targets: SaveTarget[] = [
       { label: 'assets', description: tr('saveToAssetsStandaloneApp'), folder: path.join(folder.uri.fsPath, 'assets') },
       { label: 'ok_tasks/assets', description: tr('saveToAssetsCustomScripts'), folder: path.join(folder.uri.fsPath, 'ok_tasks', 'assets') },
     ];
-
-    const pick = await vscode.window.showQuickPick(
-      targets.map((t) => ({ label: t.label, description: t.description, target: t.folder })),
-      { placeHolder: tr('Save COCO data + images to...') },
-    );
-    if (!pick) return;
 
     // 默认路径的取值链：**上次保存的（个人偏好）> 项目约定文件的 labelEnum.path > 留空**。
     // 个人偏好排最高是用户定的：项目文件是"团队开箱默认"，我改过就用我的。
@@ -212,23 +207,60 @@ class AssetGalleryController {
     // 注意必须走 `labelEnumFile` 而不是直接拿 `labelEnum.path` —— 后者是**模块路径**
     // （`src/data/FeatureList`，不带 .py，与 config.py 的 label_enum_relative_path 同形），
     // 而下面这个输入框要的是**文件路径**；直接塞进去会生成一个没有扩展名的文件。
+    const rememberEnumPath = (value: string) => {
+      if (this.globalState) void this.globalState.update('okScriptToolkit.lastEnumFilePath', value);
+    };
     const lastEnumPath = this.globalState?.get<string>('okScriptToolkit.lastEnumFilePath') || '';
-    const defaultEnumPath = labelEnumFile(loadProjectConfig(), lastEnumPath) || '';
-    const enumFilePath = await vscode.window.showInputBox({
-      prompt: tr('LabelEnum.py file path (relative to workspace root, leave empty to skip)'),
-      placeHolder: tr('e.g. assets/data/LabelEnum.py or src/label_enum.py'),
-      value: defaultEnumPath,
-    });
-    if (enumFilePath === undefined) return;
-    const trimmedEnumPath = enumFilePath.trim();
-    const generateEnum = trimmedEnumPath.length > 0;
-    // 将相对路径解析为绝对路径
-    const absEnumPath = generateEnum ? path.join(folder.uri.fsPath, trimmedEnumPath) : undefined;
+    let enumPath = labelEnumFile(loadProjectConfig(), lastEnumPath) || '';
 
-    // 记住本次输入的路径
-    if (this.globalState) {
-      void this.globalState.update('okScriptToolkit.lastEnumFilePath', trimmedEnumPath);
+    // 目标选择与「修改枚举路径」共用一轮循环：改完路径要回到目标选择，
+    // 所以列表每次都重新构造（有默认路径时才多出那一项，见 `saveToAssetsPure`）。
+    let targetFolder = '';
+    let targetLabel = '';
+    /** 用户是否已经在「修改路径」里做过决定 —— 决定过就不再追问，哪怕他清空了 */
+    let enumPathDecided = false;
+    for (;;) {
+      const pick = await vscode.window.showQuickPick(
+        saveToAssetsItems({
+          targets,
+          enumPath,
+          changePathLabel: tr('Change LabelEnum.py path...'),
+        }),
+        { placeHolder: tr('Save COCO data + images to...') },
+      );
+      if (!pick) return;
+      if (pick.target) {
+        targetFolder = pick.target;
+        targetLabel = pick.label;
+        break;
+      }
+      const edited = await vscode.window.showInputBox({
+        prompt: tr('LabelEnum.py file path (relative to workspace root, leave empty to skip)'),
+        placeHolder: tr('e.g. assets/data/LabelEnum.py or src/label_enum.py'),
+        value: enumPath,
+      });
+      if (edited === undefined) continue; // 取消改路径 → 回到目标选择
+      enumPath = edited.trim();
+      enumPathDecided = true;
+      rememberEnumPath(enumPath);
     }
+
+    // 已经有默认路径时**不再弹输入框**（每次保存都要按一次回车是纯噪音）。
+    // 唯一"没定过"的情形是首次使用 —— 那时必须问：留空即"不生成枚举"。
+    if (needsEnumPathPrompt(enumPath, enumPathDecided)) {
+      const edited = await vscode.window.showInputBox({
+        prompt: tr('LabelEnum.py file path (relative to workspace root, leave empty to skip)'),
+        placeHolder: tr('e.g. assets/data/LabelEnum.py or src/label_enum.py'),
+        value: '',
+      });
+      if (edited === undefined) return;
+      enumPath = edited.trim();
+      rememberEnumPath(enumPath);
+    }
+
+    const generateEnum = enumPath.length > 0;
+    // 将相对路径解析为绝对路径
+    const absEnumPath = generateEnum ? path.join(folder.uri.fsPath, enumPath) : undefined;
 
     try {
       this.data.ensureTemplateFolder();
@@ -240,7 +272,7 @@ class AssetGalleryController {
         },
         async (progress, token) => {
           await this.data.saveToAssets(
-            pick.target,
+            targetFolder,
             generateEnum,
             absEnumPath,
             (done, total) => {
@@ -251,7 +283,7 @@ class AssetGalleryController {
           );
         },
       );
-      void vscode.window.showInformationMessage(tr('Saved to: {path}', { path: pick.label }));
+      void vscode.window.showInformationMessage(tr('Saved to: {path}', { path: targetLabel }));
     } catch (e) {
       if (e instanceof vscode.CancellationError) {
         void vscode.window.showInformationMessage(tr('Save to assets cancelled.'));
