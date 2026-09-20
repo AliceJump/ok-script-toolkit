@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { injectWebviewLocalization, projectLocale, tr } from './localization';
+import { resolveProjectDir } from './projectConfig';
 import { loadToolboxState, notifyExecutorRunning, saveToolboxState } from './toolboxState';
 import { errorPage, getNonce } from './webviewHtml';
 
@@ -242,19 +243,11 @@ async function probeTaskSchemas(
  */
 export function resolveProjectContext(): { projectDir: string; pythonPath: string; fromConfig: boolean } {
   const cfg = vscode.workspace.getConfiguration('okScriptToolkit');
-  let projectDir = cfg.get<string>('okScriptProjectPath') || '';
-  let fromConfig = true;
-  projectDir = projectDir.replace(/^~/, process.env.USERPROFILE || '');
-  projectDir = projectDir.replace(/[\\/]+$/, '');
-
-  if (!projectDir) {
-    // 自动检测：工作区根目录是否本身就是 ok-script 项目
-    const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '';
-    if (root && (fs.existsSync(path.join(root, 'src', 'config.py')) || fs.existsSync(path.join(root, 'config.py')))) {
-      projectDir = root;
-      fromConfig = false;
-    }
-  }
+  // 项目根解析统一走 projectConfig.resolveProjectDir()。这里原先是本文件与
+  // screenshotCapture.ts 各复制一份同样的逻辑，两处容易漂移成"界面与脚本看的不是
+  // 同一目录"。fromConfig 表示"来自显式设置"而不是自动探测到的。
+  const projectDir = resolveProjectDir();
+  const fromConfig = (cfg.get<string>('okScriptProjectPath') || '').trim().length > 0;
 
   const python = cfg.get<string>('okScriptPython') || '';
   let pythonPath = python;

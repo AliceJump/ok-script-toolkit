@@ -10,6 +10,7 @@ import {
 } from './langData';
 import { FeatureData, FeatureTemplate } from './featureData';
 import { EffectData, EffectEntry } from './effectData';
+import { labelEnumAliases, loadProjectConfig } from './projectConfig';
 import { cropTemplateToDataUrlCached } from './pngCrop';
 import { tr } from './localization';
 
@@ -23,8 +24,11 @@ function escapeRegExp(s: string): string {
 
 /** 可配置的 FeatureList 别名，如 fL / FeatureList */
 export function featureAliases(): string[] {
-  const cfg = vscode.workspace.getConfiguration('okScriptToolkit').get<string[]>('featureAliases');
-  return cfg && cfg.length ? cfg : ['fL', 'FeatureList'];
+  // 取值链：个人偏好（IDE 设置）> 项目约定文件 labelEnum.aliases > 内置默认。
+  // 别名是"代码里怎么写 import"这一项目约定 —— 项目 config.py **从不声明它**，
+  // 所以此前只能靠内置的 fL/FeatureList 硬猜；项目把枚举导入成别的名字就完全失效。
+  const ide = vscode.workspace.getConfiguration('okScriptToolkit').get<string[]>('featureAliases');
+  return labelEnumAliases(loadProjectConfig(), ide, ['fL', 'FeatureList']);
 }
 
 /** 构建匹配 别名.<模板名> 的正则 */

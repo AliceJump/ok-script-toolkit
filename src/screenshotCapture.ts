@@ -3,6 +3,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { execFile } from 'child_process';
 import { tr } from './localization';
+import { resolveProjectDir } from './projectConfig';
 
 /** 窗口配置（从项目 config.py 的 windows 子字典提取） */
 export interface WindowConfig {
@@ -26,15 +27,9 @@ interface ProbeWindowConfigResult {
 /** 读取 okScriptToolkit 扩展配置中的项目路径和 Python 解释器 */
 export function getProjectConfig(): { projectDir: string; pythonPath: string } {
   const cfg = vscode.workspace.getConfiguration('okScriptToolkit');
-  let projectDir = cfg.get<string>('okScriptProjectPath') || '';
-  projectDir = projectDir.replace(/^~/, process.env.USERPROFILE || '');
-  projectDir = projectDir.replace(/[\\/]+$/, '');
-  if (!projectDir) {
-    const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '';
-    if (root && (fs.existsSync(path.join(root, 'src', 'config.py')) || fs.existsSync(path.join(root, 'config.py')))) {
-      projectDir = root;
-    }
-  }
+  // 项目根解析统一走 projectConfig.resolveProjectDir()：这里原先复制了一份与
+  // taskLauncher.resolveProjectContext() 相同的逻辑，两处容易漂移。
+  const projectDir = resolveProjectDir();
   const python = cfg.get<string>('okScriptPython') || '';
   let pythonPath = python;
   if (!pythonPath) {

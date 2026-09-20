@@ -7,6 +7,7 @@ import {
   isAssetPackPoolInitialized, renderPagesViaPool,
 } from './assetPack';
 import { tr } from './localization';
+import { labelEnumName, loadProjectConfig } from './projectConfig';
 
 /* ---------------- COCO 数据类型 ---------------- */
 
@@ -570,7 +571,10 @@ export class TemplateAssetData {
     const dir = path.dirname(filePath);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 
-    const rawClassName = path.basename(filePath, '.py');
+    // 类名优先取项目约定文件的 `labelEnum.name`，缺席才退回文件名 —— 即旧行为。
+    // 解耦的意义：文件可以叫 feature_labels.py，而类叫 FeatureList。
+    // （旧写法只有 basename 一条路，想叫 FeatureList 就必须把文件命名成 FeatureList.py。）
+    const rawClassName = labelEnumName(loadProjectConfig(this.rootDir), filePath, path.basename);
     // 类名同样进源码：非法标识符直接退回一个安全的默认名，而不是生成坏文件
     const className = /^[A-Za-z_][A-Za-z0-9_]*$/.test(rawClassName) ? rawClassName : 'LabelEnum';
     let content = 'from enum import Enum\n\n\n';

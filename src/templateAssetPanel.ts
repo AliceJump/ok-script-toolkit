@@ -8,6 +8,7 @@ import { injectWebviewLocalization, tr } from './localization';
 import { TempScreenshotStore } from './tempScreenshotStore';
 import { captureGameWindow } from './screenshotCapture';
 import { takePendingDrag } from './tempDrag';
+import { labelEnumPath, loadProjectConfig } from './projectConfig';
 import { getNonce } from './webviewHtml';
 
 /* ---------------- 控制器 ---------------- */
@@ -196,8 +197,11 @@ class AssetGalleryController {
     );
     if (!pick) return;
 
-    // 读取上次输入的 enum 文件路径，回退到默认值
-    const defaultEnumPath = this.globalState?.get<string>('okScriptToolkit.lastEnumFilePath') || '';
+    // 默认路径：**项目约定文件的 labelEnum.path 优先**（团队约定、随仓库走），
+    // 缺席才退回"上次保存的"（个人偏好、仅本机）。
+    // 两者都没有时留空 —— 留空即跳过生成枚举，与旧行为一致。
+    const lastEnumPath = this.globalState?.get<string>('okScriptToolkit.lastEnumFilePath') || '';
+    const defaultEnumPath = labelEnumPath(loadProjectConfig(), lastEnumPath) || '';
     const enumFilePath = await vscode.window.showInputBox({
       prompt: tr('LabelEnum.py file path (relative to workspace root, leave empty to skip)'),
       placeHolder: tr('e.g. assets/data/LabelEnum.py or src/label_enum.py'),
