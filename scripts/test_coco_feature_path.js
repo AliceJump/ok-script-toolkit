@@ -150,37 +150,43 @@ console.log('\neffectiveCocoFiles');
 // 监听会盯到项目外、变更比较也永远匹配不上（表现为"改那个文件不触发刷新"，静默）。
 console.log('\ncocoFeatureRelPaths');
 {
-  const relsOf = (declared, fromConfigPy) =>
-    pure.cocoFeatureRelPaths(pure.resolveCocoFeaturePlan(ROOT, declared, fromConfigPy), ROOT);
+  // ⚠️ 这一节用**真实绝对路径**做根（`os.homedir()` 下），**不用上面那个假的 `ROOT`**：
+  // `ROOT = path.join('X:', 'proj')` 在 **POSIX 上是相对路径**，由它拼出来的"项目外"路径
+  // 会落回项目内 —— 于是"项目外要被剔除"这条断言只有 Windows 会过。
+  // （2026-09-21 就这么丢了一轮 CI。**又一次**踩在"平台专属路径字面量"上。）
+  const ABS_ROOT = path.join(os.homedir(), 'ok-coco-root');
+  const relsOfAbs = (declared, fromConfigPy) =>
+    pure.cocoFeatureRelPaths(pure.resolveCocoFeaturePlan(ABS_ROOT, declared, fromConfigPy), ABS_ROOT);
 
   check(
-    JSON.stringify(relsOf()) === JSON.stringify(['assets/coco_annotations.json', 'ok_tasks/assets/coco_annotations.json']),
+    JSON.stringify(relsOfAbs()) === JSON.stringify(['assets/coco_annotations.json', 'ok_tasks/assets/coco_annotations.json']),
     '没声明时就是两个惯例位置',
   );
   check(
-    JSON.stringify(relsOf('custom/coco.json')) ===
+    JSON.stringify(relsOfAbs('custom/coco.json')) ===
       JSON.stringify(['custom/coco.json', 'assets/coco_annotations.json', 'ok_tasks/assets/coco_annotations.json']),
     '**首选与探测候选都要覆盖** —— 监听不能按存在性过滤，否则第一次生成库时不会触发刷新',
   );
   check(
-    JSON.stringify(relsOf('assets/coco_annotations.json')) ===
+    JSON.stringify(relsOfAbs('assets/coco_annotations.json')) ===
       JSON.stringify(['assets/coco_annotations.json', 'ok_tasks/assets/coco_annotations.json']),
     '首选恰好等于某个惯例位置时**去重**（同一路径不该出现两次）',
   );
 
-  // 同盘符/同根的项目外路径 → `path.relative` 给出 `../…` → 剔除
-  const outsideSameRoot = relsOf(undefined, path.join(ROOT, '..', 'other', 'coco.json'));
+  // 同盘符/同根的项目外路径 → `path.relative` 给出 `../…` → 剔除（两种平台行为一致）
+  const outside = path.join(ABS_ROOT, '..', 'ok-coco-outside', 'coco.json');
+  const outsideRels = relsOfAbs(undefined, outside);
   check(
-    !outsideSameRoot.some((r) => r.includes('other')),
+    !outsideRels.some((r) => r.includes('outside')),
     '**项目外的首选被剔除**（`../…` 不能当监听目标），但两个惯例候选仍在',
   );
 
   // 属性断言：不管哪种输入，返回的每一条都必须是项目内相对路径。
   // 这条在两种平台上都成立，且正好覆盖"跨盘符"那个平台专属分支的**结果**。
   const cases = [
-    { plan: pure.resolveCocoFeaturePlan(ROOT), root: ROOT },
-    { plan: pure.resolveCocoFeaturePlan(ROOT, 'custom/coco.json'), root: ROOT },
-    { plan: pure.resolveCocoFeaturePlan(ROOT, undefined, path.join(ROOT, '..', 'other', 'coco.json')), root: ROOT },
+    { plan: pure.resolveCocoFeaturePlan(ABS_ROOT), root: ABS_ROOT },
+    { plan: pure.resolveCocoFeaturePlan(ABS_ROOT, 'custom/coco.json'), root: ABS_ROOT },
+    { plan: pure.resolveCocoFeaturePlan(ABS_ROOT, undefined, outside), root: ABS_ROOT },
   ];
   if (process.platform === 'win32') {
     // Windows 专属：**跨盘符**时 `path.relative` 返回的是**绝对路径**而不是 `../…`
