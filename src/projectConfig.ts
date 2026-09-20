@@ -18,6 +18,15 @@ export const PROJECT_CONFIG_FILE = 'ok-script-toolkit.json';
 /** 模板目录的内置兜底（`ok_templates`）。子仓 `OkScriptToolkitSettings` 同值。 */
 export const DEFAULT_TEMPLATES_DIRECTORY = 'ok_templates';
 
+/**
+ * 枚举引用别名的**内置兜底**。
+ *
+ * ⚠️ 它是取值链的最后一层，**不是** `package.json` 里 `featureAliases` 的"个人偏好"值 ——
+ * 后者一旦非空（它确实非空），"个人偏好"层就永远命中、项目声明失效。
+ * 所以读它必须走 `ideSetting()`（`inspect()`），不能用 `get()`。
+ */
+export const DEFAULT_FEATURE_ALIASES = ['fL', 'FeatureList'];
+
 export * from './projectConfigPure';
 
 /**

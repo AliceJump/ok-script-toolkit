@@ -162,8 +162,9 @@ check(
 // ── 8. 破坏性对照 ────────────────────────────────────────────────────
 //
 // 纯函数的"改回旧写法"不好做，于是**就地改造编译产物**再求值。
-// 四组对照，分别钉住这一块的四条不变量：优先级顺序、模块路径必须补 .py、
-// 相对路径必须归一化、模板目录的优先级顺序。
+// 五组对照，分别钉住这一块的五条不变量：优先级顺序、模块路径必须补 .py、
+// 相对路径必须归一化、模板目录的优先级顺序、以及取值链共享核心 `resolveSetting`
+// 本身（个人偏好必须最高）。
 // 若对照跑出来的结果与期望相同，说明对应的那组断言其实没在约束任何东西。
 console.log('\n破坏性对照');
 {
@@ -220,8 +221,8 @@ console.log('\n破坏性对照');
 
   // 对照四：模板目录的优先级反转（项目声明优先）
   const projFirst = source.replace(
-    /return normalizeRelPath\(ideValue\) \?\? normalizeRelPath\(templatesOf\(config\)\.directory\) \?\? fallback;/,
-    'return normalizeRelPath(templatesOf(config).directory) ?? normalizeRelPath(ideValue) ?? fallback;',
+    'return resolveSetting(normalizeRelPath(ideValue), normalizeRelPath(templatesOf(config).directory), fallback);',
+    'return resolveSetting(normalizeRelPath(templatesOf(config).directory), normalizeRelPath(ideValue), fallback);',
   );
   check(projFirst !== source, '对照四源码确实被改动了（替换命中）—— 否则对照是假的');
   const projWins = evalSandbox(projFirst).templatesDirectoryOf(
@@ -232,6 +233,25 @@ console.log('\n破坏性对照');
   check(
     projWins === 'my_tpl',
     '对照四：拿掉个人偏好优先后，项目声明生效 —— 与第 7 组的期望相反，证明该组确实在约束优先级',
+  );
+
+  // 对照五：`resolveSetting` 本身（取值链的**共享核心**，三层都走它）
+  //
+  // 这个对照比对照四的杠杆更大：它一坏，所有走取值链的设置项都跟着错，
+  // 而且错法正好是"个人偏好被无视"。所以单独钉一条。
+  const noIde = source.replace(
+    'if (ideValue !== undefined)\n        return { value: ideValue, layer: \'personal\' };',
+    'if (false)\n        return { value: ideValue, layer: \'personal\' };',
+  );
+  check(noIde !== source, '对照五源码确实被改动了（替换命中）—— 否则对照是假的');
+  const noIdeExports = evalSandbox(noIde);
+  check(
+    noIdeExports.labelEnumAliases({ labelEnum: { aliases: ['FL'] } }, ['mine'], ['fL']).join(',') === 'FL',
+    '对照五：拿掉「个人偏好」分支后，别名也变成项目声明生效 —— 与第 3 组的期望相反',
+  );
+  check(
+    noIdeExports.labelEnumAliasesResolved({ labelEnum: { aliases: ['FL'] } }, ['mine'], ['fL']).layer === 'project',
+    '对照五：同时证明"来源层"确实由这条链产出（拿掉分支后层也跟着变），不是另算的一套',
   );
 }
 

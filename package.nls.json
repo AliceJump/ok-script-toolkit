@@ -10,6 +10,7 @@
   "command.openTemplateAssets": "Open Template Assets",
   "command.openAnnotationEditor": "Open Annotation Editor",
   "command.showTempScreenshots": "Open Temp Screenshots",
+  "command.showConventionSources": "Project Convention vs My Settings",
   "viewContainer.title": "ok-script Tools",
   "viewContainer.tools.title": "ok-script Tools",
   "viewContainer.templates.title": "ok-script Templates",

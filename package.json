@@ -80,6 +80,11 @@
         "command": "okScriptToolkit.screenshotToTemplate",
         "title": "%command.screenshotToTemplate%",
         "category": "%command.category%"
+      },
+      {
+        "command": "okScriptToolkit.showConventionSources",
+        "title": "%command.showConventionSources%",
+        "category": "%command.category%"
       }
     ],
     "viewsContainers": {
@@ -318,7 +323,7 @@
     "verify:version": "node scripts/release/verify-version.js",
     "verify:l10n": "node scripts/release/verify-l10n.js",
     "release": "sh scripts/release.sh",
-    "test": "npm run verify:version && npm run verify:l10n && npm run compile && npm run test:webview-html && npm run test:task-launcher && npm run test:task-launcher-executor && npm run test:temp-screenshots && npm run test:annotation-coords && npm run test:thumb-content-hash && npm run test:list-editor && npm run test:project-config && npm run test:probe-schemas && npm run test:run-sandbox && npm run test:startup-patches && npm run test:executor-project-config",
+    "test": "npm run verify:version && npm run verify:l10n && npm run compile && npm run test:webview-html && npm run test:task-launcher && npm run test:task-launcher-executor && npm run test:temp-screenshots && npm run test:annotation-coords && npm run test:thumb-content-hash && npm run test:list-editor && npm run test:project-config && npm run test:convention-sources && npm run test:probe-schemas && npm run test:run-sandbox && npm run test:startup-patches && npm run test:executor-project-config",
     "test:webview-html": "node scripts/test_webview_html.js",
     "test:task-launcher": "node scripts/test_task_launcher_subconfigs.js",
     "test:task-launcher-executor": "node scripts/test_task_launcher_executor.js",
@@ -327,6 +332,7 @@
     "test:thumb-content-hash": "node scripts/test_thumb_content_hash.js",
     "test:list-editor": "node scripts/test_list_editor_display.js",
     "test:project-config": "node scripts/test_project_config.js",
+    "test:convention-sources": "node scripts/test_convention_sources.js",
     "test:probe-schemas": "python python/tests/test_probe_pure_group_labels.py",
     "test:run-sandbox": "python python/tests/test_run_executor_sandbox.py",
     "test:startup-patches": "python python/tests/test_run_executor_startup_patches.py",

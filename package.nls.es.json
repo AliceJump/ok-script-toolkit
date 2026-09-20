@@ -10,6 +10,7 @@
   "command.openTemplateAssets": "Abrir recursos de plantillas",
   "command.openAnnotationEditor": "Abrir editor de anotaciones",
   "command.showTempScreenshots": "Abrir capturas temporales",
+  "command.showConventionSources": "Convención del proyecto vs. mi configuración",
   "viewContainer.title": "Herramientas de ok-script",
   "viewContainer.tools.title": "Herramientas de ok-script",
   "viewContainer.templates.title": "Plantillas de ok-script",

@@ -76,6 +76,35 @@ export function normalizeRelPath(value: unknown): string | undefined {
   return cleaned.length > 0 ? cleaned : undefined;
 }
 
+/** 取值链命中的那一层。 */
+export type SettingLayer = 'personal' | 'project' | 'builtin';
+
+export interface ResolvedSetting<T> {
+  value: T;
+  layer: SettingLayer;
+}
+
+/**
+ * 通用取值链：**个人偏好 > 项目约定文件 > 内置默认**，并**同时给出命中的层**。
+ *
+ * ⚠️ **"来源层"必须由这条链自己产出，不要在别处另写一套判断去复算。**
+ * 复算出来的层与实际生效值迟早会分叉 —— 而分叉的表现是"界面说来源是项目约定、
+ * 实际生效的却是我的设置"，属于最难查的那类不一致。
+ * 溯源界面（`conventionSources`）直接消费这里的 `layer`，所以它永远和生效值一致。
+ *
+ * 调用方负责把"没设置过"归一成 `undefined`（见 `projectConfig.ideSetting()` ——
+ * 本仓库设置项几乎都带非空默认值，`get()` 拿到的值不能直接当"用户设过"）。
+ */
+export function resolveSetting<T>(
+  ideValue: T | undefined,
+  declared: T | undefined,
+  fallback: T,
+): ResolvedSetting<T> {
+  if (ideValue !== undefined) return { value: ideValue, layer: 'personal' };
+  if (declared !== undefined) return { value: declared, layer: 'project' };
+  return { value: fallback, layer: 'builtin' };
+}
+
 /**
  * 把任意 JSON 值规整成 ProjectConfig。
  *
@@ -100,9 +129,9 @@ export function templatesOf(config: ProjectConfig): ProjectTemplates {
 }
 
 /**
- * 模板目录名（相对项目根），已归一化。
+ * 模板目录名（相对项目根），已归一化。**带来源层**。
  *
- * 取值链与全局一致：**个人偏好（IDE 设置）> 项目约定文件 `templates.directory` > 内置默认**。
+ * 取值链：**个人偏好（IDE 设置）> 项目约定文件 `templates.directory` > 内置默认**。
  *
  * ⚠️ `ideValue` 必须传"用户真正设置过的值"，不能传带默认值的读取结果 ——
  * `package.json` 里 `okTemplatesDirectory` 的 `default` 就是 `ok_templates`，
@@ -112,8 +141,21 @@ export function templatesOf(config: ProjectConfig): ProjectTemplates {
  * 历史：这个设置此前是**死设置** —— VS Code 侧把 `ok_templates` 写成常量、
  * **没有任何代码读它**，而子仓会读（10 处）。属反向不对等（docs §8.1）。
  */
+export function templatesDirectoryResolved(
+  config: ProjectConfig,
+  ideValue: unknown,
+  fallback: string,
+): ResolvedSetting<string> {
+  return resolveSetting(
+    normalizeRelPath(ideValue),
+    normalizeRelPath(templatesOf(config).directory),
+    fallback,
+  );
+}
+
+/** 只要值时的薄封装（绝大多数消费点用这个）。 */
 export function templatesDirectoryOf(config: ProjectConfig, ideValue: unknown, fallback: string): string {
-  return normalizeRelPath(ideValue) ?? normalizeRelPath(templatesOf(config).directory) ?? fallback;
+  return templatesDirectoryResolved(config, ideValue, fallback).value;
 }
 
 /**
@@ -130,11 +172,23 @@ export function templatesDirectoryOf(config: ProjectConfig, ideValue: unknown, f
  * 所以此前只能靠内置的 fL/FeatureList 硬猜；项目把枚举导入成别的名字就完全失效。
  */
 export function labelEnumAliases(config: ProjectConfig, ideValue: unknown, fallback: string[]): string[] {
+  return labelEnumAliasesResolved(config, ideValue, fallback).value;
+}
+
+/** 与 [labelEnumAliases] 同一条链，但**同时给出命中的层**（溯源界面用）。 */
+export function labelEnumAliasesResolved(
+  config: ProjectConfig,
+  ideValue: unknown,
+  fallback: string[],
+): ResolvedSetting<string[]> {
+  // 空数组 = "没设置"，不是"清空" —— 否则用户没法用空值表达"回到项目约定"
   const ide = nonEmptyStrings(ideValue);
-  if (ide.length) return ide;
   const declared = nonEmptyStrings(labelEnumOf(config).aliases);
-  if (declared.length) return declared;
-  return fallback;
+  return resolveSetting(
+    ide.length ? ide : undefined,
+    declared.length ? declared : undefined,
+    fallback,
+  );
 }
 
 /**

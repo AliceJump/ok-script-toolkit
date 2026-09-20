@@ -10,6 +10,7 @@
   "command.openTemplateAssets": "テンプレートアセットを開く",
   "command.openAnnotationEditor": "アノテーションエディターを開く",
   "command.showTempScreenshots": "一時スクリーンショットを開く",
+  "command.showConventionSources": "プロジェクト規約と自分の設定",
   "viewContainer.title": "ok-script ツール",
   "viewContainer.tools.title": "ok-script ツール",
   "viewContainer.templates.title": "ok-script テンプレート",

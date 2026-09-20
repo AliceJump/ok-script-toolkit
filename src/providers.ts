@@ -10,7 +10,7 @@ import {
 } from './langData';
 import { FeatureData, FeatureTemplate } from './featureData';
 import { EffectData, EffectEntry } from './effectData';
-import { ideSetting, labelEnumAliases, loadProjectConfig } from './projectConfig';
+import { DEFAULT_FEATURE_ALIASES, ideSetting, labelEnumAliases, loadProjectConfig } from './projectConfig';
 import { cropTemplateToDataUrlCached } from './pngCrop';
 import { tr } from './localization';
 
@@ -32,7 +32,7 @@ export function featureAliases(): string[] {
   // `package.json` 里 `featureAliases` 的 `default` 就是 ['fL','FeatureList']，
   // `get()` 在用户从没设置过时也会返回它 → 这层永远命中、项目声明永远被压住
   // （接了等于没接）。细节见 `projectConfig.ideSetting()`。
-  return labelEnumAliases(loadProjectConfig(), ideSetting<string[]>('featureAliases'), ['fL', 'FeatureList']);
+  return labelEnumAliases(loadProjectConfig(), ideSetting<string[]>('featureAliases'), DEFAULT_FEATURE_ALIASES);
 }
 
 /** 构建匹配 别名.<模板名> 的正则 */

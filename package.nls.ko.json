@@ -10,6 +10,7 @@
   "command.openTemplateAssets": "템플릿 에셋 열기",
   "command.openAnnotationEditor": "어노테이션 편집기 열기",
   "command.showTempScreenshots": "임시 스크린샷 열기",
+  "command.showConventionSources": "프로젝트 규약과 내 설정",
   "viewContainer.title": "ok-script 도구",
   "viewContainer.tools.title": "ok-script 도구",
   "viewContainer.templates.title": "ok-script 템플릿",

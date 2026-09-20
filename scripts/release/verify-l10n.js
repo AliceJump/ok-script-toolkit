@@ -8,6 +8,11 @@
  * —— 缺键时 VS Code 会静默回落成英文，用户看到的是一句中英夹杂的界面，
  * 而 CI 全绿、没人发现（2026-09 实测：`LabelEnum.py file path…` 等 3 个键缺失）。
  *
+ * 但"6 个 bundle 彼此对等"只是**一半**：如果某个 `tr('...')` 的字符串压根没进
+ * 任何一个 bundle，6 个 bundle 依然对等、CI 依然全绿，而用户在**所有**语言下
+ * 看到的都是英文原文 —— 同样是静默的。所以这里顺带扫一遍 `src` 下的 `.ts` 文件里
+ * 的 `tr()` 字面量，逐个核对是否在 base bundle 里（见下方 §覆盖率）。
+ *
  * 与 `verify-version.js` 一样是**零依赖的纯 Node 脚本**，可以在 CI 与
  * `npm test` 里低成本跑。
  *
@@ -62,4 +67,50 @@ if (problems.length) {
   process.exit(1);
 }
 
-console.log(`✓ ${localeFiles.length} 个语言包与 ${BASE_FILE} 对等（各 ${baseKeys.size} 个键）`);
+// ── 覆盖率：src 下每个 tr('...') 字面量都要在 base bundle 里 ─────────────
+//
+// 只查**字面量**首参：`tr(someVariable)` 静态查不到，不能假装查过。
+// 宿主侧所有面向用户的字符串都必须经 `localization.tr()`（见 AGENT.md 的
+// 「不硬编码 i18n 字符串」约定），所以这个正则的覆盖面就是"用户可见文案"。
+const srcDir = path.join(root, 'src');
+const trLiterals = []; // { file, text }
+
+if (fs.existsSync(srcDir)) {
+  const tsFiles = [];
+  (function walk(dir) {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const p = path.join(dir, entry.name);
+      if (entry.isDirectory()) walk(p);
+      else if (p.endsWith('.ts')) tsFiles.push(p);
+    }
+  })(srcDir);
+
+  // 单引号 / 双引号 / 反引号（无插值）三种写法都收；`localization.ts` 里
+  // `function tr(message: string…)` 的首参不是引号，天然不会命中。
+  const TR_CALL = /\btr\(\s*(?:'((?:[^'\\]|\\.)*)'|"((?:[^"\\]|\\.)*)"|`([^`$\\]*)`)/g;
+  for (const file of tsFiles) {
+    const source = fs.readFileSync(file, 'utf8');
+    for (const match of source.matchAll(TR_CALL)) {
+      trLiterals.push({ file: path.relative(root, file), text: match[1] ?? match[2] ?? match[3] });
+    }
+  }
+}
+
+const untranslated = trLiterals.filter(({ text }) => !baseKeys.has(text));
+
+if (untranslated.length) {
+  console.error(`✗ ${untranslated.length} 处 tr() 字面量不在 ${BASE_FILE} 里：`);
+  for (const { file, text } of untranslated) {
+    console.error(`    ${file}  ${JSON.stringify(text)}`);
+  }
+  console.error(
+    `\n这些字符串会在**所有**语言下显示英文原文（不只是缺翻译）。\n` +
+    `请把英文原文作为键补进全部 ${localeFiles.length} 个 bundle —— 键是英文原文，只有值是译文。`,
+  );
+  process.exit(1);
+}
+
+console.log(
+  `✓ ${localeFiles.length} 个语言包与 ${BASE_FILE} 对等（各 ${baseKeys.size} 个键）\n` +
+  `✓ src 下 ${trLiterals.length} 处 tr() 字面量全部有译文`,
+);

@@ -10,6 +10,7 @@
   "command.openTemplateAssets": "開啟模板素材",
   "command.openAnnotationEditor": "開啟標註編輯器",
   "command.showTempScreenshots": "開啟臨時截圖",
+  "command.showConventionSources": "專案約定 vs 我的設定",
   "viewContainer.title": "ok-script 工具",
   "viewContainer.tools.title": "ok-script 工具",
   "viewContainer.templates.title": "ok-script 模板",

@@ -4,6 +4,7 @@ import * as vscode from 'vscode';
 import { LangData, poDirectorySetting } from './langData';
 import { tr } from './localization';
 import { templatesDirectory } from './projectConfig';
+import { showConventionSources } from './conventionSources';
 import { FeatureData } from './featureData';
 import { EffectData } from './effectData';
 import { clearCropCache, clearSourceCropCache, clearCropCacheForImage, removeTemplateThumbFile, clearThumbDir, warmCropCache, initCropWorkerPool, disposeCropWorkerPool, setCropLogger, setTemplatesDirName, THUMB_HEIGHT, thumbDirForSource, thumbSourceSubdir, clearSourceThumbs, purgeLegacyThumbFiles, invalidateImageContentHash } from './pngCrop';
@@ -369,6 +370,11 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('okScriptToolkit.openAnnotationEditor', () => {
       // 打开当前选中的图片，或者提示用户先选择
       void vscode.window.showInformationMessage(tr('Please click an image in the Template Assets panel to open the annotation editor.'));
+    }),
+    vscode.commands.registerCommand('okScriptToolkit.showConventionSources', () => {
+      // 「项目约定 vs 我的设置」：显示每一项的生效值来自哪一层，并可清掉个人覆盖。
+      // 存在的理由见 docs/project-config.md §3 —— 个人偏好最高会让项目声明"永久失效"。
+      showConventionSources();
     }),
     vscode.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration('okScriptToolkit')) {

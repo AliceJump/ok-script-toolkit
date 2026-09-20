@@ -507,6 +507,7 @@ The ghost hint will display `「向目标移动」` after `k_2f4f4a2f`; hover wi
 | `ok-script 工具箱: 打开标注编辑器` | — | 提示在模板素材面板中点击图片以进入 COCO 标注编辑器（命令本身不直接打开编辑器） |
 | `ok-script 工具箱: 打开临时截图` | — | 聚焦活动栏中的临时截图视图 |
 | `ok-script 工具箱: 截图并打开模板素材` | `Ctrl+Alt+S`（macOS `Cmd+Alt+S`） | 打开模板素材管理面板并立即截图。复用面板自己的截图动作，截图会登记进 COCO。键位可在「键盘快捷方式」里改 |
+| `ok-script 工具箱: 项目约定 vs 我的设置` | — | 列出参与取值链的设置项，显示每一项的**生效值来自哪一层**（我的设置 / 项目约定 / 内置默认）。被个人设置覆盖过的项带一个「恢复」按钮，一键回到项目约定。用于解决"我改过一次就再也看不到团队改了什么" |
 
 ### English
 
@@ -514,14 +515,15 @@ Command categories display as "ok-script 工具箱" / "ok-script Toolkit" depend
 
 | Command | Shortcut | Description |
 |---|---|---|
-| `ok-script 工具箱: Open Template Panel` | `Ctrl+Alt+T` (macOS `Cmd+Alt+T`, requires Python editor focus) | Focus the template sidebar view in the activity bar |
-| `ok-script 工具箱: Open Template Panel in Editor` | — | Open a large grid view in the editor area |
+| `ok-script 工具箱: Open Template Gallery` | `Ctrl+Alt+T` (macOS `Cmd+Alt+T`, requires Python editor focus) | Focus the template sidebar view in the activity bar |
+| `ok-script 工具箱: Open Template Gallery in Editor` | — | Open a large grid view in the editor area |
 | `ok-script 工具箱: Open Task Launcher` | — | Focus the task launcher view in the activity bar |
-| `ok-script 工具箱: Open Character Skill Management Panel` | — | Open the character, skill, effect, enhancement group, and name localization management page |
+| `ok-script 工具箱: Open Character & Skill Manager` | — | Open the character, skill, effect, enhancement group, and name localization management page |
 | `ok-script 工具箱: Open Template Assets` | — | Open the template asset management panel in the editor area |
 | `ok-script 工具箱: Open Annotation Editor` | — | Prompts to click an image in the template asset panel to enter the COCO annotation editor (the command itself does not open the editor directly) |
-| `ok-script 工具箱: Open Temp Shots` | — | Focus the temp shots view in the activity bar |
+| `ok-script 工具箱: Open Temp Screenshots` | — | Focus the temp screenshots view in the activity bar |
 | `ok-script 工具箱: Screenshot to Template Assets` | `Ctrl+Alt+S` (macOS `Cmd+Alt+S`) | Open the template asset panel and take a screenshot immediately. Reuses the panel's own screenshot action; the shot is registered into COCO. Rebindable in Keyboard Shortcuts |
+| `ok-script 工具箱: Project Convention vs My Settings` | — | List the settings that take part in the precedence chain and show **which layer each effective value comes from** (my settings / project convention / built-in default). Rows you have overridden carry a Revert button that drops your override and goes back to the project convention. Exists to fix "once I changed it, I can never see what the team changed" |
 
 ## 更新后不生效 / Update Not Taking Effect
 
