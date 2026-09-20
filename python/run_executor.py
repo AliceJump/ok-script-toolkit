@@ -1,9 +1,12 @@
 # -*- coding: utf-8 -*-
 """常驻执行器：单一进程完成「连接游戏 + 多触发任务串连轮询」。
 
-与旧的 run_task.py 的关键差异
-----------------------------
-run_task.py 走 `ok.run_task(config, task=<单个任务>)`，框架对触发任务会转调
+与已被删除的 run_task.py 的关键差异
+----------------------------------
+（`run_task.py` 已于 2026-09 删除：无任何调用方，且没接配置沙箱。这里保留差异说明，
+是为了记住"为什么不能退回单任务一进程"。）
+
+它走 `ok.run_task(config, task=<单个任务>)`，框架对触发任务会转调
 `OK.run_trigger_task()` —— 它把 `executor.trigger_tasks` 收窄成单个任务并 disable
 其余触发任务（见 ok/__init__.py）。于是旧实现每个任务各起一个进程，同一时刻只能跑
 一个触发任务，无法做多触发任务轮询。
@@ -65,6 +68,7 @@ stdout 标记行（宿主按行扫描）:
 """
 import argparse
 import functools
+import importlib
 import json
 import os
 import sys
@@ -166,6 +170,71 @@ def apply_config_sandbox(config: dict) -> str:
 
     _note(f"配置沙箱已启用：{config_folder}")
     return run_dir
+
+
+# ── 目标项目自带的启动补丁 ────────────────────────────────────────────
+
+# ok 系项目普遍用 `src/patches/` 做 monkey-patch（改框架行为、修上游 bug），
+# 入口约定是 `src.patches.startup_patches.install_startup_patches()`，
+# 由项目自己的 `main.py` 在 `OK(config)` 之前调用。
+# 已确认采用该约定的项目：ok-end-field、OK-AzurPromilia。
+PROJECT_PATCH_MODULE_SUFFIX = "patches.startup_patches"
+PROJECT_PATCH_ENTRY = "install_startup_patches"
+
+
+def project_patch_module_path(config_module_name: str) -> str:
+    """由 config 模块名推出项目补丁模块路径。
+
+    `src.config` -> `src.patches.startup_patches`；`config` -> `patches.startup_patches`。
+    这样既支持带 src/ 包的项目，也支持 config.py 直接放根目录的项目。
+    """
+    package = config_module_name.rsplit(".", 1)[0] if "." in config_module_name else ""
+    return f"{package}.{PROJECT_PATCH_MODULE_SUFFIX}" if package else PROJECT_PATCH_MODULE_SUFFIX
+
+
+def install_project_startup_patches(config_module_name: str) -> bool:
+    """安装**目标项目自带**的启动补丁。返回是否装成功。
+
+    为什么必须做：插件此前**完全没调用**这个入口，于是同一份项目代码
+    "自己跑没事、用插件跑就崩"。实测（2026-09-20，ok-end-field）：
+
+        src/interaction/Mouse.py: user32.GetCursorPos(ctypes.byref(pt))
+        ctypes.ArgumentError: expected LP_POINT instance instead of pointer to POINT
+
+    这是 ok 库 `ok/ui/overlay/win32_gdi.py` 在 import 时污染了全局
+    `user32.GetCursorPos.argtypes` 导致的；项目补丁里的 `win32_gdi_point_patch`
+    专门根治它。不装补丁 → 一次性任务直接抛异常中断；装上 → 恢复正常
+    （已实测：装完 `win32_gdi.POINT is wintypes.POINT` 为 True，
+    标准 `wintypes.POINT` 调用成功）。
+
+    时机对齐项目 `main.py`：**import config 之后、`OK(config)` 之前**。
+
+    失败**绝不阻断启动**：项目没有补丁是正常的（ok-infinity-nikki / ok-gm 就没有），
+    补丁自身出错也只记一行 —— 不能因为一个可选补丁让整个执行器起不来。
+    """
+    module_path = project_patch_module_path(config_module_name)
+    try:
+        module = importlib.import_module(module_path)
+    except ModuleNotFoundError:
+        _note(f"目标项目没有启动补丁（{module_path} 不存在），跳过")
+        return False
+    except Exception as e:  # noqa: BLE001 — 补丁模块自身导入失败也不能拖垮执行器
+        _note(f"项目启动补丁模块导入失败（继续执行）：{type(e).__name__}: {e}")
+        return False
+
+    installer = getattr(module, PROJECT_PATCH_ENTRY, None)
+    if not callable(installer):
+        _note(f"{module_path} 里没有 {PROJECT_PATCH_ENTRY}()，跳过")
+        return False
+
+    try:
+        installer()
+    except Exception as e:  # noqa: BLE001 — 同上，补丁装不上就按"没打补丁"继续
+        _note(f"项目启动补丁安装失败（继续执行）：{type(e).__name__}: {e}")
+        return False
+
+    _note("已安装目标项目的启动补丁")
+    return True
 
 
 # ── 猴子补丁 ──────────────────────────────────────────────────────────
@@ -712,6 +781,12 @@ def main() -> None:
     # 调试插件绝不改动目标项目的 configs/：把框架读写整体改道到沙箱。
     # 必须在 OK(config) 之前 —— 任务是在 OK() 内部实例化的。
     apply_config_sandbox(config)
+    # 目标项目自带的启动补丁（src/patches/startup_patches.py）。
+    # 项目自己的 main.py 会在 OK(config) 之前调用它，执行器过去**漏了这一步** ——
+    # 于是同一份代码"项目自己跑没事、用插件跑就崩"（典型：win32_gdi 污染
+    # user32.GetCursorPos.argtypes，导致 Mouse.py 抛 ctypes.ArgumentError）。
+    # 详见 install_project_startup_patches() 的说明。
+    install_project_startup_patches(args.config_module)
     # ok-script 2.x：config['gui']={'type':'qt'} 会让 OK 创建完整 Qt App 并安装
     # QtEventDispatcher，headless 下没有事件循环，communicate.window/overlay 信号
     # 全部排队丢失，浮层收不到窗口更新。置 None 强制 HeadlessApp（同步分发）。
