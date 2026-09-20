@@ -369,6 +369,22 @@ See [DEVELOPMENT.md](DEVELOPMENT.md) for project structure, JetBrains version, l
 | `okScriptToolkit.okTemplatesDirectory` | `ok_templates` | ok_templates 文件夹名（相对工作区根），供模板素材管理器使用 |
 | `okScriptToolkit.annotationKeybindings` | 见默认值 | 标注编辑器的键盘快捷键；值为按键名，支持 `ctrl+z` 等修饰符前缀 |
 
+#### 项目约定文件 `ok-script-toolkit.json`
+
+把**随项目走**的约定写在被调试项目的**根目录**：枚举文件路径与类名、模板目录、
+执行器启动钩子等。提交进仓库后，团队成员、以及另一个 IDE（JetBrains 插件读同一份）
+都能直接用，不必各自在 IDE 设置里重配一遍。
+
+取值优先级（高 → 低）：
+**个人偏好（IDE 设置）> 项目约定文件 > 项目 `config.py` 已声明的事实 > 内置默认**。
+
+- 文件**缺席时行为与不引入它时完全一致**（纯增量）
+- 插件**只读**本文件，**绝不写入**
+- 编辑器里对它提供悬浮说明与补全（来自 [`schemas/ok-script-toolkit.schema.json`](schemas/ok-script-toolkit.schema.json)）
+
+完整字段清单与设计说明见 [`docs/project-config.md`](docs/project-config.md)，
+可直接复制的示例见 [`docs/ok-script-toolkit.example.json`](docs/ok-script-toolkit.example.json)。
+
 #### 配置示例
 
 在工作区的 `.vscode/settings.json` 中：
@@ -424,6 +440,23 @@ self.wait_click_ocr(match=self.lang.zip_line_mixin.k_2f4f4a2f, ...)
 | `okScriptToolkit.characterAvatarTemplateRegex` | `^battle[_-]?icon[_-]?` | Character avatar template name regex; uses the first capture group if present, otherwise the name after the matched prefix, matched against the character master table's English slug; defaults to `battleicon`, `battle_icon`, and `battle-icon` prefixes |
 | `okScriptToolkit.okTemplatesDirectory` | `ok_templates` | ok_templates folder name (relative to workspace root), used by the template asset manager |
 | `okScriptToolkit.annotationKeybindings` | see defaults | Annotation editor keyboard shortcuts; values are key names with modifier prefixes like `ctrl+z` |
+
+#### Project Convention File `ok-script-toolkit.json`
+
+Put **project-scoped** conventions in the **root of the debugged project**: the label
+enum's path and class name, the templates directory, executor startup hooks, and so on.
+Commit it to the repository and teammates — plus the other IDE (the JetBrains plugin
+reads the same file) — get it for free, with no per-machine reconfiguration.
+
+Precedence (high → low):
+**personal preference (IDE settings) > project convention file > facts already declared in the project's `config.py` > built-in defaults**.
+
+- When the file is absent, behaviour is **identical to not having it at all** (purely additive)
+- The plugins **only read** this file and **never write** to it
+- Hover docs and completion are provided in the editor via [`schemas/ok-script-toolkit.schema.json`](schemas/ok-script-toolkit.schema.json)
+
+See [`docs/project-config.md`](docs/project-config.md) for the full field list and design notes,
+and [`docs/ok-script-toolkit.example.json`](docs/ok-script-toolkit.example.json) for a copy-paste example.
 
 #### Configuration Example
 

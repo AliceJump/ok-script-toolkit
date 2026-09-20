@@ -8,7 +8,7 @@ import { injectWebviewLocalization, tr } from './localization';
 import { TempScreenshotStore } from './tempScreenshotStore';
 import { captureGameWindow } from './screenshotCapture';
 import { takePendingDrag } from './tempDrag';
-import { labelEnumFile, loadProjectConfig } from './projectConfig';
+import { labelEnumFile, loadProjectConfig, templatesDirectory } from './projectConfig';
 import { getNonce } from './webviewHtml';
 
 /* ---------------- 控制器 ---------------- */
@@ -159,7 +159,7 @@ class AssetGalleryController {
       return;
     }
 
-    const outputDir = path.join(folder.uri.fsPath, 'ok_templates');
+    const outputDir = path.join(folder.uri.fsPath, templatesDirectory(folder.uri.fsPath));
     fs.mkdirSync(outputDir, { recursive: true });
 
     // Generate filename with timestamp
@@ -288,7 +288,9 @@ class AssetGalleryController {
       // 裁剪/打包管线支持 PNG/JPEG/BMP（纯 JS 解码），其他格式（如 webp）缺
       // 少可靠解码器，产出的标注与缩略图会是坏的，这里直接限制可选类型
       filters: { [tr('importImagesFilter')]: ['png', 'jpg', 'jpeg', 'bmp'] },
-      title: tr('Import images to ok_templates'),
+      // 目录名可配，所以标题必须带上实际值 —— 否则目录改成 my_templates 后
+      // 对话框还在说"导入到 ok_templates"，用户在找一个不存在的目录。
+      title: tr('Import images to {dir}', { dir: templatesDirectory(this.data.root) }),
     });
     if (!uris || uris.length === 0) return;
 

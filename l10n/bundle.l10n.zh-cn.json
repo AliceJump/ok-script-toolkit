@@ -150,7 +150,7 @@
   "Failed to add to template assets: {error}": "添加到模板素材失败: {error}",
   "Failed to delete: {name}": "删除失败: {name}",
   "Failed to save screenshot.": "截图保存失败。",
-  "Import images to ok_templates": "导入图片到 ok_templates",
+  "Import images to {dir}": "导入图片到 {dir}",
   "Imported {count} image(s)": "已导入 {count} 张图片",
   "No image in clipboard. Press Ctrl+V inside this view to paste.": "剪贴板中没有图片。请在此视图内按 Ctrl+V 粘贴。",
   "No workspace folder open.": "未打开工作区。",

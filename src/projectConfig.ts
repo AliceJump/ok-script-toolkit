@@ -11,9 +11,12 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { ProjectConfig, parseProjectConfig } from './projectConfigPure';
+import { ProjectConfig, parseProjectConfig, templatesDirectoryOf } from './projectConfigPure';
 
 export const PROJECT_CONFIG_FILE = 'ok-script-toolkit.json';
+
+/** 模板目录的内置兜底（`ok_templates`）。子仓 `OkScriptToolkitSettings` 同值。 */
+export const DEFAULT_TEMPLATES_DIRECTORY = 'ok_templates';
 
 export * from './projectConfigPure';
 
@@ -80,4 +83,40 @@ export function loadProjectConfig(projectDir?: string): ProjectConfig {
 /** 仅供测试：清掉缓存，避免用例之间互相污染 */
 export function clearProjectConfigCache(): void {
   cache = undefined;
+}
+
+/**
+ * 读**用户真正设置过**的 IDE 设置值；从没设过返回 `undefined`。
+ *
+ * ⚠️ **不能用 `getConfiguration().get(key)`** —— 它会把 `package.json` 里的
+ * `default` 一并返回。本仓库的设置项**几乎全都带非空默认值**（`ok_templates`、
+ * `assets/lang`、`src/data/effects.py`、`["fL","FeatureList"]` …），于是
+ * "这一层永远命中"→ 项目约定文件里声明的值**永远不生效**，而且界面一切正常 ——
+ * 这正是 `featureAliases` 已经踩过一次的静默缺陷（docs/project-config.md §3）。
+ *
+ * `inspect()` 能把「用户写入的值」与「默认值」分开：工作区文件夹级 / 工作区级 /
+ * 全局级**三者都为 `undefined`** 才算"没设过"。就近覆盖优先，与 VS Code 自己的
+ * 设置优先级一致。
+ *
+ * **凡是要接取值链的设置项都必须走这里。**
+ */
+export function ideSetting<T>(key: string): T | undefined {
+  const inspected = vscode.workspace.getConfiguration('okScriptToolkit').inspect<T>(key);
+  return inspected?.workspaceFolderValue ?? inspected?.workspaceValue ?? inspected?.globalValue;
+}
+
+/**
+ * 模板目录名（相对项目根）。
+ *
+ * 取值链：**个人偏好（IDE 设置）> 项目约定文件 `templates.directory` > `ok_templates`**。
+ *
+ * `projectDir` 传调用方自己用的那个项目根 —— 角色/模板数据可能来自另一个仓库，
+ * 用错根会读到别人的约定文件。不传则用 `resolveProjectDir()`。
+ */
+export function templatesDirectory(projectDir?: string): string {
+  return templatesDirectoryOf(
+    loadProjectConfig(projectDir),
+    ideSetting<string>('okTemplatesDirectory'),
+    DEFAULT_TEMPLATES_DIRECTORY,
+  );
 }

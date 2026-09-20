@@ -145,6 +145,40 @@ async function main() {
     pngCrop.disposeCropWorkerPool();
   }
 
+  /* ---- 8. 模板目录名可配：来源判定必须跟着注入值走 ---- */
+  //
+  // `thumbSourceSubdir` 决定缩略图落到哪个子目录，也决定"改了哪张 PNG 就只清哪一批"。
+  // 目录名可配（`projectConfig.templatesDirectory`），但 `pngCrop` **刻意不自己读配置**
+  // —— 本测试就是那条约束本身（纯 Node 沙箱，vscode 只有空壳桩），所以改由宿主注入。
+  // 这一组同时钉住"注入生效"与"按路径段匹配"两条。
+  assert.strictEqual(
+    pngCrop.thumbSourceSubdir(path.join(tmpRoot, 'ok_templates', 'a.png')),
+    'ok_templates',
+    '默认目录名下的图归 ok_templates 来源',
+  );
+  pngCrop.setTemplatesDirName('my_templates');
+  assert.strictEqual(
+    pngCrop.thumbSourceSubdir(path.join(tmpRoot, 'my_templates', 'a.png')),
+    'my_templates',
+    '**注入的模板目录名必须被识别** —— 否则缩略图会落到 assets/ 桶里，改了图也不清旧缩略图',
+  );
+  assert.strictEqual(
+    pngCrop.thumbSourceSubdir('D:/my_ok_tasks_proj/ok_templates/a.png'),
+    'assets',
+    '按**路径段**匹配：目录名只是"含" ok_tasks 字样的路径不该被误判成 ok_tasks 来源',
+  );
+  assert.strictEqual(
+    pngCrop.thumbSourceSubdir(path.join(tmpRoot, 'ok_tasks', 'my_templates', 'a.png')),
+    'ok_tasks',
+    'ok_tasks 下的模板仍归 ok_tasks 来源（先判它，与目录名是否可配无关）',
+  );
+  pngCrop.setTemplatesDirName('');
+  assert.strictEqual(
+    pngCrop.thumbSourceSubdir(path.join(tmpRoot, 'ok_templates', 'a.png')),
+    'ok_templates',
+    '注入空值时退回默认目录名（不能让来源判定变成"永远匹配不上"）',
+  );
+
   fs.rmSync(tmpRoot, { recursive: true, force: true });
   fs.rmSync(stubDir, { recursive: true, force: true });
   console.log('test_thumb_content_hash: all assertions passed');

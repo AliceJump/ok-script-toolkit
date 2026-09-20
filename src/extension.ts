@@ -3,9 +3,10 @@ import * as crypto from 'crypto';
 import * as vscode from 'vscode';
 import { LangData, poDirectorySetting } from './langData';
 import { tr } from './localization';
+import { templatesDirectory } from './projectConfig';
 import { FeatureData } from './featureData';
 import { EffectData } from './effectData';
-import { clearCropCache, clearSourceCropCache, clearCropCacheForImage, removeTemplateThumbFile, clearThumbDir, warmCropCache, initCropWorkerPool, disposeCropWorkerPool, setCropLogger, THUMB_HEIGHT, thumbDirForSource, thumbSourceSubdir, clearSourceThumbs, purgeLegacyThumbFiles, invalidateImageContentHash } from './pngCrop';
+import { clearCropCache, clearSourceCropCache, clearCropCacheForImage, removeTemplateThumbFile, clearThumbDir, warmCropCache, initCropWorkerPool, disposeCropWorkerPool, setCropLogger, setTemplatesDirName, THUMB_HEIGHT, thumbDirForSource, thumbSourceSubdir, clearSourceThumbs, purgeLegacyThumbFiles, invalidateImageContentHash } from './pngCrop';
 import { initAssetPackPool, disposeAssetPackPool } from './assetPack';
 import {
   LangCompletionProvider,
@@ -35,6 +36,9 @@ const LEGACY_THUMB_PURGE_KEY = 'okScriptToolkit.legacyThumbPurgeVersion';
 
 export function activate(context: vscode.ExtensionContext): void {
   const folder = vscode.workspace.workspaceFolders?.[0];
+  // 模板目录名可配，但 `pngCrop` **刻意不自己读配置**（它被纯 Node 沙箱测试直接 require，
+  // 见 `setTemplatesDirName` 的注释），由宿主注入；配置变更时在下面重新注入一次。
+  setTemplatesDirName(templatesDirectory(folder?.uri.fsPath));
   const data = new LangData(folder);
   const features = new FeatureData(folder);
   const effects = new EffectData(folder);
@@ -97,14 +101,19 @@ export function activate(context: vscode.ExtensionContext): void {
         for (const uri of changedUris) {
           sources.add(thumbSourceSubdir(uri.fsPath));
         }
+        const tplDir = templatesDirectory(folder?.uri.fsPath);
         for (const src of sources) {
-          // ok_templates: 只清被改动 PNG 对应的缩略图，不影响同源其他 PNG
-          if (src === 'ok_templates') {
+          // 模板目录：只清被改动 PNG 对应的缩略图，不影响同源其他 PNG
+          if (src === tplDir) {
             const pngRe = /\.png$/i;
-            // fsPath 在 Windows 上是反斜杠，先归一化再做目录段匹配
-            const pngUris = changedUris.filter(u =>
-              /(^|\/)ok_templates\//.test(u.fsPath.replace(/[\\/]+/g, '/')) && pngRe.test(u.fsPath)
-            );
+            // fsPath 在 Windows 上是反斜杠，先归一化再做目录段匹配。
+            // 用 startsWith/includes 而不是正则：目录名可配，拼正则还要转义，
+            // 漏转义时失配是**静默**的（缩略图永远不刷新）。
+            const tplPrefix = `${tplDir}/`;
+            const pngUris = changedUris.filter(u => {
+              const normalized = u.fsPath.replace(/[\\/]+/g, '/');
+              return (normalized.startsWith(tplPrefix) || normalized.includes(`/${tplPrefix}`)) && pngRe.test(u.fsPath);
+            });
             for (const uri of pngUris) {
               // 先删旧缩略图（此时内容 hash 记录仍是旧值，才能删到旧文件），再作废指纹
               for (const ft of features.all()) {
@@ -153,10 +162,13 @@ export function activate(context: vscode.ExtensionContext): void {
   const langWatchPattern = () => {
     const poDir = poDirectorySetting().replace(/[\/]+$/, '');
     const poGlob = poDir.split(/[\\/]/).map(escapeGlobSeg).join('/');
+    // 模板目录名可配：拼进 glob 前按段转义（目录名可能含 `[`、`*` 等 glob 元字符）。
+    // 不转义时 watcher 静默失配 —— 界面正常，但改了模板文件不刷新。
+    const tplGlob = templatesDirectory(folder?.uri.fsPath).split('/').map(escapeGlobSeg).join('/');
     const effectsFile = (vscode.workspace.getConfiguration('okScriptToolkit').get<string>('effectsFile') || 'src/data/effects.py')
       .replace(/[\\]+/g, '/')
       .replace(/^\//, '');
-    return `**/{assets/lang/*.json,${poGlob}/**/*.po,assets/coco_annotations.json,assets/images/*.png,ok_tasks/assets/coco_annotations.json,ok_tasks/assets/images/*.png,ok_templates/*.png,${effectsFile}}`;
+    return `**/{assets/lang/*.json,${poGlob}/**/*.po,assets/coco_annotations.json,assets/images/*.png,ok_tasks/assets/coco_annotations.json,ok_tasks/assets/images/*.png,${tplGlob}/*.png,${effectsFile}}`;
   };
 
   /**
@@ -190,7 +202,7 @@ export function activate(context: vscode.ExtensionContext): void {
       rel === 'ok_tasks/assets/coco_annotations.json' ||
       (rel.startsWith('assets/images/') && pngRe.test(rel)) ||
       (rel.startsWith('ok_tasks/assets/images/') && pngRe.test(rel)) ||
-      (rel.startsWith('ok_templates/') && pngRe.test(rel))
+      (rel.startsWith(`${templatesDirectory(folder?.uri.fsPath)}/`) && pngRe.test(rel))
     ) {
       return { ...empty, features: true };
     }
@@ -360,6 +372,8 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
     vscode.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration('okScriptToolkit')) {
+        // 模板目录名可能变了，先重新注入 —— 下面 clearThumbDir/prewarm 都会用到它
+        setTemplatesDirName(templatesDirectory(folder?.uri.fsPath));
         recreateWatcher();
         data.refresh(true);
         features.refresh(true);

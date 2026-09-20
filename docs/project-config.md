@@ -9,7 +9,9 @@
 > | VS Code 侧加载器 + `labelEnum` 接入 | ✅ `df41a85` |
 > | JetBrains 侧加载器 + `labelEnum` 接入 | ✅ `core/ProjectConventionConfig.kt` + `core/ProjectConvention.kt` |
 > | 截图快捷键（§6.4） | ✅ 两端 |
-> | `templates` / `i18n` / `characters` / `effects` 各组的取值链接入 | ⏳ **未实现**（schema 已声明，插件暂不读） |
+> | `templates.directory`（§8.1 的死设置） | ✅ 两端 |
+> | `templates.cocoAnnotations` | ⏳ 未实现（schema 已声明） |
+> | `i18n` / `characters` / `effects` 各组 | ⏳ 未实现（schema 已声明，插件暂不读） |
 
 ## 1. 要解决的问题
 
@@ -91,9 +93,22 @@
 |---|---|
 | VS Code | `getConfiguration().inspect('featureAliases')`，取 `workspaceFolderValue ?? workspaceValue ?? globalValue`；三者都为 `undefined` 才算"没设过" |
 | JetBrains | **state 默认值留空**（空列表 = 没设过）。旧版本填过默认值，用 `featureAliasesTouched` 标记区分"init 自动写的"与"用户手填的同样值"，做一次性迁移 |
+| JetBrains（标量设置） | `SettingsState` 里这些字段**默认值非空**（`ok_templates`、`assets/lang` …），"留空"这招用不了 → 用 `overriddenKeys` 记账：`OkScriptToolkitConfigurable.apply()` 只记录**值真的变了**的键，`init` 给老用户播种一次。取链时先问"这个键在不在 `overriddenKeys` 里" |
 
 **通用规则**：凡是"默认值非空"的设置项，接取值链时都必须先找到"用户是否真的改过"这个信号 ——
 否则 ④ 层会把 ③ 层永久屏蔽。**动手接线前先看该设置的默认值是不是空的。**
+
+⚠️ **记账必须放在 `apply()` 里赋值之前**：赋值后 state 已是新值，比不出"变没变"。
+不比较、无条件记账的后果是"打开一次设置面板点个「应用」就把所有项目约定永久压住"，
+而且同样是静默的。
+
+> **已知取舍**：JetBrains 侧 `overriddenKeys` 只由设置面板维护。用户直接手改
+> `ok-script-toolkit.xml` 时不会被记账，那一项仍按"没设过"处理（让项目约定生效）。
+> 这是可接受的 —— 手改 xml 不是受支持的操作路径。
+
+> **待补的 UI 缓冲**：上面 §3 提到的两件事（「当前值来自哪一层」+「恢复为项目约定」）
+> **仍未做**。在它们落地之前，接线的新分组越多，"我改过一次就再也看不到团队改了什么"
+> 这个副作用的面就越大 —— 接下一组之前应当先补上。
 
 ## 4. 文件形态
 
@@ -118,7 +133,7 @@
 | `executor.startupHooks` | `beforeConfigImport` | **无此信息** | 空（整段跳过 —— 现状） |
 | | `afterConfigImport` | **无此信息** | 按约定试 `src.patches.startup_patches:install_startup_patches` |
 | `templates` | `directory` | 无（插件侧约定） | IDE 设置 → `ok_templates` |
-| | `cocoAnnotations` | 5/5 有 | config.py → 依次探测两个候选 |
+| | `cocoAnnotations` | 5/5 有 | config.py → 依次探测两个候选（⏳ 未接线） |
 | `i18n` | `enabled` / `langDirectory` / `poDirectory` / `poDomains` | 无 | IDE 设置 → 内置默认 |
 | `characters` | `projectPath` / `masterFile` / `skillsDirectory` / `localeFile` / `avatarTemplateRegex` | 无 | IDE 设置 → 内置默认 |
 | `effects` | `file` | 无 | IDE 设置 → `src/data/effects.py` |
@@ -183,8 +198,15 @@
 >   `OkEditorSupport` 等消费点自动受益，不需要各自改。
 > - **`name`**：两端生成枚举时取 `labelEnum.name`，缺席才退回文件名。
 > - **`path`**：两端生成枚举时的默认值取它（经"模块路径 → 文件路径"转换，见 §5）。
-> - **未做**：`TEMPLATE_FOLDER`（`ok_templates` 目录名）仍不可配；
->   "有值时不再弹框"未做 —— 仍会弹输入框，只是默认值变了。
+> - **`templates.directory`**：两端都接了。VS Code 侧同时修掉了 §8.1 那个**死设置**；
+>   消费点全部改走 `projectConfig.templatesDirectory(projectDir)` /
+>   `OkScriptToolkitSettings.okTemplatesDirectory()`，包括文件监听 glob 与
+>   `thumbSourceSubdir()` 的来源判定（目录名要拼进 glob / 做目录段匹配，所以
+>   两端都先归一化一次 —— 见 `normalizeRelPath`）。
+> - **未做**：`templates.cocoAnnotations`（消费点散在 6 个文件，且要先读 `config.py`
+>   的 `template_matching.coco_feature_json` —— 两端目前都**完全不读** `config.py` 的
+>   这一项，只有执行器侧用 AST 读 `config_folder`）；`i18n` / `characters` / `effects`
+>   各组；"有值时不再弹框"未做 —— 仍会弹输入框，只是默认值变了。
 
 ### 执行器（`python/run_executor.py`）
 
@@ -223,9 +245,12 @@ IntelliJ 各有原生 keymap 编辑器，用户改键位本来就该走那里 �
 
 ## 8. 顺带发现（与本设计无关，但实现时会碰到）
 
-1. **`okScriptToolkit.okTemplatesDirectory` 在 VS Code 侧是死设置** ——
-   `templateAssetData.ts:50` 把 `ok_templates` 写成常量，**没有任何代码读这个设置**；
-   子仓则**会读**（4 个文件）。属反向不对等。要么接线，要么删设置。
+1. **`okScriptToolkit.okTemplatesDirectory` 在 VS Code 侧曾是死设置** ——
+   `templateAssetData.ts` 把 `ok_templates` 写成常量，**没有任何代码读这个设置**；
+   子仓则**会读**（10 处）。属反向不对等。
+   **✅ 已修**：两端统一走 `templates.directory` 取值链，消费点全部改为读访问器；
+   顺带把 `TemplateAssetDataService.load/cocoPath` 的 `templatesDir: String = "ok_templates"`
+   默认值**去掉**了 —— 留一个默认值等于给调用方留一条绕过取值链的静默通道。
 2. **`label_enum_relative_path` 插件完全没读** —— 即便项目声明了，插件也在按名字猜。
 3. **VS Code 侧无 jsonc 解析器** —— 这是本设计选纯 JSON 的原因之一（见 §4）。
 

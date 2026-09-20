@@ -641,13 +641,35 @@ export function clearCropCacheForImage(imagePath: string): void {
 }
 
 /**
+ * 模板目录名（可配，默认 `ok_templates`），由 `extension.ts` 在激活时与配置变更时注入。
+ *
+ * **刻意不在这里读配置**，两个理由：
+ * 1. 本模块被 `scripts/test_thumb_content_hash.js` 在**纯 Node 沙箱**里直接 require
+ *    （`vscode` 只有一个空壳桩）—— 一旦在这里读配置，那个测试立刻炸；
+ * 2. 这里只做路径分类，本就不该依赖 IDE（本仓库约定：不依赖 IDE 的逻辑抽纯对象）。
+ *
+ * 与同文件的 `setCropLogger` 是同一个做法：宿主注入，模块内只存值。
+ */
+let templatesDirName = 'ok_templates';
+
+/** 注入模板目录名。取值链见 `projectConfig.templatesDirectory()`。 */
+export function setTemplatesDirName(dir: string): void {
+  templatesDirName = dir || 'ok_templates';
+}
+
+/**
  * 从 imagePath 判断来源子目录。
  * ok_tasks/assets/images/X.png → 'ok_tasks'
+ * <模板目录>/X.png → 模板目录名（默认 'ok_templates'，可配，见 [setTemplatesDirName]）
  * assets/images/X.png → 'assets'
+ *
+ * 按**路径段**匹配而不是子串匹配：模板目录名可配，子串匹配会让
+ * `D:/my_ok_tasks_proj/...` 这种路径被误判成 ok_tasks 来源。
  */
 export function thumbSourceSubdir(imagePath: string): string {
-  if (imagePath.includes('ok_tasks')) return 'ok_tasks';
-  if (imagePath.includes('ok_templates')) return 'ok_templates';
+  const segments = imagePath.replace(/[\\/]+/g, '/').split('/');
+  if (segments.includes('ok_tasks')) return 'ok_tasks';
+  if (segments.includes(templatesDirName)) return templatesDirName;
   return 'assets';
 }
 

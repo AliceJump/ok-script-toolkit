@@ -7,7 +7,7 @@ import {
   isAssetPackPoolInitialized, renderPagesViaPool,
 } from './assetPack';
 import { tr } from './localization';
-import { labelEnumName, loadProjectConfig } from './projectConfig';
+import { labelEnumName, loadProjectConfig, templatesDirectory } from './projectConfig';
 
 /* ---------------- COCO 数据类型 ---------------- */
 
@@ -48,7 +48,6 @@ export function filenameKey(name: string): string {
 /* ---------------- 模板素材数据管理 ---------------- */
 
 const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.bmp']);
-const TEMPLATE_FOLDER = 'ok_templates';
 const COCO_JSON = 'coco_annotations.json';
 
 /** 只读图片头拿宽高（PNG/JPEG/BMP），不做像素解码；失败返回 undefined */
@@ -78,7 +77,10 @@ export class TemplateAssetData {
 
   constructor(root: vscode.WorkspaceFolder | string | undefined) {
     this.rootDir = typeof root === 'string' ? root : root ? root.uri.fsPath : '';
-    this.templateFolder = path.join(this.rootDir, TEMPLATE_FOLDER);
+    // 目录名走取值链（IDE 设置 > 项目约定文件 templates.directory > `ok_templates`）。
+    // 配置从**本对象自己的 rootDir** 读，与上面 `labelEnumName(loadProjectConfig(this.rootDir))`
+    // 保持同一个根 —— 模板数据可能来自另一个仓库，用错根会读到别人的约定文件。
+    this.templateFolder = path.join(this.rootDir, templatesDirectory(this.rootDir));
     this.cocoPath = path.join(this.templateFolder, COCO_JSON);
   }
 

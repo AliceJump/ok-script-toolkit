@@ -153,7 +153,7 @@
   "Failed to add to template assets: {error}": "Failed to add to template assets: {error}",
   "Failed to delete: {name}": "Failed to delete: {name}",
   "Failed to save screenshot.": "Failed to save screenshot.",
-  "Import images to ok_templates": "Import images to ok_templates",
+  "Import images to {dir}": "Import images to {dir}",
   "Imported {count} image(s)": "Imported {count} image(s)",
   "No image in clipboard. Press Ctrl+V inside this view to paste.": "No image in clipboard. Press Ctrl+V inside this view to paste.",
   "No workspace folder open.": "No workspace folder open.",

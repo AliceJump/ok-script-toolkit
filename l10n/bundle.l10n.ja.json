@@ -150,7 +150,7 @@
   "Failed to add to template assets: {error}": "テンプレートアセットへの追加に失敗: {error}",
   "Failed to delete: {name}": "削除に失敗: {name}",
   "Failed to save screenshot.": "スクリーンショットの保存に失敗しました。",
-  "Import images to ok_templates": "ok_templates に画像を読み込む",
+  "Import images to {dir}": "{dir} に画像を読み込む",
   "Imported {count} image(s)": "{count} 件の画像を読み込みました",
   "No image in clipboard. Press Ctrl+V inside this view to paste.": "クリップボードに画像がありません。このビュー内で Ctrl+V を押して貼り付けてください。",
   "No workspace folder open.": "ワークスペースが開かれていません。",

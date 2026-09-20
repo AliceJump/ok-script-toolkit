@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
+import { templatesDirectory } from './projectConfig';
 
 /** COCO 中一个 feature 模板条目：来源原图 + 裁剪框 */
 export interface FeatureTemplate {
@@ -134,19 +135,24 @@ interface okTplCocoIndexData {
 }
 
 /**
- * 读取 ok_templates/coco_annotations.json，按模板名反查原图路径 + bbox。
- * 同时扫描 ok_tasks/ok_templates/coco_annotations.json（扩展库）。
+ * 读取 `<模板目录>/coco_annotations.json`，按模板名反查原图路径 + bbox。
+ * 同时扫描 `ok_tasks/<模板目录>/coco_annotations.json`（扩展库）。
+ * 模板目录名可配（默认 `ok_templates`，见 `projectConfig.templatesDirectory`）。
  * 结果按 TTL 缓存过期，避免标注修改后一直用旧索引。
  */
 function getOkTemplateCocoIndex(rootDir: string): Map<string, OkTemplateCocoEntry> {
-  const hit = okTplCocoIndexes.get(rootDir);
+  // 目录名可配，所以缓存键必须带上它 —— 否则改了 `templates.directory` 后
+  // 仍会命中按旧目录名建的索引，表现为"改了设置不生效"（静默）。
+  const tplDir = templatesDirectory(rootDir);
+  const cacheKey = `${rootDir}\u0000${tplDir}`;
+  const hit = okTplCocoIndexes.get(cacheKey);
   if (hit && Date.now() - hit.builtAt < OK_TPL_COCO_TTL_MS) return hit.byName;
-  if (hit) okTplCocoIndexes.delete(rootDir);
+  if (hit) okTplCocoIndexes.delete(cacheKey);
 
   const byName = new Map<string, OkTemplateCocoEntry>();
   const dirs = [
-    path.join(rootDir, 'ok_templates'),
-    path.join(rootDir, 'ok_tasks', 'ok_templates'),
+    path.join(rootDir, tplDir),
+    path.join(rootDir, 'ok_tasks', tplDir),
   ];
   for (const dir of dirs) {
     const cocoPath = path.join(dir, 'coco_annotations.json');
@@ -181,7 +187,7 @@ function getOkTemplateCocoIndex(rootDir: string): Map<string, OkTemplateCocoEntr
       // 坏文件跳过
     }
   }
-  okTplCocoIndexes.set(rootDir, { builtAt: Date.now(), byName });
+  okTplCocoIndexes.set(cacheKey, { builtAt: Date.now(), byName });
   return byName;
 }
 

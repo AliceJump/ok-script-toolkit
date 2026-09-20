@@ -18,6 +18,13 @@ export interface ProjectLabelEnum {
   aliases?: string[];
 }
 
+export interface ProjectTemplates {
+  /** 模板目录（png 切图 + coco_annotations.json），相对项目根 */
+  directory?: string;
+  /** COCO 标注文件路径，相对项目根 */
+  cocoAnnotations?: string;
+}
+
 export interface ProjectConfig {
   labelEnum?: ProjectLabelEnum;
   executor?: {
@@ -26,7 +33,7 @@ export interface ProjectConfig {
       afterConfigImport?: string[];
     };
   };
-  templates?: { directory?: string; cocoAnnotations?: string };
+  templates?: ProjectTemplates;
   i18n?: {
     enabled?: boolean;
     langDirectory?: string;
@@ -55,6 +62,21 @@ export function nonEmptyStrings(value: unknown): string[] {
 }
 
 /**
+ * 相对路径归一化：统一成 `/` 分隔、去掉首尾斜杠；空（或只有斜杠）→ `undefined`。
+ *
+ * 为什么需要它：这个值会被**三种方式**消费 —— `path.join` 拼绝对路径、
+ * `rel.startsWith(...)` 比较、以及**拼进 glob / 正则**（`extension.ts` 的文件监听）。
+ * 声明文件里写 `ok_templates\` 或 `./ok_templates` 时，后两种都会失配，
+ * 且失配是**静默**的（监听不触发，界面看着正常）。所以入口处统一归一化一次。
+ */
+export function normalizeRelPath(value: unknown): string | undefined {
+  const raw = nonEmpty(value);
+  if (!raw) return undefined;
+  const cleaned = raw.replace(/\\/g, '/').replace(/^\/+/, '').replace(/\/+$/, '');
+  return cleaned.length > 0 ? cleaned : undefined;
+}
+
+/**
  * 把任意 JSON 值规整成 ProjectConfig。
  *
  * 顶层不是对象 → 空配置。**不做逐字段深校验**：声明文件是手写的，各访问器
@@ -69,6 +91,29 @@ export function parseProjectConfig(raw: unknown): ProjectConfig {
 export function labelEnumOf(config: ProjectConfig): ProjectLabelEnum {
   const value = config.labelEnum;
   return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+}
+
+/** `templates` 一组（保证是对象）。 */
+export function templatesOf(config: ProjectConfig): ProjectTemplates {
+  const value = config.templates;
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+}
+
+/**
+ * 模板目录名（相对项目根），已归一化。
+ *
+ * 取值链与全局一致：**个人偏好（IDE 设置）> 项目约定文件 `templates.directory` > 内置默认**。
+ *
+ * ⚠️ `ideValue` 必须传"用户真正设置过的值"，不能传带默认值的读取结果 ——
+ * `package.json` 里 `okTemplatesDirectory` 的 `default` 就是 `ok_templates`，
+ * `get()` 永远拿得到值 → 这一层永远命中 → **项目声明的目录名永远不生效**。
+ * 调用方用 `projectConfig.ideSetting()`（内部走 `inspect()`）。
+ *
+ * 历史：这个设置此前是**死设置** —— VS Code 侧把 `ok_templates` 写成常量、
+ * **没有任何代码读它**，而子仓会读（10 处）。属反向不对等（docs §8.1）。
+ */
+export function templatesDirectoryOf(config: ProjectConfig, ideValue: unknown, fallback: string): string {
+  return normalizeRelPath(ideValue) ?? normalizeRelPath(templatesOf(config).directory) ?? fallback;
 }
 
 /**

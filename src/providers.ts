@@ -10,7 +10,7 @@ import {
 } from './langData';
 import { FeatureData, FeatureTemplate } from './featureData';
 import { EffectData, EffectEntry } from './effectData';
-import { labelEnumAliases, loadProjectConfig } from './projectConfig';
+import { ideSetting, labelEnumAliases, loadProjectConfig } from './projectConfig';
 import { cropTemplateToDataUrlCached } from './pngCrop';
 import { tr } from './localization';
 
@@ -28,14 +28,11 @@ export function featureAliases(): string[] {
   // 别名是"代码里怎么写 import"这一项目约定 —— 项目 config.py **从不声明它**，
   // 所以此前只能靠内置的 fL/FeatureList 硬猜；项目把枚举导入成别的名字就完全失效。
   //
-  // ⚠️ 必须用 `inspect()` 而不是 `get()`：`package.json` 里 `featureAliases` 的
-  // `default` 就是 ['fL','FeatureList']，`get()` 在用户从没设置过时也会返回它，
-  // 于是这一层永远命中、项目声明的 aliases 永远被压住（接了等于没接）。
-  // `inspect()` 能把「用户真正写入的值」与「默认值」分开：工作区文件夹级 /
-  // 工作区级 / 全局级三者都为 undefined，才算"没设过"。
-  const inspected = vscode.workspace.getConfiguration('okScriptToolkit').inspect<string[]>('featureAliases');
-  const ide = inspected?.workspaceFolderValue ?? inspected?.workspaceValue ?? inspected?.globalValue;
-  return labelEnumAliases(loadProjectConfig(), ide, ['fL', 'FeatureList']);
+  // ⚠️ 这一层必须用 `ideSetting()`（内部走 `inspect()`）而不是 `get()`：
+  // `package.json` 里 `featureAliases` 的 `default` 就是 ['fL','FeatureList']，
+  // `get()` 在用户从没设置过时也会返回它 → 这层永远命中、项目声明永远被压住
+  // （接了等于没接）。细节见 `projectConfig.ideSetting()`。
+  return labelEnumAliases(loadProjectConfig(), ideSetting<string[]>('featureAliases'), ['fL', 'FeatureList']);
 }
 
 /** 构建匹配 别名.<模板名> 的正则 */
