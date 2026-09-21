@@ -8,7 +8,7 @@ import { injectWebviewLocalization, tr } from './localization';
 import { TempScreenshotStore } from './tempScreenshotStore';
 import { captureGameWindow } from './screenshotCapture';
 import { takePendingDrag } from './tempDrag';
-import { ideSetting, labelEnumClassName, labelEnumPathSetting, normalizeLabelEnumPathInput, setIdeSetting, templatesDirectory } from './projectConfig';
+import { currentWorkspaceFolderUri, ideSetting, labelEnumClassName, labelEnumPathSetting, normalizeLabelEnumPathInput, setIdeSetting, templatesDirectory } from './projectConfig';
 import { labelEnumRenameImpact, labelEnumRenameMessage, referencingFiles, writableClassName } from './labelEnumGuard';
 import { derivedEnumPath, needsEnumPathPrompt, SaveTarget, saveToAssetsItems } from './saveToAssetsPure';
 import { getNonce } from './webviewHtml';
@@ -254,11 +254,14 @@ class AssetGalleryController {
     // ⚠️ 写设置必须 **await**。`setIdeSetting` 是异步的，`void` 掉之后紧接着的
     // `confirmLabelEnumRename` 会读到**旧值** —— 用户在对话框里改了类名、守卫却拿旧名字
     // 去比对，于是漏报"这次会改掉项目里 N 处 import"。
-    const rememberEnumPath = (value: string) => setIdeSetting('labelEnumPath', value);
-    const rememberEnumName = (value: string) => setIdeSetting('labelEnumName', value);
-    let enumPath = labelEnumPathSetting();
+    //
+    // ⚠️ 枚举路径/类名的读写**必须绑定当前工作区文件夹 URI**，防止 A 项目的值串到 B 项目。
+    const folderUri = folder.uri;
+    const rememberEnumPath = (value: string) => setIdeSetting('labelEnumPath', value, folderUri);
+    const rememberEnumName = (value: string) => setIdeSetting('labelEnumName', value, folderUri);
+    let enumPath = labelEnumPathSetting(folderUri);
     /** 我**设过**的类名（空 = 没设过）。列表里显示这个而不是解析后的值 —— 见 `saveToAssetsPure` */
-    let enumName = ideSetting<string>('labelEnumName') ?? '';
+    let enumName = ideSetting<string>('labelEnumName', folderUri) ?? '';
 
     // 目标选择与两项枚举设置共用一轮循环：改完任一项都要回到目标选择，所以列表每次都重新构造。
     let targetFolder = '';
@@ -335,7 +338,7 @@ class AssetGalleryController {
     // 覆盖已有枚举文件、且**类名会变**时先问一句。这是唯一一处"个人覆盖能把项目弄坏"
     // 的地方：项目的代码按类名 import（`from src.data.feature_list import FeatureList`），
     // 改名之后那些 import 全部 ImportError，而保存成功的提示照样会弹出来。
-    if (absEnumPath && !(await this.confirmLabelEnumRename(absEnumPath))) return;
+    if (absEnumPath && !(await this.confirmLabelEnumRename(absEnumPath, folderUri))) return;
 
     try {
       this.data.ensureTemplateFolder();
@@ -379,7 +382,7 @@ class AssetGalleryController {
    *
    * 失败一律放行：读不了文件、扫不了项目都只影响"提示的完整度"，不能反过来阻断保存。
    */
-  private async confirmLabelEnumRename(absEnumPath: string): Promise<boolean> {
+  private async confirmLabelEnumRename(absEnumPath: string, folderUri: vscode.Uri): Promise<boolean> {
     let existingSource: string | undefined;
     try {
       existingSource = fs.readFileSync(absEnumPath, 'utf-8');
@@ -388,7 +391,7 @@ class AssetGalleryController {
     }
     // 用**将要写入的那个类名**（`writableClassName` 会把非法标识符退回兜底名）去比 ——
     // 直接拿用户填的原始值比，会为"填了个非法名字、实际什么都没变"的情况报警。
-    const newClassName = writableClassName(labelEnumClassName(absEnumPath, this.data.root));
+    const newClassName = writableClassName(labelEnumClassName(absEnumPath, this.data.root, folderUri));
     const impact = labelEnumRenameImpact({ existingSource, newClassName });
     if (!impact) return true;
 

@@ -39,6 +39,8 @@ const writes = [];            // 记录 update() 调用，用来断言"只清了
 const overrides = new Map();  // key -> { global, workspace, workspaceFolder }（= 用户真正写过的值）
 const defaults = new Map();   // key -> package.json 里的 default（**不是**用户设置）
 const infoMessages = [];
+// 记录 getConfiguration 的调用参数，用于断言资源作用域行为
+const getConfigCalls = [];
 
 const ConfigurationTarget = { Global: 1, Workspace: 2, WorkspaceFolder: 3 };
 class ThemeIcon { constructor(id) { this.id = id; } }
@@ -48,10 +50,18 @@ function t(message, args) {
   return String(message).replace(/\\{(\\w+)\\}/g, (all, name) => (name in args ? String(args[name]) : all));
 }
 
-function getConfiguration() {
+// 资源作用域感知的 getConfiguration 桩
+// scope 为 { uri: { fsPath: '...' } } 时，inspect() 仍然返回所有层级，
+// 但 get() 只返回该文件夹作用域内的值（模拟 VS Code 的真实行为）
+function getConfiguration(section, scope) {
+  getConfigCalls.push({ section, scope });
   return {
     get(key) {
       const s = overrides.get(key) || {};
+      // 有 scope 时只返回该文件夹作用域的值（模拟 VS Code 的资源作用域行为）
+      if (scope) {
+        return s.workspaceFolder;
+      }
       if (s.workspaceFolder !== undefined) return s.workspaceFolder;
       if (s.workspace !== undefined) return s.workspace;
       if (s.global !== undefined) return s.global;
@@ -59,6 +69,8 @@ function getConfiguration() {
     },
     inspect(key) {
       const s = overrides.get(key) || {};
+      // 无论是否有 scope，inspect() 都返回所有层级的值
+      // 这是 VS Code 的真实行为：inspect 总是返回完整的层级信息
       return {
         key,
         defaultValue: defaults.get(key),
@@ -68,7 +80,7 @@ function getConfiguration() {
       };
     },
     update(key, value, target) {
-      writes.push({ key, value, target });
+      writes.push({ key, value, target, scope });
       const s = overrides.get(key) || {};
       const field =
         target === ConfigurationTarget.Global ? 'global'
@@ -108,9 +120,9 @@ module.exports = {
   },
   // 仅供测试使用的控制面
   __test: {
-    overrides, defaults, writes, infoMessages, quickPicks,
+    overrides, defaults, writes, infoMessages, quickPicks, getConfigCalls,
     reset() {
-      overrides.clear(); writes.length = 0; infoMessages.length = 0; quickPicks.length = 0;
+      overrides.clear(); writes.length = 0; infoMessages.length = 0; quickPicks.length = 0; getConfigCalls.length = 0;
     },
     setOverride(key, level, value) {
       const s = overrides.get(key) || {};
@@ -570,6 +582,115 @@ async function main() {
     check(
       rowOf(noProbeRows, 'okTemplatesDirectory').declared === undefined,
       '对照三：同一杠杆也让模板目录那行失去声明值 —— 证明第 1 组的 declared 断言确实在约束它',
+    );
+  }
+
+  // ── 8. 枚举路径/类名的工作区文件夹作用域 ────────────────────────────
+  //
+  // CodeRabbit review 要求：labelEnumPath / labelEnumName 的读写必须绑定当前工作区文件夹 URI，
+  // 防止 A 项目的值串到 B 项目。
+  console.log('\n枚举路径/类名的工作区文件夹作用域');
+  {
+    writeConvention({ labelEnum: { path: 'src/data/feature_list', name: 'FeatureList' } });
+    vscode.__test.reset();
+
+    const rows = conv.conventionSources();
+    const pathRow = rowOf(rows, 'labelEnumPath');
+    const nameRow = rowOf(rows, 'labelEnumName');
+
+    // 断言：枚举路径/类名的 inspect 调用带了 scope 参数（工作区文件夹 URI）
+    const enumConfigCalls = vscode.__test.getConfigCalls.filter(
+      (c) => c.section === 'okScriptToolkit' && c.scope,
+    );
+    check(
+      enumConfigCalls.length >= 2,
+      `getConfiguration 被调用了 ${enumConfigCalls.length} 次带 scope 参数 —— 枚举路径/类名必须绑定工作区文件夹`,
+    );
+
+    // 断言：scope 的 fsPath 与当前工作区文件夹一致
+    const scopePaths = enumConfigCalls.map((c) => c.scope?.fsPath).filter(Boolean);
+    check(
+      scopePaths.every((p) => p === projectDir),
+      `所有带 scope 的 getConfiguration 调用都使用了当前工作区文件夹 URI（${projectDir}）`,
+    );
+
+    // 断言：枚举路径/类名仍然能正确读取值
+    check(pathRow.effective === 'src/data/feature_list.py', '带 scope 时路径仍能正确读取');
+    check(nameRow.effective === 'FeatureList', '带 scope 时类名仍能正确读取');
+
+    // 断言：写入时也带 scope
+    vscode.__test.reset();
+    conv.clearOverride('labelEnumPath');
+    const pathWrites = vscode.__test.writes.filter((w) => w.key === 'labelEnumPath');
+    check(
+      pathWrites.every((w) => w.scope !== undefined),
+      'clearOverride 对 labelEnumPath 的写入带了 scope 参数',
+    );
+    check(
+      pathWrites.every((w) => w.scope?.fsPath === projectDir),
+      `clearOverride 对 labelEnumPath 的写入使用了当前工作区文件夹 URI（${projectDir}）`,
+    );
+  }
+
+  // ── 9. setIdeSetting 不再写入全局设置 ──────────────────────────────
+  //
+  // CodeRabbit review 要求：setIdeSetting 不应在没有工作区文件夹时写入全局设置。
+  // 这里通过检查 writes 记录来验证。
+  console.log('\nsetIdeSetting 不再写入全局设置');
+  {
+    vscode.__test.reset();
+
+    // 模拟没有工作区文件夹的场景
+    const origFolders = vscode.workspace.workspaceFolders;
+    vscode.workspace.workspaceFolders = undefined;
+
+    // 尝试调用 setIdeSetting（需要直接调用编译产物）
+    const projectConfig = require(path.join(root, 'out', 'projectConfig.js'));
+
+    // setIdeSetting 应该在没有工作区文件夹时直接返回，不做任何写入
+    await projectConfig.setIdeSetting('labelEnumPath', 'test/path.py');
+    const globalWrites = vscode.__test.writes.filter(
+      (w) => w.key === 'labelEnumPath' && w.target === vscode.ConfigurationTarget.Global,
+    );
+    check(
+      globalWrites.length === 0,
+      '没有工作区文件夹时 setIdeSetting 不写入全局设置',
+    );
+
+    // 恢复工作区文件夹
+    vscode.workspace.workspaceFolders = origFolders;
+  }
+
+  // ── 10. clearOverride 使用工作区文件夹作用域 ────────────────────────
+  //
+  // CodeRabbit review 要求：clearOverride 在读取与清除 WorkspaceFolder 覆盖时
+  // 必须使用当前工作区文件夹的 URI。
+  console.log('\nclearOverride 使用工作区文件夹作用域');
+  {
+    writeConvention({ templates: { directory: 'proj_tpl' } });
+    vscode.__test.reset();
+
+    // 设置一个覆盖
+    vscode.__test.setOverride('labelEnumPath', 'workspaceFolder', 'override/path.py');
+
+    // 清除覆盖
+    await conv.clearOverride('labelEnumPath');
+
+    // 断言：clearOverride 对 labelEnumPath 的读写都带了 scope
+    const labelEnumWrites = vscode.__test.writes.filter((w) => w.key === 'labelEnumPath');
+    check(
+      labelEnumWrites.length > 0,
+      'clearOverride 对 labelEnumPath 执行了写入',
+    );
+    check(
+      labelEnumWrites.every((w) => w.scope !== undefined),
+      'clearOverride 对 labelEnumPath 的所有写入都带了 scope 参数',
+    );
+
+    // 断言：写入使用了 WorkspaceFolder 目标
+    check(
+      labelEnumWrites.some((w) => w.target === vscode.ConfigurationTarget.WorkspaceFolder),
+      'clearOverride 清除了 WorkspaceFolder 级别的覆盖',
     );
   }
 
