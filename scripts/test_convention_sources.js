@@ -412,9 +412,9 @@ async function main() {
     check(pathRow.layer === 'project' && pathRow.declared === 'src/data/feature_list.py', '声明值与生效值走同一套归一化');
     check(nameRow.effective === 'FeatureList' && nameRow.layer === 'project', '类名行按项目声明取值');
 
-    // 个人覆盖
-    vscode.__test.setOverride('labelEnumPath', 'global', 'mine/x.py');
-    vscode.__test.setOverride('labelEnumName', 'global', 'MyEnum');
+    // 个人覆盖（必须写到 workspaceFolder 级别，因为枚举路径/类名带 scope 读取）
+    vscode.__test.setOverride('labelEnumPath', 'workspaceFolder', 'mine/x.py');
+    vscode.__test.setOverride('labelEnumName', 'workspaceFolder', 'MyEnum');
     const rows2 = conv.conventionSources();
     const path2 = rowOf(rows2, 'labelEnumPath');
     const name2 = rowOf(rows2, 'labelEnumName');
@@ -425,7 +425,7 @@ async function main() {
     check(path2.overridden === true && name2.overridden === true, '两项都提供「恢复为项目约定」');
 
     // 空字符串覆盖 = "没设置"，不是"钉死为空"
-    vscode.__test.setOverride('labelEnumPath', 'global', '   ');
+    vscode.__test.setOverride('labelEnumPath', 'workspaceFolder', '   ');
     const path3 = rowOf(conv.conventionSources(), 'labelEnumPath');
     check(path3.layer === 'project', '个人偏好写成空白 = 回到项目约定（与 aliases 的空数组同一条规则）');
 

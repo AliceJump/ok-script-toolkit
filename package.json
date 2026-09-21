@@ -235,11 +235,13 @@
         "okScriptToolkit.labelEnumPath": {
           "type": "string",
           "default": "",
+          "scope": "resource",
           "markdownDescription": "%config.labelEnumPath%"
         },
         "okScriptToolkit.labelEnumName": {
           "type": "string",
           "default": "",
+          "scope": "resource",
           "markdownDescription": "%config.labelEnumName%"
         },
         "okScriptToolkit.effectsFile": {

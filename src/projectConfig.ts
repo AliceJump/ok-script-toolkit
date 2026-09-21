@@ -179,6 +179,8 @@ export function ideSetting<T>(key: string, scope?: vscode.Uri): T | undefined {
     ? vscode.workspace.getConfiguration('okScriptToolkit', scope)
     : vscode.workspace.getConfiguration('okScriptToolkit');
   const inspected = cfg.inspect<T>(key);
+  // 有 scope 时只返回工作区文件夹级值，防止跨项目污染
+  if (scope) return inspected?.workspaceFolderValue;
   return inspected?.workspaceFolderValue ?? inspected?.workspaceValue ?? inspected?.globalValue;
 }
 
