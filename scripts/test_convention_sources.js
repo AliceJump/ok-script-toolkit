@@ -14,9 +14,10 @@
  */
 const assert = require('assert');
 const fs = require('fs');
-const os = require('os');
 const path = require('path');
 const Module = require('module');
+
+const { makeTmpDir } = require('./test-tmp');
 
 const failures = [];
 function check(condition, message) {
@@ -29,7 +30,7 @@ function check(condition, message) {
 }
 
 // ── vscode 桩 ────────────────────────────────────────────────────────
-const stubDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ok-vscode-stub-'));
+const stubDir = makeTmpDir('ok-vscode-stub');
 const VSCODE_STUB = path.join(stubDir, 'vscode.js');
 fs.writeFileSync(
   VSCODE_STUB,
@@ -177,7 +178,7 @@ for (const [fullKey, spec] of Object.entries(pkg.contributes.configuration.prope
 for (const [key, value] of Object.entries(PKG_DEFAULTS)) vscode.__test.defaults.set(key, value);
 
 // 临时项目根
-const projectDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ok-conv-proj-'));
+const projectDir = makeTmpDir('ok-conv-proj');
 vscode.workspace.workspaceFolders = [{ uri: { fsPath: projectDir } }];
 vscode.__test.defaults.set('okScriptProjectPath', projectDir);
 vscode.__test.setDefaultFsPath(projectDir);

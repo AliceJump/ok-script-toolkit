@@ -10,8 +10,9 @@ import importlib.util
 import json
 import os
 import sys
-import tempfile
 from pathlib import Path
+
+from _test_tmp import make_tmp_tempdir
 
 ROOT = Path(__file__).resolve().parent.parent
 SPEC = importlib.util.spec_from_file_location("run_executor_under_test", ROOT / "run_executor.py")
@@ -38,20 +39,20 @@ def write(path, text):
 
 # ── 1. 文件缺席：返回空 dict，不抛异常 ──────────────────────────────
 print("load_project_config")
-with tempfile.TemporaryDirectory() as tmp:
+with make_tmp_tempdir("ok-executor-project-config") as tmp:
     check(mod.load_project_config(tmp) == {}, "文件不存在时返回空 dict（纯增量，不影响启动）")
 
 # ── 2. 文件损坏 / 顶层不是对象：同样容错 ────────────────────────────
-with tempfile.TemporaryDirectory() as tmp:
+with make_tmp_tempdir("ok-executor-project-config") as tmp:
     write(os.path.join(tmp, mod.PROJECT_CONFIG_FILE), "{ 这不是 json")
     check(mod.load_project_config(tmp) == {}, "JSON 语法错误时返回空 dict，不抛异常")
 
-with tempfile.TemporaryDirectory() as tmp:
+with make_tmp_tempdir("ok-executor-project-config") as tmp:
     write(os.path.join(tmp, mod.PROJECT_CONFIG_FILE), "[1, 2, 3]")
     check(mod.load_project_config(tmp) == {}, "顶层不是对象时返回空 dict")
 
 # ── 3. 正常读取 ──────────────────────────────────────────────────────
-with tempfile.TemporaryDirectory() as tmp:
+with make_tmp_tempdir("ok-executor-project-config") as tmp:
     write(
         os.path.join(tmp, mod.PROJECT_CONFIG_FILE),
         json.dumps({"executor": {"startupHooks": {"beforeConfigImport": ["a.b:c"]}}}),
@@ -95,7 +96,7 @@ check(
 
 # ── 5. run_startup_hooks：按顺序执行 ────────────────────────────────
 print("\nrun_startup_hooks")
-with tempfile.TemporaryDirectory() as tmp:
+with make_tmp_tempdir("ok-executor-project-config") as tmp:
     pkg = "hookorderpkg"
     write(os.path.join(tmp, pkg, "__init__.py"), "")
     write(
@@ -115,7 +116,7 @@ with tempfile.TemporaryDirectory() as tmp:
 
 # ── 6. 单个钩子失败不阻断后续 ──────────────────────────────────────
 print("\n失败不阻断")
-with tempfile.TemporaryDirectory() as tmp:
+with make_tmp_tempdir("ok-executor-project-config") as tmp:
     pkg = "hookfailpkg"
     write(os.path.join(tmp, pkg, "__init__.py"), "")
     write(

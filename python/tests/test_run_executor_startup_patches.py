@@ -14,8 +14,9 @@ pointer to POINT`，因为 ok 库 `win32_gdi` 在 import 时污染了全局
 import importlib.util
 import os
 import sys
-import tempfile
 from pathlib import Path
+
+from _test_tmp import make_tmp_tempdir
 
 # 测试放在 tests/ 子目录，被测脚本在上一级 python/。加 .. 而不是 .，
 # 这样测试文件不会被随插件发布的 `python/*.py` 通配打包收进去。
@@ -60,7 +61,7 @@ check(
 
 # ── 2. 项目没有补丁：静默跳过，不抛异常 ──────────────────────────────
 print("\n[2] 项目没有补丁")
-with tempfile.TemporaryDirectory() as tmp:
+with make_tmp_tempdir("ok-executor-startup-patches") as tmp:
     pkg = "nopatchpkg"
     write(os.path.join(tmp, pkg, "__init__.py"), "")
     sys.path.insert(0, tmp)
@@ -72,7 +73,7 @@ with tempfile.TemporaryDirectory() as tmp:
 
 # ── 3. 补丁模块存在但没有入口函数 ────────────────────────────────────
 print("\n[3] 补丁模块缺入口函数")
-with tempfile.TemporaryDirectory() as tmp:
+with make_tmp_tempdir("ok-executor-startup-patches") as tmp:
     pkg = "noentrypkg"
     write(os.path.join(tmp, pkg, "__init__.py"), "")
     write(os.path.join(tmp, pkg, "patches", "__init__.py"), "")
@@ -86,7 +87,7 @@ with tempfile.TemporaryDirectory() as tmp:
 
 # ── 4. 正常安装：入口被真正调用 ──────────────────────────────────────
 print("\n[4] 正常安装")
-with tempfile.TemporaryDirectory() as tmp:
+with make_tmp_tempdir("ok-executor-startup-patches") as tmp:
     pkg = "patchokpkg"
     write(os.path.join(tmp, pkg, "__init__.py"), "")
     write(os.path.join(tmp, pkg, "patches", "__init__.py"), "")
@@ -108,7 +109,7 @@ with tempfile.TemporaryDirectory() as tmp:
 
 # ── 5. 补丁自身抛异常：必须吞掉，不能拖垮执行器 ──────────────────────
 print("\n[5] 补丁抛异常时不阻断启动")
-with tempfile.TemporaryDirectory() as tmp:
+with make_tmp_tempdir("ok-executor-startup-patches") as tmp:
     pkg = "patchfailpkg"
     write(os.path.join(tmp, pkg, "__init__.py"), "")
     write(os.path.join(tmp, pkg, "patches", "__init__.py"), "")
@@ -134,7 +135,7 @@ with tempfile.TemporaryDirectory() as tmp:
 
 # ── 6. 破坏性对照：证明"调用了入口"这条断言不是空过 ──────────────────
 print("\n[6] 破坏性对照")
-with tempfile.TemporaryDirectory() as tmp:
+with make_tmp_tempdir("ok-executor-startup-patches") as tmp:
     pkg = "controlpkg"
     write(os.path.join(tmp, pkg, "__init__.py"), "")
     write(os.path.join(tmp, pkg, "patches", "__init__.py"), "")

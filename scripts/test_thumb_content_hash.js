@@ -19,11 +19,11 @@
  */
 const assert = require('assert');
 const fs = require('fs');
-const os = require('os');
 const path = require('path');
 
 const Module = require('module');
-const stubDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ok-vscode-stub-'));
+const { makeTmpDir } = require('./test-tmp');
+const stubDir = makeTmpDir('ok-vscode-stub');
 const VSCODE_STUB = path.join(stubDir, 'vscode.js');
 fs.writeFileSync(VSCODE_STUB, 'module.exports = {};\n');
 const origResolve = Module._resolveFilename;
@@ -62,7 +62,7 @@ function writeImage(imgPath, rgb) {
 }
 
 async function main() {
-  const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'ok-thumb-hash-'));
+  const tmpRoot = makeTmpDir('ok-thumb-hash');
   const thumbDir = path.join(tmpRoot, 'thumbs');
   fs.mkdirSync(thumbDir, { recursive: true });
   const imgA = path.join(tmpRoot, 'assets', 'images', 'same_name.png');

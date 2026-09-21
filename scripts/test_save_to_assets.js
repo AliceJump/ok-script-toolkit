@@ -14,7 +14,8 @@
 
 const fs = require('fs');
 const path = require('path');
-const os = require('os');
+
+const { makeTmpDir } = require('./test-tmp');
 
 /* ---------- mock vscode 模块（TemplateAssetData 需要） ---------- */
 
@@ -131,7 +132,7 @@ let templateDir;
 let targetDir;
 
 function setup() {
-  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ok-save-test-'));
+  tmpDir = makeTmpDir('ok-save-test');
   templateDir = path.join(tmpDir, 'ok_templates');
   targetDir = path.join(tmpDir, 'assets');
   fs.mkdirSync(templateDir, { recursive: true });

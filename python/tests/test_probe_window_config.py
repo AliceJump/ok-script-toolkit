@@ -21,8 +21,9 @@ import json
 import os
 import subprocess
 import sys
-import tempfile
 from pathlib import Path
+
+from _test_tmp import make_tmp_dir
 
 ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = ROOT / "probe_window_config.py"
@@ -44,7 +45,7 @@ def check(condition, message):
 
 def probe(text, at="src/config.py"):
     """在临时项目里写 config.py，然后**像插件那样**跑一遍脚本并解析最后一行 JSON。"""
-    tmp = tempfile.mkdtemp(prefix="ok-probe-")
+    tmp = make_tmp_dir("ok-probe")
     path = os.path.join(tmp, *at.split("/"))
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
@@ -150,7 +151,7 @@ check(no_config.get("ok") is False, "找不到 config.py 时 ok=false（插件�
 # ── 4. 找不到 config.py 时的路径解析 ────────────────────────────────
 print("\n找不到 config.py")
 
-empty_dir = tempfile.mkdtemp(prefix="ok-probe-empty-")
+empty_dir = make_tmp_dir("ok-probe-empty")
 check(mod._resolve_config_path(empty_dir) is None, "目录里没有 config.py 时返回 None（不抛异常）")
 
 print("\n" + ("失败 %d 项" % len(failures) if failures else "全部通过"))
