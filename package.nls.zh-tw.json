@@ -34,7 +34,7 @@
   "config.enableInlayHints": "啟用語言值和效果的行內提示。",
   "config.featureAliases": "FeatureList 模板補全和懸停使用的別名。",
   "config.labelEnumPath": "LabelEnum 檔案路徑（相對於工作區根目錄，帶不帶 .py 都可以）。覆蓋 ok-script-toolkit.json 裡的 labelEnum.path；留空則跟隨專案約定。",
-  "config.labelEnumName": "LabelEnum 類名。覆蓋 ok-script-toolkit.json 裡的 labelEnum.name；留空則由檔名推導。專案程式碼按這個名字 import，改名會讓那些 import 失效 —— 覆蓋既有檔案前會先請你確認。",
+  "config.labelEnumName": "LabelEnum 類名。覆蓋 ok-script-toolkit.json 裡的 labelEnum.name；留空則跟隨專案約定 —— 只有專案也沒宣告時才由檔名推導。專案程式碼按這個名字 import，改名會讓那些 import 失效 —— 覆蓋既有檔案前會先請你確認。",
   "config.effectsFile": "相對於工作區根目錄的 EffectType 與 EFFECT_DESCRIPTIONS Python 檔案。",
   "config.okScriptProjectPath": "包含 src/config.py 的 ok-script 專案根目錄，供任務啟動器使用。",
   "config.okScriptPython": "執行 ok-script 任務的 Python 直譯器；留空時 Windows 優先使用目標專案 .venv。",

@@ -281,7 +281,11 @@ class AssetGalleryController {
           path: tr('Enum file path'),
           name: tr('Enum class name'),
           notSet: tr('Not set — click to set'),
-          derived: tr('Derived from the file name'),
+          // ⚠️ 这里说的是**我这一层没设过**时会怎样，不是"由文件名推导"：
+          // 取值链是「个人偏好 > 项目约定 `labelEnum.name` > 文件名」，留空后**先**落到
+          // 项目约定，只有项目也没声明才用文件名。写成"由文件名推导"会让配置了
+          // `labelEnum.name` 的项目里的用户以为自己在改成文件名推导。
+          derived: tr('Not set — follows the project convention'),
         },
       }).map((item) => item.separator
         ? { ...item, kind: vscode.QuickPickItemKind.Separator }
@@ -299,7 +303,7 @@ class AssetGalleryController {
       }
       if (pick.edit === 'enumName') {
         const edited = await vscode.window.showInputBox({
-          prompt: tr('LabelEnum class name (leave empty to derive it from the file name)'),
+          prompt: tr('LabelEnum class name (leave empty to follow the project convention)'),
           // 提示里给出**当前生效**的类名（可能是项目约定或文件名推导出来的），
           // 输入框本身留空 = 撤销我的设置。这样"看得到现在的值"与"能清掉覆盖"同时成立。
           placeHolder: enumPath ? labelEnumClassName(path.join(folder.uri.fsPath, enumPath)) : '',

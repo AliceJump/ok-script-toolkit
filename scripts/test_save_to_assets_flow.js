@@ -42,7 +42,7 @@ const LABELS = {
   path: 'Enum file path',
   name: 'Enum class name',
   notSet: 'Not set — click to set',
-  derived: 'Derived from the file name',
+  derived: 'Not set — follows the project convention',
 };
 
 const items = (enumPath, enumName = '') =>
@@ -106,7 +106,8 @@ console.log('\n枚举路径 / 类名两行');
   );
   check(
     rowOf(empty, 'enumName').description === LABELS.derived,
-    '类名没设过时显示"由文件名推导"（与溯源面板的用词一致）',
+    '类名没设过时显示"未设置 —— 跟随项目约定"（取值链是「个人偏好 > 项目约定 > 文件名」，'
+      + '这里只是**我这一层**没设过，不等于会由文件名推导）',
   );
   check(
     rowOf(filled, 'enumName').description === 'FeatureList',
