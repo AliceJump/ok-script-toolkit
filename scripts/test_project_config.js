@@ -148,6 +148,17 @@ check(
   '都没有时报「内置默认」且值为空串（面板据此显示"未设置 —— 保存时询问"）',
 );
 
+console.log('\nlabelEnumPathInputError');
+check(pure.labelEnumPathInputError('') === undefined, '空路径合法（表示跳过生成）');
+check(pure.labelEnumPathInputError('src/data/FeatureList') === undefined, '普通相对模块路径合法');
+check(pure.labelEnumPathInputError('src/data/FeatureList.py') === undefined, '普通相对文件路径合法');
+check(pure.labelEnumPathInputError('/tmp/FeatureList.py') === 'absolute', '拒绝 POSIX 绝对路径');
+check(pure.labelEnumPathInputError('C:\\tmp\\FeatureList.py') === 'absolute', '拒绝 Windows 绝对路径');
+check(pure.labelEnumPathInputError('\\\\server\\share\\FeatureList.py') === 'absolute', '拒绝 UNC 路径');
+check(pure.labelEnumPathInputError('../FeatureList.py') === 'traversal', '拒绝开头的上跳段');
+check(pure.labelEnumPathInputError('src/../FeatureList.py') === 'traversal', '拒绝路径中间的上跳段');
+check(pure.labelEnumPathInputError('src\\..\\FeatureList.py') === 'traversal', '反斜杠写法同样拒绝上跳段');
+
 // ── 6. 相对路径归一化 ────────────────────────────────────────────────
 //
 // 这个值会被三种方式消费：`path.join` 拼绝对路径、`rel.startsWith(...)` 比较、

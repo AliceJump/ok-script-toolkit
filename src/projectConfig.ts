@@ -27,6 +27,7 @@ import {
   labelEnumName,
   labelEnumNameResolved,
   labelEnumPath,
+  labelEnumPathInputError,
   labelEnumPathResolved,
   normalizeLabelEnumFile,
   normalizeRelPath,
@@ -320,6 +321,8 @@ export function labelEnumPathSetting(): string {
  * 只是生成的文件名不对"。这里补上，消费点不用各自判断。
  */
 export function normalizeLabelEnumPathInput(value: string): string {
+  const error = labelEnumPathInputError(value);
+  if (error) throw new RangeError(`Invalid workspace-relative enum path: ${error}`);
   return normalizeLabelEnumFile(value) ?? '';
 }
 

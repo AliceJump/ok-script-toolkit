@@ -9,6 +9,7 @@ import {
 import { tr } from './localization';
 import { labelEnumNameSetting, templatesDirectory } from './projectConfig';
 import { writableClassName } from './labelEnumGuard';
+import { isPathInsideRoot } from './saveToAssetsPure';
 
 /* ---------------- COCO 数据类型 ---------------- */
 
@@ -320,6 +321,12 @@ export class TemplateAssetData {
     cancellationToken?: vscode.CancellationToken,
   ): Promise<void> {
     if (cancellationToken?.isCancellationRequested) throw new vscode.CancellationError();
+    const enumFile = generateEnum
+      ? path.resolve(this.rootDir, enumPath || path.join(targetFolder, 'LabelEnum.py'))
+      : undefined;
+    if (enumFile && !isPathInsideRoot(this.rootDir, enumFile)) {
+      throw new Error(tr('Enum file path must be relative and stay within the workspace root.'));
+    }
     const targetImagesDir = path.join(targetFolder, 'images');
 
     // 清空目标目录中的旧图片（重新生成前清理）
@@ -519,9 +526,8 @@ export class TemplateAssetData {
     fs.writeFileSync(cocoTarget, JSON.stringify(croppedCoco, null, 2), 'utf-8');
 
     // Generate label enum if requested
-    if (generateEnum) {
+    if (enumFile) {
       const labels = croppedCoco.categories.map(c => c.name).sort();
-      const enumFile = enumPath || path.join(targetFolder, 'LabelEnum.py');
       this.generateLabelEnum(enumFile, labels);
     }
   }

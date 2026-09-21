@@ -172,7 +172,20 @@ console.log('\nderivedEnumPath');
   );
 }
 
-// ── 5. 破坏性对照 ────────────────────────────────────────────────────
+// ── 5. 枚举输出必须留在工作区 ───────────────────────────────────────
+console.log('\nisPathInsideRoot');
+{
+  const ws = path.join(path.sep, 'workspace', 'project');
+  check(pure.isPathInsideRoot(ws, path.join(ws, 'src', 'LabelEnum.py')), '工作区内的枚举文件合法');
+  check(pure.isPathInsideRoot(ws, ws), '工作区根本身仍属于工作区');
+  check(!pure.isPathInsideRoot(ws, path.join(ws, '..', 'LabelEnum.py')), '拒绝解析到工作区外的路径');
+  check(
+    !pure.isPathInsideRoot(ws, path.join(path.sep, 'workspace', 'project-other', 'LabelEnum.py')),
+    '同前缀的兄弟目录不算工作区内',
+  );
+}
+
+// ── 6. 破坏性对照 ────────────────────────────────────────────────────
 //
 // 就地改造编译产物再求值。若对照跑出来的结果与期望相同，说明对应断言没在约束任何东西。
 console.log('\n破坏性对照');
