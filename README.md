@@ -413,6 +413,8 @@ See [DEVELOPMENT.md](DEVELOPMENT.md) for project structure, JetBrains version, l
 
 完整字段清单与设计说明见 [`docs/project-config.md`](docs/project-config.md)，
 可直接复制的示例见 [`docs/ok-script-toolkit.example.json`](docs/ok-script-toolkit.example.json)。
+**「运行时到底读了哪些配置、每一项是干什么的、按什么规则取值」见
+[`docs/config-reads.md`](docs/config-reads.md)**（六型分类的全景 + 逐项用途 + 不变量清单 + 排查步骤）。
 
 #### 配置示例
 
@@ -507,6 +509,8 @@ Settings that take part in the precedence chain ↔ the field they map to:
 
 See [`docs/project-config.md`](docs/project-config.md) for the full field list and design notes,
 and [`docs/ok-script-toolkit.example.json`](docs/ok-script-toolkit.example.json) for a copy-paste example.
+For **what the plugin actually reads at runtime, what each setting does, and the precedence rules**,
+see [`docs/config-reads.md`](config-reads.md) (six read-path types, per-item purpose, the invariants, and a troubleshooting list).
 
 #### Configuration Example
 

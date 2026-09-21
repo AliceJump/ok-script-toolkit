@@ -53,7 +53,7 @@ python/                       随扩展发布的辅助脚本：任务发现、�
 	python/tests/              开发期 Python 回归测试（test_probe_pure_group_labels.py、test_run_executor_sandbox.py）；按 AGENT.md 打包规范不进 VSIX / JetBrains JAR
 jetbrains/                    JetBrains 插件的**独立公开仓库**（git submodule），有自己的 README / CI / 发版流程
 schemas/                      ok-script-toolkit.json 的 JSON Schema（编辑器补全与校验）
-docs/                         设计文档（项目约定文件设计、可直接复制的示例配置）
+docs/                         设计文档（配置读取全景、项目约定文件设计、可直接复制的示例配置）
 scripts/                      开发期生成与回归测试工具，不打入 VSIX
 l10n/                         扩展宿主运行时本地化资源
 package.nls*.json             扩展清单本地化资源
@@ -282,7 +282,7 @@ python/                      Helper scripts shipped with the extension: task dis
 	python/tests/              Development-time Python regression tests (test_probe_pure_group_labels.py, test_run_executor_sandbox.py); excluded from VSIX / JetBrains JAR per AGENT.md packaging rules
 jetbrains/                    The JetBrains plugin's **separate public repository** (git submodule), with its own README / CI / release flow
 schemas/                      JSON Schema for ok-script-toolkit.json (editor completion and validation)
-docs/                         Design documents (convention-file design, copy-pasteable example config)
+docs/                         Design documents (config-reads overview, convention-file design, copy-pasteable example config)
 scripts/                      Development-time generation & regression test tools, not included in VSIX
 l10n/                         Extension host runtime localization resources
 package.nls*.json             Extension manifest localization resources
