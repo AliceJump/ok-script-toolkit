@@ -36,11 +36,14 @@ fs.writeFileSync(
   `'use strict';
 // 只提供被测代码真正用到的那一小块 API。
 const writes = [];            // 记录 update() 调用，用来断言"只清了有值的层级"
-const overrides = new Map();  // key -> { global, workspace, workspaceFolder }（= 用户真正写过的值）
+// workspaceFolder 按 scope.fsPath 隔离存储，模拟 VS Code 的资源作用域行为
+const overrides = new Map();  // key -> { global, workspace, workspaceFolder: Map<fsPath, value> }
 const defaults = new Map();   // key -> package.json 里的 default（**不是**用户设置）
 const infoMessages = [];
 // 记录 getConfiguration 的调用参数，用于断言资源作用域行为
 const getConfigCalls = [];
+// 默认工作区文件夹 fsPath，由测试代码设置
+let defaultFsPath = '__default__';
 
 const ConfigurationTarget = { Global: 1, Workspace: 2, WorkspaceFolder: 3 };
 class ThemeIcon { constructor(id) { this.id = id; } }
@@ -51,43 +54,57 @@ function t(message, args) {
 }
 
 // 资源作用域感知的 getConfiguration 桩
-// scope 为 { uri: { fsPath: '...' } } 时，inspect() 仍然返回所有层级，
-// 但 get() 只返回该文件夹作用域内的值（模拟 VS Code 的真实行为）
+// scope 可以是 Uri 直接传入，也可以是 { uri: Uri } 对象
+// get() 只返回该文件夹作用域内的值（模拟 VS Code 的真实行为）
 function getConfiguration(section, scope) {
   getConfigCalls.push({ section, scope });
+  // 统一提取 fsPath：支持 Uri 直接传入或 { uri: Uri } 对象
+  const fsPath = scope ? (scope.fsPath || (scope.uri && scope.uri.fsPath)) : undefined;
   return {
     get(key) {
       const s = overrides.get(key) || {};
-      // 有 scope 时只返回该文件夹作用域的值（模拟 VS Code 的资源作用域行为）
-      if (scope) {
-        return s.workspaceFolder;
+      if (fsPath) {
+        const folderMap = s.workspaceFolder;
+        return folderMap instanceof Map ? folderMap.get(fsPath) : undefined;
       }
-      if (s.workspaceFolder !== undefined) return s.workspaceFolder;
+      // 无 scope 时返回第一个有值的 workspaceFolder（兼容单工作区测试）
+      if (s.workspaceFolder instanceof Map) {
+        for (const v of s.workspaceFolder.values()) if (v !== undefined) return v;
+      }
       if (s.workspace !== undefined) return s.workspace;
       if (s.global !== undefined) return s.global;
       return defaults.get(key);
     },
     inspect(key) {
       const s = overrides.get(key) || {};
-      // 无论是否有 scope，inspect() 都返回所有层级的值
-      // 这是 VS Code 的真实行为：inspect 总是返回完整的层级信息
+      // workspaceFolderValue：有 scope 时返回该 fsPath 的值，否则返回任意一个
+      let wfv;
+      if (fsPath) {
+        wfv = s.workspaceFolder instanceof Map ? s.workspaceFolder.get(fsPath) : undefined;
+      } else if (s.workspaceFolder instanceof Map) {
+        for (const v of s.workspaceFolder.values()) { if (v !== undefined) { wfv = v; break; } }
+      }
       return {
         key,
         defaultValue: defaults.get(key),
         globalValue: s.global,
         workspaceValue: s.workspace,
-        workspaceFolderValue: s.workspaceFolder,
+        workspaceFolderValue: wfv,
       };
     },
     update(key, value, target) {
       writes.push({ key, value, target, scope });
       const s = overrides.get(key) || {};
-      const field =
-        target === ConfigurationTarget.Global ? 'global'
-        : target === ConfigurationTarget.Workspace ? 'workspace'
-        : 'workspaceFolder';
-      if (value === undefined) delete s[field];
-      else s[field] = value;
+      if (target === ConfigurationTarget.Global) {
+        if (value === undefined) delete s.global; else s.global = value;
+      } else if (target === ConfigurationTarget.Workspace) {
+        if (value === undefined) delete s.workspace; else s.workspace = value;
+      } else {
+        // WorkspaceFolder：按 fsPath 存储
+        if (!(s.workspaceFolder instanceof Map)) s.workspaceFolder = new Map();
+        const fsp = fsPath || '__default__';
+        if (value === undefined) s.workspaceFolder.delete(fsp); else s.workspaceFolder.set(fsp, value);
+      }
       overrides.set(key, s);
       return Promise.resolve();
     },
@@ -124,11 +141,17 @@ module.exports = {
     reset() {
       overrides.clear(); writes.length = 0; infoMessages.length = 0; quickPicks.length = 0; getConfigCalls.length = 0;
     },
-    setOverride(key, level, value) {
+    setOverride(key, level, value, fsPath) {
       const s = overrides.get(key) || {};
-      s[level] = value;
+      if (level === 'workspaceFolder') {
+        if (!(s.workspaceFolder instanceof Map)) s.workspaceFolder = new Map();
+        s.workspaceFolder.set(fsPath || defaultFsPath, value);
+      } else {
+        s[level] = value;
+      }
       overrides.set(key, s);
     },
+    setDefaultFsPath(p) { defaultFsPath = p; },
   },
 };
 `,
@@ -157,6 +180,7 @@ for (const [key, value] of Object.entries(PKG_DEFAULTS)) vscode.__test.defaults.
 const projectDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ok-conv-proj-'));
 vscode.workspace.workspaceFolders = [{ uri: { fsPath: projectDir } }];
 vscode.__test.defaults.set('okScriptProjectPath', projectDir);
+vscode.__test.setDefaultFsPath(projectDir);
 
 function writeConvention(config) {
   const file = path.join(projectDir, 'ok-script-toolkit.json');
@@ -649,12 +673,9 @@ async function main() {
 
     // setIdeSetting 应该在没有工作区文件夹时直接返回，不做任何写入
     await projectConfig.setIdeSetting('labelEnumPath', 'test/path.py');
-    const globalWrites = vscode.__test.writes.filter(
-      (w) => w.key === 'labelEnumPath' && w.target === vscode.ConfigurationTarget.Global,
-    );
     check(
-      globalWrites.length === 0,
-      '没有工作区文件夹时 setIdeSetting 不写入全局设置',
+      vscode.__test.writes.length === 0,
+      '没有工作区文件夹时 setIdeSetting 不写入任何设置',
     );
 
     // 恢复工作区文件夹
