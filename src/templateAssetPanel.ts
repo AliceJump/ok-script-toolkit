@@ -371,6 +371,7 @@ class AssetGalleryController {
               progress.report({ message: tr('Packing pages {done}/{total}…', { done, total }) });
             },
             token,
+            folderUri,
           );
         },
       );
