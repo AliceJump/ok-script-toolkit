@@ -42,7 +42,15 @@ if (jetbrainsVersion !== version) {
 
 // README 的版本徽章同样属于「版本必须一致」的范围。之前漏检，导致两个 README
 // 长期停在 1.4.0 而无人发现（2026-09）。
-for (const readmePath of [path.join(root, 'README.md'), path.join(root, 'jetbrains', 'README.md')]) {
+//
+// 中英文拆成两份文件后是**四个**（中英各两份）—— 每个都自包含、各带一份徽章。
+const readmePaths = [
+  path.join(root, 'README.md'),
+  path.join(root, 'README.en.md'),
+  path.join(root, 'jetbrains', 'README.md'),
+  path.join(root, 'jetbrains', 'README.en.md'),
+];
+for (const readmePath of readmePaths) {
   const relative = path.relative(root, readmePath);
   if (!fs.existsSync(readmePath)) {
     throw new Error(`Missing ${relative}`);

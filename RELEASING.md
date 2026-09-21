@@ -85,15 +85,15 @@ GitHub Secret 支持多行文本，可直接粘贴 PEM/CRT 全文；也可先 Ba
 ### 每次发布
 
 > **推荐用一键脚本**：`npm run release -- --minor`（或 `sh scripts/release.sh --minor`，
-> Windows 可用 `scripts/release.ps1`）。它会自动完成下面全部步骤——同步五处版本、
+> Windows 可用 `scripts/release.ps1`）。它会自动完成下面全部步骤——同步七处版本、
 > 验证、按「先子后父」提交推送、最后打标签推送。加 `--dry-run` 可先预览。
 > 手动发布时请严格按下面顺序，**不要漏掉任何一步**。
 
 例如发布 `0.6.0`：
 
 ```bash
-# 1. 同步全部五处版本：package.json、package-lock.json、jetbrains/gradle.properties
-#    以及两个 README 的 version 徽章（少提交任何一处，Release 的 validate 都会失败）
+# 1. 同步全部七处版本：package.json、package-lock.json、jetbrains/gradle.properties
+#    以及四个 README 的 version 徽章（少提交任何一处，Release 的 validate 都会失败）
 npm run version:sync -- 0.6.0
 
 # 2. 验证
@@ -125,7 +125,7 @@ git push origin v0.6.0
 标签发布会依次：
 
 1. 检出父仓库和固定的 JetBrains 子模块提交。
-2. 校验五处版本（`package.json`、`package-lock.json`、`jetbrains/gradle.properties` 与两个 README 的徽章）与标签完全一致。
+2. 校验七处版本（`package.json`、`package-lock.json`、`jetbrains/gradle.properties` 与四个 README 的徽章）与标签完全一致。
 3. 测试并构建 VSIX。
 4. 测试、验证、构建并按 Secret 签名 JetBrains ZIP。
 5. 创建一个 GitHub Release，附带两个安装包。
@@ -224,8 +224,8 @@ GitHub Secrets support multi-line text; you can paste PEM/CRT full text directly
 For example, releasing `0.6.0`:
 
 ```bash
-# 1. Sync all five version locations: package.json, package-lock.json, jetbrains/gradle.properties
-#    and both README version badges (missing any one causes Release validation failure)
+# 1. Sync all seven version locations: package.json, package-lock.json, jetbrains/gradle.properties
+#    and all four README version badges (missing any one causes Release validation failure)
 npm run version:sync -- 0.6.0
 
 # 2. Verify
@@ -258,7 +258,7 @@ git push origin v0.6.0
 Tag release proceeds as:
 
 1. Check out the parent repo and pinned JetBrains submodule commit.
-2. Validate all five version locations (`package.json`, `package-lock.json`, `jetbrains/gradle.properties`, and both README badges) match the tag exactly.
+2. Validate all seven version locations (`package.json`, `package-lock.json`, `jetbrains/gradle.properties`, and all four README badges) match the tag exactly.
 3. Test and build VSIX.
 4. Test, validate, build, and sign the JetBrains ZIP using the Secrets.
 5. Create a GitHub Release with both installers attached.

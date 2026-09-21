@@ -35,7 +35,15 @@ fs.writeFileSync(jetbrainsPath, updatedJetbrains, 'utf8');
 
 // README 的版本徽章也要跟着走，否则每次发版都会漂
 // （2026-09 实测：两个 README 都还停在 1.4.0，而实际已是 1.5.0）。
-const readmePaths = [path.join(root, 'README.md'), path.join(root, 'jetbrains', 'README.md')];
+//
+// 中英文拆成两份文件后变成**四个**（父仓 README.md / README.en.md，
+// 子仓 jetbrains/README.md / README.en.md）—— 每个都是自包含的，徽章各带一份。
+const readmePaths = [
+  path.join(root, 'README.md'),
+  path.join(root, 'README.en.md'),
+  path.join(root, 'jetbrains', 'README.md'),
+  path.join(root, 'jetbrains', 'README.en.md'),
+];
 for (const readmePath of readmePaths) {
   if (!fs.existsSync(readmePath)) {
     continue;

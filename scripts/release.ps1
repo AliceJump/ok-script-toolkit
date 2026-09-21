@@ -5,7 +5,7 @@
 .DESCRIPTION
     Automates:
       1. Read current version and auto-increment
-      2. Sync new version to five places: package.json / package-lock.json /
+      2. Sync new version to seven places: package.json / package-lock.json /
          jetbrains/gradle.properties / the README.md and jetbrains/README.md badges
       3. Verify version consistency
       4. Commit and push jetbrains submodule

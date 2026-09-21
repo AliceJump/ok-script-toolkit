@@ -4,7 +4,7 @@
 #
 # 自动完成：
 #   1. 读取当前版本号并自动递增
-#   2. 同步新版本号到五处：package.json / package-lock.json /
+#   2. 同步新版本号到七处：package.json / package-lock.json /
 #      jetbrains/gradle.properties / README.md / jetbrains/README.md 的徽章
 #   3. 验证版本一致性
 #   4. 提交 jetbrains 子模块版本变更并推送
