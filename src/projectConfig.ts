@@ -28,6 +28,7 @@ import {
   labelEnumNameResolved,
   labelEnumPath,
   labelEnumPathResolved,
+  normalizeLabelEnumFile,
   normalizeRelPath,
   parseProjectConfig,
   templatesDirectoryOf,
@@ -305,6 +306,21 @@ export function effectsFileSetting(): string {
  */
 export function labelEnumPathSetting(): string {
   return labelEnumPath(loadProjectConfig(), ideSetting<string>('labelEnumPath'));
+}
+
+/**
+ * 把**用户当场输入**的枚举路径归一化成文件路径（相对项目根，带 `.py`）。空输入返回 `''`。
+ *
+ * ⚠️ **消费输入框的结果之前必须过这一道**，不能直接拿去 `path.join`。
+ * `labelEnumPathSetting()` 读出来的值已经在取值链里归一化过了，但输入框里的是**裸输入**：
+ * 用户填 `src/data/feature_list`（模块路径，与 `config.py` 的
+ * `label_enum_relative_path` 同形）时，直接拼绝对路径会写出一个叫 `feature_list`、
+ * **没有扩展名**的文件 —— Python 根本 import 不到，等于把项目弄坏。
+ * 归一化只在"下次读设置"时才生效，所以"这一次"的保存是坏的：典型的"看起来能用、
+ * 只是生成的文件名不对"。这里补上，消费点不用各自判断。
+ */
+export function normalizeLabelEnumPathInput(value: string): string {
+  return normalizeLabelEnumFile(value) ?? '';
 }
 
 /**

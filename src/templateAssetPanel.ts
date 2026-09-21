@@ -8,9 +8,9 @@ import { injectWebviewLocalization, tr } from './localization';
 import { TempScreenshotStore } from './tempScreenshotStore';
 import { captureGameWindow } from './screenshotCapture';
 import { takePendingDrag } from './tempDrag';
-import { labelEnumClassName, labelEnumPathSetting, setIdeSetting, templatesDirectory } from './projectConfig';
+import { ideSetting, labelEnumClassName, labelEnumPathSetting, normalizeLabelEnumPathInput, setIdeSetting, templatesDirectory } from './projectConfig';
 import { labelEnumRenameImpact, labelEnumRenameMessage, referencingFiles, writableClassName } from './labelEnumGuard';
-import { needsEnumPathPrompt, SaveTarget, saveToAssetsItems } from './saveToAssetsPure';
+import { derivedEnumPath, needsEnumPathPrompt, SaveTarget, saveToAssetsItems } from './saveToAssetsPure';
 import { getNonce } from './webviewHtml';
 
 /* ---------------- 控制器 ---------------- */
@@ -239,42 +239,66 @@ class AssetGalleryController {
       { label: 'ok_tasks/assets', description: tr('saveToAssetsCustomScripts'), folder: path.join(folder.uri.fsPath, 'ok_tasks', 'assets') },
     ];
 
-    // 默认路径的取值链：**IDE 设置 labelEnumPath > 项目约定 labelEnum.path > 空**。
+    // 枚举路径 / 类名的取值链：**IDE 设置 > 项目约定 > 兜底**。
     // 个人偏好排最高是用户定的：项目文件是"团队开箱默认"，我改过就用我的。
-    // 留空即跳过生成枚举，与旧行为一致。
+    // 路径留空即跳过生成枚举。
     //
-    // 注意必须走 `labelEnumPathSetting` 而不是直接拿 `labelEnum.path` —— 后者是**模块路径**
+    // 注意路径必须走 `labelEnumPathSetting` 而不是直接拿 `labelEnum.path` —— 后者是**模块路径**
     // （`src/data/FeatureList`，不带 .py，与 config.py 的 label_enum_relative_path 同形），
-    // 而下面这个输入框要的是**文件路径**；取值链里统一补后缀（见 `normalizeLabelEnumFile`）。
+    // 而对话框里要的是**文件路径**；取值链里统一补后缀（见 `normalizeLabelEnumFile`）。
     //
     // 个人偏好以前存在 `context.globalState` 里，已**废弃**：它是全局的（A 项目填过的值
     // 会带到 B 项目，而消费点按当前工作区拼绝对路径 → 静默造出错误目录树），
     // 而且不在设置界面、不在溯源面板。现在写进 IDE 设置（工作区文件夹级），可见可改可恢复。
-    const rememberEnumPath = (value: string) => {
-      void setIdeSetting('labelEnumPath', value);
-    };
+    //
+    // ⚠️ 写设置必须 **await**。`setIdeSetting` 是异步的，`void` 掉之后紧接着的
+    // `confirmLabelEnumRename` 会读到**旧值** —— 用户在对话框里改了类名、守卫却拿旧名字
+    // 去比对，于是漏报"这次会改掉项目里 N 处 import"。
+    const rememberEnumPath = (value: string) => setIdeSetting('labelEnumPath', value);
+    const rememberEnumName = (value: string) => setIdeSetting('labelEnumName', value);
     let enumPath = labelEnumPathSetting();
+    /** 我**设过**的类名（空 = 没设过）。列表里显示这个而不是解析后的值 —— 见 `saveToAssetsPure` */
+    let enumName = ideSetting<string>('labelEnumName') ?? '';
 
-    // 目标选择与「修改枚举路径」共用一轮循环：改完路径要回到目标选择，
-    // 所以列表每次都重新构造（有默认路径时才多出那一项，见 `saveToAssetsPure`）。
+    // 目标选择与两项枚举设置共用一轮循环：改完任一项都要回到目标选择，所以列表每次都重新构造。
     let targetFolder = '';
     let targetLabel = '';
-    /** 用户是否已经在「修改路径」里做过决定 —— 决定过就不再追问，哪怕他清空了 */
+    /** 用户是否已经在「改路径」里做过决定 —— 决定过就不再追问，哪怕他清空了 */
     let enumPathDecided = false;
     for (;;) {
       const pick = await vscode.window.showQuickPick(
         saveToAssetsItems({
           targets,
           enumPath,
-          changePathLabel: tr('Change LabelEnum.py path...'),
+          enumName,
+          labels: {
+            path: tr('Enum file path'),
+            name: tr('Enum class name'),
+            notSet: tr('Not set — click to set'),
+            derived: tr('Derived from the file name'),
+          },
         }),
         { placeHolder: tr('Save COCO data + images to...') },
       );
       if (!pick) return;
+      if (pick.separator) continue;
       if (pick.target) {
         targetFolder = pick.target;
         targetLabel = pick.label;
         break;
+      }
+      if (pick.edit === 'enumName') {
+        const edited = await vscode.window.showInputBox({
+          prompt: tr('LabelEnum class name (leave empty to derive it from the file name)'),
+          // 提示里给出**当前生效**的类名（可能是项目约定或文件名推导出来的），
+          // 输入框本身留空 = 撤销我的设置。这样"看得到现在的值"与"能清掉覆盖"同时成立。
+          placeHolder: enumPath ? labelEnumClassName(path.join(folder.uri.fsPath, enumPath)) : '',
+          value: enumName,
+        });
+        if (edited === undefined) continue; // 取消 → 回到列表
+        enumName = edited.trim();
+        await rememberEnumName(enumName);
+        continue;
       }
       const edited = await vscode.window.showInputBox({
         prompt: tr('LabelEnum.py file path (relative to workspace root, leave empty to skip)'),
@@ -282,22 +306,26 @@ class AssetGalleryController {
         value: enumPath,
       });
       if (edited === undefined) continue; // 取消改路径 → 回到目标选择
-      enumPath = edited.trim();
+      // ⚠️ 必须归一化再消费：用户很可能填的是模块路径（`src/data/feature_list`，与 config.py
+      // 的 label_enum_relative_path 同形），直接拼绝对路径会生成一个**没有扩展名**的文件。
+      enumPath = normalizeLabelEnumPathInput(edited);
       enumPathDecided = true;
-      rememberEnumPath(enumPath);
+      await rememberEnumPath(enumPath);
     }
 
-    // 已经有默认路径时**不再弹输入框**（每次保存都要按一次回车是纯噪音）。
+    // 已经有生效路径时**不再弹输入框**（每次保存都要按一次回车是纯噪音）。
     // 唯一"没定过"的情形是首次使用 —— 那时必须问：留空即"不生成枚举"。
+    // 预填 `<目标目录>/LabelEnum.py`（此时目标已经选好了）：不预填的话默认选项就变成
+    // "不生成枚举"，而按回车本该得到一个合法的、写在项目里的路径。
     if (needsEnumPathPrompt(enumPath, enumPathDecided)) {
       const edited = await vscode.window.showInputBox({
         prompt: tr('LabelEnum.py file path (relative to workspace root, leave empty to skip)'),
         placeHolder: tr('e.g. assets/data/LabelEnum.py or src/label_enum.py'),
-        value: '',
+        value: derivedEnumPath(targetLabel),
       });
       if (edited === undefined) return;
-      enumPath = edited.trim();
-      rememberEnumPath(enumPath);
+      enumPath = normalizeLabelEnumPathInput(edited);
+      await rememberEnumPath(enumPath);
     }
 
     const generateEnum = enumPath.length > 0;

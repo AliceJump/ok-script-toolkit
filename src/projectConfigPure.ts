@@ -444,7 +444,7 @@ export function labelEnumPath(config: ProjectConfig, ideValue: unknown): string 
  * 旧实现只给"项目声明"补后缀、把"上次保存"原样返回，于是从输入框里填模块路径会生成一个
  * **没有扩展名**的文件。统一在这里补，消费点不用各自判断。
  */
-function normalizeLabelEnumFile(value: unknown): string | undefined {
+export function normalizeLabelEnumFile(value: unknown): string | undefined {
   const rel = normalizeRelPath(value);
   if (!rel) return undefined;
   return rel.toLowerCase().endsWith('.py') ? rel : `${rel}.py`;
