@@ -37,6 +37,22 @@
       "windows": { "command": "gradlew.bat" },
       "problemMatcher": [],
       "presentation": { "reveal": "always", "panel": "dedicated" }
+    },
+    {
+      // 零扩展的调试入口：用 JDK 自带的 jdb 附加到上面那个任务开出的 5005。
+      // VS Code 内置调试类型里没有 JDWP，`"type": "java"` 需要装 vscjava.vscode-java-debug ——
+      // 这条任务不需要装任何扩展。
+      "label": "插件·附加调试器 jdb（子仓库 JetBrains 插件，5005，无需扩展）",
+      "type": "process",
+      "command": "powershell.exe",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy", "Bypass",
+        "-File", "${workspaceFolder}/scripts/debug-attach-jdb.ps1"
+      ],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": [],
+      "presentation": { "reveal": "always", "panel": "dedicated", "focus": true }
     }
   ]
 }
