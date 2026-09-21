@@ -179,8 +179,8 @@ export function ideSetting<T>(key: string, scope?: vscode.Uri): T | undefined {
     ? vscode.workspace.getConfiguration('okScriptToolkit', scope)
     : vscode.workspace.getConfiguration('okScriptToolkit');
   const inspected = cfg.inspect<T>(key);
-  // 有 scope 时只返回工作区文件夹级值，防止跨项目污染
-  if (scope) return inspected?.workspaceFolderValue;
+  // 有 scope 时优先工作区文件夹级值，但 User/Workspace 级的值仍然有效
+  // （用户可能在 User settings 里统一设了 labelEnumPath，不应被忽略）
   return inspected?.workspaceFolderValue ?? inspected?.workspaceValue ?? inspected?.globalValue;
 }
 
