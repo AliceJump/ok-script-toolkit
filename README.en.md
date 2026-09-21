@@ -1,11 +1,16 @@
 <div align="center">
 
+[![简体中文](https://img.shields.io/badge/Language-%E7%AE%80%E4%BD%93%E4%B8%AD%E6%96%87-6E7681?style=for-the-badge)](README.md) [![English](https://img.shields.io/badge/Language-English%20%E2%9C%93-2EA043?style=for-the-badge)](README.en.md)
+
 <img src="icon.png" alt="ok-script Toolkit" width="128" height="128">
 
 # ok-script Toolkit
 
+**把 ok-script 的语言、OCR、模板、技能和任务数据，直接搬进 VS Code 的开发流程。**
+
 **Bring ok-script's language keys, OCR fixes, templates, skills and task data straight into your VS Code workflow.**
 
+语言键补全 · OCR 修正提示 · 模板浏览 · 任务启动 · 角色技能管理
 Language key completion · OCR fix hints · Template browsing · Task launching · Character skill management
 
 [![VS Code Marketplace](https://img.shields.io/badge/VS%20Code%20Marketplace-ok--script%20Toolkit-007ACC?logo=visualstudiocode&logoColor=white)](https://marketplace.visualstudio.com/items?itemName=AliceJump.ok-script-toolkit)
@@ -14,11 +19,13 @@ Language key completion · OCR fix hints · Template browsing · Task launching 
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![VS Code](https://img.shields.io/badge/VS%20Code-%5E1.85.0-007ACC)](package.json)
 
-[Install](#installation) · [Features](#features) · [Data Sources](#data-sources) · [Configuration](#configuration) · [Commands](#commands) · [FAQ](#update-not-taking-effect) · [中文](README.md)
+[Install](#installation) · [Features](#features) · [Data Sources](#data-sources) · [Configuration](#configuration) · [Commands](#commands) · [FAQ](#update-not-taking-effect)
 
 </div>
 
 ---
+
+VS Code 扩展，为 ok-script 项目的 Python 开发提供语言键、OCR 修正、模板和技能效果的数据提示，同时内置模板浏览、任务启动和角色技能管理面板，让 ok-script 的语言、OCR、模板、技能和任务数据直接进入开发流程。
 
 A VS Code extension that brings ok-script language keys, OCR fixes, templates, skill effects, and task data directly into your Python development workflow. It also includes built-in template browsing, task launching, and character skill management panels.
 
@@ -30,7 +37,6 @@ A VS Code extension that brings ok-script language keys, OCR fixes, templates, s
 </p>
 
 ## Installation
-
 
 | Method | Steps |
 |---|---|
@@ -44,7 +50,6 @@ For PyCharm / IntelliJ IDEA users, install the JetBrains version: [ok-script Too
 
 ## Features
 
-
 | Module | Description |
 |---|---|
 | [Code development assistance](#code-development-assistance) | Complete and explain `self.lang`, OCR regex, and skill effect IDs in the editor |
@@ -55,7 +60,6 @@ For PyCharm / IntelliJ IDEA users, install the JetBrains version: [ok-script Too
 | [Multi-language support](#multi-language-support) | UI supports 6 languages; data hints follow the target project |
 
 ### Code Development Assistance
-
 
 When editing Python code, the extension automatically detects ok-script-specific API contexts and provides precise data hints and completions:
 
@@ -74,7 +78,6 @@ When editing Python code, the extension automatically detects ok-script-specific
 
 ### Template Management
 
-
 <p align="center">
   <a href="screenshots/template-panel.gif"><img src="screenshots/template-panel.gif" alt="Template panel: search, thumbnail preview, and quick insert" width="900"></a>
 </p>
@@ -92,7 +95,6 @@ self.wait_click_feature(feature=fL.give_gift, time_out=10)
 Hover over `fL.give_gift` to see the cropped template image; type `fL.` to select from the template name list.
 
 ### Temp Screenshots
-
 
 <p align="center">
   <a href="screenshots/temp-shots.gif"><img src="screenshots/temp-shots.gif" alt="Temp screenshots: carousel and box-select to copy normalized coordinates" width="900"></a>
@@ -117,7 +119,6 @@ Details:
 
 ### Task Launcher
 
-
 <p align="center">
   <a href="screenshots/task-launcher.gif"><img src="screenshots/task-launcher.gif" alt="Task launcher: parameter form and run log" width="900"></a>
 </p>
@@ -135,7 +136,6 @@ Details:
 
 ### Character Skill Management
 
-
 Run the command **ok-script Toolkit: Open Character Skill Management Panel** to open the character database overview in the editor area:
 
 - **Filter & View**: Filter characters by star rating, element, profession, skill type, enhancement group, and diagnostic status. View basic info, multi-language names, skill descriptions, multipliers, stagger, cooldown, and SP data.
@@ -147,7 +147,6 @@ Run the command **ok-script Toolkit: Open Character Skill Management Panel** to 
 
 ### Multi-language Support
 
-
 - The extension UI (notifications, output channel, hover, template panel, task launcher, toolbox, and character skill management panel) supports Simplified Chinese, Traditional Chinese, English, Japanese, Korean, and Spanish, defaulting to the VS Code display language.
 - The sidebar is split into three independent activity bar containers: **ok-script Toolbox** (toolbox + task launcher), **ok-script Templates** (template panel + template assets), and **ok-script Temp Shots**.
 - Language data in code hints always uses the target project's own locale and original protocol values, unaffected by the plugin UI language.
@@ -156,7 +155,6 @@ Run the command **ok-script Toolkit: Open Character Skill Management Panel** to 
 > Language and template hints only apply to `python` files; effect ID hints (hover, completion, ghost hints) also cover `json` and `jsonc` files. The extension does not modify source code or generate stub files.
 
 ## Data Sources
-
 
 Reads from the current workspace by default:
 
@@ -177,11 +175,9 @@ After saving JSON (including effect names), COCO annotations, PNG, or `effects.p
 
 ## Build, Install & Release
 
-
 See [DEVELOPMENT.en.md](DEVELOPMENT.en.md) for project structure, JetBrains version, local installation, and CI/CD release workflow.
 
 ## Configuration
-
 
 | Setting | Default | Description |
 |---|---|---|
@@ -206,7 +202,7 @@ See [DEVELOPMENT.en.md](DEVELOPMENT.en.md) for project structure, JetBrains vers
 | `okScriptToolkit.okTemplatesDirectory` | `ok_templates` | ok_templates folder name (relative to workspace root), used by the template asset manager |
 | `okScriptToolkit.annotationKeybindings` | see defaults | Annotation editor keyboard shortcuts; values are key names with modifier prefixes like `ctrl+z` |
 
-#### Project Convention File `ok-script-toolkit.json`
+### Project Convention File `ok-script-toolkit.json`
 
 Put **project-scoped** conventions in the **root of the debugged project**: the label
 enum's path and class name, the templates directory, executor startup hooks, i18n
@@ -244,7 +240,7 @@ and [`docs/ok-script-toolkit.example.json`](docs/ok-script-toolkit.example.json)
 For **what the plugin actually reads at runtime, what each setting does, and the precedence rules**,
 see [`docs/config-reads.md`](config-reads.md) (six read-path types, per-item purpose, the invariants, and a troubleshooting list).
 
-#### Configuration Example
+### Configuration Example
 
 In the workspace's `.vscode/settings.json`:
 
@@ -279,7 +275,6 @@ The ghost hint will display `「向目标移动」` after `k_2f4f4a2f`; hover wi
 
 ## Commands
 
-
 Command categories display as "ok-script 工具箱" / "ok-script Toolkit" depending on the UI language.
 
 | Command | Shortcut | Description |
@@ -295,7 +290,6 @@ Command categories display as "ok-script 工具箱" / "ok-script Toolkit" depend
 | `ok-script 工具箱: Project Convention vs My Settings` | — | List the settings that take part in the precedence chain and show **which layer each effective value comes from** (my settings / project convention / built-in default). Rows you have overridden carry a Revert button that drops your override and goes back to the project convention. Exists to fix "once I changed it, I can never see what the team changed" |
 
 ## Update Not Taking Effect
-
 
 After installing or directly overwriting extension files, run:
 

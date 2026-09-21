@@ -1,14 +1,18 @@
-# 开发指南
+# 开发指南 / Development Guide
 
-[English](DEVELOPMENT.en.md) | **中文**
+<div align="center">
+
+[![简体中文](https://img.shields.io/badge/Language-%E7%AE%80%E4%BD%93%E4%B8%AD%E6%96%87%20%E2%9C%93-2EA043?style=for-the-badge)](DEVELOPMENT.md) [![English](https://img.shields.io/badge/Language-English-6E7681?style=for-the-badge)](DEVELOPMENT.en.md)
+
+</div>
 
 本文档面向扩展开发者，包含项目结构、本地构建安装和发布流程。
 
+This document is for extension developers and covers the project structure, local build/installation, and release workflow.
+
 ---
 
-
-
-### 项目结构
+## 项目结构
 
 ```text
 src/                         VS Code 扩展宿主 TypeScript 源码（30 个模块，下列为入口与主要模块）
@@ -63,7 +67,7 @@ out/                          TypeScript 编译产物（由构建生成）
 
 每个外置 Webview 的 HTML、CSS 和 JavaScript 均放在同一功能目录中；宿主通过 CSP 限制和 `asWebviewUri()` 加载资源。
 
-### 任务启动：常驻执行器模型
+## 任务启动：常驻执行器模型
 
 任务启动器**不是「一次启动 = 一个任务进程」**，而是**一个项目一个常驻执行器进程**：`python/run_executor.py` 只启动一次，连接一次游戏，之后由 ok-script 框架原生的 `TaskExecutor` 循环轮询全部已启用的触发任务；一次性任务以入队方式交给同一个进程执行。
 
@@ -79,7 +83,7 @@ out/                          TypeScript 编译产物（由构建生成）
   `(sleep 40; echo stop) | OK_TOOLKIT_TRIGGERS='["<module::Class>"]' ./.venv/Scripts/python.exe -u <repo>/python/run_executor.py --config-module src.config`，
   确认输出 `CONNECTING → READY → STATE → STOPPED`；把 stdout 重定向到文件再 grep（管道里常拿不到内容）。
 
-### 临时截图与归一化坐标
+## 临时截图与归一化坐标
 
 - **临时截图侧边栏**（`ok-script 临时截图`）是活动栏上的**独立容器**（`viewsContainers` 里注册 `okTempShots`，图标 `media/icons/tempShots.svg`），不属于模板容器。最多保留 10 张截图，超出后自动淘汰最早的一张；图片落在扩展 `globalStorage` 的按工作区哈希隔离子目录中。
 - 支持 `Ctrl+V` 粘贴系统剪贴板图片、一键截取游戏窗口、拖入/粘贴图片文件。
@@ -89,7 +93,7 @@ out/                          TypeScript 编译产物（由构建生成）
 - **框选复制归一化坐标**：临时截图侧边栏的「框选坐标」模式与标注编辑器的「坐标 (C)」模式，都会在框选结束后把 `x,y,tox,toy`（左上 / 右下，均按图片宽高归一化到 0..1，保留 4 位小数）写入剪贴板。归一化与显示缩放无关，因此降采样预览与缩放视图下结果一致。
 - **坐标框是可调的尺子，不是数据**：拖拽完成后框会保留在画布上，带 8 向手柄、可整体拖动（与模板标注框一致的交互）。**创建时与每次调整结束都会重新复制一次当前框的归一化坐标**；框本身不进入标注列表、不写 COCO、不落盘。点击图片的非交互部分（框体与手柄之外）即清除，退出坐标模式也会清除。
 
-### JetBrains / PyCharm 版本
+## JetBrains / PyCharm 版本
 
 仓库的 `jetbrains/` 目录包含独立的 Kotlin + IntelliJ Platform 插件工程，当前最低支持 PyCharm / IntelliJ Platform 2025.1（需要 Python 支持）。首版已提供：
 
@@ -114,7 +118,7 @@ cd jetbrains
 
 Windows 使用 `gradlew.bat`。生成的 ZIP 位于 `jetbrains/build/distributions/`，可在 JetBrains IDE 的 **Settings / Plugins / Install Plugin from Disk...** 中安装。逐功能的对齐状态与剩余差异见 [`jetbrains/docs/parity-review.md`](https://github.com/AliceJump/ok-script-toolkit-jetbrains/blob/main/docs/parity-review.md)（2026-09-21 已按代码逐条重核，基线 v1.8.0）。
 
-### 安装
+## 安装
 
 打包安装（推荐）：
 
@@ -129,12 +133,12 @@ npx @vscode/vsce package --allow-missing-repository
 
 想直接改代码调试、不打包安装，见下面的「启动调试」。
 
-### 启动调试
+## 启动调试
 
 两端都随仓库提供了开箱可用的启动/调试入口。这些配置属于开发文件，**不会进打包产物**：
 `.vscode/` 被 `.vscodeignore` 排除，`jetbrains/.run/` 也不参与 `buildPlugin`。
 
-#### 主仓库：VS Code 扩展
+### 主仓库：VS Code 扩展
 
 用 VS Code 打开本项目根目录，按 `F5` 启动扩展开发宿主，在宿主窗口打开任意 Python 文件即可看到效果。
 
@@ -148,7 +152,7 @@ npx @vscode/vsce package --allow-missing-repository
 `.gitignore` 里必须写成 `.vscode/*` 再加 `!` 放行，因为 git 无法在整目录被排除后
 重新纳入其中的文件；`settings.json` 等仍保持本地不提交。
 
-#### 子仓库：JetBrains 插件
+### 子仓库：JetBrains 插件
 
 沙箱 IDE 由 Gradle 的 `runIde` 拉起；`build.gradle.kts` 里 `autoReload = true`，
 重新构建后沙箱会自动加载新版本，不必重启沙箱。
@@ -181,7 +185,7 @@ VS Code 的 **Tasks: Run Task** 里同样有
 > 沙箱数据在 `jetbrains/.intellijPlatform/sandbox/`（已 gitignore）。
 > `runIde` 首次会下载目标 IDE（PyCharm 2025.1），之后走本地缓存。
 
-### 自动发布
+## 自动发布
 
 - Pull Request 和 `main` 推送只运行 `CI`，同时测试并打包 VS Code 与 JetBrains 两端，不会发布。
 - **发布的唯一触发方式是推送一个尚不存在的 `vX.Y.Z` 标签**。工作流不提供手动发布，也不会因 `main` 推送自动发布。

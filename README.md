@@ -1,12 +1,17 @@
 <div align="center">
 
+[![简体中文](https://img.shields.io/badge/Language-%E7%AE%80%E4%BD%93%E4%B8%AD%E6%96%87%20%E2%9C%93-2EA043?style=for-the-badge)](README.md) [![English](https://img.shields.io/badge/Language-English-6E7681?style=for-the-badge)](README.en.md)
+
 <img src="icon.png" alt="ok-script Toolkit" width="128" height="128">
 
 # ok-script Toolkit
 
 **把 ok-script 的语言、OCR、模板、技能和任务数据，直接搬进 VS Code 的开发流程。**
 
+**Bring ok-script's language keys, OCR fixes, templates, skills and task data straight into your VS Code workflow.**
+
 语言键补全 · OCR 修正提示 · 模板浏览 · 任务启动 · 角色技能管理
+Language key completion · OCR fix hints · Template browsing · Task launching · Character skill management
 
 [![VS Code Marketplace](https://img.shields.io/badge/VS%20Code%20Marketplace-ok--script%20Toolkit-007ACC?logo=visualstudiocode&logoColor=white)](https://marketplace.visualstudio.com/items?itemName=AliceJump.ok-script-toolkit)
 [![JetBrains Marketplace](https://img.shields.io/badge/JetBrains%20Marketplace-ok--script%20Toolkit-000000?logo=jetbrains&logoColor=white)](https://plugins.jetbrains.com/plugin/34091-ok-script-toolkit)
@@ -14,13 +19,15 @@
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![VS Code](https://img.shields.io/badge/VS%20Code-%5E1.85.0-007ACC)](package.json)
 
-[安装](#安装) · [功能](#功能) · [数据来源](#数据来源) · [配置](#配置) · [命令](#命令) · [常见问题](#更新后不生效) · [English](README.en.md)
+[安装](#安装) · [功能](#功能) · [数据来源](#数据来源) · [配置](#配置) · [命令](#命令) · [常见问题](#更新后不生效)
 
 </div>
 
 ---
 
 VS Code 扩展，为 ok-script 项目的 Python 开发提供语言键、OCR 修正、模板和技能效果的数据提示，同时内置模板浏览、任务启动和角色技能管理面板，让 ok-script 的语言、OCR、模板、技能和任务数据直接进入开发流程。
+
+A VS Code extension that brings ok-script language keys, OCR fixes, templates, skill effects, and task data directly into your Python development workflow. It also includes built-in template browsing, task launching, and character skill management panels.
 
 > [!TIP]
 > 下面每个功能章节开头的演示图都是可点的——如果动图没加载出来，直接点开链接看。
@@ -30,7 +37,6 @@ VS Code 扩展，为 ok-script 项目的 Python 开发提供语言键、OCR 修�
 </p>
 
 ## 安装
-
 
 | 方式 | 操作 |
 |---|---|
@@ -44,7 +50,6 @@ PyCharm / IntelliJ IDEA 用户请装 JetBrains 版：[ok-script Toolkit for JetB
 
 ## 功能
 
-
 | 模块 | 一句话说明 |
 |---|---|
 | [代码开发辅助](#代码开发辅助) | 在编辑器内补全和解释 `self.lang`、OCR 正则与技能效果 ID |
@@ -55,7 +60,6 @@ PyCharm / IntelliJ IDEA 用户请装 JetBrains 版：[ok-script Toolkit for JetB
 | [多语言支持](#多语言支持) | 界面支持 6 种语言，数据提示跟随目标项目 |
 
 ### 代码开发辅助
-
 
 在编辑 Python 代码时，扩展自动识别 ok-script 特有的 API 上下文，提供精准的数据提示和补全：
 
@@ -74,7 +78,6 @@ PyCharm / IntelliJ IDEA 用户请装 JetBrains 版：[ok-script Toolkit for JetB
 
 ### 模板管理
 
-
 <p align="center">
   <a href="screenshots/template-panel.gif"><img src="screenshots/template-panel.gif" alt="模板面板：搜索、缩略图预览与快速插入" width="900"></a>
 </p>
@@ -92,7 +95,6 @@ self.wait_click_feature(feature=fL.give_gift, time_out=10)
 悬停 `fL.give_gift` 可查看对应模板裁剪图；输入 `fL.` 可从模板名称列表中选择。
 
 ### 临时截图
-
 
 <p align="center">
   <a href="screenshots/temp-shots.gif"><img src="screenshots/temp-shots.gif" alt="临时截图：轮播与框选复制归一化坐标" width="900"></a>
@@ -117,7 +119,6 @@ self.wait_click_feature(feature=fL.give_gift, time_out=10)
 
 ### 任务启动
 
-
 <p align="center">
   <a href="screenshots/task-launcher.gif"><img src="screenshots/task-launcher.gif" alt="任务启动：参数表单与运行日志" width="900"></a>
 </p>
@@ -135,7 +136,6 @@ self.wait_click_feature(feature=fL.give_gift, time_out=10)
 
 ### 角色技能管理
 
-
 <p align="center">
   <a href="screenshots/character-manager.gif"><img src="screenshots/character-manager.gif" alt="角色技能管理：筛选、编辑与数据诊断" width="900"></a>
 </p>
@@ -151,7 +151,6 @@ self.wait_click_feature(feature=fL.give_gift, time_out=10)
 
 ### 多语言支持
 
-
 - 扩展界面（通知、输出频道、hover、模板面板、任务启动器、工具箱和角色技能管理面板）支持简体中文、繁体中文、英文、日文、韩文和西班牙文，默认跟随 VS Code 显示语言。
 - 侧边栏分为 **ok-script 工具**（工具箱 + 任务启动）、**ok-script 模板**（模板面板 + 模板素材）和 **ok-script 临时截图** 三个独立活动栏容器。
 - 代码提示中的语言数据始终使用目标项目自身的 locale 和原始协议值，不受插件界面语言影响。
@@ -160,7 +159,6 @@ self.wait_click_feature(feature=fL.give_gift, time_out=10)
 > 语言与模板提示只针对 `python` 文件生效；效果 ID 提示（hover、补全、幽灵注释）额外覆盖 `json` 和 `jsonc` 文件。扩展不修改源代码，也不生成存根文件。
 
 ## 数据来源
-
 
 默认从当前工作区读取：
 
@@ -181,11 +179,9 @@ self.wait_click_feature(feature=fL.give_gift, time_out=10)
 
 ## 构建、安装与发布
 
-
 项目结构、JetBrains 版本、本地安装和 CI/CD 发布流程详见 [DEVELOPMENT.md](DEVELOPMENT.md)。
 
 ## 配置
-
 
 | 配置项 | 默认值 | 说明 |
 |---|---|---|
@@ -210,7 +206,7 @@ self.wait_click_feature(feature=fL.give_gift, time_out=10)
 | `okScriptToolkit.okTemplatesDirectory` | `ok_templates` | ok_templates 文件夹名（相对工作区根），供模板素材管理器使用 |
 | `okScriptToolkit.annotationKeybindings` | 见默认值 | 标注编辑器的键盘快捷键；值为按键名，支持 `ctrl+z` 等修饰符前缀 |
 
-#### 项目约定文件 `ok-script-toolkit.json`
+### 项目约定文件 `ok-script-toolkit.json`
 
 把**随项目走**的约定写在被调试项目的**根目录**：枚举文件路径与类名、模板目录、
 执行器启动钩子、i18n（语言 / PO 目录与开关）、角色数据位置、效果定义文件等。
@@ -255,7 +251,7 @@ self.wait_click_feature(feature=fL.give_gift, time_out=10)
 **「运行时到底读了哪些配置、每一项是干什么的、按什么规则取值」见
 [`docs/config-reads.md`](docs/config-reads.md)**（六型分类的全景 + 逐项用途 + 不变量清单 + 排查步骤）。
 
-#### 配置示例
+### 配置示例
 
 在工作区的 `.vscode/settings.json` 中：
 
@@ -290,7 +286,6 @@ self.wait_click_ocr(match=self.lang.zip_line_mixin.k_2f4f4a2f, ...)
 
 ## 命令
 
-
 命令分类随界面语言显示为「ok-script 工具箱」/「ok-script Toolkit」。
 
 | 命令 | 快捷键 | 说明 |
@@ -306,7 +301,6 @@ self.wait_click_ocr(match=self.lang.zip_line_mixin.k_2f4f4a2f, ...)
 | `ok-script 工具箱: 项目约定 vs 我的设置` | — | 列出参与取值链的设置项，显示每一项的**生效值来自哪一层**（我的设置 / 项目约定 / 内置默认）。被个人设置覆盖过的项带一个「恢复」按钮，一键回到项目约定。用于解决"我改过一次就再也看不到团队改了什么" |
 
 ## 更新后不生效
-
 
 安装或直接覆盖扩展文件后执行：
 
