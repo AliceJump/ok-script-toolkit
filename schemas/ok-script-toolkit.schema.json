@@ -18,11 +18,11 @@
       "properties": {
         "path": {
           "type": "string",
-          "description": "枚举文件路径，相对项目根，**不带 .py**。\n\n取值顺序：本项 → 项目 config.py 的 template_tab.label_enum_relative_path → 个人偏好（上次保存）→ <目标目录>/LabelEnum.py。\n\n因为 config.py 不一定有这一项，显式写出来更可靠。"
+          "description": "枚举文件路径，相对项目根。\n\n**模块路径（`src/data/FeatureList`，不带 .py）与文件路径（带 .py）两种写法都容忍** —— ok 框架的 `_normalize_label_enum_relative_path()` 会把用户输入的 .py 主动剥掉，所以 config.py 与老项目里存的多半是不带 .py 的形态；插件在取值链里统一补后缀。\n\n取值顺序：**个人偏好（IDE 设置 `okScriptToolkit.labelEnumPath`）→ 本项 → 留空（这次不生成枚举）**。\n\n因为 config.py 不一定有这一项，显式写出来更可靠。"
         },
         "name": {
           "type": "string",
-          "description": "枚举类名。\n\nconfig.py 只可能给出路径，类名原先只能从文件名反推。显式声明后 path 与 name 解耦：文件可以叫 feature_labels.py，而类叫 FeatureList。\n\n缺席时取 path 的文件名（basename）—— 即今天的行为。"
+          "description": "枚举类名。\n\nconfig.py 只可能给出路径，类名原先只能从文件名反推。显式声明后 path 与 name 解耦：文件可以叫 feature_labels.py，而类叫 FeatureList。\n\n取值顺序：**个人偏好（IDE 设置 `okScriptToolkit.labelEnumName`）→ 本项 → 文件名（basename）**。\n\n⚠️ 项目代码是按类名 import 的（`from src.data.feature_list import FeatureList`）。改名会让那些 import 全部失效，所以插件在**覆盖已有枚举文件前**会先扫一遍项目、把受影响的文件数报给你确认。"
         },
         "aliases": {
           "type": "array",

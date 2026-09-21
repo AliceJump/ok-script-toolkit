@@ -64,7 +64,7 @@
       ↑ 被覆盖
 ③ ok-script-toolkit.json（团队默认，提交进仓库）
       ↑ 被覆盖
-④ 个人偏好（IDE 设置 / 上次保存）  ← 最高
+④ 个人偏好（IDE 设置）  ← 最高
 ```
 
 **④ 最高**的定位：**项目文件给团队开箱默认值，我改过就用我的**。
@@ -157,9 +157,9 @@
 
 | 分组 | 字段 | config.py 是否声明 | 缺席时 |
 |---|---|---|---|
-| `labelEnum` | `path` | 3/5 有 | config.py → 个人偏好 → `<目标目录>/LabelEnum.py` |
-| | `name` | **0/5** | `path` 的 basename（今天的行为） |
-| | `aliases` | **0/5** | `["fL","FeatureList"]` |
+| `labelEnum` | `path` | 3/5 有 | IDE 设置 `labelEnumPath` → 空（这次不生成枚举） |
+| | `name` | **0/5** | IDE 设置 `labelEnumName` → `path` 的 basename（今天的行为） |
+| | `aliases` | **0/5** | IDE 设置 `featureAliases` → `["fL","FeatureList"]` |
 | `executor.startupHooks` | `beforeConfigImport` | **无此信息** | 空（整段跳过 —— 现状） |
 | | `afterConfigImport` | **无此信息** | 按约定试 `src.patches.startup_patches:install_startup_patches` |
 | `templates` | `directory` | 无（插件侧约定） | IDE 设置 → `ok_templates` |
@@ -203,8 +203,67 @@
 而消费端（生成枚举文件、拼绝对路径）要的是**文件路径**。拿模块路径直接去写，会产出一个
 叫 `FeatureList`、**没有扩展名**的文件 —— Python 根本 import 不到，等于把项目弄坏。
 
-→ 两端各提供一次显式转换（`labelEnumFile()` / `LabelEnumConvention.filePathOr()`），
+→ 两端各提供一次显式转换（VS Code：纯函数 `labelEnumPath()` / 读设置用的
+`labelEnumPathSetting()`；子仓 `LabelEnumConvention.filePathOr()`），
 **不要在消费点手工拼字符串**；已带 `.py` 的写法要容忍、不重复补。
+两层**共用同一个归一化**（`normalizeLabelEnumFile`）—— 旧实现只给项目声明补后缀、
+把个人偏好原样返回，于是从输入框里填模块路径会生成一个**没有扩展名**的文件。
+
+### ⚠️ `labelEnum.name` 是**代码契约**，个人覆盖会让整个项目 `ImportError`
+
+`labelEnum.path` / `name` 与其它字段性质不同：其它字段只影响**插件自己往哪读**，
+改错只影响插件；而这两项决定**往哪写文件、类叫什么** —— 而项目的代码是按名字 import 的：
+
+```python
+from src.data.feature_list import FeatureList      # OK-AzurPromilia 里有 10 处这么写
+```
+
+所以"我在设置里把类名改成 `MyEnum`"的后果不是"我这边看着不一样"，而是**整个项目跑不起来**。
+这类字段给个人覆盖层，等于给用户一把能把自己项目弄坏的钥匙。
+
+**做法：允许改，但覆盖已有文件前先问一句。**（两端都要有）
+
+| 环节 | 实现 |
+|---|---|
+| 判据（纯函数，可单测） | VS Code `src/labelEnumGuard.ts`；子仓 `core/LabelEnumGuard.kt` |
+| IO 与弹窗 | VS Code `templateAssetPanel.confirmLabelEnumRename()`（编排层）；子仓 `ui/TemplateAssetToolWindowFactory` |
+| 测试 | `scripts/test_label_enum_guard.js`（含 5 组破坏性对照） |
+
+三条不变量：
+
+1. **文件不存在 → 不问**（全新生成，没有旧名字可废）
+2. **新旧类名相同 → 不问**（每次保存都会重新生成一遍，问了就是纯噪音）
+3. **文件在、却认不出类名 → 也要问** —— 用户很可能把路径填到了**普通模块**上，
+   覆盖会直接删掉里面的东西
+
+提示里带上"会炸多少处"：扫一遍项目里的 `**/*.py`，找出按旧类名 import 的文件
+（`importsName` 覆盖 `from a import X` / `(A, X)` / `X as fL` / `import a.X` 几种写法）。
+**宁可多报不可漏报**（注释掉的 import 也算命中）—— 这是"问一句"的依据，不是自动决策。
+
+**只校验类名、不校验路径**：换路径时旧文件原样留着，按旧模块路径 import 的代码仍然
+import 得到（只是拿不到新标签），不会报错；而改类名是**同一个文件里名字变了**，
+引用方当场全废。两者后果不对称，所以只给前者加闸。
+
+### 🧹 顺带修掉：`globalState` 里的"上次保存"（全局串味）
+
+`labelEnumPath` 的个人偏好层以前存在 `context.globalState['okScriptToolkit.lastEnumFilePath']`，
+现在**废弃、改成正式 IDE 设置**。三个理由：
+
+1. **它是全局的，而消费点按当前工作区拼绝对路径** —— 在 A 项目填过
+   `src/data/feature_list.py`，去 B 项目导出时默认值还是它，一回车就按 B 的根拼出一个
+   **不存在**的路径；而生成函数里有 `mkdirSync(dir, { recursive: true })`，
+   于是**静默在项目里造出一层错误目录树**。
+2. **界面上看不见** —— 它不在设置界面、不在溯源面板，用户改过一次就再也不知道当前值是什么。
+3. **无法一键恢复** —— 溯源面板的「恢复为项目约定」清的是 IDE 设置的三级作用域，
+   清不到 `globalState`。留着它就会造成"面板说来源是项目约定、实际生效的却是那个隐藏值"，
+   正是 §3 明令禁止的**界面与实际生效值分叉**。
+
+所以：链变成 `IDE 设置 > 项目约定 > 兜底`（与 `featureAliases` 完全同构）；
+导出对话框的「修改路径…」改为**写 IDE 设置**（工作区文件夹级 → 天然按工作区隔离，
+无工作区时才写全局）。"填过一次就记住"的体验保留，但从此**可见、可改、可溯源**。
+
+> **不做迁移**：老用户 `globalState` 里的那个值很可能正是上面第 1 条那个错值，
+> 搬进设置等于把 bug 一起搬过去。让它回落到项目约定（正确值），首次保存多问一次即可。
 
 ### **不**进配置文件的
 
@@ -245,7 +304,7 @@
 | VS Code | `src/providers.ts:25` | `featureAliases()` 改读 `labelEnum.aliases` |
 | | `src/templatePanel.ts:23` | 同上 |
 | | `src/templateAssetData.ts:50,519,573` | `TEMPLATE_FOLDER` 常量改为可配；`enumFile` 默认取 `labelEnum.path`；类名改取 `labelEnum.name`（**不再从文件名反推**） |
-| | `src/templateAssetPanel.ts:202` | 输入框默认值由 `lastEnumFilePath` 改为 `labelEnum.path`；有值时不再弹框 |
+| | `src/templateAssetPanel.ts:202` | 输入框默认值改走取值链（`labelEnumPathSetting()`）；覆盖前做类名变更校验 |
 | JetBrains | `settings/OkScriptToolkitSettings.kt:65` | `featureAliases()` 同上 |
 | | `editor/OkEditorSupport.kt:76,120`、`ui/TemplatesToolWindowFactory.kt` | 同上 |
 | | `core/TemplateAssetDataService.kt:495,510` | `enumPath` 默认、类名来源，同上 |
@@ -255,8 +314,11 @@
 > - **`aliases`**：两端都接了。入口各只有一处 —— VS Code `providers.featureAliases()`、
 >   子仓 `OkScriptToolkitSettings.featureAliases()` —— 所以 `templatePanel` /
 >   `OkEditorSupport` 等消费点自动受益，不需要各自改。
-> - **`name`**：两端生成枚举时取 `labelEnum.name`，缺席才退回文件名。
-> - **`path`**：两端生成枚举时的默认值取它（经"模块路径 → 文件路径"转换，见 §5）。
+> - **`name`**：两端生成枚举时取 `labelEnum.name`，缺席才退回文件名；
+>   **两层都有个人偏好层**（`labelEnumName` 设置），且覆盖已有文件前会先做类名变更校验
+>   （见 §5 的「`labelEnum.name` 是代码契约」）。
+> - **`path`**：两端生成枚举时的默认值取它（经"模块路径 → 文件路径"转换，见 §5）；
+>   个人偏好层从 `globalState` 升级成 IDE 设置 `labelEnumPath`（见 §5 的「顺带修掉」）。
 > - **`templates.directory`**：两端都接了。VS Code 侧同时修掉了 §8.1 那个**死设置**；
 >   消费点全部改走 `projectConfig.templatesDirectory(projectDir)` /
 >   `OkScriptToolkitSettings.okTemplatesDirectory()`，包括文件监听 glob 与

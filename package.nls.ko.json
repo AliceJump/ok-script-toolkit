@@ -33,6 +33,8 @@
   "config.displayLocale": "인라인 힌트 기본 언어입니다. auto는 VS Code 표시 언어를 따릅니다.",
   "config.enableInlayHints": "언어 값과 효과의 인라인 힌트를 활성화합니다.",
   "config.featureAliases": "FeatureList 템플릿 완성과 호버에 사용할 별칭입니다.",
+  "config.labelEnumPath": "워크스페이스 루트 기준 LabelEnum 파일 경로(.py 생략 가능). ok-script-toolkit.json 의 labelEnum.path 를 덮어씁니다. 비워 두면 프로젝트 규약을 따릅니다.",
+  "config.labelEnumName": "LabelEnum 클래스 이름. ok-script-toolkit.json 의 labelEnum.name 을 덮어씁니다. 비워 두면 파일 이름에서 유도합니다. 프로젝트 코드가 이 이름으로 import 하므로 이름을 바꾸면 해당 import 가 깨집니다 — 기존 파일을 덮어쓰기 전에 확인합니다.",
   "config.effectsFile": "EffectType 및 EFFECT_DESCRIPTIONS Python 파일입니다.",
   "config.okScriptProjectPath": "작업 실행기에서 사용할 ok-script 프로젝트 루트입니다.",
   "config.okScriptPython": "ok-script 작업 실행에 사용할 Python 인터프리터입니다.",

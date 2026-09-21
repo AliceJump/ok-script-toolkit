@@ -7,7 +7,8 @@ import {
   isAssetPackPoolInitialized, renderPagesViaPool,
 } from './assetPack';
 import { tr } from './localization';
-import { labelEnumName, loadProjectConfig, templatesDirectory } from './projectConfig';
+import { labelEnumNameSetting, templatesDirectory } from './projectConfig';
+import { writableClassName } from './labelEnumGuard';
 
 /* ---------------- COCO 数据类型 ---------------- */
 
@@ -78,8 +79,9 @@ export class TemplateAssetData {
   constructor(root: vscode.WorkspaceFolder | string | undefined) {
     this.rootDir = typeof root === 'string' ? root : root ? root.uri.fsPath : '';
     // 目录名走取值链（IDE 设置 > 项目约定文件 templates.directory > `ok_templates`）。
-    // 配置从**本对象自己的 rootDir** 读，与上面 `labelEnumName(loadProjectConfig(this.rootDir))`
-    // 保持同一个根 —— 模板数据可能来自另一个仓库，用错根会读到别人的约定文件。
+    // 配置从**本对象自己的 rootDir** 读，与 `generateLabelEnum` 里
+    // `labelEnumNameSetting(filePath, this.rootDir)` 保持同一个根 ——
+    // 模板数据可能来自另一个仓库，用错根会读到别人的约定文件。
     this.templateFolder = path.join(this.rootDir, templatesDirectory(this.rootDir));
     this.cocoPath = path.join(this.templateFolder, COCO_JSON);
   }
@@ -573,12 +575,20 @@ export class TemplateAssetData {
     const dir = path.dirname(filePath);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 
-    // 类名优先取项目约定文件的 `labelEnum.name`，缺席才退回文件名 —— 即旧行为。
+    // 类名走取值链：**IDE 设置 labelEnumName > 项目约定 labelEnum.name > 文件名推导**。
     // 解耦的意义：文件可以叫 feature_labels.py，而类叫 FeatureList。
     // （旧写法只有 basename 一条路，想叫 FeatureList 就必须把文件命名成 FeatureList.py。）
-    const rawClassName = labelEnumName(loadProjectConfig(this.rootDir), filePath, path.basename);
-    // 类名同样进源码：非法标识符直接退回一个安全的默认名，而不是生成坏文件
-    const className = /^[A-Za-z_][A-Za-z0-9_]*$/.test(rawClassName) ? rawClassName : 'LabelEnum';
+    //
+    // 配置从**本对象自己的 rootDir** 读 —— 与构造函数里 `templatesDirectory(this.rootDir)`
+    // 同一个根。模板数据可能来自另一个仓库，用错根会读到别人的约定文件。
+    //
+    // ⚠️ 个人覆盖会改掉写进源码的类名，而项目的代码按名字 import。那道闸不在这一层：
+    // 覆盖前的确认在 `templateAssetPanel.ts`（UI 层）做，见 `labelEnumGuard.ts`。
+    const rawClassName = labelEnumNameSetting(filePath, this.rootDir).value;
+    // 类名同样进源码：非法标识符直接退回一个安全的默认名，而不是生成坏文件。
+    // 走 `writableClassName` 而**不是**内联一个正则 —— 面板的写入前校验要用**同一个**函数
+    // 算"将要写入的类名"，两处各写一遍会让警告内容与实际写进去的东西不符。
+    const className = writableClassName(rawClassName);
     let content = 'from enum import Enum\n\n\n';
     content += `class ${className}(str, Enum):\n`;
     if (labels.length === 0) {

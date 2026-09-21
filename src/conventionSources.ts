@@ -28,6 +28,8 @@ import {
   DEFAULT_EFFECTS_FILE,
   DEFAULT_FEATURE_ALIASES,
   DEFAULT_I18N_ENABLED,
+  DEFAULT_LABEL_ENUM_NAME,
+  DEFAULT_LABEL_ENUM_PATH,
   DEFAULT_LANG_DIRECTORY,
   DEFAULT_PO_DIRECTORY,
   DEFAULT_PO_DOMAINS,
@@ -47,6 +49,8 @@ import {
   i18nPoDomainsResolved,
   ideSetting,
   labelEnumAliasesResolved,
+  labelEnumNameResolved,
+  labelEnumPathResolved,
   loadProjectConfig,
   templatesDirectoryResolved,
 } from './projectConfig';
@@ -123,12 +127,14 @@ const asBool = (value: boolean): string => String(value);
  * 加一组新设置时在这里补一行 —— 溯源视图靠它保持同步，测试会拿这些键名
  * 逐个去 `package.json` 里核对（拼错键名不报错，只会让「恢复」静默失效）。
  *
- * 只收录"个人偏好层来自 IDE 设置"的键：`labelEnumFile` 的个人偏好层是
- * `globalState` 里的"上次保存"（不是 IDE 设置），语义不同，暂不纳入。
+ * 只收录"个人偏好层来自 IDE 设置"的键。`labelEnumPath` / `labelEnumName` 现在也在
+ * 其中 —— 它们的个人偏好层以前是 `globalState` 里的"上次保存"（不是 IDE 设置、
+ * 界面上看不见、跨项目串味），已升级成正式设置，所以纳入。
  *
  * 键名是 IDE 设置名，不是项目约定文件里的字段名 —— 两者**刻意允许不同名**
  * （`enablePoData` ↔ `i18n.enabled`：前者是"我这台机器要不要读它"，
  * 后者是"这个项目的 i18n 长什么样"）。面板按设置名成行，用户能直接去设置界面找。
+ * `labelEnumPath` / `labelEnumName` 是**同名**的一对：两边语义相同，分名反而要用户多记一个词。
  */
 export function conventionSources(): ConventionSourceRow[] {
   const config: ProjectConfig = loadProjectConfig();
@@ -141,6 +147,24 @@ export function conventionSources(): ConventionSourceRow[] {
       resolve: resolve(labelEnumAliasesResolved),
       fallback: DEFAULT_FEATURE_ALIASES,
       render: joinList,
+    }),
+    // 枚举路径 / 类名的兜底层**不是常量**：
+    //   - 路径的兜底是"没指定"（空串），消费端据此跳过生成；
+    //   - 类名的兜底是"用文件名推导"，要拿到文件路径才能求值 —— 面板拿不到，
+    //     所以链上用空串占位、由 `render` 说清"这一层到底会做什么"。
+    // 两者都必须渲染成一句人话：QuickPick 里一段空白看着像坏了
+    // （与 `characterProjectPath` 的空兜底同样处理）。
+    rowOf({
+      key: 'labelEnumPath',
+      resolve: (ideValue) => labelEnumPathResolved(config, ideValue),
+      fallback: DEFAULT_LABEL_ENUM_PATH,
+      render: (value) => value || tr('Not set — ask on save'),
+    }),
+    rowOf({
+      key: 'labelEnumName',
+      resolve: (ideValue) => labelEnumNameResolved(config, ideValue, DEFAULT_LABEL_ENUM_NAME),
+      fallback: DEFAULT_LABEL_ENUM_NAME,
+      render: (value) => value || tr('Derived from the file name'),
     }),
     rowOf({
       key: 'okTemplatesDirectory',

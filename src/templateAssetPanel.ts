@@ -8,13 +8,53 @@ import { injectWebviewLocalization, tr } from './localization';
 import { TempScreenshotStore } from './tempScreenshotStore';
 import { captureGameWindow } from './screenshotCapture';
 import { takePendingDrag } from './tempDrag';
-import { labelEnumFile, loadProjectConfig, templatesDirectory } from './projectConfig';
+import { labelEnumClassName, labelEnumPathSetting, setIdeSetting, templatesDirectory } from './projectConfig';
+import { labelEnumRenameImpact, labelEnumRenameMessage, referencingFiles, writableClassName } from './labelEnumGuard';
 import { needsEnumPathPrompt, SaveTarget, saveToAssetsItems } from './saveToAssetsPure';
 import { getNonce } from './webviewHtml';
 
 /* ---------------- 控制器 ---------------- */
 
 const liveControllers = new Set<AssetGalleryController>();
+
+/**
+ * 扫项目里的 `.py`，找出**按旧类名 import** 的文件（相对项目根）。
+ *
+ * 只在"类名真的变了"时才调用（罕见），所以不做缓存、也不做增量。
+ * 排除目录照抄 VS Code 自己的默认值加 `__pycache__` —— 扫进虚拟环境里的几千个文件
+ * 既慢又没意义（那些不是项目代码）。
+ *
+ * 返回**全部**命中；文案里只列前几个，但总数照实报。
+ */
+async function findLabelEnumReferences(className: string): Promise<string[]> {
+  const folder = vscode.workspace.workspaceFolders?.[0];
+  if (!folder || !className) return [];
+  let uris: vscode.Uri[];
+  try {
+    uris = await vscode.workspace.findFiles(
+      '**/*.py',
+      '**/{node_modules,.venv,venv,.git,__pycache__}/**',
+      LABEL_ENUM_REFERENCE_SCAN_LIMIT,
+    );
+  } catch {
+    return [];
+  }
+  const sources: Array<{ path: string; source: string }> = [];
+  for (const uri of uris) {
+    try {
+      sources.push({
+        path: path.relative(folder.uri.fsPath, uri.fsPath).split(path.sep).join('/'),
+        source: fs.readFileSync(uri.fsPath, 'utf-8'),
+      });
+    } catch {
+      // 读不了就跳过 —— 这是"提示"不是"校验"，不能因为一个文件读不了就少报或误报
+    }
+  }
+  return referencingFiles(sources, className);
+}
+
+/** 引用扫描的文件数上限。项目代码远小于这个数，设它只为兜住"工作区开错根"这种情形。 */
+const LABEL_ENUM_REFERENCE_SCAN_LIMIT = 2000;
 
 export function repaintAllAssetGalleries(): void {
   for (const c of [...liveControllers]) void c.update();
@@ -31,7 +71,6 @@ class AssetGalleryController {
     private readonly thumbDir: string,
     private readonly isVisible: () => boolean,
     private readonly extensionUri: vscode.Uri,
-    private readonly globalState?: vscode.Memento,
     private readonly tempStore?: TempScreenshotStore,
   ) {
     liveControllers.add(this);
@@ -200,18 +239,21 @@ class AssetGalleryController {
       { label: 'ok_tasks/assets', description: tr('saveToAssetsCustomScripts'), folder: path.join(folder.uri.fsPath, 'ok_tasks', 'assets') },
     ];
 
-    // 默认路径的取值链：**上次保存的（个人偏好）> 项目约定文件的 labelEnum.path > 留空**。
+    // 默认路径的取值链：**IDE 设置 labelEnumPath > 项目约定 labelEnum.path > 空**。
     // 个人偏好排最高是用户定的：项目文件是"团队开箱默认"，我改过就用我的。
     // 留空即跳过生成枚举，与旧行为一致。
     //
-    // 注意必须走 `labelEnumFile` 而不是直接拿 `labelEnum.path` —— 后者是**模块路径**
+    // 注意必须走 `labelEnumPathSetting` 而不是直接拿 `labelEnum.path` —— 后者是**模块路径**
     // （`src/data/FeatureList`，不带 .py，与 config.py 的 label_enum_relative_path 同形），
-    // 而下面这个输入框要的是**文件路径**；直接塞进去会生成一个没有扩展名的文件。
+    // 而下面这个输入框要的是**文件路径**；取值链里统一补后缀（见 `normalizeLabelEnumFile`）。
+    //
+    // 个人偏好以前存在 `context.globalState` 里，已**废弃**：它是全局的（A 项目填过的值
+    // 会带到 B 项目，而消费点按当前工作区拼绝对路径 → 静默造出错误目录树），
+    // 而且不在设置界面、不在溯源面板。现在写进 IDE 设置（工作区文件夹级），可见可改可恢复。
     const rememberEnumPath = (value: string) => {
-      if (this.globalState) void this.globalState.update('okScriptToolkit.lastEnumFilePath', value);
+      void setIdeSetting('labelEnumPath', value);
     };
-    const lastEnumPath = this.globalState?.get<string>('okScriptToolkit.lastEnumFilePath') || '';
-    let enumPath = labelEnumFile(loadProjectConfig(), lastEnumPath) || '';
+    let enumPath = labelEnumPathSetting();
 
     // 目标选择与「修改枚举路径」共用一轮循环：改完路径要回到目标选择，
     // 所以列表每次都重新构造（有默认路径时才多出那一项，见 `saveToAssetsPure`）。
@@ -262,6 +304,11 @@ class AssetGalleryController {
     // 将相对路径解析为绝对路径
     const absEnumPath = generateEnum ? path.join(folder.uri.fsPath, enumPath) : undefined;
 
+    // 覆盖已有枚举文件、且**类名会变**时先问一句。这是唯一一处"个人覆盖能把项目弄坏"
+    // 的地方：项目的代码按类名 import（`from src.data.feature_list import FeatureList`），
+    // 改名之后那些 import 全部 ImportError，而保存成功的提示照样会弹出来。
+    if (absEnumPath && !(await this.confirmLabelEnumRename(absEnumPath))) return;
+
     try {
       this.data.ensureTemplateFolder();
       await vscode.window.withProgress(
@@ -291,6 +338,40 @@ class AssetGalleryController {
         void vscode.window.showErrorMessage(tr('Save failed: {error}', { error: String(e) }));
       }
     }
+  }
+
+  /**
+   * 覆盖已有枚举文件、且**类名会变**时先问一句。
+   *
+   * 为什么这道闸在 UI 层而不是 `TemplateAssetData.generateLabelEnum` 里：那是个同步的
+   * 数据写入，里面弹模态框会让它没法被测、也把 UI 决策塞进了数据层。判据本身是纯函数
+   * （`labelEnumGuard.ts`），IO 与弹窗留在这里。
+   *
+   * 返回 `false` = 用户选择放弃这次保存（**整个**保存，不只是枚举 —— 半保存状态更难解释）。
+   *
+   * 失败一律放行：读不了文件、扫不了项目都只影响"提示的完整度"，不能反过来阻断保存。
+   */
+  private async confirmLabelEnumRename(absEnumPath: string): Promise<boolean> {
+    let existingSource: string | undefined;
+    try {
+      existingSource = fs.readFileSync(absEnumPath, 'utf-8');
+    } catch {
+      return true; // 文件不存在 → 全新生成，没有旧名字可废
+    }
+    // 用**将要写入的那个类名**（`writableClassName` 会把非法标识符退回兜底名）去比 ——
+    // 直接拿用户填的原始值比，会为"填了个非法名字、实际什么都没变"的情况报警。
+    const newClassName = writableClassName(labelEnumClassName(absEnumPath, this.data.root));
+    const impact = labelEnumRenameImpact({ existingSource, newClassName });
+    if (!impact) return true;
+
+    const refs = await findLabelEnumReferences(impact.existingClassName);
+    const overwrite = tr('Overwrite anyway');
+    const choice = await vscode.window.showWarningMessage(
+      labelEnumRenameMessage(impact, refs, tr),
+      { modal: true },
+      overwrite,
+    );
+    return choice === overwrite;
   }
 
   /* ---------- 删除图片 ---------- */
@@ -372,7 +453,6 @@ export class TemplateAssetViewProvider implements vscode.WebviewViewProvider {
     private readonly data: TemplateAssetData,
     private readonly thumbDir: string,
     private readonly extensionUri: vscode.Uri,
-    private readonly globalState?: vscode.Memento,
     private readonly tempStore?: TempScreenshotStore,
   ) { }
 
@@ -387,7 +467,6 @@ export class TemplateAssetViewProvider implements vscode.WebviewViewProvider {
       this.thumbDir,
       () => view.visible,
       this.extensionUri,
-      this.globalState,
       this.tempStore,
     );
     controller.attachHtml();
@@ -401,7 +480,7 @@ export class TemplateAssetViewProvider implements vscode.WebviewViewProvider {
 export class TemplateAssetPanel {
   static current: TemplateAssetPanel | undefined;
 
-  static show(data: TemplateAssetData, thumbDir: string, extensionUri: vscode.Uri, globalState?: vscode.Memento, tempStore?: TempScreenshotStore): void {
+  static show(data: TemplateAssetData, thumbDir: string, extensionUri: vscode.Uri, tempStore?: TempScreenshotStore): void {
     if (TemplateAssetPanel.current) {
       TemplateAssetPanel.current.panel.reveal();
       void TemplateAssetPanel.current.controller.update();
@@ -423,7 +502,6 @@ export class TemplateAssetPanel {
       thumbDir,
       () => panel.visible,
       extensionUri,
-      globalState,
       tempStore,
     );
     TemplateAssetPanel.current = new TemplateAssetPanel(panel, controller);
@@ -439,10 +517,9 @@ export class TemplateAssetPanel {
     data: TemplateAssetData,
     thumbDir: string,
     extensionUri: vscode.Uri,
-    globalState?: vscode.Memento,
     tempStore?: TempScreenshotStore,
   ): void {
-    TemplateAssetPanel.show(data, thumbDir, extensionUri, globalState, tempStore);
+    TemplateAssetPanel.show(data, thumbDir, extensionUri, tempStore);
     void TemplateAssetPanel.current?.controller.handleScreenshot();
   }
 

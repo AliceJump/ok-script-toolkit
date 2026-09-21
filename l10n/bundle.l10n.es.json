@@ -186,5 +186,13 @@
   "uncategorized": "Sin categoría",
   "LabelEnum.py file path (relative to workspace root, leave empty to skip)": "Ruta del archivo LabelEnum.py (relativa a la raíz del espacio de trabajo; déjala vacía para omitir)",
   "e.g. assets/data/LabelEnum.py or src/label_enum.py": "p. ej. assets/data/LabelEnum.py o src/label_enum.py",
-  "Please click an image in the Template Assets panel to open the annotation editor.": "Haz clic en una imagen del panel «Recursos de plantilla» para abrir el editor de anotaciones."
+  "Please click an image in the Template Assets panel to open the annotation editor.": "Haz clic en una imagen del panel «Recursos de plantilla» para abrir el editor de anotaciones.",
+  "The target file currently defines class {old}.": "El archivo de destino define actualmente la clase {old}.",
+  "The target file already exists but its class name could not be recognized.": "El archivo de destino ya existe, pero no se pudo reconocer su nombre de clase.",
+  "This save will rename it to {new}.": "Este guardado la renombrará a {new}.",
+  "This save will write class {new}.": "Este guardado escribirá la clase {new}.",
+  "{count} file(s) still import {old} and will break: {files}": "{count} archivo(s) todavía importan {old} y se romperán: {files}",
+  "Overwrite anyway": "Sobrescribir igualmente",
+  "Not set — ask on save": "Sin definir — preguntar al guardar",
+  "Derived from the file name": "Derivado del nombre del archivo"
 }

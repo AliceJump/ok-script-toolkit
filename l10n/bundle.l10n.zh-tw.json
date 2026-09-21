@@ -186,5 +186,13 @@
   "uncategorized": "未分類",
   "LabelEnum.py file path (relative to workspace root, leave empty to skip)": "LabelEnum.py 檔案路徑（相對於工作區根目錄，留空則略過）",
   "e.g. assets/data/LabelEnum.py or src/label_enum.py": "例如 assets/data/LabelEnum.py 或 src/label_enum.py",
-  "Please click an image in the Template Assets panel to open the annotation editor.": "請先在「範本資源」面板中點選一張圖片，以開啟標註編輯器。"
+  "Please click an image in the Template Assets panel to open the annotation editor.": "請先在「範本資源」面板中點選一張圖片，以開啟標註編輯器。",
+  "The target file currently defines class {old}.": "目標檔案目前的類名是 {old}。",
+  "The target file already exists but its class name could not be recognized.": "目標檔案已存在，但無法辨識它的類名。",
+  "This save will rename it to {new}.": "這次儲存會將它改名為 {new}。",
+  "This save will write class {new}.": "這次儲存會寫入類別 {new}。",
+  "{count} file(s) still import {old} and will break: {files}": "還有 {count} 個檔案在 import {old}，它們會失效：{files}",
+  "Overwrite anyway": "仍然覆蓋",
+  "Not set — ask on save": "未設定 —— 儲存時詢問",
+  "Derived from the file name": "由檔名推導"
 }

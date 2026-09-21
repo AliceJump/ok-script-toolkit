@@ -186,5 +186,13 @@
   "uncategorized": "미분류",
   "LabelEnum.py file path (relative to workspace root, leave empty to skip)": "LabelEnum.py 파일 경로(워크스페이스 루트 기준, 비워 두면 건너뜀)",
   "e.g. assets/data/LabelEnum.py or src/label_enum.py": "예: assets/data/LabelEnum.py 또는 src/label_enum.py",
-  "Please click an image in the Template Assets panel to open the annotation editor.": "주석 편집기를 열려면 \"템플릿 에셋\" 패널에서 이미지를 클릭하세요."
+  "Please click an image in the Template Assets panel to open the annotation editor.": "주석 편집기를 열려면 \"템플릿 에셋\" 패널에서 이미지를 클릭하세요.",
+  "The target file currently defines class {old}.": "대상 파일의 현재 클래스 이름은 {old} 입니다.",
+  "The target file already exists but its class name could not be recognized.": "대상 파일이 이미 있지만 클래스 이름을 인식하지 못했습니다.",
+  "This save will rename it to {new}.": "이번 저장으로 {new} 로 이름이 바뀝니다.",
+  "This save will write class {new}.": "이번 저장으로 클래스 {new} 를 씁니다.",
+  "{count} file(s) still import {old} and will break: {files}": "{count} 개 파일이 아직 {old} 를 import 하고 있어 깨집니다: {files}",
+  "Overwrite anyway": "그래도 덮어쓰기",
+  "Not set — ask on save": "설정 안 됨 — 저장할 때 묻기",
+  "Derived from the file name": "파일 이름에서 유도"
 }

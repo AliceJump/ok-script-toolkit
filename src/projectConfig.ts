@@ -13,6 +13,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import {
   ProjectConfig,
+  ResolvedSetting,
   charactersAvatarTemplateRegex,
   charactersLocaleFile,
   charactersMasterFile,
@@ -23,6 +24,10 @@ import {
   i18nLangDirectory,
   i18nPoDirectory,
   i18nPoDomains,
+  labelEnumName,
+  labelEnumNameResolved,
+  labelEnumPath,
+  labelEnumPathResolved,
   normalizeRelPath,
   parseProjectConfig,
   templatesDirectoryOf,
@@ -42,6 +47,22 @@ export const DEFAULT_TEMPLATES_DIRECTORY = 'ok_templates';
  * 所以读它必须走 `ideSetting()`（`inspect()`），不能用 `get()`。
  */
 export const DEFAULT_FEATURE_ALIASES = ['fL', 'FeatureList'];
+
+/**
+ * 枚举文件路径的兜底：**空串 = 没指定**（这次不生成枚举）。
+ *
+ * 与 `DEFAULT_CHARACTER_PROJECT_PATH` 一样，空串是有含义的值、不是"缺省忘了填" ——
+ * 所以溯源面板必须把它渲染成一句人话（直接展示空串在 QuickPick 里是一段空白，看着像坏了）。
+ */
+export const DEFAULT_LABEL_ENUM_PATH = '';
+
+/**
+ * 枚举类名的兜底：**空串 = 没有可用的名字**，调用方退回"用文件名推导"。
+ *
+ * 兜底层不是一个常量而是**从文件路径算出来的**，所以这里只能放占位空串；
+ * 真正求值在 `labelEnumNameSetting(filePath)` 里。
+ */
+export const DEFAULT_LABEL_ENUM_NAME = '';
 
 /* ---------------- i18n / characters / effects 三组的兜底 ---------------- */
 
@@ -153,6 +174,31 @@ export function ideSetting<T>(key: string): T | undefined {
 }
 
 /**
+ * 写**个人偏好**（IDE 设置）。与 [ideSetting] 成对：那边读用户真正设过的值，这边写。
+ *
+ * 作用域选**工作区文件夹级**（有打开的工作区时）—— 这一项是"我的枚举路径 / 我的类名"，
+ * 天然属于当前项目。写全局会让 A 项目的值串到 B 项目：旧实现用 `context.globalState`
+ * 存"上次保存的枚举路径"，于是 A 项目填过 `src/data/feature_list.py` 之后，
+ * 在 B 项目导出时默认值还是它，一回车就按 B 的根拼出一个**不存在**的路径，
+ * 而生成函数里有 `mkdirSync(recursive: true)` —— 静默在项目里造出错误的目录树。
+ *
+ * 换到工作区文件夹级顺带解决了可见性：那个值从此在设置界面能看到、
+ * 在溯源面板能溯源、也能一键恢复（`globalState` 三者皆无）。
+ *
+ * `value` 传空串/空白 → 写 `undefined`（**真的删掉这一项**，而不是留一条空条目）。
+ * 空值在这条链里表示"回到项目约定"（与 `labelEnum.aliases` 同一条规则）。
+ */
+export async function setIdeSetting(key: string, value: string | undefined): Promise<void> {
+  const cfg = vscode.workspace.getConfiguration('okScriptToolkit');
+  const trimmed = value?.trim();
+  const target =
+    vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0
+      ? vscode.ConfigurationTarget.WorkspaceFolder
+      : vscode.ConfigurationTarget.Global;
+  await cfg.update(key, trimmed ? trimmed : undefined, target);
+}
+
+/**
  * 模板目录名（相对项目根）。
  *
  * 取值链：**个人偏好（IDE 设置）> 项目约定文件 `templates.directory` > `ok_templates`**。
@@ -248,6 +294,39 @@ export function charactersAvatarTemplateRegexSetting(): string {
 /** 效果定义源文件，相对项目根。 */
 export function effectsFileSetting(): string {
   return effectsFile(loadProjectConfig(), ideSetting<string>('effectsFile'), DEFAULT_EFFECTS_FILE);
+}
+
+/**
+ * 枚举文件的**文件路径**（相对项目根，带 `.py`）。`''` = 没指定（跳过生成）。
+ *
+ * 取值链：**IDE 设置 `labelEnumPath` > 项目约定 `labelEnum.path` > 空**。
+ * 设置项与项目字段**同名**（不像 `enablePoData` ↔ `i18n.enabled` 那样分名）——
+ * 因为两者语义相同（"这个项目的枚举文件在哪"），分名反而要用户多记一个词。
+ */
+export function labelEnumPathSetting(): string {
+  return labelEnumPath(loadProjectConfig(), ideSetting<string>('labelEnumPath'));
+}
+
+/**
+ * 枚举**类名**（带来源层）。`filePath` 是**即将写入**的文件路径。
+ *
+ * 兜底层是"用文件名推导"，必须拿到文件路径才能求值，所以这里和
+ * [labelEnumPathSetting] 不同、要额外收一个参数。
+ *
+ * `projectDir` 传调用方自己用的那个项目根（模板数据可能来自另一个仓库，
+ * 用错根会读到别人的约定文件）。不传则用 `resolveProjectDir()`。
+ */
+export function labelEnumNameSetting(filePath: string, projectDir?: string): ResolvedSetting<string> {
+  return labelEnumNameResolved(
+    loadProjectConfig(projectDir),
+    ideSetting<string>('labelEnumName'),
+    path.basename(filePath, '.py'),
+  );
+}
+
+/** 只要类名时的薄封装（绝大多数消费点用这个）。 */
+export function labelEnumClassName(filePath: string, projectDir?: string): string {
+  return labelEnumNameSetting(filePath, projectDir).value;
 }
 
 /**

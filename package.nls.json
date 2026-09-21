@@ -33,6 +33,8 @@
   "config.displayLocale": "Default locale for inline hints. auto follows the VS Code display language.",
   "config.enableInlayHints": "Enable inline hints for language values and effects.",
   "config.featureAliases": "Aliases used for FeatureList template completion and hover.",
+  "config.labelEnumPath": "LabelEnum.py path relative to the workspace root, with or without the .py suffix. Overrides labelEnum.path in ok-script-toolkit.json; leave empty to follow the project convention.",
+  "config.labelEnumName": "LabelEnum class name. Overrides labelEnum.name in ok-script-toolkit.json; leave empty to derive it from the file name. Project code imports this class by name, so renaming it breaks those imports — you will be asked to confirm before an existing file is overwritten.",
   "config.effectsFile": "EffectType and EFFECT_DESCRIPTIONS Python file relative to the workspace root.",
   "config.okScriptProjectPath": "ok-script project root containing src/config.py. Used by the task launcher.",
   "config.okScriptPython": "Python interpreter used to run ok-script tasks. Empty uses the target project's .venv on Windows.",

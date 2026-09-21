@@ -382,6 +382,58 @@ async function main() {
     check(bare.effective === 'Same as the current project', '空兜底的文案是「与当前项目相同」');
   }
 
+  // ── 5.5 labelEnum.path / labelEnum.name 也进了登记表 ────────────────
+  //
+  // 这两项此前**没有**个人偏好层（`path` 的"上次保存"藏在 `globalState` 里，
+  // 界面上看不见、还跨项目串味；`name` 完全没有）。升级成正式 IDE 设置之后，
+  // 它们必须和其它设置一样可溯源、可恢复 —— 否则用户改过类名之后
+  // **看不到团队声明、也回不去**，而这一项改错会让整个项目 import 失败。
+  console.log('\n枚举路径与类名也可溯源');
+  {
+    writeConvention({ labelEnum: { path: 'src/data/feature_list', name: 'FeatureList' } });
+    vscode.__test.reset();
+    const rows = conv.conventionSources();
+    const pathRow = rowOf(rows, 'labelEnumPath');
+    const nameRow = rowOf(rows, 'labelEnumName');
+
+    check(pathRow.effective === 'src/data/feature_list.py', '路径行展示的是**文件路径**（模块路径已补 .py）');
+    check(pathRow.layer === 'project' && pathRow.declared === 'src/data/feature_list.py', '声明值与生效值走同一套归一化');
+    check(nameRow.effective === 'FeatureList' && nameRow.layer === 'project', '类名行按项目声明取值');
+
+    // 个人覆盖
+    vscode.__test.setOverride('labelEnumPath', 'global', 'mine/x.py');
+    vscode.__test.setOverride('labelEnumName', 'global', 'MyEnum');
+    const rows2 = conv.conventionSources();
+    const path2 = rowOf(rows2, 'labelEnumPath');
+    const name2 = rowOf(rows2, 'labelEnumName');
+    check(path2.effective === 'mine/x.py' && path2.layer === 'personal', '路径的个人偏好压过项目声明');
+    check(name2.effective === 'MyEnum' && name2.layer === 'personal', '类名的个人偏好压过项目声明');
+    check(path2.declared === 'src/data/feature_list.py', '被覆盖时仍然展示项目声明 —— 用户得知道团队要的是哪个文件');
+    check(name2.declared === 'FeatureList', '类名同理 —— 这一项被覆盖后尤其危险，必须能看见原值');
+    check(path2.overridden === true && name2.overridden === true, '两项都提供「恢复为项目约定」');
+
+    // 空字符串覆盖 = "没设置"，不是"钉死为空"
+    vscode.__test.setOverride('labelEnumPath', 'global', '   ');
+    const path3 = rowOf(conv.conventionSources(), 'labelEnumPath');
+    check(path3.layer === 'project', '个人偏好写成空白 = 回到项目约定（与 aliases 的空数组同一条规则）');
+
+    // 都没声明 → 兜底层要能读懂
+    writeConvention(undefined);
+    vscode.__test.reset();
+    const bare = conv.conventionSources();
+    const barePath = rowOf(bare, 'labelEnumPath');
+    const bareName = rowOf(bare, 'labelEnumName');
+    check(barePath.layer === 'builtin' && barePath.declared === undefined, '都没声明时路径行报「内置默认」');
+    check(
+      barePath.effective === 'Not set — ask on save',
+      '**空兜底要渲染成一句人话** —— 直接展示空串在 QuickPick 里是一段空白，看着像坏了',
+    );
+    check(
+      bareName.effective === 'Derived from the file name',
+      '类名的兜底是"用文件名推导"（**不是常量**，面板拿不到文件路径）—— 文案要说清这一层会做什么',
+    );
+  }
+
   // ── 6. 登记表与 package.json 一致 ──────────────────────────────────
   //
   // 溯源视图的 settingId 是自己拼的（`okScriptToolkit.${key}`）。

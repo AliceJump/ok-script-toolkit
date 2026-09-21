@@ -357,6 +357,8 @@ See [DEVELOPMENT.md](DEVELOPMENT.md) for project structure, JetBrains version, l
 | `okScriptToolkit.displayLocale` | `auto` | 幽灵注释显示的语言；`auto` 跟随 VS Code UI 语言 |
 | `okScriptToolkit.enableInlayHints` | `true` | 是否启用幽灵注释 |
 | `okScriptToolkit.featureAliases` | `["fL", "FeatureList"]` | 模板别名列表；别名会用于模板补全和 hover 识别 |
+| `okScriptToolkit.labelEnumPath` | 空 | 生成 `LabelEnum.py` 的路径（相对工作区根，带不带 `.py` 都可以）；留空则跟随项目约定。对应项目文件的 `labelEnum.path` |
+| `okScriptToolkit.labelEnumName` | 空 | 生成枚举的类名；留空则由文件名推导。对应项目文件的 `labelEnum.name`。⚠️ 项目代码按这个名字 import，改名会让那些 import 失效 —— 覆盖已有文件前会先请你确认 |
 | `okScriptToolkit.effectsFile` | `src/data/effects.py` | 技能效果 ID 定义文件（`EffectType` 枚举与 `EFFECT_DESCRIPTIONS`），相对工作区根目录 |
 | `okScriptToolkit.okScriptProjectPath` | 空 | 任务启动器使用的 ok-script 项目根目录；为空时尝试使用当前工作区 |
 | `okScriptToolkit.okScriptPython` | 空 | 任务启动器使用的 Python；为空时优先使用目标项目 `.venv/Scripts/python.exe` |
@@ -389,6 +391,7 @@ See [DEVELOPMENT.md](DEVELOPMENT.md) for project structure, JetBrains version, l
 |---|---|
 | `okTemplatesDirectory` | `templates.directory` |
 | `featureAliases` | `labelEnum.aliases` |
+| `labelEnumPath` / `labelEnumName` | `labelEnum.path` / `labelEnum.name`（**同名**：两边语义相同，分名反而要用户多记一个词） |
 | `langDirectory` / `poDirectory` / `poDomains` | `i18n.langDirectory` / `i18n.poDirectory` / `i18n.poDomains` |
 | `enablePoData` | `i18n.enabled`（**名字不同是刻意的**：前者是"我这台机器要不要读它"，后者是"这个项目的 i18n 长什么样"） |
 | `characterProjectPath` / `characterMasterFile` / `characterSkillsDirectory` / `characterLocaleFile` / `characterAvatarTemplateRegex` | `characters.projectPath` / `characters.masterFile` / `characters.skillsDirectory` / `characters.localeFile` / `characters.avatarTemplateRegex` |
@@ -455,6 +458,8 @@ self.wait_click_ocr(match=self.lang.zip_line_mixin.k_2f4f4a2f, ...)
 | `okScriptToolkit.displayLocale` | `auto` | Language for ghost hints; `auto` follows VS Code UI language |
 | `okScriptToolkit.enableInlayHints` | `true` | Enable ghost hints |
 | `okScriptToolkit.featureAliases` | `["fL", "FeatureList"]` | Template alias list; aliases are used for template completion and hover detection |
+| `okScriptToolkit.labelEnumPath` | empty | Path of the generated `LabelEnum.py` (relative to workspace root, with or without `.py`); empty follows the project convention. Maps to `labelEnum.path` |
+| `okScriptToolkit.labelEnumName` | empty | Class name of the generated enum; empty derives it from the file name. Maps to `labelEnum.name`. ⚠️ Project code imports this class by name, so renaming it breaks those imports — you will be asked to confirm before an existing file is overwritten |
 | `okScriptToolkit.effectsFile` | `src/data/effects.py` | Skill effect ID definition file (`EffectType` enum + `EFFECT_DESCRIPTIONS`), relative to workspace root |
 | `okScriptToolkit.okScriptProjectPath` | empty | ok-script project root for the task launcher; tries the current workspace when empty |
 | `okScriptToolkit.okScriptPython` | empty | Python for the task launcher; prefers `<project>/.venv/Scripts/python.exe` when empty |
@@ -489,6 +494,7 @@ Settings that take part in the precedence chain ↔ the field they map to:
 |---|---|
 | `okTemplatesDirectory` | `templates.directory` |
 | `featureAliases` | `labelEnum.aliases` |
+| `labelEnumPath` / `labelEnumName` | `labelEnum.path` / `labelEnum.name` (**deliberately the same names**: both mean the same thing, and different names would just be one more word to remember) |
 | `langDirectory` / `poDirectory` / `poDomains` | `i18n.langDirectory` / `i18n.poDirectory` / `i18n.poDomains` |
 | `enablePoData` | `i18n.enabled` (**deliberately different names**: the setting is "does this machine read it", the field is "what this project's i18n looks like") |
 | `characterProjectPath` / `characterMasterFile` / `characterSkillsDirectory` / `characterLocaleFile` / `characterAvatarTemplateRegex` | `characters.projectPath` / `characters.masterFile` / `characters.skillsDirectory` / `characters.localeFile` / `characters.avatarTemplateRegex` |

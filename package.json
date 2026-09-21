@@ -232,6 +232,16 @@
           ],
           "description": "%config.featureAliases%"
         },
+        "okScriptToolkit.labelEnumPath": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "%config.labelEnumPath%"
+        },
+        "okScriptToolkit.labelEnumName": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "%config.labelEnumName%"
+        },
         "okScriptToolkit.effectsFile": {
           "type": "string",
           "default": "src/data/effects.py",
@@ -323,7 +333,7 @@
     "verify:version": "node scripts/release/verify-version.js",
     "verify:l10n": "node scripts/release/verify-l10n.js",
     "release": "sh scripts/release.sh",
-    "test": "npm run verify:version && npm run verify:l10n && npm run compile && npm run test:webview-html && npm run test:task-launcher && npm run test:task-launcher-executor && npm run test:temp-screenshots && npm run test:annotation-coords && npm run test:thumb-content-hash && npm run test:list-editor && npm run test:project-config && npm run test:project-config-schema && npm run test:convention-sources && npm run test:save-to-assets-flow && npm run test:save-to-assets && npm run test:asset-pack-worker && npm run test:coco-feature-path && npm run test:probe-schemas && npm run test:probe-window-config && npm run test:run-sandbox && npm run test:startup-patches && npm run test:executor-project-config",
+    "test": "npm run verify:version && npm run verify:l10n && npm run compile && npm run test:webview-html && npm run test:task-launcher && npm run test:task-launcher-executor && npm run test:temp-screenshots && npm run test:annotation-coords && npm run test:thumb-content-hash && npm run test:list-editor && npm run test:project-config && npm run test:project-config-schema && npm run test:convention-sources && npm run test:label-enum-guard && npm run test:save-to-assets-flow && npm run test:save-to-assets && npm run test:asset-pack-worker && npm run test:coco-feature-path && npm run test:probe-schemas && npm run test:probe-window-config && npm run test:run-sandbox && npm run test:startup-patches && npm run test:executor-project-config",
     "test:webview-html": "node scripts/test_webview_html.js",
     "test:task-launcher": "node scripts/test_task_launcher_subconfigs.js",
     "test:task-launcher-executor": "node scripts/test_task_launcher_executor.js",
@@ -334,6 +344,7 @@
     "test:project-config": "node scripts/test_project_config.js",
     "test:project-config-schema": "node scripts/test_project_config_schema.js",
     "test:convention-sources": "node scripts/test_convention_sources.js",
+    "test:label-enum-guard": "node scripts/test_label_enum_guard.js",
     "test:save-to-assets-flow": "node scripts/test_save_to_assets_flow.js",
     "test:coco-feature-path": "node scripts/test_coco_feature_path.js",
     "test:save-to-assets": "node scripts/test_save_to_assets.js",

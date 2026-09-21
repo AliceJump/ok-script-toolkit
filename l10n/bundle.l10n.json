@@ -186,5 +186,13 @@
   "saveToAssetsCustomScripts": "custom scripts",
   "saveToAssetsStandaloneApp": "standalone app",
   "screenshotWindowPlaceholder": "e.g. EndField|Unity",
-  "uncategorized": "Uncategorized"
+  "uncategorized": "Uncategorized",
+  "The target file currently defines class {old}.": "The target file currently defines class {old}.",
+  "The target file already exists but its class name could not be recognized.": "The target file already exists but its class name could not be recognized.",
+  "This save will rename it to {new}.": "This save will rename it to {new}.",
+  "This save will write class {new}.": "This save will write class {new}.",
+  "{count} file(s) still import {old} and will break: {files}": "{count} file(s) still import {old} and will break: {files}",
+  "Overwrite anyway": "Overwrite anyway",
+  "Not set — ask on save": "Not set — ask on save",
+  "Derived from the file name": "Derived from the file name"
 }

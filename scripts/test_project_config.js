@@ -64,45 +64,88 @@ check(
   '项目声明的全是无效项时退回兜底',
 );
 
-// ── 4. 类名：项目声明 > 文件名 ──────────────────────────────────────
+// ── 4. 类名：个人偏好 > 项目声明 > 文件名 ────────────────────────────
+//
+// 兜底层是"用文件名推导"、**不是常量**，所以要调用方把 `basename(filePath, '.py')` 传进来。
 console.log('\nlabelEnumName');
+const BASENAME = (p) => path.basename(p, '.py');
 check(
-  pure.labelEnumName({}, '/p/src/data/feature_labels.py', path.basename) === 'feature_labels',
-  '没声明时退回文件名（去 .py）—— 即旧行为',
+  pure.labelEnumName({}, undefined, BASENAME('/p/src/data/feature_labels.py')) === 'feature_labels',
+  '都没声明时退回文件名（去 .py）—— 即旧行为',
 );
 check(
-  pure.labelEnumName({ labelEnum: { name: 'FeatureList' } }, '/p/src/data/feature_labels.py', path.basename) === 'FeatureList',
+  pure.labelEnumName({ labelEnum: { name: 'FeatureList' } }, undefined, BASENAME('/p/src/data/feature_labels.py')) === 'FeatureList',
   '**声明后文件与类名解耦** —— 文件叫 feature_labels.py、类叫 FeatureList',
 );
 check(
-  pure.labelEnumName({ labelEnum: { name: '   ' } }, '/p/src/data/FeatureList.py', path.basename) === 'FeatureList',
+  pure.labelEnumName({ labelEnum: { name: '   ' } }, undefined, BASENAME('/p/src/data/FeatureList.py')) === 'FeatureList',
   '声明为空串等同于没声明',
 );
-
-// ── 5. 枚举文件路径：上次保存 > 项目声明 > 无（且模块路径必须补 .py）────
-//
-// 个人偏好最高（用户明确纠正过）——项目文件是团队开箱默认，我手动指定过就以我的为准。
-console.log('\nlabelEnumFile');
-check(pure.labelEnumFile({}, undefined) === undefined, '都没有时返回 undefined（交给调用方用内置默认）');
 check(
-  pure.labelEnumFile({}, '上次/存的.py') === '上次/存的.py',
-  '只有上次保存时用它（它已是文件路径，原样返回、不重复补后缀）',
-);
-check(
-  pure.labelEnumFile({ labelEnum: { path: 'src/data/FeatureList' } }, undefined) === 'src/data/FeatureList.py',
-  '**项目声明是模块路径，必须补 .py** —— 否则会生成一个没有扩展名的文件，Python import 不到',
-);
-check(
-  pure.labelEnumFile({ labelEnum: { path: 'src/data/FeatureList.py' } }, undefined) === 'src/data/FeatureList.py',
-  '声明里已经带了 .py 就不重复补（对写法宽容）',
-);
-check(
-  pure.labelEnumFile({ labelEnum: { path: 'src/data/FeatureList' } }, '上次/存的.py') === '上次/存的.py',
+  pure.labelEnumName({ labelEnum: { name: 'FeatureList' } }, 'MyEnum', BASENAME('/p/src/data/feature_labels.py')) === 'MyEnum',
   '**个人偏好压过项目声明** —— 与全局取值链一致（个人偏好最高）',
 );
 check(
-  pure.labelEnumFile({ labelEnum: { path: '' } }, '上次/存的.py') === '上次/存的.py',
-  '项目声明为空串时仍用上次保存',
+  pure.labelEnumName({ labelEnum: { name: 'FeatureList' } }, '   ', BASENAME('/p/src/data/feature_labels.py')) === 'FeatureList',
+  '个人偏好为空串时退回项目声明（空 = 没设置，不是"把类名清空"）',
+);
+check(
+  pure.labelEnumNameResolved({ labelEnum: { name: 'FeatureList' } }, 'MyEnum', 'x').layer === 'personal',
+  '带来源层的变体如实报出「我的设置」',
+);
+check(
+  pure.labelEnumNameResolved({}, undefined, 'from_file').value === 'from_file' &&
+    pure.labelEnumNameResolved({}, undefined, 'from_file').layer === 'builtin',
+  '兜底层报「内置默认」—— 面板据此显示"由文件名推导"',
+);
+
+// ── 5. 枚举文件路径：个人偏好 > 项目声明 > 无（且两种写法都要补 .py）────
+//
+// 个人偏好最高（用户明确纠正过）——项目文件是团队开箱默认，我手动指定过就以我的为准。
+// 个人偏好层以前是 `globalState` 里的"上次保存"，现在是 IDE 设置 `labelEnumPath`；
+// 语义相同，所以这里只换参数名、断言原样保留。
+console.log('\nlabelEnumPath');
+check(pure.labelEnumPath({}, undefined) === '', '都没有时返回空串（= 这次不生成枚举）');
+check(
+  pure.labelEnumPath({}, '上次/存的.py') === '上次/存的.py',
+  '只有个人偏好时用它',
+);
+check(
+  pure.labelEnumPath({}, '上次/存的') === '上次/存的.py',
+  '**个人偏好写的是模块路径也要补 .py** —— 旧实现把这一层原样返回，于是从输入框里填模块路径会生成一个没有扩展名的文件，Python import 不到',
+);
+check(
+  pure.labelEnumPath({ labelEnum: { path: 'src/data/FeatureList' } }, undefined) === 'src/data/FeatureList.py',
+  '**项目声明是模块路径，必须补 .py**',
+);
+check(
+  pure.labelEnumPath({ labelEnum: { path: 'src/data/FeatureList.py' } }, undefined) === 'src/data/FeatureList.py',
+  '声明里已经带了 .py 就不重复补（对写法宽容）',
+);
+check(
+  pure.labelEnumPath({ labelEnum: { path: 'src/data/FeatureList' } }, '上次/存的.py') === '上次/存的.py',
+  '**个人偏好压过项目声明**',
+);
+check(
+  pure.labelEnumPath({ labelEnum: { path: '' } }, '上次/存的.py') === '上次/存的.py',
+  '项目声明为空串时仍用个人偏好',
+);
+check(
+  pure.labelEnumPath({ labelEnum: { path: 'src/data/FeatureList' } }, '') === 'src/data/FeatureList.py',
+  '**个人偏好清空后回到项目声明** —— 空值表达"回到项目约定"，与 aliases 同一条规则',
+);
+check(
+  pure.labelEnumPath({ labelEnum: { path: 'src\\data\\FeatureList' } }, undefined) === 'src/data/FeatureList.py',
+  '反斜杠同样归一化（否则拼进 path.join 之外的用途会静默失配）',
+);
+check(
+  pure.labelEnumPathResolved({ labelEnum: { path: 'src/data/FeatureList' } }, 'mine/x.py').layer === 'personal',
+  '带来源层的变体如实报出「我的设置」',
+);
+check(
+  pure.labelEnumPathResolved({}, undefined).layer === 'builtin' &&
+    pure.labelEnumPathResolved({}, undefined).value === '',
+  '都没有时报「内置默认」且值为空串（面板据此显示"未设置 —— 保存时询问"）',
 );
 
 // ── 6. 相对路径归一化 ────────────────────────────────────────────────
@@ -294,12 +337,14 @@ console.log('\n破坏性对照');
   }
 
   // 对照一：优先级反转（项目声明优先）
+  //
+  // 杠杆点在 `labelEnumPathResolved` 那一行的两个实参顺序上。
   const swapped = source.replace(
-    /const saved = nonEmpty\(lastSaved\);\s*if \(saved\)\s*return saved;/,
-    'const saved = undefined;',
+    "return resolveSetting(normalizeLabelEnumFile(ideValue), normalizeLabelEnumFile(labelEnumOf(config).path), '');",
+    "return resolveSetting(normalizeLabelEnumFile(labelEnumOf(config).path), normalizeLabelEnumFile(ideValue), '');",
   );
   check(swapped !== source, '对照一源码确实被改动了（替换命中）—— 否则对照是假的');
-  const reversed = evalSandbox(swapped).labelEnumFile(
+  const reversed = evalSandbox(swapped).labelEnumPath(
     { labelEnum: { path: 'src/data/FeatureList' } },
     '上次/存的.py',
   );
@@ -309,15 +354,23 @@ console.log('\n破坏性对照');
   );
 
   // 对照二：不补 .py（= 修复前的行为）
+  //
+  // 旧实现只给"项目声明"补后缀、把个人偏好原样返回；现在两层共用这一个归一化，
+  // 所以把它拆掉就能同时打穿两层 —— 断言里两层都要验。
   const noExt = source.replace(
-    /return declared\.toLowerCase\(\)\.endsWith\('\.py'\) \? declared : `\$\{declared\}\.py`;/,
-    'return declared;',
+    "return rel.toLowerCase().endsWith('.py') ? rel : `${rel}.py`;",
+    'return rel;',
   );
   check(noExt !== source, '对照二源码确实被改动了（替换命中）—— 否则对照是假的');
-  const bare = evalSandbox(noExt).labelEnumFile({ labelEnum: { path: 'src/data/FeatureList' } }, undefined);
+  const noExtExports = evalSandbox(noExt);
+  const bare = noExtExports.labelEnumPath({ labelEnum: { path: 'src/data/FeatureList' } }, undefined);
   check(
     bare === 'src/data/FeatureList',
     '对照二：不补 .py 时拿到的正是"没有扩展名的文件"—— 即修复前会把项目弄坏的那个值',
+  );
+  check(
+    noExtExports.labelEnumPath({}, 'src/data/FeatureList') === 'src/data/FeatureList',
+    '对照二：同一个杠杆也打穿了**个人偏好**那一层 —— 证明两层走的确实是同一个归一化（旧实现只补项目声明那一层）',
   );
 
   // 对照三：不归一化（= 把声明值原样当路径用）

@@ -370,7 +370,7 @@ export function activate(context: vscode.ExtensionContext): void {
     ),
     vscode.window.registerWebviewViewProvider(
       TemplateAssetViewProvider.viewType,
-      new TemplateAssetViewProvider(templateAssetData, thumbDir, context.extensionUri, context.globalState, tempScreenshotStore),
+      new TemplateAssetViewProvider(templateAssetData, thumbDir, context.extensionUri, tempScreenshotStore),
     ),
     vscode.window.registerWebviewViewProvider(
       TempScreenshotViewProvider.viewType,
@@ -391,12 +391,12 @@ export function activate(context: vscode.ExtensionContext): void {
       CharacterManagerPanel.show(characterManagerDependencies);
     }),
     vscode.commands.registerCommand('okScriptToolkit.openTemplateAssets', () => {
-      TemplateAssetPanel.show(templateAssetData, thumbDir, context.extensionUri, context.globalState, tempScreenshotStore);
+      TemplateAssetPanel.show(templateAssetData, thumbDir, context.extensionUri, tempScreenshotStore);
     }),
     vscode.commands.registerCommand('okScriptToolkit.screenshotToTemplate', () => {
       // 快捷键入口（默认 ctrl+alt+s）：打开标注模板管理面板并立即截图。
       // 复用面板自己的截图动作 —— 不新增截图实现，否则两条路径的行为迟早漂移。
-      TemplateAssetPanel.showScreenshot(templateAssetData, thumbDir, context.extensionUri, context.globalState, tempScreenshotStore);
+      TemplateAssetPanel.showScreenshot(templateAssetData, thumbDir, context.extensionUri, tempScreenshotStore);
     }),
     vscode.commands.registerCommand('okScriptToolkit.showTempScreenshots', () => {
       // 聚焦活动栏中的临时截图视图

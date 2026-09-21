@@ -33,6 +33,8 @@
   "config.displayLocale": "インラインヒントの既定言語。auto は VS Code の表示言語に従います。",
   "config.enableInlayHints": "言語値と効果のインラインヒントを有効にします。",
   "config.featureAliases": "FeatureList テンプレート補完とホバーに使う別名。",
+  "config.labelEnumPath": "ワークスペースルートからの LabelEnum ファイルパス（.py の有無はどちらでも可）。ok-script-toolkit.json の labelEnum.path を上書きします。空にするとプロジェクトの取り決めに従います。",
+  "config.labelEnumName": "LabelEnum のクラス名。ok-script-toolkit.json の labelEnum.name を上書きします。空にするとファイル名から導出します。プロジェクトのコードはこの名前で import するため、改名するとそれらが壊れます — 既存ファイルを上書きする前に確認します。",
   "config.effectsFile": "EffectType と EFFECT_DESCRIPTIONS を含む Python ファイル。",
   "config.okScriptProjectPath": "タスク起動で使用する ok-script プロジェクトルート。",
   "config.okScriptPython": "ok-script タスク実行に使用する Python。",
