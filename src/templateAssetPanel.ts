@@ -8,9 +8,9 @@ import { injectWebviewLocalization, tr } from './localization';
 import { TempScreenshotStore } from './tempScreenshotStore';
 import { captureGameWindow } from './screenshotCapture';
 import { takePendingDrag } from './tempDrag';
-import { currentWorkspaceFolderUri, ideSetting, labelEnumClassName, labelEnumPathSetting, normalizeLabelEnumPathInput, setIdeSetting, templatesDirectory } from './projectConfig';
+import { currentWorkspaceFolderUri, ideSetting, labelEnumClassName, labelEnumPathInputError, labelEnumPathSetting, normalizeLabelEnumPathInput, setIdeSetting, templatesDirectory } from './projectConfig';
 import { labelEnumRenameImpact, labelEnumRenameMessage, referencingFiles, writableClassName } from './labelEnumGuard';
-import { derivedEnumPath, needsEnumPathPrompt, SaveTarget, saveToAssetsItems } from './saveToAssetsPure';
+import { derivedEnumPath, isPathInsideRoot, needsEnumPathPrompt, SaveTarget, saveToAssetsItems } from './saveToAssetsPure';
 import { getNonce } from './webviewHtml';
 
 /* ---------------- 控制器 ---------------- */
@@ -259,6 +259,10 @@ class AssetGalleryController {
     const folderUri = folder.uri;
     const rememberEnumPath = (value: string) => setIdeSetting('labelEnumPath', value, folderUri);
     const rememberEnumName = (value: string) => setIdeSetting('labelEnumName', value, folderUri);
+    const validateEnumPathInput = (value: string): string | undefined =>
+      labelEnumPathInputError(value)
+        ? tr('Enum file path must be relative and stay within the workspace root.')
+        : undefined;
     let enumPath = labelEnumPathSetting(folderUri);
     /** 我**设过**的类名（空 = 没设过）。列表里显示这个而不是解析后的值 —— 见 `saveToAssetsPure` */
     let enumName = ideSetting<string>('labelEnumName', folderUri) ?? '';
@@ -269,18 +273,21 @@ class AssetGalleryController {
     /** 用户是否已经在「改路径」里做过决定 —— 决定过就不再追问，哪怕他清空了 */
     let enumPathDecided = false;
     for (;;) {
+      const quickPickItems = saveToAssetsItems({
+        targets,
+        enumPath,
+        enumName,
+        labels: {
+          path: tr('Enum file path'),
+          name: tr('Enum class name'),
+          notSet: tr('Not set — click to set'),
+          derived: tr('Derived from the file name'),
+        },
+      }).map((item) => item.separator
+        ? { ...item, kind: vscode.QuickPickItemKind.Separator }
+        : item);
       const pick = await vscode.window.showQuickPick(
-        saveToAssetsItems({
-          targets,
-          enumPath,
-          enumName,
-          labels: {
-            path: tr('Enum file path'),
-            name: tr('Enum class name'),
-            notSet: tr('Not set — click to set'),
-            derived: tr('Derived from the file name'),
-          },
-        }),
+        quickPickItems,
         { placeHolder: tr('Save COCO data + images to...') },
       );
       if (!pick) return;
@@ -307,6 +314,7 @@ class AssetGalleryController {
         prompt: tr('LabelEnum.py file path (relative to workspace root, leave empty to skip)'),
         placeHolder: tr('e.g. assets/data/LabelEnum.py or src/label_enum.py'),
         value: enumPath,
+        validateInput: validateEnumPathInput,
       });
       if (edited === undefined) continue; // 取消改路径 → 回到目标选择
       // ⚠️ 必须归一化再消费：用户很可能填的是模块路径（`src/data/feature_list`，与 config.py
@@ -325,6 +333,7 @@ class AssetGalleryController {
         prompt: tr('LabelEnum.py file path (relative to workspace root, leave empty to skip)'),
         placeHolder: tr('e.g. assets/data/LabelEnum.py or src/label_enum.py'),
         value: derivedEnumPath(targetLabel),
+        validateInput: validateEnumPathInput,
       });
       if (edited === undefined) return;
       enumPath = normalizeLabelEnumPathInput(edited);
@@ -334,6 +343,10 @@ class AssetGalleryController {
     const generateEnum = enumPath.length > 0;
     // 将相对路径解析为绝对路径
     const absEnumPath = generateEnum ? path.join(folder.uri.fsPath, enumPath) : undefined;
+    if (absEnumPath && !isPathInsideRoot(folder.uri.fsPath, absEnumPath)) {
+      void vscode.window.showErrorMessage(tr('Enum file path must be relative and stay within the workspace root.'));
+      return;
+    }
 
     // 覆盖已有枚举文件、且**类名会变**时先问一句。这是唯一一处"个人覆盖能把项目弄坏"
     // 的地方：项目的代码按类名 import（`from src.data.feature_list import FeatureList`），

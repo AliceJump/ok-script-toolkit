@@ -184,6 +184,7 @@
   "screenshotWindowPlaceholder": "예: EndField|Unity",
   "uncategorized": "미분류",
   "LabelEnum.py file path (relative to workspace root, leave empty to skip)": "LabelEnum.py 파일 경로(워크스페이스 루트 기준, 비워 두면 건너뜀)",
+  "Enum file path must be relative and stay within the workspace root.": "열거형 파일 경로는 상대 경로여야 하며 워크스페이스 루트 내부에 있어야 합니다.",
   "Enum file path": "열거형 파일 경로",
   "Enum class name": "열거형 클래스 이름",
   "Not set — click to set": "설정되지 않음 —— 클릭하여 설정",

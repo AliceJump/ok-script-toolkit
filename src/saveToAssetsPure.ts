@@ -18,6 +18,8 @@
  * 所以决策下沉到这里，由 `scripts/test_save_to_assets_flow.js` 直接断言。
  */
 
+import * as path from 'path';
+
 /** 一个可选的保存目标。 */
 export interface SaveTarget {
   /** 展示名，同时也是目标目录的相对写法（`assets` / `ok_tasks/assets`） */
@@ -124,4 +126,16 @@ export function derivedEnumPath(targetLabel: string): string {
  */
 export function needsEnumPathPrompt(enumPath: string, decided = false): boolean {
   return !decided && enumPath.trim().length === 0;
+}
+
+/** `candidate` 解析后是否仍位于 `rootDir` 内（Windows 跨盘符也会被拒绝）。 */
+export function isPathInsideRoot(rootDir: string, candidate: string): boolean {
+  const root = path.resolve(rootDir);
+  const target = path.resolve(candidate);
+  const relative = path.relative(root, target);
+  return relative === '' || (
+    relative !== '..' &&
+    !relative.startsWith(`..${path.sep}`) &&
+    !path.isAbsolute(relative)
+  );
 }

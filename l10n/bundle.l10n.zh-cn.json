@@ -184,6 +184,7 @@
   "screenshotWindowPlaceholder": "例如 EndField|Unity",
   "uncategorized": "未分类",
   "LabelEnum.py file path (relative to workspace root, leave empty to skip)": "LabelEnum.py 文件路径（相对工作区根目录，留空则跳过）",
+  "Enum file path must be relative and stay within the workspace root.": "枚举文件路径必须是相对路径，并且必须位于工作区根目录内。",
   "Enum file path": "枚举文件路径",
   "Enum class name": "枚举类名",
   "Not set — click to set": "未设置 —— 点这里设置",
