@@ -728,9 +728,11 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
   private runAccountStore(command: string[]): void {
     const { projectDir, pythonPath } = this.getConfig();
     if (!projectDir) return;
+    // 存储位置与执行器一致：--run-dir 让 account_store.py 把 configs 改道沙箱
+    const runDir = path.join(projectDir, '.vscode', 'ok-script-toolkit');
     const child = cp.spawn(
       pythonPath,
-      [pythonScript(this.extensionUri, 'account_store.py'), projectDir, ...command],
+      [pythonScript(this.extensionUri, 'account_store.py'), projectDir, ...command, '--run-dir', runDir],
       { cwd: projectDir, windowsHide: true, env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' } },
     );
     let stdout = '';

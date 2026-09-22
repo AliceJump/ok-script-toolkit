@@ -194,11 +194,9 @@ def apply_config_sandbox(config: dict) -> str:
 
 # 项目自建 store / 任务运行期会以 get_relative_path("configs", ...) 在 **import 期**
 # 固定存储路径（不走 Config.config_folder），必须在这类 import 发生前改道。
-# 例外：account_scoped_overrides.json 是跨 GUI/执行器共享的持久业务数据（GUI 写账号、
-# 执行器读账号），保持项目侧共享，不进沙箱。
-_ACCOUNT_STORE_FILE = "account_scoped_overrides.json"
-
-
+# 账号存储（account_scoped_overrides.json）同样进沙箱：插件编辑不落项目文件，
+# 与「项目 GUI 与插件独立」的语义一致（代价：GUI 写的账号数据执行器侧不可见，
+# 以执行器/插件侧为准）。
 def install_config_path_patch() -> None:
     """把 get_relative_path("configs", ...) 的相对调用改道到沙箱 configs。
 
@@ -220,14 +218,12 @@ def install_config_path_patch() -> None:
 
     def sandboxed_get_relative_path(*files):
         if files and os.path.normcase(str(files[0])) == "configs":
-            if len(files) == 2 and str(files[1]) == _ACCOUNT_STORE_FILE:
-                return original(*files)
             return os.path.normpath(os.path.join(sandbox_configs, *files[1:]))
         return original(*files)
 
     ok_file.get_relative_path = sandboxed_get_relative_path
     ok_config.get_relative_path = sandboxed_get_relative_path
-    _note("configs 相对路径已改道沙箱（自建 store / 运行期写入一并隔离）")
+    _note("configs 相对路径已改道沙箱（自建 store / 账号存储 / 运行期写入一并隔离）")
 
 
 def apply_global_group_snapshot(config_folder) -> None:

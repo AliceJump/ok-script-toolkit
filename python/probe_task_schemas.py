@@ -368,17 +368,22 @@ def collect_project_store_groups(catalog, broken):
 
 
 def collect_multi_account(project_dir):
-    """探测多账户存储（configs/account_scoped_overrides.json），返回只读概要。
+    """探测多账户存储，返回只读概要与「打开数据位置」的路径。
 
-    ok-end-field / ok-gf2 的 account_scope_store 把账号与覆盖存在项目 configs 下
-    （文件名硬编码、与 GUI 共享真源）——插件只做只读呈现与「打开数据文件」。
+    存储位置与执行器一致：沙箱（.vscode/ok-script-toolkit/configs/）优先——
+    执行器与插件的账号编辑都落沙箱；项目侧文件仅作首次探测回退（执行器启动
+    copytree 会把它带进沙箱）。storePath 一律报沙箱路径。
     """
-    path = os.path.join(project_dir, "configs", "account_scoped_overrides.json")
-    if not os.path.isfile(path):
+    sandbox_path = os.path.join(
+        project_dir, ".vscode", "ok-script-toolkit", "configs", "account_scoped_overrides.json"
+    )
+    project_path = os.path.join(project_dir, "configs", "account_scoped_overrides.json")
+    if not os.path.isfile(sandbox_path) and not os.path.isfile(project_path):
         return {"available": False}
-    info = {"available": True, "storePath": path}
+    info = {"available": True, "storePath": sandbox_path}
+    data_path = sandbox_path if os.path.isfile(sandbox_path) else project_path
     try:
-        with open(path, encoding="utf-8") as fp:
+        with open(data_path, encoding="utf-8") as fp:
             data = json.load(fp)
         if isinstance(data, dict):
             registry = data.get("account_registry")

@@ -153,9 +153,18 @@
       return;
     }
     // 卡 1：账号列表（account_list_text 编辑 + 保存，经 account_store.py 同步注册表）
-    host.appendChild(buildAccountListCard(info, store));
-    // 卡 2：账号 × 任务覆盖编辑器（有存储数据才有意义）
-    if (store) host.appendChild(buildAccountOverrideCard(info, store));
+    // 卡 2：账号 × 任务覆盖编辑器。store 缺失 = account_store.py 读取失败（项目无
+    // account_scope_store / venv 缺 ok）——明确提示，绝不显示可编辑空卡（否则保存必然
+    // 失败，制造「保存后被重置」的假象）。
+    if (store) {
+      host.appendChild(buildAccountListCard(info, store));
+      host.appendChild(buildAccountOverrideCard(info, store));
+    } else {
+      const warn = document.createElement('div');
+      warn.className = 'config-broken';
+      warn.textContent = `⚠ ${t('accountStoreUnavailable')}`;
+      host.appendChild(warn);
+    }
   }
 
   function buildAccountListCard(info, store) {

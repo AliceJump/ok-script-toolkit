@@ -39,7 +39,9 @@
       case 'globalGroups':
         state.globalGroups = message.groups || [];
         state.globalSnapshots = message.snapshots || {};
-        Console.renderConfig(state.globalGroups, state.globalSnapshots, state.expandedGlobalGroups || []);
+        // 展开状态以宿主持久化集合为准（点击 toggle 后由宿主回推）
+        state.expandedGlobalGroups = message.expanded || [];
+        Console.renderConfig(state.globalGroups, state.globalSnapshots, state.expandedGlobalGroups);
         break;
       case 'snapshotUpdated':
         if (message.target === 'task') {

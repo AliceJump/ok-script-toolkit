@@ -5,11 +5,15 @@
 原子写都在 store 里，这里按 CLI 转调，保证写入格式与项目 GUI / 任务运行时零漂移。
 必须在项目目录、用项目 Python 运行（store 依赖 ok 包与项目源码）。
 
+存储位置与执行器一致：传 --run-dir 时 get_relative_path("configs") 改道沙箱
+（与 run_executor 的 install_config_path_patch 同手法，store 在导入期固定路径，
+patch 必须先于 store import）。不传 --run-dir 则读写项目 configs（仅诊断用途）。
+
 用法：
-  python account_store.py <project_dir> get
-  python account_store.py <project_dir> set_list --text <json 字符串>
-  python account_store.py <project_dir> set_override --account <名> --task <类名> --values <json>
-  python account_store.py <project_dir> clear_override --account <名> --task <类名>
+  python account_store.py <project_dir> get --run-dir <run_dir>
+  python account_store.py <project_dir> set_list --text <json 字符串> --run-dir <run_dir>
+  python account_store.py <project_dir> set_override --account <名> --task <类名> --values <json> --run-dir <run_dir>
+  python account_store.py <project_dir> clear_override --account <名> --task <类名> --run-dir <run_dir>
 
 输出（最后一行 JSON）：{"ok": true, ...} / {"ok": false, "error": "..."}
 """
@@ -27,6 +31,23 @@ STORE_MODULES = (
     "src.tasks.account.account_scope_store",
     "src.tasks.account_scope_store",
 )
+
+
+def apply_sandbox_redirect(run_dir: str) -> None:
+    """把 get_relative_path("configs", ...) 改道沙箱（必须在 store import 前调用）。"""
+    import ok.util.config as ok_config
+    import ok.util.file as ok_file
+
+    original = ok_file.get_relative_path
+    sandbox_configs = os.path.join(os.path.abspath(run_dir), "configs")
+
+    def patched(*files):
+        if files and os.path.normcase(str(files[0])) == "configs":
+            return os.path.normpath(os.path.join(sandbox_configs, *files[1:]))
+        return original(*files)
+
+    ok_file.get_relative_path = patched
+    ok_config.get_relative_path = patched
 
 
 def load_store_module(project_dir: str):
@@ -50,7 +71,12 @@ def main() -> None:
     for i in range(0, len(extra) - 1, 2):
         kwargs[extra[i].lstrip("-")] = extra[i + 1]
     try:
-        store = load_store_module(args.project_dir)
+        # patch 先于 store import：store 在模块导入期就用 get_relative_path 固定路径
+        project_dir = args.project_dir
+        sys.path.insert(0, project_dir)
+        if kwargs.get("run-dir"):
+            apply_sandbox_redirect(kwargs["run-dir"])
+        store = load_store_module(project_dir)
         if args.command == "get":
             data = store.load_overrides()
             payload = {
