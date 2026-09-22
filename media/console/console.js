@@ -23,6 +23,86 @@
     }
     $('pageTasks').hidden = seg !== 'tasks';
     $('pageGame').hidden = seg !== 'game';
+    $('pageConfig').hidden = seg !== 'config';  }
+
+  // ── 配置分段：全局配置组卡片（复用 configPanel，伪 task = __global__::组名） ──
+
+  const GLOBAL_MODULE = '__global__';
+
+  /** 把全局组快照镜像进 taskConfigs 的伪键，让 buildConfigPanel 的读写路径原样工作 */
+  function syncGlobalPseudoTasks(groups, snapshots) {
+    for (const group of groups) {
+      const key = `${GLOBAL_MODULE}::${group.name}`;
+      if (!state.taskConfigs[key]) state.taskConfigs[key] = {};
+      state.taskConfigs[key] = {
+        ...state.taskConfigs[key],
+        params: { ...(snapshots[group.name] || {}) },
+      };
+    }
+  }
+
+  function renderConfig(groups, snapshots) {
+    state.globalGroups = groups || [];
+    state.globalSnapshots = snapshots || {};
+    syncGlobalPseudoTasks(state.globalGroups, state.globalSnapshots);
+    const host = $('configList');
+    if (!host) return;
+    host.replaceChildren();
+    if (!state.globalGroups.length) {
+      const empty = document.createElement('div');
+      empty.className = 'config-empty';
+      empty.textContent = t('noConfigParameters');
+      host.appendChild(empty);
+      return;
+    }
+    for (const group of state.globalGroups) {
+      host.appendChild(buildGlobalCard(group));
+    }
+  }
+
+  function buildGlobalCard(group) {
+    const fakeTask = { module: GLOBAL_MODULE, className: group.name, displayName: group.displayName || group.name };
+    const fakeSchema = { fields: group.fields || [], configGroups: {}, groupLabels: {}, groupSelector: '' };
+
+    const card = document.createElement('section');
+    card.className = 'gconfig-card';
+    card.dataset.group = group.name;
+
+    const head = document.createElement('header');
+    head.className = 'gconfig-card__head';
+    const title = document.createElement('div');
+    title.className = 'gconfig-card__name';
+    title.textContent = group.displayName || group.name;
+    if (group.source === 'project_store') {
+      const tag = document.createElement('span');
+      tag.className = 'tag tag--store';
+      tag.textContent = t('projectStoreTag');
+      title.appendChild(tag);
+    }
+    const desc = document.createElement('div');
+    desc.className = 'gconfig-card__desc';
+    desc.textContent = group.description || '';
+    head.append(title, desc);
+
+    const actions = document.createElement('div');
+    actions.className = 'gconfig-card__actions';
+    const sync = document.createElement('button');
+    sync.className = 'btn-mini';
+    sync.textContent = `⇄ ${t('syncDefaultBtn')}`;
+    sync.addEventListener('click', () => post({ type: 'syncDefault', target: 'global', name: group.name }));
+    const reset = document.createElement('button');
+    reset.className = 'btn-mini';
+    reset.textContent = `⟲ ${t('resetDefaultBtn')}`;
+    reset.addEventListener('click', () => post({ type: 'resetDefault', target: 'global', name: group.name }));
+    actions.append(sync, reset);
+    head.appendChild(actions);
+
+    const body = document.createElement('div');
+    body.className = 'gconfig-card__body';
+    body.appendChild(globalThis.TaskLauncherConfigPanel.buildConfigPanel(fakeTask, fakeSchema));
+
+    card.append(head, body);
+    return card;
   }
 
   // ── 游戏状态（状态条第一行 + 游戏分段卡片） ──────────────────────────
@@ -145,8 +225,10 @@
     // 分段导航
     $('segTasks').textContent = t('consoleTabTasks');
     $('segGame').textContent = t('consoleTabGame');
+    $('segConfig').textContent = t('consoleTabConfig');
     $('segTasks').addEventListener('click', () => switchSeg('tasks'));
     $('segGame').addEventListener('click', () => switchSeg('game'));
+    $('segConfig').addEventListener('click', () => switchSeg('config'));
 
     // 任务分段
     const search = $('taskSearch');
@@ -157,6 +239,7 @@
     refresh.title = t('refresh');
     refresh.setAttribute('aria-label', t('refresh'));
     $('consoleHint').textContent = t('consoleHint');
+    $('takeoverBanner').textContent = t('takeoverBanner');
     bindGroupHead('triggerHead', 'trigger');
     bindGroupHead('onetimeHead', 'onetime');
 
@@ -208,5 +291,6 @@
     openDrawer,
     closeDrawer,
     refreshDrawer,
+    renderConfig,
   };
 })();

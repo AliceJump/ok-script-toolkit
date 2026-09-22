@@ -32,6 +32,25 @@
         renderTasks(state.currentTasks);
         Console.refreshDrawer();
         break;
+      // 配置接管：全局配置组 + 快照（配置分段数据源）
+      case 'globalGroups':
+        state.globalGroups = message.groups || [];
+        state.globalSnapshots = message.snapshots || {};
+        Console.renderConfig(state.globalGroups, state.globalSnapshots);
+        break;
+      case 'snapshotUpdated':
+        if (message.target === 'task') {
+          state.taskConfigs[message.name] = {
+            ...(state.taskConfigs[message.name] || {}),
+            params: message.params || {},
+          };
+          renderTasks(state.currentTasks);
+          Console.refreshDrawer();
+        } else if (message.target === 'global') {
+          state.globalSnapshots[message.name] = message.values || {};
+          Console.renderConfig(state.globalGroups, state.globalSnapshots);
+        }
+        break;
       case 'executor':
         applyExecutor(message);
         break;
