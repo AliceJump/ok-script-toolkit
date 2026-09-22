@@ -43,6 +43,7 @@
       <button class="seg__btn is-active" id="segTasks" data-seg="tasks" type="button" role="tab"></button>
       <button class="seg__btn" id="segGame" data-seg="game" type="button" role="tab"></button>
       <button class="seg__btn" id="segConfig" data-seg="config" type="button" role="tab"></button>
+      <button class="seg__btn" id="segAccounts" data-seg="accounts" type="button" role="tab"></button>
     </nav>
 
     <!-- ── 分段：任务 ────────────────────────────────────────────── -->
@@ -83,6 +84,11 @@
     <section class="page" id="pageConfig" role="tabpanel" hidden>
       <div class="takeover-banner" id="takeoverBanner"></div>
       <div id="configList" class="gconfig-list" aria-live="polite"></div>
+    </section>
+
+    <!-- ── 分段：账号（多账户存储只读概要）───────────────────────── -->
+    <section class="page" id="pageAccounts" role="tabpanel" hidden>
+      <div id="accountList" class="gconfig-list" aria-live="polite"></div>
     </section>
 
     <!-- ── 分段：游戏 ────────────────────────────────────────────── -->

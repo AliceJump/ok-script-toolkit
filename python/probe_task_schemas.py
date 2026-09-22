@@ -9,6 +9,7 @@
 输出(最后一行 JSON): {"ok": true, "total": N, "broken": [...], "schemas": {...}}
 """
 import ast
+import importlib
 import json
 import os
 import shutil
@@ -316,6 +317,85 @@ def collect_global_config_groups(ok, catalog, broken):
     return groups
 
 
+# 项目自建全局配置 store 的约定模块路径（接口与框架 GlobalConfig 同形：
+# get_all_visible_configs() -> [(name, config, option)]）。ok-end-field / OK-AzurPromilia 实例。
+PROJECT_STORE_MODULES = ("src.core.global_config_store",)
+
+
+def collect_project_store_groups(catalog, broken):
+    """按约定探测项目自建全局配置 store，输出与框架组同构的 payload。
+
+    这些项目的全局配置不走框架 GlobalConfig（自建 store + 聚合 Tab），probe
+    拿不到；这里按约定 try-import 补齐。无该模块的项目静默跳过，零影响。
+    """
+    groups = []
+    for module_name in PROJECT_STORE_MODULES:
+        try:
+            module = importlib.import_module(module_name)
+        except Exception:  # noqa: BLE001 — 项目没有自建 store 是常态
+            continue
+        get_all = getattr(module, "get_all_visible_configs", None)
+        if not callable(get_all):
+            continue
+        try:
+            for gname, gconfig, goption in get_all():
+                gdefault = dict(getattr(goption, "default_config", {}) or {})
+                gruntime = dict(gconfig)
+                gtype = dict(getattr(goption, "config_type", {}) or {})
+                gdesc = dict(getattr(goption, "config_description", {}) or {})
+                gkeys = list(dict.fromkeys([
+                    *gruntime.keys(),
+                    *gdefault.keys(),
+                    *gtype.keys(),
+                ]))
+                gfields = []
+                for key in gkeys:
+                    if str(key).startswith("_"):
+                        continue
+                    payload = field_payload(key, gdefault, gruntime, gtype, gdesc, catalog)
+                    if payload:
+                        gfields.append(payload)
+                groups.append({
+                    "name": str(gname),
+                    "displayName": translated(catalog, str(gname)),
+                    "description": translated(catalog, str(getattr(goption, "description", "") or "")),
+                    "fields": gfields,
+                    "source": "project_store",
+                })
+        except Exception as e:  # noqa: BLE001
+            broken.append({"task": f"<project-store:{module_name}>", "error": f"{type(e).__name__}: {e}"})
+    return groups
+
+
+def collect_multi_account(project_dir):
+    """探测多账户存储（configs/account_scoped_overrides.json），返回只读概要。
+
+    ok-end-field / ok-gf2 的 account_scope_store 把账号与覆盖存在项目 configs 下
+    （文件名硬编码、与 GUI 共享真源）——插件只做只读呈现与「打开数据文件」。
+    """
+    path = os.path.join(project_dir, "configs", "account_scoped_overrides.json")
+    if not os.path.isfile(path):
+        return {"available": False}
+    info = {"available": True, "storePath": path}
+    try:
+        with open(path, encoding="utf-8") as fp:
+            data = json.load(fp)
+        if isinstance(data, dict):
+            registry = data.get("account_registry")
+            accounts = data.get("accounts")
+            info["accountCount"] = len(registry) if isinstance(registry, dict) else 0
+            info["overrideAccounts"] = len(accounts) if isinstance(accounts, dict) else 0
+            if isinstance(accounts, dict):
+                tasks = set()
+                for value in accounts.values():
+                    if isinstance(value, dict):
+                        tasks.update(value.keys())
+                info["overriddenTasks"] = sorted(str(item) for item in tasks)
+    except (OSError, ValueError):
+        info["readable"] = False
+    return info
+
+
 def main():
     if len(sys.argv) < 2:
         print(json.dumps({"ok": False, "error": "缺少 project_dir 参数"}, ensure_ascii=False))
@@ -445,6 +525,8 @@ def main():
                 }
 
         global_groups = collect_global_config_groups(ok, catalog, broken)
+        global_groups.extend(collect_project_store_groups(catalog, broken))
+        multi_account = collect_multi_account(project_dir)
 
         result = json.dumps({
             "ok": True,
@@ -452,6 +534,7 @@ def main():
             "broken": broken,
             "schemas": schemas,
             "globalConfigGroups": global_groups,
+            "multiAccount": multi_account,
         }, ensure_ascii=False)
         sys.stdout.write(result + "\n")
         sys.stdout.flush()

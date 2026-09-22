@@ -192,6 +192,44 @@ def apply_config_sandbox(config: dict) -> str:
     return run_dir
 
 
+# 项目自建 store / 任务运行期会以 get_relative_path("configs", ...) 在 **import 期**
+# 固定存储路径（不走 Config.config_folder），必须在这类 import 发生前改道。
+# 例外：account_scoped_overrides.json 是跨 GUI/执行器共享的持久业务数据（GUI 写账号、
+# 执行器读账号），保持项目侧共享，不进沙箱。
+_ACCOUNT_STORE_FILE = "account_scoped_overrides.json"
+
+
+def install_config_path_patch() -> None:
+    """把 get_relative_path("configs", ...) 的相对调用改道到沙箱 configs。
+
+    必须在 import 项目 config 之前安装（store 模块在导入期就用该函数固定路径）。
+    ok.util.config 在模块导入时复制了函数引用，需要同步替换。
+    """
+    run_dir = os.environ.get("OK_TOOLKIT_RUN_DIR", "").strip()
+    if not run_dir:
+        return
+    sandbox_configs = os.path.join(os.path.abspath(run_dir), "configs")
+    try:
+        import ok.util.config as ok_config
+        import ok.util.file as ok_file
+    except Exception as e:  # noqa: BLE001 — ok 未就绪时跳过（import config 后仍有 apply_config_sandbox 兜底）
+        _note(f"get_relative_path 改道跳过：{e}")
+        return
+
+    original = ok_file.get_relative_path
+
+    def sandboxed_get_relative_path(*files):
+        if files and os.path.normcase(str(files[0])) == "configs":
+            if len(files) == 2 and str(files[1]) == _ACCOUNT_STORE_FILE:
+                return original(*files)
+            return os.path.normpath(os.path.join(sandbox_configs, *files[1:]))
+        return original(*files)
+
+    ok_file.get_relative_path = sandboxed_get_relative_path
+    ok_config.get_relative_path = sandboxed_get_relative_path
+    _note("configs 相对路径已改道沙箱（自建 store / 运行期写入一并隔离）")
+
+
 def apply_global_group_snapshot(config_folder) -> None:
     """把 OK_TOOLKIT_GCONFIG 的全局配置组快照 merge 进沙箱 configs/<组名>.json。
 
@@ -668,6 +706,28 @@ def _apply_startup_overlay(enabled: bool) -> None:
         _note(f"调试浮层启用失败：{type(e).__name__}: {e}")
 
 
+def resolve_group_config(executor, group_name: str):
+    """全局配置组解析：先框架 GlobalConfig，失败再按约定探测项目自建 store。
+
+    ok-end-field / OK-AzurPromilia 的自定义全局配置（战斗/键位/滑索）由项目自建
+    store 管理（src.core.global_config_store.get_global_config，接口与框架同形），
+    不在框架 GlobalConfig 注册表里 —— 这里按约定 try-import 兜底。
+    """
+    try:
+        return executor.global_config.get_config(group_name)
+    except Exception:  # noqa: BLE001 — 转入项目 store 探测
+        pass
+    for module_name in ("src.core.global_config_store",):
+        try:
+            module = importlib.import_module(module_name)
+        except Exception:  # noqa: BLE001 — 项目没有自建 store 是常态
+            continue
+        getter = getattr(module, "get_global_config", None)
+        if callable(getter):
+            return getter(group_name)
+    raise ValueError(f"unknown global config group: {group_name}")
+
+
 def _apply_gparams(executor, argument: str) -> None:
     """更新全局配置组并即时生效。
 
@@ -687,7 +747,7 @@ def _apply_gparams(executor, argument: str) -> None:
     for group_name, values in parsed.items():
         if not isinstance(values, dict):
             raise ValueError(f"group {group_name} payload must be an object")
-        gconfig = executor.global_config.get_config(str(group_name))
+        gconfig = resolve_group_config(executor, str(group_name))
         for key, value in values.items():
             gconfig[key] = value
         touched.append(f"{group_name}({len(values)})")
@@ -838,6 +898,13 @@ def main() -> None:
 
     read_overrides()
     sys.path.insert(0, ".")
+    # 自建 store（如 ok-end-field global_config_store）在模块导入期就用
+    # get_relative_path("configs") 固定存储路径 —— 必须在 import config 前改道。
+    # 仅改相对的 "configs" 前缀；OK(config) 后 Config.config_folder 的正式改道不受影响。
+    try:
+        install_config_path_patch()
+    except Exception as e:  # noqa: BLE001
+        _note(f"configs 路径改道失败（自建 store 将直写项目 configs）：{e}")
 
     # 目标项目的约定文件（`ok-script-toolkit.json`，只读）。
     # 项目 main.py 里的启动准备由它声明 —— config.py 里没有这类信息，

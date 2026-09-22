@@ -51,6 +51,10 @@
           Console.renderConfig(state.globalGroups, state.globalSnapshots);
         }
         break;
+      // 多账户存储只读概要（账号分段）
+      case 'multiAccount':
+        Console.renderMultiAccount(message.info || { available: false });
+        break;
       case 'executor':
         applyExecutor(message);
         break;

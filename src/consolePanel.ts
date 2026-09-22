@@ -116,6 +116,20 @@ interface SchemaProbeResult {
   total?: number;
   /** 全局配置组（框架 GlobalConfig 可见组） */
   globalConfigGroups?: GlobalConfigGroup[];
+  /** 项目自建全局配置 store 的组（约定接口：global_config_store.get_all_visible_configs） */
+  projectGlobalGroups?: GlobalConfigGroup[];
+  /** 多账户存储只读概要（configs/account_scoped_overrides.json） */
+  multiAccount?: MultiAccountInfo;
+}
+
+/** 多账户存储只读概要（Phase 6 只读呈现，不做编辑器） */
+interface MultiAccountInfo {
+  available: boolean;
+  storePath?: string;
+  readable?: boolean;
+  accountCount?: number;
+  overrideAccounts?: number;
+  overriddenTasks?: string[];
 }
 
 /** 常驻执行器回推的状态快照（对应 run_executor.py 的 OK_TOOLKIT_STATE 标记行） */
@@ -314,6 +328,8 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
   private globalGroups: GlobalConfigGroup[] = [];
   /** 全局配置组快照（持久化到 tasks.json 的 globalConfigs 段；执行器按它注入） */
   private globalSnapshots: Record<string, Record<string, unknown>> = {};
+  /** 多账户存储只读概要（probe 探测 configs/account_scoped_overrides.json） */
+  private multiAccount: MultiAccountInfo = { available: false };
   /** 全局配置组推送防抖定时器 */
   private gparamsTimer: NodeJS.Timeout | undefined;
 
@@ -448,6 +464,12 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
           break;
         case 'openCharacterManager':
           this.openCharacterManager?.();
+          break;
+        case 'openPath':
+          // 多账户存储等数据文件的「打开位置」：交给操作系统文件管理器定位
+          if (typeof msg.path === 'string' && msg.path) {
+            void vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(msg.path));
+          }
           break;
       }
     });
@@ -745,8 +767,13 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
   private loadSchemaCache(projectDir: string, locale: string): {
     schemas: Record<string, TaskSchema>;
     globalGroups: GlobalConfigGroup[];
+    multiAccount: MultiAccountInfo;
   } {
-    const empty = { schemas: {} as Record<string, TaskSchema>, globalGroups: [] as GlobalConfigGroup[] };
+    const empty = {
+      schemas: {} as Record<string, TaskSchema>,
+      globalGroups: [] as GlobalConfigGroup[],
+      multiAccount: { available: false } as MultiAccountInfo,
+    };
     try {
       const p = this.dataFile('ok-script-toolkit-schema.json');
       if (fs.existsSync(p)) {
@@ -756,6 +783,7 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
         return {
           schemas: raw.schemas || {},
           globalGroups: raw.globalConfigGroups || [],
+          multiAccount: raw.multiAccount || empty.multiAccount,
         };
       }
     } catch { /* 忽略损坏的缓存 */ }
@@ -768,13 +796,14 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
     locale: string,
     schemas: Record<string, TaskSchema>,
     globalGroups: GlobalConfigGroup[],
+    multiAccount: MultiAccountInfo,
   ): void {
     try {
       const p = this.dataFile('ok-script-toolkit-schema.json');
       fs.mkdirSync(path.dirname(p), { recursive: true });
       fs.writeFileSync(
         p,
-        JSON.stringify({ ok: true, projectDir, locale, schemas, globalConfigGroups: globalGroups }, null, 2),
+        JSON.stringify({ ok: true, projectDir, locale, schemas, globalConfigGroups: globalGroups, multiAccount }, null, 2),
         'utf-8',
       );
     } catch { /* 缓存失败不阻塞 */ }
@@ -815,6 +844,7 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
     const cached = this.loadSchemaCache(projectDir, locale);
     this.schemas = cached.schemas;
     this.globalGroups = cached.globalGroups;
+    this.multiAccount = cached.multiAccount;
     this.loadTaskConfigs(projectDir);
     // 缓存 schema 也要物化快照：保证启动执行器时注入的是全量接管值
     this.materializeAllSnapshots();
@@ -842,6 +872,7 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
       schemas: this.schemas,
       globalGroups: this.globalGroups,
       globalSnapshots: this.globalSnapshots,
+      multiAccount: this.multiAccount,
     });
     this.pushGlobalGroups();
     this.pushExecutorState(view);
@@ -887,8 +918,12 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
       return;
     }
     this.schemas = probe.schemas;
-    this.globalGroups = probe.globalConfigGroups || [];
-    this.saveSchemaCache(projectDir, locale, probe.schemas, this.globalGroups);
+    this.globalGroups = [
+      ...(probe.globalConfigGroups || []),
+      ...(probe.projectGlobalGroups || []),
+    ];
+    this.multiAccount = probe.multiAccount || { available: false };
+    this.saveSchemaCache(projectDir, locale, probe.schemas, this.globalGroups, this.multiAccount);
     const brokenCount = Object.values(probe.schemas).filter((s) => s.broken).length;
     // 配置接管：物化快照（首建继承项目值 / 新键补出厂值 / 孤儿键保留），落盘并回推
     const materialized = this.materializeAllSnapshots();
@@ -898,6 +933,7 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
       schemas: this.schemas,
       globalGroups: this.globalGroups,
       globalSnapshots: this.globalSnapshots,
+      multiAccount: this.multiAccount,
     });
     this.pushGlobalGroups();
     if (materialized > 0) {

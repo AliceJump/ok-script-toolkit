@@ -144,8 +144,10 @@ print("\n[6] 异常路径")
 try:
     mod._apply_gparams(executor, json.dumps({"Ghost Group": {"k": 1}}))
     check(False, "组不存在应 raise")
-except RuntimeError:
-    check(True, "组不存在 raise RuntimeError")
+except (RuntimeError, ValueError):
+    # resolve_group_config 先试框架 GlobalConfig（RuntimeError），再探测项目
+    # 自建 store（本测试环境无 → ValueError 兜底）
+    check(True, "组不存在 raise（未知组回传错误）")
 try:
     mod._apply_gparams(executor, "{oops")
     check(False, "坏 JSON 应 raise")

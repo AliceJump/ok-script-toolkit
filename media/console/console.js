@@ -23,7 +23,8 @@
     }
     $('pageTasks').hidden = seg !== 'tasks';
     $('pageGame').hidden = seg !== 'game';
-    $('pageConfig').hidden = seg !== 'config';  }
+    $('pageConfig').hidden = seg !== 'config';
+    $('pageAccounts').hidden = seg !== 'accounts';  }
 
   // ── 配置分段：全局配置组卡片（复用 configPanel，伪 task = __global__::组名） ──
 
@@ -103,6 +104,69 @@
 
     card.append(head, body);
     return card;
+  }
+
+  // ── 账号分段：多账户存储只读概要（Phase 6 只读呈现，编辑器列后续） ──
+
+  function renderMultiAccount(info) {
+    state.multiAccount = info || { available: false };
+    const host = $('accountList');
+    if (!host) return;
+    host.replaceChildren();
+    if (!info || info.available !== true) {
+      const empty = document.createElement('div');
+      empty.className = 'config-empty';
+      empty.textContent = t('accountNotAvailable');
+      host.appendChild(empty);
+      return;
+    }
+    const card = document.createElement('section');
+    card.className = 'gconfig-card';
+    const head = document.createElement('header');
+    head.className = 'gconfig-card__head';
+    const title = document.createElement('div');
+    title.className = 'gconfig-card__name';
+    title.textContent = t('accountStoreTitle');
+    head.appendChild(title);
+    const actions = document.createElement('div');
+    actions.className = 'gconfig-card__actions';
+    const open = document.createElement('button');
+    open.className = 'btn-mini';
+    open.textContent = t('openDataBtn');
+    open.addEventListener('click', () => post({ type: 'openPath', path: info.storePath }));
+    actions.appendChild(open);
+    head.appendChild(actions);
+    const body = document.createElement('div');
+    body.className = 'gconfig-card__body';
+    const rows = [
+      [t('accountCountLabel'), String(info.accountCount ?? 0)],
+      [t('overrideAccountsLabel'), String(info.overrideAccounts ?? 0)],
+      ...(info.readable === false ? [[t('accountReadFailed'), '']] : []),
+    ];
+    for (const [k, v] of rows) {
+      const row = document.createElement('div');
+      row.className = 'row';
+      const label = document.createElement('div');
+      label.className = 'label';
+      const kt = document.createElement('div');
+      kt.className = 'k';
+      kt.textContent = k;
+      label.appendChild(kt);
+      const val = document.createElement('div');
+      val.className = 'ctrl';
+      val.textContent = v;
+      val.style.color = 'var(--text, inherit)';
+      row.append(label, val);
+      body.appendChild(row);
+    }
+    if (Array.isArray(info.overriddenTasks) && info.overriddenTasks.length) {
+      const hint = document.createElement('div');
+      hint.className = 'hint';
+      hint.textContent = `${t('overriddenTasksLabel')}: ${info.overriddenTasks.join('、')}`;
+      body.appendChild(hint);
+    }
+    card.append(head, body);
+    host.appendChild(card);
   }
 
   // ── 游戏状态（状态条第一行 + 游戏分段卡片） ──────────────────────────
@@ -226,9 +290,11 @@
     $('segTasks').textContent = t('consoleTabTasks');
     $('segGame').textContent = t('consoleTabGame');
     $('segConfig').textContent = t('consoleTabConfig');
+    $('segAccounts').textContent = t('consoleTabAccounts');
     $('segTasks').addEventListener('click', () => switchSeg('tasks'));
     $('segGame').addEventListener('click', () => switchSeg('game'));
     $('segConfig').addEventListener('click', () => switchSeg('config'));
+    $('segAccounts').addEventListener('click', () => switchSeg('accounts'));
 
     // 任务分段
     const search = $('taskSearch');
@@ -292,5 +358,6 @@
     closeDrawer,
     refreshDrawer,
     renderConfig,
+    renderMultiAccount,
   };
 })();
