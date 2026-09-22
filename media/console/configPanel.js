@@ -83,7 +83,7 @@
     panel.appendChild(actions);
   }
 
-  function buildConfigPanel(task, schema) {
+  function buildConfigPanel(task, schema, options = {}) {
     const panel = document.createElement('div');
     panel.className = 'config-panel';
     const saved = state.taskConfigs[taskKey(task)] || {};
@@ -107,7 +107,7 @@
       const host = document.createElement('div');
       host.className = 'config-fields';
       panel.appendChild(host);
-      renderSchema(host, task, schema, config, persist);
+      renderSchema(host, task, schema, config, persist, options.defaultGroupOpen === true);
     } else {
       const empty = document.createElement('div');
       empty.className = 'config-empty';
@@ -119,7 +119,7 @@
     return panel;
   }
 
-  function renderSchema(host, task, schema, config, onConfigChange) {
+  function renderSchema(host, task, schema, config, onConfigChange, defaultGroupOpen = false) {
     const fieldsByKey = Object.fromEntries(schema.fields.map(field => [field.key, field]));
     const groups = schema.configGroups && typeof schema.configGroups === 'object' ? schema.configGroups : {};
     const selectorKey = schema.groupSelector && fieldsByKey[schema.groupSelector] ? schema.groupSelector : '';
@@ -269,7 +269,10 @@
         toggle.hidden = true;
         group.classList.add('open');
       } else {
-        setOpen(state.openConfigGroups.get(stateKey) || false);
+        // 未记忆的组用调用方的默认态（账号编辑器传 true——覆盖表单分组默认展开，
+        // 否则整个表单只剩一排收起的组头开关，与任务抽屉观感割裂）
+        const stored = state.openConfigGroups.get(stateKey);
+        setOpen(stored === undefined ? defaultGroupOpen : stored);
       }
       return true;
     };

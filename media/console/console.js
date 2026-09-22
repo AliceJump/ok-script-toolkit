@@ -159,10 +159,15 @@
     if (store) {
       host.appendChild(buildAccountListCard(info, store));
       host.appendChild(buildAccountOverrideCard(info, store));
+    } else if (info.hasStoreModule === false) {
+      const warn = document.createElement('div');
+      warn.className = 'config-broken';
+      warn.textContent = `⚠ ${t('accountNoEditor')}`;
+      host.appendChild(warn);
     } else {
       const warn = document.createElement('div');
       warn.className = 'config-broken';
-      warn.textContent = `⚠ ${t('accountStoreUnavailable')}${storeError ? `\n${storeError}` : ''}`;
+      warn.textContent = `⚠ ${t('accountStoreUnavailable')}${storeError ? `\n${storeError}` : ''}\n${t('accountStoreSeeOutput')}`;
       host.appendChild(warn);
     }
   }
@@ -316,7 +321,7 @@
         groupSelector: schema?.groupSelector || '',
       };
       formHost.replaceChildren(
-        globalThis.TaskLauncherConfigPanel.buildConfigPanel(fakeTask, fakeSchema),
+        globalThis.TaskLauncherConfigPanel.buildConfigPanel(fakeTask, fakeSchema, { defaultGroupOpen: true }),
       );
       const clear = document.createElement('div');
       clear.style.padding = '6px 12px';
