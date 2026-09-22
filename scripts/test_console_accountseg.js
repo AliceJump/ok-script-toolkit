@@ -164,4 +164,13 @@ assert(fieldHost2.hidden === true, '复用 uiState：启动设置区初始收起
 const cardBody2 = document.querySelectorAll('#accountList .gconfig-card')[1].querySelector(':scope > .gconfig-card__body');
 assert(cardBody2.hidden === true, '复用 uiState：覆盖卡初始收起');
 
+console.log('8. 任务分组折叠持久化（taskCard：kind 级与业务分组）');
+sent.length = 0;
+const triggerHead = document.getElementById('triggerHead');
+assert(triggerHead, '触发任务组头存在');
+triggerHead.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+const gMsg = sent.filter(m => m.type === 'saveUiState').pop();
+assert(gMsg && gMsg.key === 'taskGroupCollapsed::trigger' && gMsg.value === true,
+  `任务分组折叠落盘（got ${JSON.stringify(gMsg)}）`);
+
 console.log('\n全部通过');

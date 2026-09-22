@@ -1,5 +1,5 @@
 (() => {
-  const { t, post, state, elements, taskKey, taskKind, triggerEnabled } = globalThis.TaskLauncherCore;
+  const { t, post, state, elements, taskKey, taskKind, triggerEnabled, uiState } = globalThis.TaskLauncherCore;
   const { buildConfigPanel } = globalThis.TaskLauncherConfigPanel;
 
   const BADGE_LABELS = {
@@ -13,7 +13,13 @@
 
   /** 搜索过滤 + 分组折叠（模块级：renderTasks 重渲染时保持） */
   let searchQuery = '';
-  const collapsedGroups = new Set();
+  /**
+   * 任务分组折叠状态（kind 级「触发任务/一次性」与一次性任务的业务分组）落盘
+   * uiState，重开面板/重启宿主后复用；键前缀统一 taskGroupCollapsed::。
+   */
+  const groupCollapseKey = key => `taskGroupCollapsed::${key}`;
+  const isGroupCollapsed = key => uiState.get(groupCollapseKey(key), false) === true;
+  const setGroupCollapsed = (key, collapsed) => uiState.set(groupCollapseKey(key), collapsed);
 
   function createButton(className, text, handler) {
     const button = document.createElement('button');
@@ -305,7 +311,7 @@
     const fragment = document.createDocumentFragment();
     for (const task of tasks) fragment.appendChild(buildTaskCard(task));
     body.replaceChildren(fragment);
-    const collapsed = collapsedGroups.has(kind);
+    const collapsed = isGroupCollapsed(kind);
     body.classList.toggle('is-collapsed', collapsed);
     if (head) head.classList.toggle('is-collapsed', collapsed);
     if (count) count.textContent = t('taskCount', { count: tasks.length });
@@ -335,7 +341,7 @@
     for (const [name, groupTasks] of buckets) {
       const label = name ? t(name) : t('ungrouped');
       const foldKey = `onetime::${name || '__ungrouped__'}`;
-      const collapsed = !searching && collapsedGroups.has(foldKey);
+      const collapsed = !searching && isGroupCollapsed(foldKey);
       const head = document.createElement('div');
       head.className = 'subgroup-head';
       head.setAttribute('role', 'button');
@@ -350,8 +356,7 @@
       count.textContent = t('itemsCount', { count: groupTasks.length });
       head.append(chev, title, count);
       head.addEventListener('click', () => {
-        if (collapsedGroups.has(foldKey)) collapsedGroups.delete(foldKey);
-        else collapsedGroups.add(foldKey);
+        setGroupCollapsed(foldKey, !isGroupCollapsed(foldKey));
         renderTasks(state.currentTasks);
       });
       head.addEventListener('keydown', (event) => {
@@ -387,8 +392,7 @@
   }
 
   function toggleGroup(kind) {
-    if (collapsedGroups.has(kind)) collapsedGroups.delete(kind);
-    else collapsedGroups.add(kind);
+    setGroupCollapsed(kind, !isGroupCollapsed(kind));
     renderTasks(state.currentTasks);
   }
 
