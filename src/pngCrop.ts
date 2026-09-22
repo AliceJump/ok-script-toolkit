@@ -358,7 +358,7 @@ interface CropTask {
 /** worker 回包（单任务与批量共用：单任务 results 只有一个元素） */
 interface WorkerReply {
   id: number;
-  results: Array<{ bbox: number[]; dataUrl: string; filePath: string }>;
+  results: Array<{ bbox: number[]; dataUrl: string; filePath: string; fromDisk?: boolean }>;
   error?: string;
 }
 
@@ -474,7 +474,7 @@ function submitBatchToWorker(
   bboxes: Array<{ bbox: [number, number, number, number]; targetHeight: number }>,
   thumbDir: string,
   contentHash?: string,
-): Promise<Array<{ bbox: [number, number, number, number]; dataUrl: string; filePath: string }>> {
+): Promise<Array<{ bbox: [number, number, number, number]; dataUrl: string; filePath: string; fromDisk?: boolean }>> {
   return new Promise((resolve) => {
     if (bboxes.length === 0) { resolve([]); return; }
 
@@ -482,12 +482,12 @@ function submitBatchToWorker(
     ensurePool();
 
     pendingReplies.set(batchId, (reply) => {
-      const results: Array<{ bbox: [number, number, number, number]; dataUrl: string; filePath: string }> = [];
+      const results: Array<{ bbox: [number, number, number, number]; dataUrl: string; filePath: string; fromDisk?: boolean }> = [];
       if (!reply.error) {
         for (const r of reply.results) {
           results.push({
             bbox: r.bbox as [number, number, number, number],
-            dataUrl: r.dataUrl, filePath: r.filePath,
+            dataUrl: r.dataUrl, filePath: r.filePath, fromDisk: r.fromDisk,
           });
         }
       }
@@ -801,6 +801,7 @@ export async function warmCropCache(requests: CropRequest[]): Promise<void> {
 
   // Worker 路径：按图片分组批量提交
   let workerHits = 0; let workerMisses = 0; let workerErrors = 0;
+  let diskHits = 0; let cropped = 0;
   for (const [imagePath, items] of groups) {
     const targetHeight = items[0]?.targetHeight ?? THUMB_HEIGHT;
     const hash = imageContentHash(imagePath);
@@ -824,6 +825,7 @@ export async function warmCropCache(requests: CropRequest[]): Promise<void> {
     log(`  worker batch: ${path.basename(imagePath)} ×${missing.length} → ${results.length} ok, ${(performance.now() - imgT0).toFixed(0)}ms`);
 
     for (const r of results) {
+      if (r.fromDisk) diskHits++; else cropped++;
       const key = cropKey(imagePath, r.bbox, targetHeight, hash);
       if (!CROP_CACHE.has(key)) {
         cacheSet(key, {
@@ -834,7 +836,9 @@ export async function warmCropCache(requests: CropRequest[]): Promise<void> {
       }
     }
   }
-  logT(`warmCropCache done [hit=${workerHits} miss=${workerMisses} err=${workerErrors}]`, t0);
+  // hit/miss 是「内存里有没有」，重启后必然 miss=全部；
+  // 盘命中/重切 才是真正的工作量 —— 前者连原图都不用读。
+  logT(`warmCropCache done [hit=${workerHits} miss=${workerMisses} 盘命中=${diskHits} 重切=${cropped} err=${workerErrors}]`, t0);
 }
 
 /* ========================================================================

@@ -289,12 +289,65 @@ interface CropTask {
   contentHash?: string;
 }
 
+/** 单个 bbox 的裁剪结果 */
+interface WorkerCropResult {
+  bbox: [number, number, number, number];
+  dataUrl: string;
+  filePath: string;
+  /** true = 直接读的盘上已有缩略图（**没有**重新裁剪） */
+  fromDisk?: boolean;
+}
+
+/** 读取盘上已有的缩略图并转成 data URL；不存在 / 空文件 / 不是 PNG / 读失败返回 undefined。 */
+function readThumbDataUrl(filePath: string): string | undefined {
+  try {
+    const png = fs.readFileSync(filePath);
+    // 校验 PNG 魔数：半截/损坏的文件当作未命中，走重切自愈
+    if (png.length < 8 || png.readUInt32BE(0) !== 0x89504e47) return undefined;
+    return `data:image/png;base64,${png.toString('base64')}`;
+  } catch {
+    return undefined;
+  }
+}
+
 parentPort?.on('message', async (task: CropTask) => {
   try {
-    // 读取原图文件（fs 在 worker 中也是同步的，但文件读取通常 <5ms）
+    const results: WorkerCropResult[] = [];
+
+    // ── 1. 先按确定性路径查盘 ──────────────────────────────────────────
+    // 缩略图文件名 = hash(内容 hash + bbox + 目标高度)，与主线程完全一致。
+    // 命中的直接把盘上的 PNG 读回来当 dataUrl，**原图一个字节都不用读**。
+    //
+    // ⚠️ 这里此前**从不查盘** —— 每次会话激活预热都会把全部原图重新解码+重切
+    // 一遍（ok-wuthering-waves 156 张原图 ≈ 8s），磁盘缓存形同只写不读。
+    // 只有 contentHash 已知才能算出确定性文件名；缺省时回退到下面的原逻辑现算。
+    const toCrop: CropTask['bboxes'] = [];
+    let contentHash = task.contentHash;
+    if (contentHash) {
+      for (const item of task.bboxes) {
+        const filePath = path.join(
+          task.thumbDir,
+          thumbFileName(contentHash, item.bbox, item.targetHeight),
+        );
+        const cached = readThumbDataUrl(filePath);
+        if (cached) {
+          results.push({ bbox: item.bbox, dataUrl: cached, filePath, fromDisk: true });
+        } else {
+          toCrop.push(item);
+        }
+      }
+      if (toCrop.length === 0) {
+        // 全部命中：连原图都不用读
+        parentPort?.postMessage({ id: task.id, results });
+        return;
+      }
+    }
+
+    // ── 2. 有 miss 才读原图、解码 ─────────────────────────────────────
     const buf = fs.readFileSync(task.imagePath);
-    const contentHash = task.contentHash
-      ?? crypto.createHash('sha1').update(buf).digest('hex').slice(0, 16);
+    if (!contentHash) {
+      contentHash = crypto.createHash('sha1').update(buf).digest('hex').slice(0, 16);
+    }
 
     const decoded = decodeImage(buf);
     const imgW = decoded.width;
@@ -304,13 +357,7 @@ parentPort?.on('message', async (task: CropTask) => {
       return;
     }
 
-    const results: Array<{
-      bbox: [number, number, number, number];
-      dataUrl: string;
-      filePath: string;
-    }> = [];
-
-    for (const item of task.bboxes) {
+    for (const item of toCrop) {
       const [bx, by, bw, bh] = item.bbox;
       // clamp 到图片边界
       const left = Math.max(0, Math.min(bx, imgW));
@@ -327,7 +374,7 @@ parentPort?.on('message', async (task: CropTask) => {
       fs.mkdirSync(path.dirname(filePath), { recursive: true });
       fs.writeFileSync(filePath, pngData);
 
-      results.push({ bbox: item.bbox, dataUrl, filePath });
+      results.push({ bbox: item.bbox, dataUrl, filePath, fromDisk: false });
     }
 
     parentPort?.postMessage({ id: task.id, results });

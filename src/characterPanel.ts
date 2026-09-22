@@ -37,7 +37,7 @@ import {
   saveToolboxState,
 } from './toolboxState';
 import {
-  clearCropCache,
+  clearCropCacheForImage,
   cropTemplateThumbFileAsync,
   removeTemplateThumbFile,
   templateThumbFilePath,
@@ -669,8 +669,11 @@ export class CharacterManagerPanel implements vscode.Disposable {
   }
 
   private invalidateAvatarThumbs(features: FeatureData): void {
-    clearCropCache();
+    // 只作废头像用到的那些原图 —— 此前是 clearCropCache()（**整个**内存裁剪缓存），
+    // 会把模板/标注面板刚预热好的缩略图一并丢掉，纯属误伤。
+    // 磁盘上的头像缩略图仍按需删除：这些图的 bbox/regex 变了，旧图确实不该再被复用。
     for (const template of avatarTemplateIndex(features).matched) {
+      clearCropCacheForImage(template.imagePath);
       removeTemplateThumbFile(template.imagePath, template.bbox, this.dependencies.thumbDir, THUMB_HEIGHT);
     }
   }
