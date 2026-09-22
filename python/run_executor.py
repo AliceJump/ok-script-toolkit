@@ -62,7 +62,8 @@ stdout 标记行（宿主按行扫描）:
 配置沙箱：调试插件绝不允许改动目标项目的 `configs/`。宿主经
 `OK_TOOLKIT_RUN_DIR` 传入沙箱根目录（如 `<workspace>/.vscode/ok-script-toolkit`），
 `config['config_folder']` 与 `config['screenshots_folder']` 一并改道，ok 框架的读写
-全部落在沙箱内。任务因此读到的是默认值 —— 调试场景可接受。
+全部落在沙箱内。沙箱初始化时把项目 configs/ 整目录拷进来 —— 任务读到的是
+**项目当前配置 + 插件参数覆盖**；执行器的写入只落沙箱，项目侧文件保持原样。
 
 `devices.json` 是唯一例外：工具箱的 connect_game.py 把连接结果写在
 `<项目>/configs/devices.json`（`folder=` 硬指定，不受 config_folder 影响），
@@ -74,6 +75,7 @@ import functools
 import importlib
 import json
 import os
+import shutil
 import sys
 import threading
 import time
@@ -153,23 +155,30 @@ def apply_config_sandbox(config: dict) -> str:
         _note(f"配置沙箱创建失败，回退为不隔离：{e}")
         return ""
 
+    # 项目 configs/ → 沙箱：任务的初始配置值跟项目配置走（devices.json 也随之进来，
+    # connect_game.py 写的项目侧文件对执行器可见）。不拷的话任务读到的全是默认值，
+    # 与插件 UI（probe 会拷项目配置读「当前值」）和项目自身 GUI 完全脱钩 ——
+    # 实测被报告为「执行器配置跟插件的配置不相关联」。
+    # copytree(dirs_exist_ok=True) 对同名文件整体覆盖：沙箱视图每次启动都从项目
+    # 配置重建，上一次运行留在沙箱里的状态不参与。
+    # 注意必须**先**读项目原值再覆盖 config["config_folder"] —— 覆盖之后 config
+    # 里已经是沙箱路径，再读就拷了个寂寞（首次实现就栽在这里，被测试 4 抓住）。
+    source_folder = str(config.get("config_folder") or "configs")
+    source_configs = (
+        source_folder
+        if os.path.isabs(source_folder)
+        else os.path.join(os.getcwd(), source_folder)
+    )
+
     config["config_folder"] = config_folder
     # 截图目录必须一起改道：ok 启动时会清空它（会真的删文件）。
     config["screenshots_folder"] = screenshots_folder
 
-    # devices.json 是唯一需要桥接的：connect_game.py 用 `folder=` 硬写到项目
-    # configs/ 下（不受 config_folder 影响），执行器要读到同一个窗口。拷一份进沙箱，
-    # 此后执行器对它的写入只落沙箱，项目侧文件保持原样。
-    source_devices = os.path.join(os.getcwd(), "configs", "devices.json")
-    target_devices = os.path.join(config_folder, "devices.json")
-    if os.path.isfile(source_devices):
+    if os.path.isdir(source_configs):
         try:
-            with open(source_devices, "r", encoding="utf-8") as src:
-                payload = src.read()
-            with open(target_devices, "w", encoding="utf-8") as dst:
-                dst.write(payload)
-        except OSError as e:  # noqa: BLE001 — 桥接失败只影响自动连游戏，不阻断启动
-            _note(f"devices.json 桥接失败：{e}")
+            shutil.copytree(source_configs, config_folder, dirs_exist_ok=True)
+        except OSError as e:  # noqa: BLE001 — 拷贝失败退回「默认值」语义，绝不阻断启动
+            _note(f"项目 configs 拷入沙箱失败（任务将读到默认值）：{e}")
 
     _note(f"配置沙箱已启用：{config_folder}")
     return run_dir
