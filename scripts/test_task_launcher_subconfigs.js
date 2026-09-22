@@ -77,6 +77,9 @@ const fields = [
   { key: 'absorbGroup', default: false, value: false, displayKey: 'Absorb group', type: { sub_configs: { True: ['absorbDeclared', 'absorbOrphan'] } } },
   { key: 'absorbDeclared', default: 'd', value: 'd', displayKey: 'Absorb declared', type: {} },
   { key: 'absorbOrphan', default: 'o', value: 'o', displayKey: 'Absorb orphan', type: {} },
+  // 嵌套空组：叶子字段被外部分支隐藏后，内层组和外层组都应按后序遍历隐藏。
+  { key: 'nestedGate', default: false, value: false, displayKey: 'Nested gate', type: { sub_configs: { True: ['nestedLeaf'] } } },
+  { key: 'nestedLeaf', default: 'leaf', value: 'leaf', displayKey: 'Nested leaf', type: {} },
 ];
 const schema = {
   fields,
@@ -89,8 +92,13 @@ const schema = {
     overlapGroup: ['overlapChildA', 'overlapChildB'],
     // absorbDeclared 已声明；absorbOrphan 只在 sub_configs 里，必须被吸收补进来
     absorbGroup: ['absorbDeclared'],
+    nestedOuter: ['nestedInner'],
+    nestedInner: ['nestedLeaf'],
   },
-  groupLabels: { A: 'A Group', B: 'B Group', titleField: 'Title Group', overlapGroup: 'Overlap Group', absorbGroup: 'Absorb Group' },
+  groupLabels: {
+    A: 'A Group', B: 'B Group', titleField: 'Title Group', overlapGroup: 'Overlap Group', absorbGroup: 'Absorb Group',
+    nestedOuter: 'Nested Outer', nestedInner: 'Nested Inner',
+  },
 };
 window.dispatchEvent(new window.MessageEvent('message', { data: { type: 'tasks', tasks: [task], schemas: { 'demo::DemoTask': schema } } }));
 
@@ -152,7 +160,7 @@ assert(fieldRows('titleChild')[0].closest('.config-group').classList.contains('o
 assert(fieldRows('plainChild').length === 1, 'title group regular child must render');
 // shared 是 shared/oneOnly/twoOnly 中唯一被两个 option 组共用的项，允许出现多次；
 // 其余每个 key 都必须只渲染一次 —— 分组标题字段的内联子项不得重复。
-const syntheticDupes = duplicateRows(['shared']);
+const syntheticDupes = duplicateRows(['shared', 'nestedLeaf']);
 assert(!syntheticDupes.length, `fields must not be rendered twice: ${syntheticDupes.join(', ')}`);
 assert(fieldRows('titleChild').length === 1, 'config-title switch child must not duplicate via inline rules');
 assert(fieldRows('plainChild').length === 1, 'title group child declared in configGroups must not duplicate');
@@ -181,6 +189,9 @@ absorbSwitch.checked = true;
 absorbSwitch.dispatchEvent(new window.Event('change', { bubbles: true }));
 assert(!fieldRows('absorbOrphan')[0].hidden && !fieldRows('absorbDeclared')[0].hidden, 'toggling an absorbed switch must not change child visibility');
 assert(fieldRows('absorbOrphan').length === 1, 'absorbed child must not duplicate after toggling');
+assert(fieldRows('nestedLeaf').every(row => row.hidden), 'nested leaves controlled by a false branch must be hidden');
+assert(groupByTitle('Nested Inner').hidden, 'nested empty group must be hidden before its parent is evaluated');
+assert(groupByTitle('Nested Outer').hidden, 'parent group containing only an empty nested group must be hidden');
 
 const realSchemaFile = process.argv[2];
 let realSummary = null;

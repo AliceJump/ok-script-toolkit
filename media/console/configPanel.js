@@ -187,9 +187,9 @@
       // 空组隐藏（后序：先算子组再算父组）——body 里没有可见行、也没有可见子组的
       // 分组整组隐藏；组头自带开关（headerField）的组不隐藏（开关本身有实际含义）。
       const updateGroup = groupEl => {
-        for (const child of groupEl.querySelectorAll(':scope > .config-group')) updateGroup(child);
         const bodyEl = groupEl.querySelector(':scope > .config-group__body');
         if (!bodyEl) return;
+        for (const child of bodyEl.querySelectorAll(':scope > .config-group')) updateGroup(child);
         let hasVisible = false;
         for (const row of bodyEl.querySelectorAll(':scope > .config-field')) {
           if (!row.hidden) { hasVisible = true; break; }

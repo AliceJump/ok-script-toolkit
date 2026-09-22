@@ -70,7 +70,14 @@ const tasks = [
   { module: 'demo.onetime', className: 'OnetimeC', displayName: 'Onetime C', kind: 'onetime' },
 ];
 const schemas = {
-  [TRIGGER_A]: { fields: [], kind: 'trigger', displayName: 'Trigger A' },
+  [TRIGGER_A]: {
+    fields: [
+      { key: 'stages', default: ['alpha', { retries: 2 }] },
+      { key: 'options', default: { enabled: true, order: 1 } },
+    ],
+    kind: 'trigger',
+    displayName: 'Trigger A',
+  },
   [TRIGGER_B]: { fields: [], kind: 'trigger', displayName: 'Trigger B' },
   [ONETIME_C]: { fields: [], kind: 'onetime', displayName: 'Onetime C' },
 };
@@ -80,6 +87,23 @@ const badgeOf = key => cardOf(key).querySelector('[data-role="status"]');
 const toggleOf = key => cardOf(key).querySelector('[data-role="trigger-toggle"]');
 
 send({ type: 'tasks', tasks, schemas });
+
+// 等内容的数组/对象不应因引用不同或对象键顺序不同而显示覆盖徽标。
+send({
+  type: 'taskConfigs',
+  configs: {
+    [TRIGGER_A]: { params: { stages: ['alpha', { retries: 2 }], options: { order: 1, enabled: true } } },
+  },
+});
+assert(!cardOf(TRIGGER_A).querySelector('[data-role="config-toggle"]').classList.contains('has-overrides'), 'deep-equal defaults must not be marked as overrides');
+
+send({
+  type: 'taskConfigs',
+  configs: {
+    [TRIGGER_A]: { params: { stages: ['alpha', { retries: 3 }], options: { order: 1, enabled: true } } },
+  },
+});
+assert(cardOf(TRIGGER_A).querySelector('[data-role="config-toggle"]').classList.contains('has-overrides'), 'nested value differences must be marked as overrides');
 
 // 触发任务：勾选启用；一次性任务：启动按钮
 assert(toggleOf(TRIGGER_A) && toggleOf(TRIGGER_B), 'trigger tasks must render an enable checkbox');

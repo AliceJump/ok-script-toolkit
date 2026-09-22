@@ -177,6 +177,26 @@ export function parseJsonFromStdout(stdout: string): any {
   return null;
 }
 
+/** JSON-compatible config values use deep value equality; primitives retain strict comparison. */
+export function configValuesEqual(left: unknown, right: unknown): boolean {
+  if (left === right) return true;
+  if (!left || !right || typeof left !== 'object' || typeof right !== 'object') return false;
+  if (Array.isArray(left) || Array.isArray(right)) {
+    if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length) return false;
+    for (let index = 0; index < left.length; index += 1) {
+      if (!configValuesEqual(left[index], right[index])) return false;
+    }
+    return true;
+  }
+  const leftRecord = left as Record<string, unknown>;
+  const rightRecord = right as Record<string, unknown>;
+  const leftKeys = Object.keys(leftRecord);
+  const rightKeys = Object.keys(rightRecord);
+  if (leftKeys.length !== rightKeys.length) return false;
+  return leftKeys.every((key) => Object.prototype.hasOwnProperty.call(rightRecord, key)
+    && configValuesEqual(leftRecord[key], rightRecord[key]));
+}
+
 interface PythonResult {
   stdout: string;
   stderr: string;
@@ -445,6 +465,16 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
           this.stopExecutor();
           break;
         case 'saveConfig':
+          // 全局配置编辑器：伪 task module = __global__，className = 全局组名
+          if (msg.task?.module === '__global__') {
+            const group = String(msg.task.className || '');
+            const rawParams = msg.config?.params;
+            const params = rawParams && typeof rawParams === 'object' && !Array.isArray(rawParams)
+              ? rawParams as Record<string, unknown>
+              : {};
+            for (const [key, value] of Object.entries(params)) this.setGlobalValue(group, key, value);
+            break;
+          }
           // 账号覆盖编辑器：伪 task module = __account__::<账号名>，className = 任务类名
           if (typeof msg.task?.module === 'string' && msg.task.module.startsWith('__account__::')) {
             const account = msg.task.module.slice('__account__::'.length);
@@ -747,8 +777,20 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
       { cwd: projectDir, windowsHide: true, env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' } },
     );
     let stdout = '';
+    let launchFailed = false;
     child.stdout?.on('data', (d) => { stdout += d.toString('utf8'); });
+    child.once('error', (error) => {
+      launchFailed = true;
+      const message = error.message || String(error);
+      this.output.appendLine(`[toolkit] account_store ${command[0]} 启动失败：${message}`);
+      this.view?.webview.postMessage({
+        type: 'accountStore',
+        data: null,
+        error: message,
+      });
+    });
     child.on('close', () => {
+      if (launchFailed) return;
       const parsed = parseJsonFromStdout(stdout);
       if (!parsed?.ok) {
         const error = parsed?.error || `exit code ${child.exitCode}`;
@@ -834,7 +876,7 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
       : { ...(this.globalSnapshots[name] || {}) };
     let reset = 0;
     for (const f of fields) {
-      if (f.default === undefined || existing[f.key] === f.default) continue;
+      if (f.default === undefined || configValuesEqual(existing[f.key], f.default)) continue;
       existing[f.key] = f.default;
       reset += 1;
     }

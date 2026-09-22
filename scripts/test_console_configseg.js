@@ -1,10 +1,11 @@
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 let jsdom;
 try {
   jsdom = require('jsdom');
 } catch {
-  const jsdomRoot = process.env.OK_LANG_HINTS_JSDOM_ROOT || path.join(process.env.TEMP, 'ok-script-toolkit-jsdom');
+  const jsdomRoot = process.env.OK_LANG_HINTS_JSDOM_ROOT || path.join(os.tmpdir(), 'ok-script-toolkit-jsdom');
   jsdom = require(path.join(jsdomRoot, 'node_modules', 'jsdom'));
 }
 const { JSDOM, VirtualConsole } = jsdom;
