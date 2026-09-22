@@ -1088,3 +1088,6 @@ button.secondary:hover:not(:disabled) { background: var(--vscode-button-secondar
 }
 .ms-list__item:hover { background: var(--surface-hover); }
 .ms-list__item input { accent-color: #3794ff; margin: 0; }
+
+.config-section-title--toggle { cursor: pointer; user-select: none; }
+.config-section-title__chev { display: inline-block; width: 11px; margin-right: 2px; color: var(--muted); }

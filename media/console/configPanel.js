@@ -98,6 +98,33 @@
     };
     showSaved = buildRuntimeFields(panel, config, persist);
 
+    // 「启动设置」区整块可折叠（任务抽屉与账号表单一致）：点击标题收起面板里
+    // 除标题外的全部直属内容（顶层字段/分组/重置按钮），分组自身的折叠不受影响
+    const titleEl = panel.querySelector(':scope > .config-section-title');
+    if (titleEl && options.collapsibleSection !== false) {
+      const chev = document.createElement('span');
+      chev.className = 'config-section-title__chev';
+      chev.textContent = '▾';
+      titleEl.prepend(chev);
+      titleEl.classList.add('config-section-title--toggle');
+      titleEl.setAttribute('role', 'button');
+      titleEl.tabIndex = 0;
+      const applySectionOpen = open => {
+        chev.textContent = open ? '▾' : '▸';
+        for (const child of panel.children) {
+          if (child !== titleEl) child.hidden = !open;
+        }
+      };
+      const toggleSection = () => applySectionOpen(chev.textContent !== '▾');
+      titleEl.addEventListener('click', toggleSection);
+      titleEl.addEventListener('keydown', event => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          toggleSection();
+        }
+      });
+    }
+
     if (schema?.broken) {
       const broken = document.createElement('div');
       broken.className = 'config-broken';

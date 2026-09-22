@@ -120,4 +120,14 @@ const mapCard = document.querySelectorAll('#accountList .gconfig-card')[2];
 const ta = mapCard.querySelector('textarea');
 assert(ta && ta.value === 'some content', '地图卡 textarea 显示 content');
 
+console.log('5. 「启动设置」标题可折叠（收起字段区，再点恢复）');
+const overridePanel = document.querySelector('#accountList .account-override-form .config-panel');
+const titleEl = overridePanel.querySelector(':scope > .config-section-title');
+assert(titleEl && titleEl.classList.contains('config-section-title--toggle'), '标题带折叠标记');
+titleEl.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+const fieldsHost = overridePanel.querySelector(':scope > .config-fields');
+assert(fieldsHost.hidden === true, '收起后字段区隐藏');
+titleEl.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+assert(fieldsHost.hidden === false, '再点恢复显示');
+
 console.log('\n全部通过');
