@@ -1,5 +1,5 @@
 {
-  "ok-script Task Launcher": "ok-script 任務啟動器",
+  "ok-script Console": "ok-script 控制台",
   "Unknown error": "未知錯誤",
   "Failed to read task configuration: {error}": "讀取任務設定失敗：{error}",
   "Failed to save task configuration: {error}": "儲存任務設定失敗：{error}",

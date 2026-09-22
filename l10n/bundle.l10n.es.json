@@ -1,5 +1,5 @@
 {
-  "ok-script Task Launcher": "Lanzador de tareas de ok-script",
+  "ok-script Console": "Consola ok-script",
   "Unknown error": "Error desconocido",
   "Failed to read task configuration: {error}": "No se pudo leer la configuración de tareas: {error}",
   "Failed to save task configuration: {error}": "No se pudo guardar la configuración de tareas: {error}",

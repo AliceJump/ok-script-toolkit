@@ -1,5 +1,5 @@
 {
-  "ok-script Task Launcher": "ok-script タスクランチャー",
+  "ok-script Console": "ok-script コンソール",
   "Unknown error": "不明なエラー",
   "Failed to read task configuration: {error}": "タスク設定の読み込みに失敗しました: {error}",
   "Failed to save task configuration: {error}": "タスク設定の保存に失敗しました: {error}",
