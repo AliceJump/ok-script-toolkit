@@ -26,6 +26,7 @@
     onetime_enqueue <module::Class>   一次性任务入队，执行一次后自动出队
     task_disable                      停掉当前正在执行的任务，轮询继续
     params          <json>            更新参数覆盖并即时应用到已加载任务
+    gparams         <json>            更新全局配置组 {"组名": {key: value}} 并即时生效
     pause / resume                    暂停 / 恢复执行器循环（全局）
     overlay_on / overlay_off          即时开 / 关调试浮层
     stop                              关闭执行器
@@ -34,6 +35,8 @@
     OK_TOOLKIT_TRIGGERS      启动即入列的触发任务 key，JSON 数组；集合是权威值，
                              未列出的触发任务一律置为未启用
     OK_LANG_HINTS_INJECT     参数覆盖 {"module::Class": {key: value}}（沿用旧脚本语义）
+    OK_TOOLKIT_GCONFIG       全局配置组快照 {"组名": {key: value}}，启动时合并进
+                             沙箱 configs/<组名>.json（在项目 configs 拷贝之后、OK() 之前）
     OK_TOOLKIT_USE_OVERLAY=1 调试浮层（设备连上后由 _apply_startup_overlay 落地）
 
 stdout 标记行（宿主按行扫描）:
@@ -180,8 +183,53 @@ def apply_config_sandbox(config: dict) -> str:
         except OSError as e:  # noqa: BLE001 — 拷贝失败退回「默认值」语义，绝不阻断启动
             _note(f"项目 configs 拷入沙箱失败（任务将读到默认值）：{e}")
 
+    # 插件侧的全局配置组快照（OK_TOOLKIT_GCONFIG）：merge 进沙箱 configs/<组名>.json。
+    # 必须在 copytree 之后 —— 插件值优先于项目值；在 OK(config) 之前 —— 框架实例化
+    # GlobalConfig 时 Config.__init__ 读的就是这份文件。
+    apply_global_group_snapshot(config_folder)
+
     _note(f"配置沙箱已启用：{config_folder}")
     return run_dir
+
+
+def apply_global_group_snapshot(config_folder) -> None:
+    """把 OK_TOOLKIT_GCONFIG 的全局配置组快照 merge 进沙箱 configs/<组名>.json。
+
+    快照结构 {"组名": {key: value}}，来自插件 tasks.json 的全局组段落。
+    read-modify-write：组文件里已有的键保留（项目值），快照里的键覆盖/新增 ——
+    与任务侧「基线 + 覆盖」同语义。孤儿键（default 已删）写进来后会被框架
+    verify_config 过滤掉，无害：插件快照仍是权威，键回归时复活。
+    """
+    raw = os.environ.get("OK_TOOLKIT_GCONFIG", "").strip()
+    if not raw:
+        return
+    try:
+        parsed = json.loads(raw)
+    except Exception as e:  # noqa: BLE001
+        _note(f"OK_TOOLKIT_GCONFIG 不是合法 JSON，忽略：{e}")
+        return
+    if not isinstance(parsed, dict):
+        return
+    applied = 0
+    for group_name, values in parsed.items():
+        if not isinstance(values, dict) or not values:
+            continue
+        target = os.path.join(config_folder, f"{group_name}.json")
+        existing = {}
+        try:
+            if os.path.isfile(target):
+                with open(target, "r", encoding="utf-8") as f:
+                    loaded = json.load(f)
+                if isinstance(loaded, dict):
+                    existing = loaded
+            existing.update(values)
+            with open(target, "w", encoding="utf-8") as f:
+                json.dump(existing, f, ensure_ascii=False, indent=2)
+            applied += 1
+        except (OSError, ValueError) as e:  # noqa: BLE001 — 单组失败不阻断其他组
+            _note(f"全局配置组 {group_name} 写入沙箱失败：{e}")
+    if applied:
+        _note(f"全局配置组快照已写入沙箱：{applied} 组")
 
 
 # ── 目标项目自带的启动补丁 ────────────────────────────────────────────
@@ -620,6 +668,33 @@ def _apply_startup_overlay(enabled: bool) -> None:
         _note(f"调试浮层启用失败：{type(e).__name__}: {e}")
 
 
+def _apply_gparams(executor, argument: str) -> None:
+    """更新全局配置组并即时生效。
+
+    结构 {"组名": {key: value}}。走 Config.__setitem__（会落沙箱盘）—— 全局配置组
+    的修改应当持久，与任务覆盖「只改内存」不同：全局组没有 save patch 的还原语义，
+    且插件 UI 显示的就是这份持久值。组不存在时 raise，由 handle_command 回传错误。
+    """
+    if not argument:
+        return
+    try:
+        parsed = json.loads(argument)
+    except Exception as e:  # noqa: BLE001 — 回传给宿主展示
+        raise ValueError(f"invalid gparams payload: {e}")
+    if not isinstance(parsed, dict):
+        raise ValueError("gparams payload must be an object")
+    touched = []
+    for group_name, values in parsed.items():
+        if not isinstance(values, dict):
+            raise ValueError(f"group {group_name} payload must be an object")
+        gconfig = executor.global_config.get_config(str(group_name))
+        for key, value in values.items():
+            gconfig[key] = value
+        touched.append(f"{group_name}({len(values)})")
+    if touched:
+        _note("全局配置组已更新并落沙箱：" + "、".join(touched))
+
+
 def _apply_params(executor, argument: str) -> None:
     """整体替换参数覆盖表，并即时应用到已加载的任务实例。
 
@@ -675,6 +750,8 @@ def handle_command(ok, line: str) -> None:
             executor.stop_current_task()
         elif verb == "params":
             _apply_params(executor, argument)
+        elif verb == "gparams":
+            _apply_gparams(executor, argument)
         elif verb == "pause":
             # executor.pause()：置 paused 标志并唤醒执行循环；任务在下一次取 frame
             # 时挂起。已处于暂停时返回 None（幂等），同样回标记让宿主同步状态。

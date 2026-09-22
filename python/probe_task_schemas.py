@@ -227,6 +227,95 @@ def detect_config_folder(project_dir):
     return "configs"
 
 
+def icon_name(icon):
+    """把框架/qfluentwidgets 的图标对象序列化为名称字符串（拿不到返回空串）。"""
+    if icon is None:
+        return ""
+    name = getattr(icon, "name", None)
+    return name if isinstance(name, str) and name else ""
+
+
+def field_payload(key, default_config, runtime_config, config_type, config_description, catalog):
+    """单个配置键 → 前端字段 payload；不可输出时返回 None。
+
+    任务字段与全局配置组字段共用同一构建逻辑，保证两边输出形状一致，
+    前端 configPanel 无需区分来源。
+    """
+    dv = default_config.get(key, runtime_config.get(key))
+    type_meta = config_type.get(key)
+    resolved_type = type_meta.get("type") if isinstance(type_meta, dict) else None
+    if isinstance(type_meta, dict) and type_meta.get("hidden"):
+        return None
+    if resolved_type in ("button", "global"):
+        return None
+    if isinstance(type_meta, dict) and resolved_type is None and (
+        "buttons" in type_meta or "callback" in type_meta
+    ):
+        return None
+    jd = jsonable(dv)
+    saved_value = runtime_config.get(key, dv)
+    if dv is not None and not isinstance(saved_value, type(dv)):
+        saved_value = dv
+    jv = jsonable(saved_value)
+    jt = translated_type_meta(type_meta, catalog)
+    if jd is UNSERIALIZABLE and jv is UNSERIALIZABLE and jt is UNSERIALIZABLE:
+        return None
+    # 值为 None 且没有可编辑类型的 key 通常只是配置组标题。
+    if jd is None and jv is None and not isinstance(jt, dict):
+        return None
+    return {
+        "key": str(key),
+        "displayKey": translated(catalog, str(key)),
+        "default": None if jd is UNSERIALIZABLE else jd,
+        "value": (None if jd is UNSERIALIZABLE else jd) if jv is UNSERIALIZABLE else jv,
+        "type": jt if isinstance(jt, dict) else None,
+        "desc": str(config_description.get(key, "")) if config_description.get(key) else "",
+        "displayDesc": translated(catalog, str(config_description.get(key, ""))) if config_description.get(key) else "",
+    }
+
+
+def collect_global_config_groups(ok, catalog, broken):
+    """采集框架 GlobalConfig 的全部可见配置组（含内置 Basic Options/Notification 等）。
+
+    输出与任务 schema 的 fields 同构，前端 configPanel 可直接复用。
+    采集失败只记 broken，不影响任务 schema。
+    """
+    groups = []
+    try:
+        visible = ok.task_executor.global_config.get_all_visible_configs()
+    except Exception as e:  # noqa: BLE001
+        broken.append({"task": "<global-config>", "error": f"{type(e).__name__}: {e}"})
+        return groups
+    for gname, gconfig, goption in visible:
+        try:
+            gdefault = dict(getattr(goption, "default_config", {}) or {})
+            gruntime = dict(gconfig)
+            gtype = dict(getattr(goption, "config_type", {}) or {})
+            gdesc = dict(getattr(goption, "config_description", {}) or {})
+            gkeys = list(dict.fromkeys([
+                *gruntime.keys(),
+                *gdefault.keys(),
+                *gtype.keys(),
+            ]))
+            gfields = []
+            for key in gkeys:
+                if str(key).startswith("_"):
+                    continue
+                payload = field_payload(key, gdefault, gruntime, gtype, gdesc, catalog)
+                if payload:
+                    gfields.append(payload)
+            groups.append({
+                "name": str(gname),
+                "displayName": translated(catalog, str(gname)),
+                "description": translated(catalog, str(getattr(goption, "description", "") or "")),
+                "fields": gfields,
+                "source": "framework",
+            })
+        except Exception as e:  # noqa: BLE001
+            broken.append({"task": f"<global-config:{gname}>", "error": f"{type(e).__name__}: {e}"})
+    return groups
+
+
 def main():
     if len(sys.argv) < 2:
         print(json.dumps({"ok": False, "error": "缺少 project_dir 参数"}, ensure_ascii=False))
@@ -318,41 +407,15 @@ def main():
                     *config_type.keys(),
                 ]))
                 for key in ordered_keys:
-                    dv = default_config.get(key, runtime_config.get(key))
-                    type_meta = config_type.get(key)
-                    resolved_type = type_meta.get("type") if isinstance(type_meta, dict) else None
                     if str(key).startswith("_"):
                         continue
                     if key in pure_group_labels:
                         continue
-                    if isinstance(type_meta, dict) and type_meta.get("hidden"):
-                        continue
-                    if resolved_type in ("button", "global"):
-                        continue
-                    if isinstance(type_meta, dict) and resolved_type is None and (
-                        "buttons" in type_meta or "callback" in type_meta
-                    ):
-                        continue
-                    jd = jsonable(dv)
-                    saved_value = runtime_config.get(key, dv)
-                    if dv is not None and not isinstance(saved_value, type(dv)):
-                        saved_value = dv
-                    jv = jsonable(saved_value)
-                    jt = translated_type_meta(type_meta, catalog)
-                    if jd is UNSERIALIZABLE and jv is UNSERIALIZABLE and jt is UNSERIALIZABLE:
-                        continue
-                    # 值为 None 且没有可编辑类型的 key 通常只是配置组标题。
-                    if jd is None and jv is None and not isinstance(jt, dict):
-                        continue
-                    fields.append({
-                        "key": str(key),
-                        "displayKey": translated(catalog, str(key)),
-                        "default": None if jd is UNSERIALIZABLE else jd,
-                        "value": (None if jd is UNSERIALIZABLE else jd) if jv is UNSERIALIZABLE else jv,
-                        "type": jt if isinstance(jt, dict) else None,
-                        "desc": str(config_description.get(key, "")) if config_description.get(key) else "",
-                        "displayDesc": translated(catalog, str(config_description.get(key, ""))) if config_description.get(key) else "",
-                    })
+                    payload = field_payload(
+                        key, default_config, runtime_config, config_type, config_description, catalog
+                    )
+                    if payload:
+                        fields.append(payload)
                 group_label_names = set(config_groups)
                 for children in config_groups.values():
                     group_label_names.update(child for child in children if child not in default_config)
@@ -364,6 +427,9 @@ def main():
                     "displayName": translated(catalog, str(getattr(task, "name", "") or cls_name)),
                     "description": translated(catalog, str(getattr(task, "description", "") or "")),
                     "kind": task_kind,
+                    "groupName": str(getattr(task, "group_name", "") or ""),
+                    "groupIcon": icon_name(getattr(task, "group_icon", None)),
+                    "showInTaskTab": bool(getattr(task, "show_in_task_tab", True)),
                     "configGroups": config_groups,
                     "groupLabels": group_labels,
                     "groupSelector": group_selector,
@@ -378,11 +444,14 @@ def main():
                     "locale": locale,
                 }
 
+        global_groups = collect_global_config_groups(ok, catalog, broken)
+
         result = json.dumps({
             "ok": True,
             "total": len(tasks),
             "broken": broken,
             "schemas": schemas,
+            "globalConfigGroups": global_groups,
         }, ensure_ascii=False)
         sys.stdout.write(result + "\n")
         sys.stdout.flush()
