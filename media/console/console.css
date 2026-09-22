@@ -1064,3 +1064,5 @@ button.secondary:hover:not(:disabled) { background: var(--vscode-button-secondar
   padding: 1px 7px;
 }
 .account-override-form .config-panel { border-top: 1px solid var(--border); }
+
+.config-broken { white-space: pre-wrap; }

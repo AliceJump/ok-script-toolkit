@@ -381,6 +381,14 @@ def collect_multi_account(project_dir):
     if not os.path.isfile(sandbox_path) and not os.path.isfile(project_path):
         return {"available": False}
     info = {"available": True, "storePath": sandbox_path}
+    # store 模块可 import 性：区分「项目不支持账号编辑」与「读取失败（环境问题）」
+    for name in ("src.tasks.account.account_scope_store", "src.tasks.account_scope_store"):
+        try:
+            importlib.import_module(name)
+            info["hasStoreModule"] = True
+            break
+        except Exception:  # noqa: BLE001 — 逐候选尝试
+            info["hasStoreModule"] = False
     data_path = sandbox_path if os.path.isfile(sandbox_path) else project_path
     try:
         with open(data_path, encoding="utf-8") as fp:

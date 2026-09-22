@@ -740,10 +740,13 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
     child.on('close', () => {
       const parsed = parseJsonFromStdout(stdout);
       if (!parsed?.ok) {
+        const error = parsed?.error || `exit code ${child.exitCode}`;
+        // 错误详情进输出频道（toast 会消失，频道可回看）
+        this.output.appendLine(`[toolkit] account_store ${command[0]} 失败：${error}`);
         this.view?.webview.postMessage({
-          type: 'status',
-          level: 'error',
-          text: tr('Account store update failed: {error}', { error: parsed?.error || 'unknown' }),
+          type: 'accountStore',
+          data: null,
+          error,
         });
         return;
       }

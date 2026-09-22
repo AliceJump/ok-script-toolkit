@@ -139,7 +139,7 @@
   /** 账号选择（模块级保持，重渲染不丢） */
   let accountSelection = { account: '', taskKey: '' };
 
-  function renderMultiAccount(info, store) {
+  function renderMultiAccount(info, store, storeError) {
     state.multiAccount = info || { available: false };
     state.accountStore = store || null;
     const host = $('accountList');
@@ -154,15 +154,15 @@
     }
     // 卡 1：账号列表（account_list_text 编辑 + 保存，经 account_store.py 同步注册表）
     // 卡 2：账号 × 任务覆盖编辑器。store 缺失 = account_store.py 读取失败（项目无
-    // account_scope_store / venv 缺 ok）——明确提示，绝不显示可编辑空卡（否则保存必然
-    // 失败，制造「保存后被重置」的假象）。
+    // account_scope_store / venv 缺 ok）——显示具体原因（输出频道有完整细节），绝不显示
+    // 可编辑空卡（否则保存必然失败，制造「保存后被重置」的假象）。
     if (store) {
       host.appendChild(buildAccountListCard(info, store));
       host.appendChild(buildAccountOverrideCard(info, store));
     } else {
       const warn = document.createElement('div');
       warn.className = 'config-broken';
-      warn.textContent = `⚠ ${t('accountStoreUnavailable')}`;
+      warn.textContent = `⚠ ${t('accountStoreUnavailable')}${storeError ? `\n${storeError}` : ''}`;
       host.appendChild(warn);
     }
   }

@@ -34,8 +34,11 @@ STORE_MODULES = (
 
 
 def apply_sandbox_redirect(run_dir: str) -> None:
-    """把 get_relative_path("configs", ...) 改道沙箱（必须在 store import 前调用）。"""
-    import ok.util.config as ok_config
+    """把 get_relative_path("configs", ...) 改道沙箱（必须在 store import 前调用）。
+
+    ok.util.file 一定存在（store 本身依赖它）；ok.util.config 是老版本可能没有的
+    副本引用点，缺了就只 patch 主模块（防御性，不让副本 patch 失败拖垮整个 get）。
+    """
     import ok.util.file as ok_file
 
     original = ok_file.get_relative_path
@@ -47,19 +50,27 @@ def apply_sandbox_redirect(run_dir: str) -> None:
         return original(*files)
 
     ok_file.get_relative_path = patched
-    ok_config.get_relative_path = patched
+    try:
+        import ok.util.config as ok_config
+        ok_config.get_relative_path = patched
+    except Exception:  # noqa: BLE001 — 副本 patch 失败不影响主路径
+        pass
 
 
 def load_store_module(project_dir: str):
+    """逐候选 import 项目的 account_scope_store；全部失败时把每个候选的错误带出来。"""
     sys.path.insert(0, project_dir)
     os.chdir(project_dir)
-    last_error = None
+    errors = []
     for name in STORE_MODULES:
         try:
             return importlib.import_module(name)
-        except Exception as e:  # noqa: BLE001 — 逐候选尝试
-            last_error = e
-    raise RuntimeError(f"account store module not found: {last_error}")
+        except Exception as e:  # noqa: BLE001 — 逐候选尝试，错误留痕
+            errors.append(f"{name}: {type(e).__name__}: {e}")
+    raise RuntimeError(
+        "account store module not found（项目需有 src/**/account_scope_store.py，且运行 Python "
+        "能 import ok 包与项目源码）→ " + " | ".join(errors)
+    )
 
 
 def main() -> None:
