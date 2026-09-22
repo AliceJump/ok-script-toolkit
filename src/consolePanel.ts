@@ -267,7 +267,14 @@ async function probeTaskSchemas(
     if (!parsed || !parsed.ok) {
       return { ok: false, error: parsed?.error || tr('Failed to collect task schema') };
     }
-    return { ok: true, schemas: parsed.schemas, total: parsed.total };
+    return {
+      ok: true,
+      schemas: parsed.schemas,
+      total: parsed.total,
+      globalConfigGroups: parsed.globalConfigGroups || [],
+      projectGlobalGroups: parsed.projectGlobalGroups || [],
+      multiAccount: parsed.multiAccount || { available: false },
+    };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }
