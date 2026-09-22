@@ -146,7 +146,18 @@ npx @vscode/vsce package --allow-missing-repository
 |---|---|
 | `F5` → **运行扩展（主仓库 VS Code 扩展）** | 先跑 `npm run compile`，再起扩展开发宿主 |
 | **运行扩展·watch 热重载** | 后台跑 `npm run watch`，改 TS 后重载宿主窗口即生效 |
-| 命令面板 → **Tasks: Run Task** | `插件·编译（主仓库 VS Code 扩展）`、`插件·watch 编译（…）` |
+
+命令面板 → **Tasks: Run Task** 里有这四条（与 CI 的 `vscode` job 对齐）：
+
+| 任务 | 等价命令 |
+|---|---|
+| `插件·编译（主仓库 VS Code 扩展）` | `npm run compile` |
+| `插件·watch 编译（主仓库 VS Code 扩展）` | `npm run watch` |
+| `插件·测试（主仓库 VS Code 扩展，等价 npm test）` | `npm test` |
+| `插件·打包 VSIX（主仓库 VS Code 扩展）` | `npm run package`（内部先自动跑 `compile`） |
+
+> `npm test` 里的 5 个 Python 测试靠 PATH 上的 `python`（CI 用 `setup-python` 3.13）。
+> 本机 `python` 若是 Microsoft Store 的占位符，会以退出码 9009 直接失败 —— 换个真解释器即可。
 
 `.vscode/` 只共享这三个文件（`launch.json` / `tasks.json` / `extensions.json`）——
 `.gitignore` 里必须写成 `.vscode/*` 再加 `!` 放行，因为 git 无法在整目录被排除后
@@ -176,11 +187,25 @@ cd jetbrains
 ./gradlew runIde --debug-jvm  # 调试：在 5005 等待调试器附加
 ```
 
-VS Code 的 **Tasks: Run Task** 里同样有
-`插件·运行沙箱 IDE（子仓库 JetBrains 插件）` 与
-`插件·调试沙箱 IDE（子仓库 JetBrains 插件，5005 等待附加）`；
-后者配合 `.vscode/launch.json` 的 **附加到沙箱 IDE（子仓库 JetBrains 插件，5005）**
-即可断点调试（需要 `vscjava.vscode-java-debug`）。
+VS Code 的 **Tasks: Run Task** 里同样有这几条（与 CI 的 `jetbrains` job 对齐）：
+
+| 任务 | 等价命令 |
+|---|---|
+| `插件·运行沙箱 IDE（子仓库 JetBrains 插件）` | `./gradlew runIde` |
+| `插件·调试沙箱 IDE（子仓库 JetBrains 插件，5005 等待附加）` | `./gradlew runIde --debug-jvm` |
+| `插件·附加调试器 jdb（子仓库 JetBrains 插件，5005，无需扩展）` | `scripts/debug-attach-jdb.ps1` |
+| `插件·编译（子仓库 JetBrains 插件）` | `./gradlew classes`（不打包、不跑测试，最快） |
+| `插件·测试（子仓库 JetBrains 插件）` | `./gradlew test` |
+| `插件·编译并打包（子仓库 JetBrains 插件）` | `./gradlew buildPlugin` |
+
+**断点调试走「零扩展」那条路**：先跑「调试沙箱 IDE」并等到终端打印
+`Listening for transport dt_socket`，再跑「附加调试器 jdb」——用 JDK 自带的 `jdb` 附加
+（附加后**先输 `cont`**，沙箱才会继续启动）。
+
+> 为什么不用 `launch.json` 的附加配置：**VS Code 内置调试类型里没有 JDWP**，
+> `"type": "java"` 来自扩展 `vscjava.vscode-java-debug`，没装会报「无法识别此调试类型」。
+> 因此 `.vscode/launch.json` 里那段 java 附加配置是**注释掉的**；装了该扩展再取消注释，
+> 就能换回图形化调试器。
 
 > 沙箱数据在 `jetbrains/.intellijPlatform/sandbox/`（已 gitignore）。
 > `runIde` 首次会下载目标 IDE（PyCharm 2025.1），之后走本地缓存。

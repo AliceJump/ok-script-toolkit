@@ -147,7 +147,18 @@ Open the project root in VS Code and press `F5` to launch the Extension Developm
 |---|---|
 | `F5` → **Run Extension (Main repo VS Code extension)** | Runs `npm run compile` first, then launches the Extension Development Host |
 | **Run Extension · watch hot-reload** | Runs `npm run watch` in the background; reload the host window after TS changes |
-| Command Palette → **Tasks: Run Task** | `Plugin · Compile (Main repo VS Code extension)`, `Plugin · Watch compile (…)` |
+
+Command Palette → **Tasks: Run Task** offers these four (aligned with CI's `vscode` job):
+
+| Task (label is in Chinese) | Equivalent command |
+|---|---|
+| `插件·编译（主仓库 VS Code 扩展）` | `npm run compile` |
+| `插件·watch 编译（主仓库 VS Code 扩展）` | `npm run watch` |
+| `插件·测试（主仓库 VS Code 扩展，等价 npm test）` | `npm test` |
+| `插件·打包 VSIX（主仓库 VS Code 扩展）` | `npm run package` (automatically runs `compile` first) |
+
+> The 5 Python tests inside `npm test` need a real `python` on PATH (CI uses `setup-python` 3.13);
+> if your local `python` is the Microsoft Store alias it fails immediately with exit code 9009.
 
 `.vscode/` only shares these three files (`launch.json` / `tasks.json` / `extensions.json`) —
 `.gitignore` must use `.vscode/*` with `!` exceptions, since git cannot re-include files
@@ -177,11 +188,25 @@ cd jetbrains
 ./gradlew runIde --debug-jvm  # Debug: waits on port 5005 for debugger attach
 ```
 
-VS Code's **Tasks: Run Task** also has
-`Plugin · Run sandbox IDE (Sub-repo JetBrains plugin)` and
-`Plugin · Debug sandbox IDE (Sub-repo JetBrains plugin, 5005 wait for attach)`;
-the latter combined with `.vscode/launch.json`'s **Attach to sandbox IDE (Sub-repo JetBrains plugin, 5005)**
-enables breakpoint debugging (requires `vscjava.vscode-java-debug`).
+VS Code's **Tasks: Run Task** offers the same set (aligned with CI's `jetbrains` job):
+
+| Task (label is in Chinese) | Equivalent command |
+|---|---|
+| `插件·运行沙箱 IDE（子仓库 JetBrains 插件）` | `./gradlew runIde` |
+| `插件·调试沙箱 IDE（子仓库 JetBrains 插件，5005 等待附加）` | `./gradlew runIde --debug-jvm` |
+| `插件·附加调试器 jdb（子仓库 JetBrains 插件，5005，无需扩展）` | `scripts/debug-attach-jdb.ps1` |
+| `插件·编译（子仓库 JetBrains 插件）` | `./gradlew classes` (fastest — no packaging, no tests) |
+| `插件·测试（子仓库 JetBrains 插件）` | `./gradlew test` |
+| `插件·编译并打包（子仓库 JetBrains 插件）` | `./gradlew buildPlugin` |
+
+**Breakpoint debugging uses the "zero-extension" path**: run the debug sandbox IDE task and wait for
+`Listening for transport dt_socket`, then run the jdb task — it attaches with the `jdb` bundled with
+the JDK (type `cont` after attaching so the sandbox continues booting).
+
+> Why no `launch.json` attach config: **VS Code has no built-in JDWP debug type**; `"type": "java"`
+> comes from the `vscjava.vscode-java-debug` extension and reports "unrecognized debug type" when it
+> is not installed. That is why the java attach block in `.vscode/launch.json` is commented out —
+> uncomment it once that extension is installed to get the graphical debugger back.
 
 > Sandbox data is in `jetbrains/.intellijPlatform/sandbox/` (gitignored).
 > `runIde` downloads the target IDE (PyCharm 2025.1) on first run, then uses local cache.
