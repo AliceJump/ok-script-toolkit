@@ -27,7 +27,9 @@ import {
   labelEnumName,
   labelEnumNameResolved,
   labelEnumPath,
+  labelEnumPathInputError,
   labelEnumPathResolved,
+  normalizeLabelEnumFile,
   normalizeRelPath,
   parseProjectConfig,
   templatesDirectoryOf,
@@ -166,36 +168,59 @@ export function clearProjectConfigCache(): void {
  * 全局级**三者都为 `undefined`** 才算"没设过"。就近覆盖优先，与 VS Code 自己的
  * 设置优先级一致。
  *
+ * 传入 `scope`（工作区文件夹的 URI）时，`inspect()` 只返回该文件夹作用域内的值；
+ * 不传则退回到无作用域的全局 inspect。**枚举路径/类名**等"我的偏好"项应始终传 scope，
+ * 以避免 A 项目的值串到 B 项目。
+ *
  * **凡是要接取值链的设置项都必须走这里。**
  */
-export function ideSetting<T>(key: string): T | undefined {
-  const inspected = vscode.workspace.getConfiguration('okScriptToolkit').inspect<T>(key);
+export function ideSetting<T>(key: string, scope?: vscode.Uri): T | undefined {
+  const cfg = scope
+    ? vscode.workspace.getConfiguration('okScriptToolkit', scope)
+    : vscode.workspace.getConfiguration('okScriptToolkit');
+  const inspected = cfg.inspect<T>(key);
+  // 有 scope 时优先工作区文件夹级值，但 User/Workspace 级的值仍然有效
+  // （用户可能在 User settings 里统一设了 labelEnumPath，不应被忽略）
   return inspected?.workspaceFolderValue ?? inspected?.workspaceValue ?? inspected?.globalValue;
+}
+
+/**
+ * 获取当前第一个工作区文件夹的 URI（如果有的话）。
+ *
+ * 多数场景只关心"有没有打开的工作区文件夹"；若有多个，取第一个（与旧行为一致）。
+ */
+export function currentWorkspaceFolderUri(): vscode.Uri | undefined {
+  return vscode.workspace.workspaceFolders?.[0]?.uri;
 }
 
 /**
  * 写**个人偏好**（IDE 设置）。与 [ideSetting] 成对：那边读用户真正设过的值，这边写。
  *
- * 作用域选**工作区文件夹级**（有打开的工作区时）—— 这一项是"我的枚举路径 / 我的类名"，
- * 天然属于当前项目。写全局会让 A 项目的值串到 B 项目：旧实现用 `context.globalState`
- * 存"上次保存的枚举路径"，于是 A 项目填过 `src/data/feature_list.py` 之后，
+ * 作用域固定为**工作区文件夹级** —— 这一项是"我的枚举路径 / 我的类名"，
+ * 天然属于当前项目。**不允许在没有工作区文件夹时写入全局设置**：
+ * 旧实现的 `ConfigurationTarget.Global` 回退会让 A 项目的值串到 B 项目
+ * （旧 `globalState` 方案同理：A 项目填过 `src/data/feature_list.py` 之后，
  * 在 B 项目导出时默认值还是它，一回车就按 B 的根拼出一个**不存在**的路径，
- * 而生成函数里有 `mkdirSync(recursive: true)` —— 静默在项目里造出错误的目录树。
+ * 而生成函数里有 `mkdirSync(recursive: true)` —— 静默在项目里造出错误的目录树）。
  *
- * 换到工作区文件夹级顺带解决了可见性：那个值从此在设置界面能看到、
+ * 工作区文件夹级写入顺带解决了可见性：那个值从此在设置界面能看到、
  * 在溯源面板能溯源、也能一键恢复（`globalState` 三者皆无）。
  *
  * `value` 传空串/空白 → 写 `undefined`（**真的删掉这一项**，而不是留一条空条目）。
  * 空值在这条链里表示"回到项目约定"（与 `labelEnum.aliases` 同一条规则）。
+ *
+ * **没有工作区文件夹时直接返回，不做任何写入** —— 防止跨项目污染。
  */
-export async function setIdeSetting(key: string, value: string | undefined): Promise<void> {
-  const cfg = vscode.workspace.getConfiguration('okScriptToolkit');
+export async function setIdeSetting(
+  key: string,
+  value: string | undefined,
+  folderUri?: vscode.Uri,
+): Promise<void> {
+  const uri = folderUri ?? currentWorkspaceFolderUri();
+  if (!uri) return; // 无工作区文件夹 → 不写入任何设置
+  const cfg = vscode.workspace.getConfiguration('okScriptToolkit', uri);
   const trimmed = value?.trim();
-  const target =
-    vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0
-      ? vscode.ConfigurationTarget.WorkspaceFolder
-      : vscode.ConfigurationTarget.Global;
-  await cfg.update(key, trimmed ? trimmed : undefined, target);
+  await cfg.update(key, trimmed ? trimmed : undefined, vscode.ConfigurationTarget.WorkspaceFolder);
 }
 
 /**
@@ -302,9 +327,29 @@ export function effectsFileSetting(): string {
  * 取值链：**IDE 设置 `labelEnumPath` > 项目约定 `labelEnum.path` > 空**。
  * 设置项与项目字段**同名**（不像 `enablePoData` ↔ `i18n.enabled` 那样分名）——
  * 因为两者语义相同（"这个项目的枚举文件在哪"），分名反而要用户多记一个词。
+ *
+ * 传入 `scope`（工作区文件夹 URI）时，IDE 设置的读取会限定在该文件夹作用域内，
+ * 防止 A 项目的值串到 B 项目。
  */
-export function labelEnumPathSetting(): string {
-  return labelEnumPath(loadProjectConfig(), ideSetting<string>('labelEnumPath'));
+export function labelEnumPathSetting(scope?: vscode.Uri): string {
+  return labelEnumPath(loadProjectConfig(), ideSetting<string>('labelEnumPath', scope));
+}
+
+/**
+ * 把**用户当场输入**的枚举路径归一化成文件路径（相对项目根，带 `.py`）。空输入返回 `''`。
+ *
+ * ⚠️ **消费输入框的结果之前必须过这一道**，不能直接拿去 `path.join`。
+ * `labelEnumPathSetting()` 读出来的值已经在取值链里归一化过了，但输入框里的是**裸输入**：
+ * 用户填 `src/data/feature_list`（模块路径，与 `config.py` 的
+ * `label_enum_relative_path` 同形）时，直接拼绝对路径会写出一个叫 `feature_list`、
+ * **没有扩展名**的文件 —— Python 根本 import 不到，等于把项目弄坏。
+ * 归一化只在"下次读设置"时才生效，所以"这一次"的保存是坏的：典型的"看起来能用、
+ * 只是生成的文件名不对"。这里补上，消费点不用各自判断。
+ */
+export function normalizeLabelEnumPathInput(value: string): string {
+  const error = labelEnumPathInputError(value);
+  if (error) throw new RangeError(`Invalid workspace-relative enum path: ${error}`);
+  return normalizeLabelEnumFile(value) ?? '';
 }
 
 /**
@@ -315,18 +360,20 @@ export function labelEnumPathSetting(): string {
  *
  * `projectDir` 传调用方自己用的那个项目根（模板数据可能来自另一个仓库，
  * 用错根会读到别人的约定文件）。不传则用 `resolveProjectDir()`。
+ *
+ * 传入 `scope`（工作区文件夹 URI）时，IDE 设置的读取会限定在该文件夹作用域内。
  */
-export function labelEnumNameSetting(filePath: string, projectDir?: string): ResolvedSetting<string> {
+export function labelEnumNameSetting(filePath: string, projectDir?: string, scope?: vscode.Uri): ResolvedSetting<string> {
   return labelEnumNameResolved(
     loadProjectConfig(projectDir),
-    ideSetting<string>('labelEnumName'),
+    ideSetting<string>('labelEnumName', scope),
     path.basename(filePath, '.py'),
   );
 }
 
 /** 只要类名时的薄封装（绝大多数消费点用这个）。 */
-export function labelEnumClassName(filePath: string, projectDir?: string): string {
-  return labelEnumNameSetting(filePath, projectDir).value;
+export function labelEnumClassName(filePath: string, projectDir?: string, scope?: vscode.Uri): string {
+  return labelEnumNameSetting(filePath, projectDir, scope).value;
 }
 
 /**

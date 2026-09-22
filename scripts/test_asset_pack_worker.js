@@ -13,10 +13,10 @@
  */
 const assert = require('assert');
 const fs = require('fs');
-const os = require('os');
 const path = require('path');
 const zlib = require('zlib');
 const { Worker } = require('worker_threads');
+const { makeTmpDir } = require('./test-tmp');
 
 const ROOT = path.join(__dirname, '..');
 const OUT = path.join(ROOT, 'out');
@@ -140,7 +140,7 @@ function decodeRgbPng(buf) {
 
 /* ---------- 测试夹具 ---------- */
 
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ok-assetpack-'));
+const tmp = makeTmpDir('ok-assetpack');
 const srcA = path.join(tmp, 'a.png');
 const srcB = path.join(tmp, 'b.png');
 // A：x+y 渐变；B：固定色块 + x 通道

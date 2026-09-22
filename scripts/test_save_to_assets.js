@@ -14,7 +14,8 @@
 
 const fs = require('fs');
 const path = require('path');
-const os = require('os');
+
+const { makeTmpDir } = require('./test-tmp');
 
 /* ---------- mock vscode 模块（TemplateAssetData 需要） ---------- */
 
@@ -39,6 +40,7 @@ const VSCODE_STUB = `module.exports = {
     }),
   },
   env: { language: 'en' },
+  l10n: { t: (message) => message },
   CancellationError: class CancellationError extends Error {},
 };`;
 
@@ -130,7 +132,7 @@ let templateDir;
 let targetDir;
 
 function setup() {
-  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ok-save-test-'));
+  tmpDir = makeTmpDir('ok-save-test');
   templateDir = path.join(tmpDir, 'ok_templates');
   targetDir = path.join(tmpDir, 'assets');
   fs.mkdirSync(templateDir, { recursive: true });
@@ -537,6 +539,34 @@ async function test_sameImageOverlappingBboxesStayTogether() {
   }
 }
 
+/* ========== 测试 9：枚举文件不能写出工作区 ========== */
+
+async function test_enumPathOutsideWorkspaceRejectedBeforeWriting() {
+  setup();
+  const outsideDir = path.join(path.dirname(tmpDir), `${path.basename(tmpDir)}-outside`);
+  const outside = path.join(outsideDir, 'LabelEnum.py');
+  try {
+    fs.writeFileSync(path.join(templateDir, 'coco_annotations.json'), JSON.stringify({
+      images: [], annotations: [], categories: [],
+    }));
+    const data = new TemplateAssetData(tmpDir);
+    data.load();
+    let rejected = false;
+    try {
+      await data.saveToAssets(targetDir, true, outside);
+    } catch (error) {
+      rejected = String(error).includes('workspace root');
+    }
+    assert(rejected, 'an enum path outside the workspace should be rejected');
+    assert(!fs.existsSync(outside), 'the outside enum file must not be generated');
+    assert(!fs.existsSync(path.join(targetDir, 'coco_annotations.json')), 'validation should happen before export writes');
+    console.log('[PASS] test_enumPathOutsideWorkspaceRejectedBeforeWriting');
+  } finally {
+    fs.rmSync(outsideDir, { recursive: true, force: true });
+    teardown();
+  }
+}
+
 /* ========== 运行所有测试 ========== */
 
 const tests = [
@@ -548,6 +578,7 @@ const tests = [
   test_differentSizeImagesNotMixed,
   test_multipleImagesNonOverlappingPackedTogether,
   test_sameImageOverlappingBboxesStayTogether,
+  test_enumPathOutsideWorkspaceRejectedBeforeWriting,
 ];
 
 let passed = 0;

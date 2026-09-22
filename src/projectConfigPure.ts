@@ -444,8 +444,26 @@ export function labelEnumPath(config: ProjectConfig, ideValue: unknown): string 
  * 旧实现只给"项目声明"补后缀、把"上次保存"原样返回，于是从输入框里填模块路径会生成一个
  * **没有扩展名**的文件。统一在这里补，消费点不用各自判断。
  */
-function normalizeLabelEnumFile(value: unknown): string | undefined {
+export function normalizeLabelEnumFile(value: unknown): string | undefined {
   const rel = normalizeRelPath(value);
   if (!rel) return undefined;
   return rel.toLowerCase().endsWith('.py') ? rel : `${rel}.py`;
+}
+
+/** 用户输入的枚举路径为什么不能按工作区相对路径使用。 */
+export type LabelEnumPathInputError = 'absolute' | 'traversal';
+
+/**
+ * 校验**输入框里的原始值**，必须在 [normalizeRelPath] 剥掉开头斜杠之前调用。
+ *
+ * 空值合法（表示跳过生成）；非空值必须是工作区相对路径。Windows 盘符、UNC/POSIX
+ * 绝对路径，以及任意 `..` 段都拒绝。后者即使当前组合恰好没有越界也不保留：路径在日后
+ * 被移动或前缀变化时可能越过工作区，而且枚举文件没有使用上跳段的合理需求。
+ */
+export function labelEnumPathInputError(value: unknown): LabelEnumPathInputError | undefined {
+  const raw = nonEmpty(value);
+  if (!raw) return undefined;
+  if (/^(?:[\\/]|[A-Za-z]:)/.test(raw)) return 'absolute';
+  if (raw.replace(/\\/g, '/').split('/').includes('..')) return 'traversal';
+  return undefined;
 }

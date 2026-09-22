@@ -42,6 +42,7 @@ import {
   charactersMasterFileResolved,
   charactersProjectPathResolved,
   charactersSkillsDirectoryResolved,
+  currentWorkspaceFolderUri,
   effectsFileResolved,
   i18nEnabledResolved,
   i18nLangDirectoryResolved,
@@ -100,17 +101,21 @@ function row<T>(args: {
  * 这样展示出来的值与生效值走的是同一套归一化与类型判断，不会出现
  * "面板显示 `assets\lang`、实际按 `assets/lang` 匹配"那种错位 —— 手写文件里
  * 多一个反斜杠就会踩到，而且两边看起来都"正常"。
+ *
+ * 传入 `scope`（工作区文件夹 URI）时，`ideSetting` 的读取会限定在该文件夹作用域内，
+ * 防止 A 项目的值串到 B 项目（枚举路径/类名需要此行为）。
  */
 function rowOf<T>(args: {
   key: string;
   resolve: (ideValue: unknown, fallback: T) => ResolvedSetting<T>;
   fallback: T;
   render: (value: T) => string;
+  scope?: vscode.Uri;
 }): ConventionSourceRow {
   const probe = args.resolve(undefined, args.fallback);
   return row({
     key: args.key,
-    resolved: args.resolve(ideSetting(args.key), args.fallback),
+    resolved: args.resolve(ideSetting(args.key, args.scope), args.fallback),
     render: args.render,
     declared: probe.layer === 'builtin' ? undefined : args.render(probe.value),
     builtin: args.render(args.fallback),
@@ -138,6 +143,7 @@ const asBool = (value: boolean): string => String(value);
  */
 export function conventionSources(): ConventionSourceRow[] {
   const config: ProjectConfig = loadProjectConfig();
+  const folderUri = currentWorkspaceFolderUri();
   const resolve = <T>(fn: (c: ProjectConfig, ide: unknown, fallback: T) => ResolvedSetting<T>) =>
     (ideValue: unknown, fallback: T) => fn(config, ideValue, fallback);
 
@@ -154,17 +160,21 @@ export function conventionSources(): ConventionSourceRow[] {
     //     所以链上用空串占位、由 `render` 说清"这一层到底会做什么"。
     // 两者都必须渲染成一句人话：QuickPick 里一段空白看着像坏了
     // （与 `characterProjectPath` 的空兜底同样处理）。
+    //
+    // ⚠️ 枚举路径/类名必须绑定当前工作区文件夹 URI，防止 A 项目的值串到 B 项目。
     rowOf({
       key: 'labelEnumPath',
       resolve: (ideValue) => labelEnumPathResolved(config, ideValue),
       fallback: DEFAULT_LABEL_ENUM_PATH,
       render: (value) => value || tr('Not set — ask on save'),
+      scope: folderUri,
     }),
     rowOf({
       key: 'labelEnumName',
       resolve: (ideValue) => labelEnumNameResolved(config, ideValue, DEFAULT_LABEL_ENUM_NAME),
       fallback: DEFAULT_LABEL_ENUM_NAME,
       render: (value) => value || tr('Derived from the file name'),
+      scope: folderUri,
     }),
     rowOf({
       key: 'okTemplatesDirectory',
@@ -249,12 +259,18 @@ export function layerLabel(layer: SettingLayer): string {
  *
  * 三个作用域都要清：值可能写在「工作区文件夹」「工作区」或「用户」任一级，
  * 只清一级会留下一个仍然生效的覆盖 —— 用户点了"恢复"却发现没变，是最糟的反馈。
+ *
+ * 工作区文件夹级的读写**必须使用当前工作区文件夹的 URI** 作为资源作用域，
+ * 以确保 `inspect()` 返回的是当前文件夹的覆盖值，`update()` 也写入正确的文件夹。
  */
 export async function clearOverride(key: string): Promise<void> {
-  const cfg = vscode.workspace.getConfiguration('okScriptToolkit');
+  const folderUri = currentWorkspaceFolderUri();
+  const cfg = folderUri
+    ? vscode.workspace.getConfiguration('okScriptToolkit', folderUri)
+    : vscode.workspace.getConfiguration('okScriptToolkit');
   const inspected = cfg.inspect(key);
   if (!inspected) return;
-  if (inspected.workspaceFolderValue !== undefined && vscode.workspace.workspaceFolders?.length) {
+  if (inspected.workspaceFolderValue !== undefined && folderUri) {
     await cfg.update(key, undefined, vscode.ConfigurationTarget.WorkspaceFolder);
   }
   if (inspected.workspaceValue !== undefined) {

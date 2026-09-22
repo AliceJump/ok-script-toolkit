@@ -34,7 +34,7 @@
   "config.enableInlayHints": "Activa sugerencias en línea para valores de idioma y efectos.",
   "config.featureAliases": "Alias usados para autocompletado y hover de plantillas FeatureList.",
   "config.labelEnumPath": "Ruta del archivo LabelEnum relativa a la raíz del espacio de trabajo, con o sin .py. Sustituye labelEnum.path de ok-script-toolkit.json; déjalo vacío para seguir la convención del proyecto.",
-  "config.labelEnumName": "Nombre de la clase LabelEnum. Sustituye labelEnum.name de ok-script-toolkit.json; déjalo vacío para derivarlo del nombre del archivo. El código del proyecto importa esta clase por su nombre, así que renombrarla rompe esos imports — se te pedirá confirmación antes de sobrescribir un archivo existente.",
+  "config.labelEnumName": "Nombre de la clase LabelEnum. Sustituye labelEnum.name de ok-script-toolkit.json; déjalo vacío para seguir la convención del proyecto — solo se deriva del nombre del archivo cuando el proyecto tampoco la declara. El código del proyecto importa esta clase por su nombre, así que renombrarla rompe esos imports — se te pedirá confirmación antes de sobrescribir un archivo existente.",
   "config.effectsFile": "Archivo Python de EffectType y EFFECT_DESCRIPTIONS.",
   "config.okScriptProjectPath": "Raíz del proyecto ok-script usada por el lanzador de tareas.",
   "config.okScriptPython": "Intérprete de Python usado para ejecutar tareas ok-script.",

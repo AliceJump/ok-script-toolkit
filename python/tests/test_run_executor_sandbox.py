@@ -9,8 +9,9 @@ import json
 import os
 import shutil
 import sys
-import tempfile
 from pathlib import Path
+
+from _test_tmp import make_tmp_tempdir
 
 # 测试放在 tests/ 子目录，被测脚本在上一级 python/。加 .. 而不是 .，
 # 这样测试文件不会被随插件发布的 `python/*.py` 通配打包收进去。
@@ -56,7 +57,7 @@ def run_in(project_dir, run_dir=None):
 print("apply_config_sandbox")
 
 # ── 1. 未设置环境变量：不改 config，返回空串（回退旧行为）──
-with tempfile.TemporaryDirectory() as tmp:
+with make_tmp_tempdir("ok-executor-sandbox") as tmp:
     project = os.path.join(tmp, "proj")
     os.makedirs(os.path.join(project, "configs"))
     config, returned = run_in(project, run_dir=None)
@@ -66,7 +67,7 @@ with tempfile.TemporaryDirectory() as tmp:
     check("screenshots_folder" not in config, "不改 screenshots_folder")
 
 # ── 2. 启用：config_folder / screenshots_folder 指向沙箱，目录被创建 ──
-with tempfile.TemporaryDirectory() as tmp:
+with make_tmp_tempdir("ok-executor-sandbox") as tmp:
     project = os.path.join(tmp, "proj")
     os.makedirs(os.path.join(project, "configs"))
     run_dir = os.path.join(project, ".vscode", "ok-script-toolkit")
@@ -83,7 +84,7 @@ with tempfile.TemporaryDirectory() as tmp:
     check(os.path.isdir(expected_shot), "screenshots 沙箱目录已创建")
 
 # ── 3. 改道后绝不写项目 configs/：原 configs 内容原样不变 ──
-with tempfile.TemporaryDirectory() as tmp:
+with make_tmp_tempdir("ok-executor-sandbox") as tmp:
     project = os.path.join(tmp, "proj")
     src_configs = os.path.join(project, "configs")
     os.makedirs(src_configs)
@@ -98,7 +99,7 @@ with tempfile.TemporaryDirectory() as tmp:
         check(json.load(f) == {"关卡": "伊利昂之围"}, "项目配置内容未变")
 
 # ── 4. devices.json 桥接：拷进沙箱，项目侧保持原样 ──
-with tempfile.TemporaryDirectory() as tmp:
+with make_tmp_tempdir("ok-executor-sandbox") as tmp:
     project = os.path.join(tmp, "proj")
     src_configs = os.path.join(project, "configs")
     os.makedirs(src_configs)
@@ -117,7 +118,7 @@ with tempfile.TemporaryDirectory() as tmp:
     check(sorted(os.listdir(src_configs)) == ["devices.json"], "项目 configs/ 仍只有原文件")
 
 # ── 5. 项目侧没有 devices.json 时不报错、不创建 ──
-with tempfile.TemporaryDirectory() as tmp:
+with make_tmp_tempdir("ok-executor-sandbox") as tmp:
     project = os.path.join(tmp, "proj")
     os.makedirs(os.path.join(project, "configs"))
     run_dir = os.path.join(project, ".vscode", "ok-script-toolkit")
@@ -127,7 +128,7 @@ with tempfile.TemporaryDirectory() as tmp:
           "沙箱内不生成 devices.json")
 
 # ── 6. 相对路径也能工作（落到 os.getcwd() 下）──
-with tempfile.TemporaryDirectory() as tmp:
+with make_tmp_tempdir("ok-executor-sandbox") as tmp:
     project = os.path.join(tmp, "proj")
     os.makedirs(os.path.join(project, "configs"))
     config, returned = run_in(project, run_dir=os.path.join(".vscode", "rel-run"))
@@ -137,7 +138,7 @@ with tempfile.TemporaryDirectory() as tmp:
     check(os.path.isdir(config["config_folder"]), "目录已创建")
 
 # ── 7. 幂等：连续调用两次结果一致 ──
-with tempfile.TemporaryDirectory() as tmp:
+with make_tmp_tempdir("ok-executor-sandbox") as tmp:
     project = os.path.join(tmp, "proj")
     os.makedirs(os.path.join(project, "configs"))
     run_dir = os.path.join(project, ".vscode", "ok-script-toolkit")

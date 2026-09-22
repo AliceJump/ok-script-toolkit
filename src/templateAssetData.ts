@@ -9,6 +9,7 @@ import {
 import { tr } from './localization';
 import { labelEnumNameSetting, templatesDirectory } from './projectConfig';
 import { writableClassName } from './labelEnumGuard';
+import { isPathInsideRoot } from './saveToAssetsPure';
 
 /* ---------------- COCO 数据类型 ---------------- */
 
@@ -318,8 +319,15 @@ export class TemplateAssetData {
     enumPath?: string,
     onProgress?: (done: number, total: number) => void,
     cancellationToken?: vscode.CancellationToken,
+    folderUri?: vscode.Uri,
   ): Promise<void> {
     if (cancellationToken?.isCancellationRequested) throw new vscode.CancellationError();
+    const enumFile = generateEnum
+      ? path.resolve(this.rootDir, enumPath || path.join(targetFolder, 'LabelEnum.py'))
+      : undefined;
+    if (enumFile && !isPathInsideRoot(this.rootDir, enumFile)) {
+      throw new Error(tr('Enum file path must be relative and stay within the workspace root.'));
+    }
     const targetImagesDir = path.join(targetFolder, 'images');
 
     // 清空目标目录中的旧图片（重新生成前清理）
@@ -519,10 +527,9 @@ export class TemplateAssetData {
     fs.writeFileSync(cocoTarget, JSON.stringify(croppedCoco, null, 2), 'utf-8');
 
     // Generate label enum if requested
-    if (generateEnum) {
+    if (enumFile) {
       const labels = croppedCoco.categories.map(c => c.name).sort();
-      const enumFile = enumPath || path.join(targetFolder, 'LabelEnum.py');
-      this.generateLabelEnum(enumFile, labels);
+      this.generateLabelEnum(enumFile, labels, folderUri);
     }
   }
 
@@ -571,7 +578,7 @@ export class TemplateAssetData {
    * 2. **成员名**必须是合法 Python 标识符。分类名带空格 / 连字符 / 中文时，
    *    `   洗手 台 = '...'` 这种行会让整个文件 `SyntaxError`，用户拿到的枚举文件直接不能用。
    */
-  private generateLabelEnum(filePath: string, labels: string[]): void {
+  private generateLabelEnum(filePath: string, labels: string[], folderUri?: vscode.Uri): void {
     const dir = path.dirname(filePath);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 
@@ -584,7 +591,7 @@ export class TemplateAssetData {
     //
     // ⚠️ 个人覆盖会改掉写进源码的类名，而项目的代码按名字 import。那道闸不在这一层：
     // 覆盖前的确认在 `templateAssetPanel.ts`（UI 层）做，见 `labelEnumGuard.ts`。
-    const rawClassName = labelEnumNameSetting(filePath, this.rootDir).value;
+    const rawClassName = labelEnumNameSetting(filePath, this.rootDir, folderUri).value;
     // 类名同样进源码：非法标识符直接退回一个安全的默认名，而不是生成坏文件。
     // 走 `writableClassName` 而**不是**内联一个正则 —— 面板的写入前校验要用**同一个**函数
     // 算"将要写入的类名"，两处各写一遍会让警告内容与实际写进去的东西不符。
