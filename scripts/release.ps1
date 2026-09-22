@@ -5,8 +5,9 @@
 .DESCRIPTION
     Automates:
       1. Read current version and auto-increment
-      2. Sync new version to seven places: package.json / package-lock.json /
-         jetbrains/gradle.properties / the README.md and jetbrains/README.md badges
+      2. Sync new version to nine places: package.json / package-lock.json /
+         jetbrains/gradle.properties / the four README badges
+         (README.md / README.en.md + jetbrains/README.md / jetbrains/README.en.md)
       3. Verify version consistency
       4. Commit and push jetbrains submodule
       5. Commit and push parent repo (with README badge and submodule pointer update)
@@ -143,8 +144,13 @@ Invoke-Cmd "git commit -m `"$commitMsg`"" 'git commit (jetbrains)' $JetbrainsDir
 Invoke-Cmd 'git push origin main' 'git push (jetbrains)' $JetbrainsDir
 
 # 5. Commit parent repo (with submodule pointer update)
+# README badge files must be added EXPLICITLY one by one: sync-version.js rewrites
+# all four README badges, but `git commit` (without -a) only picks up staged files.
+# This list used to omit README.en.md, leaving the English badge update stuck in the
+# working tree and failing CI's version check (hit on v1.11.0, 2026-09-22).
+# When adding a new README, remember to extend this list.
 Write-Host "> Committing parent repo..."
-Invoke-Cmd 'git add package.json package-lock.json README.md jetbrains' 'git add (parent)'
+Invoke-Cmd 'git add package.json package-lock.json README.md README.en.md jetbrains' 'git add (parent)'
 Invoke-Cmd "git commit -m `"$commitMsg`"" 'git commit (parent)'
 Invoke-Cmd 'git push origin main' 'git push (parent)'
 

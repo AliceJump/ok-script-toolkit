@@ -4,8 +4,9 @@
 #
 # 自动完成：
 #   1. 读取当前版本号并自动递增
-#   2. 同步新版本号到七处：package.json / package-lock.json /
-#      jetbrains/gradle.properties / README.md / jetbrains/README.md 的徽章
+#   2. 同步新版本号到九处：package.json / package-lock.json /
+#      jetbrains/gradle.properties / 四份 README 的徽章
+#      （父仓 README.md / README.en.md + 子仓 jetbrains/README.md / README.en.md）
 #   3. 验证版本一致性
 #   4. 提交 jetbrains 子模块版本变更并推送
 #   5. 提交父仓库版本变更（含 README 徽章与子模块指针）并推送
@@ -146,10 +147,12 @@ run 'git push (jetbrains)' git -C "$JETBRAINS_DIR_GIT" push origin main
 
 # ⑤ 提交父仓库（含子模块指针更新）
 echo '▸ 提交父仓库...'
-# README.md 也必须显式纳入：sync-version.js 会改写它的版本徽章，但它是未跟踪文件，
-# `git commit`（非 -a）不会带上它，于是徽章更新会滞留在工作区——
-# 下次 release.sh 的「工作区必须干净」检查又会直接报错卡住。
-run 'git add (parent)' git -C "$ROOT_GIT" add package.json package-lock.json README.md jetbrains
+# README 徽章文件必须**逐一显式**纳入：sync-version.js 会改写全部四份 README
+# 的版本徽章，但它们对 git 而言可能是未跟踪/已修改状态，`git commit`（非 -a）
+# 不会自动带上未 add 的文件。这里曾经只写了 README.md，拆中英双份后漏掉
+# README.en.md，导致英文徽章更新滞留工作区、CI 版本校验直接红
+# （2026-09-22 v1.11.0 实测）。新增 README 时记得同步这份清单。
+run 'git add (parent)' git -C "$ROOT_GIT" add package.json package-lock.json README.md README.en.md jetbrains
 run 'git commit (parent)' git -C "$ROOT_GIT" commit -m "chore(release): prepare v$NEW_VERSION"
 run 'git push (parent)' git -C "$ROOT_GIT" push origin main
 
