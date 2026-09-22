@@ -62,7 +62,8 @@ stdout 标记行（宿主按行扫描）:
 配置沙箱：调试插件绝不允许改动目标项目的 `configs/`。宿主经
 `OK_TOOLKIT_RUN_DIR` 传入沙箱根目录（如 `<workspace>/.vscode/ok-script-toolkit`），
 `config['config_folder']` 与 `config['screenshots_folder']` 一并改道，ok 框架的读写
-全部落在沙箱内。任务因此读到的是默认值 —— 调试场景可接受。
+全部落在沙箱内。沙箱初始化时把项目 configs/ 整目录拷进来 —— 任务读到的是
+**项目当前配置 + 插件参数覆盖**；执行器的写入只落沙箱，项目侧文件保持原样。
 
 `devices.json` 是唯一例外：工具箱的 connect_game.py 把连接结果写在
 `<项目>/configs/devices.json`（`folder=` 硬指定，不受 config_folder 影响），
@@ -74,6 +75,7 @@ import functools
 import importlib
 import json
 import os
+import shutil
 import sys
 import threading
 import time
@@ -153,23 +155,30 @@ def apply_config_sandbox(config: dict) -> str:
         _note(f"配置沙箱创建失败，回退为不隔离：{e}")
         return ""
 
+    # 项目 configs/ → 沙箱：任务的初始配置值跟项目配置走（devices.json 也随之进来，
+    # connect_game.py 写的项目侧文件对执行器可见）。不拷的话任务读到的全是默认值，
+    # 与插件 UI（probe 会拷项目配置读「当前值」）和项目自身 GUI 完全脱钩 ——
+    # 实测被报告为「执行器配置跟插件的配置不相关联」。
+    # copytree(dirs_exist_ok=True) 对同名文件整体覆盖：沙箱视图每次启动都从项目
+    # 配置重建，上一次运行留在沙箱里的状态不参与。
+    # 注意必须**先**读项目原值再覆盖 config["config_folder"] —— 覆盖之后 config
+    # 里已经是沙箱路径，再读就拷了个寂寞（首次实现就栽在这里，被测试 4 抓住）。
+    source_folder = str(config.get("config_folder") or "configs")
+    source_configs = (
+        source_folder
+        if os.path.isabs(source_folder)
+        else os.path.join(os.getcwd(), source_folder)
+    )
+
     config["config_folder"] = config_folder
     # 截图目录必须一起改道：ok 启动时会清空它（会真的删文件）。
     config["screenshots_folder"] = screenshots_folder
 
-    # devices.json 是唯一需要桥接的：connect_game.py 用 `folder=` 硬写到项目
-    # configs/ 下（不受 config_folder 影响），执行器要读到同一个窗口。拷一份进沙箱，
-    # 此后执行器对它的写入只落沙箱，项目侧文件保持原样。
-    source_devices = os.path.join(os.getcwd(), "configs", "devices.json")
-    target_devices = os.path.join(config_folder, "devices.json")
-    if os.path.isfile(source_devices):
+    if os.path.isdir(source_configs):
         try:
-            with open(source_devices, "r", encoding="utf-8") as src:
-                payload = src.read()
-            with open(target_devices, "w", encoding="utf-8") as dst:
-                dst.write(payload)
-        except OSError as e:  # noqa: BLE001 — 桥接失败只影响自动连游戏，不阻断启动
-            _note(f"devices.json 桥接失败：{e}")
+            shutil.copytree(source_configs, config_folder, dirs_exist_ok=True)
+        except OSError as e:  # noqa: BLE001 — 拷贝失败退回「默认值」语义，绝不阻断启动
+            _note(f"项目 configs 拷入沙箱失败（任务将读到默认值）：{e}")
 
     _note(f"配置沙箱已启用：{config_folder}")
     return run_dir
@@ -363,9 +372,13 @@ def apply_overrides_to(task) -> None:
     """把插件侧覆盖应用到任务内存配置上（只改内存，绝不落盘）。
 
     同时维护「哪些键是被覆盖的」这一信息（挂在 config 对象上），供
-    install_override_save_patch() 在保存时把它们还原成磁盘值 —— 否则任务自己写
-    任意一个 config 键触发 `Config.save_file()` 时，会把整个内存字典 dump 出去，
-    把插件覆盖值一起写进项目的 configs/*.json（实测确认过）。
+    install_override_save_patch() 在保存时把它们还原成磁盘值。
+
+    落盘语义（2026-09-22 与用户对齐后的结论）：各 ok 项目任务在运行期写 config
+    的实践全部是「把配置更正为有效值」（如 ok-end-field DeliveryTask 修正失效地点、
+    ok-nte DailyRoutineTask 规范化日常项），落盘即有效状态；沙箱之下这些写入只落
+    `.vscode/ok-script-toolkit/configs/`，项目 configs/ 不受影响，且沙箱每次启动从
+    项目配置重建、不承担跨会话职责 —— 因此本函数只改内存 + 打日志，不做盘面治理。
     """
     config = task.config
     overrides = _overrides.get(task_key(task))
@@ -392,12 +405,22 @@ def apply_overrides_to(task) -> None:
         except Exception:  # noqa: BLE001 — 挂不上标记就退化成「只改内存」
             overridden = None
 
+    applied = []
+    missing = []
     for key, value in overrides.items():
         if key not in config:
+            missing.append(key)
             continue
         dict.__setitem__(config, key, value)
         if overridden is not None:
             overridden.add(key)
+        applied.append(key)
+    # 让「注入是否生效」肉眼可见：启动日志里逐任务列出实际应用的覆盖键。
+    # 覆盖键不存在于任务配置时也明说 —— 那多半是插件 schema 与任务 default_config 脱节。
+    if applied:
+        _note(f"任务 {task_key(task)} 已应用参数覆盖：{'、'.join(applied)}")
+    if missing:
+        _note(f"任务 {task_key(task)} 的覆盖键不在其配置中，已跳过：{'、'.join(missing)}")
 
 
 def _disk_config_value(config, key):
@@ -414,17 +437,18 @@ def _disk_config_value(config, key):
 
 
 def install_override_save_patch() -> bool:
-    """保存任务配置时，把被覆盖的键还原成**磁盘当前值**，避免插件覆盖值落进项目配置。
+    """保存任务配置时，把被覆盖的键还原成**磁盘当前值**，维持沙箱文件的「项目值基线」。
 
     为什么需要
     ----------
     `Config.save_file()` 就是 `write_json_file(self.config_file, self)` —— 把整个
-    内存字典 dump 出去。而任务自己会在运行中写自己的 config（真实项目里就有：
-    `LauncherTask` 记上次账号路径、`DailyRoutineTask` 规范化日常项），那一下
-    `Config.__setitem__` → `save_file()` 会把内存里被插件改过的键**一起写盘**。
-    实测：注入覆盖 `自动目标=false` 后，任务写任意一个键 → 磁盘上 `自动目标` 也变成
-    false；之后用户在插件里取消覆盖，任务读到的仍是 false（不是默认的 true），
-    看起来像「取消没生效」。
+    内存字典 dump 出去。任务在运行期写自己的 config 是既有实践，且都是「把配置
+    更正为有效值」（`LauncherTask` 记上次账号路径、`DailyRoutineTask` 规范化日常项、
+    ok-end-field `DeliveryTask` 修正失效地点）。这些写入落的是**沙箱**文件（配置
+    读写已整体改道），项目 configs/ 无污染 —— 本补丁防的不是项目侧，而是会话内
+    的还原正确性：若不拦，dump 会把插件覆盖值写进沙箱文件；之后用户在插件里
+    取消覆盖，`apply_overrides_to` 从磁盘读基线还原时读到的仍是覆盖值本身，
+    「取消」等于没生效。
 
     做法
     ----

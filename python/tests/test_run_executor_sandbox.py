@@ -33,8 +33,13 @@ def check(condition, message):
         failures.append(message)
 
 
-def run_in(project_dir, run_dir=None):
-    """在 project_dir 作为 cwd 的环境下调用，模拟执行器的真实工作目录。"""
+def run_in(project_dir, run_dir=None, config_folder=None):
+    """在 project_dir 作为 cwd 的环境下调用，模拟执行器的真实工作目录。
+
+    config_folder 模拟「项目 config.py 声明了自定义配置目录名」的场景 ——
+    执行器是在 import config 之后才调用 apply_config_sandbox 的，此时 config
+    dict 里已带项目自己的 config_folder 值。
+    """
     saved_cwd = os.getcwd()
     saved_env = os.environ.get("OK_TOOLKIT_RUN_DIR")
     try:
@@ -44,6 +49,8 @@ def run_in(project_dir, run_dir=None):
         else:
             os.environ["OK_TOOLKIT_RUN_DIR"] = run_dir
         config = {}
+        if config_folder:
+            config["config_folder"] = config_folder
         returned = mod.apply_config_sandbox(config)
         return config, returned
     finally:
@@ -146,6 +153,44 @@ with make_tmp_tempdir("ok-executor-sandbox") as tmp:
     second, _ = run_in(project, run_dir=run_dir)
     print("\n[7] 幂等")
     check(first == second, "两次调用 config 值一致")
+
+# ── 8. 项目 configs/ 整目录拷进沙箱：任务初始值跟项目配置走 ──
+with make_tmp_tempdir("ok-executor-sandbox") as tmp:
+    project = os.path.join(tmp, "proj")
+    src_configs = os.path.join(project, "configs")
+    os.makedirs(src_configs)
+    task_cfg = {"关卡": "伊利昂之围", "自动目标": True}
+    with open(os.path.join(src_configs, "DailyTask.json"), "w", encoding="utf-8") as f:
+        json.dump(task_cfg, f)
+    run_dir = os.path.join(project, ".vscode", "ok-script-toolkit")
+    config, _ = run_in(project, run_dir=run_dir)
+    print("\n[8] 项目 configs 拷入沙箱")
+    sandbox_task = os.path.join(config["config_folder"], "DailyTask.json")
+    check(os.path.isfile(sandbox_task), "沙箱内出现任务配置文件")
+    with open(sandbox_task, "r", encoding="utf-8") as f:
+        check(json.load(f) == task_cfg, "沙箱内任务配置与项目侧一致")
+    # 幂等：项目侧文件更新后再次启动，沙箱视图跟随刷新
+    task_cfg2 = {**task_cfg, "自动目标": False}
+    with open(os.path.join(src_configs, "DailyTask.json"), "w", encoding="utf-8") as f:
+        json.dump(task_cfg2, f)
+    run_in(project, run_dir=run_dir)
+    with open(sandbox_task, "r", encoding="utf-8") as f:
+        check(json.load(f) == task_cfg2, "重复启动时沙箱视图随项目配置刷新")
+    with open(os.path.join(src_configs, "DailyTask.json"), "r", encoding="utf-8") as f:
+        check(json.load(f) == task_cfg2, "项目侧文件仍未被沙箱改写")
+
+# ── 9. 项目自定义 config_folder 名：从那里拷，而不是写死的 configs ──
+with make_tmp_tempdir("ok-executor-sandbox") as tmp:
+    project = os.path.join(tmp, "proj")
+    src_configs = os.path.join(project, "my_cfgs")
+    os.makedirs(src_configs)
+    with open(os.path.join(src_configs, "WeeklyTask.json"), "w", encoding="utf-8") as f:
+        json.dump({"boss": "test"}, f)
+    run_dir = os.path.join(project, ".vscode", "ok-script-toolkit")
+    config, _ = run_in(project, run_dir=run_dir, config_folder="my_cfgs")
+    print("\n[9] 自定义 config_folder 名")
+    check(os.path.isfile(os.path.join(config["config_folder"], "WeeklyTask.json")),
+          "沙箱内容来自项目声明的配置目录")
 
 print("\n" + ("全部通过" if not failures else f"失败 {len(failures)} 项"))
 sys.exit(1 if failures else 0)
