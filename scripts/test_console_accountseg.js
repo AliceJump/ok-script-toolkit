@@ -130,4 +130,9 @@ assert(fieldsHost.hidden === true, '收起后字段区隐藏');
 titleEl.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
 assert(fieldsHost.hidden === false, '再点恢复显示');
 
+console.log('6. CSS 兜底：hidden 必须压过作者样式的 display（真机折叠生效的前提）');
+const css = fs.readFileSync(path.join(componentRoot, 'console.css'), 'utf8');
+assert(/\[hidden\]\s*\{[^}]*display:\s*none\s*!important/.test(css),
+  'console.css 必须包含 [hidden] { display: none !important }（否则 .config-fields 的 grid 会顶掉 hidden）');
+
 console.log('\n全部通过');

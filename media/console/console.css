@@ -1091,3 +1091,9 @@ button.secondary:hover:not(:disabled) { background: var(--vscode-button-secondar
 
 .config-section-title--toggle { cursor: pointer; user-select: none; }
 .config-section-title__chev { display: inline-block; width: 11px; margin-right: 2px; color: var(--muted); }
+
+
+/* hidden 属性兜底：作者样式里的 display（.config-fields 的 grid、卡片 body 的 flex 等）
+   会覆盖 UA 的 [hidden]{display:none}，导致所有基于 hidden 的折叠/显隐在真机上失效
+   （jsdom 测试只查属性所以测不出来）。!important 确保 hidden 永远生效。 */
+[hidden] { display: none !important; }
