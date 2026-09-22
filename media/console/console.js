@@ -137,7 +137,7 @@
   // ── 账号分段：多账户存储只读概要（Phase 6 只读呈现，编辑器列后续） ──
 
   /** 账号选择（模块级保持，重渲染不丢） */
-  let accountSelection = { account: '', taskKey: '' };
+  let accountSelection = { account: '', target: '' };
 
   function renderMultiAccount(info, store, storeError) {
     state.multiAccount = info || { available: false };
@@ -303,16 +303,38 @@
     const card = document.createElement('section');
     card.className = 'gconfig-card';
     const head = document.createElement('header');
-    head.className = 'gconfig-card__head';
+    head.className = 'gconfig-card__head gconfig-card__head--toggle';
+    head.setAttribute('role', 'button');
+    head.tabIndex = 0;
+    const chev = document.createElement('span');
+    chev.className = 'gconfig-card__chev';
+    chev.textContent = '▾';
     const title = document.createElement('div');
     title.className = 'gconfig-card__name';
     title.textContent = t('overrideTitle');
     head.appendChild(title);
     const body = document.createElement('div');
     body.className = 'gconfig-card__body';
+    // 整卡可折叠（默认展开）——点组头把表单收起只留标题行
+    const setCardOpen = open => {
+      chev.textContent = open ? '▾' : '▸';
+      body.hidden = !open;
+    };
+    setCardOpen(true);
+    head.addEventListener('click', e => {
+      if (e.target.closest('button, select, input, textarea')) return;
+      setCardOpen(!body.hidden);
+    });
 
     const accounts = (store.accountListText || '').split('\n').map(line => line.trim()).filter(Boolean);
-    if (!accounts.length || !editableTasks().length) {
+    const taskEntries = editableTasks();
+    const groupEntries = (state.globalGroups || []).map(g => ({
+      value: `global:${g.name}`,
+      label: g.displayName || g.name,
+      fields: g.fields || [],
+      storageName: g.name,
+    }));
+    if (!accounts.length || (!taskEntries.length && !groupEntries.length)) {
       const empty = document.createElement('div');
       empty.className = 'config-empty';
       empty.textContent = t('accountNotAvailable');
@@ -345,30 +367,82 @@
       opt.textContent = name;
       accountSelect.appendChild(opt);
     }
-    const taskSelect = document.createElement('select');
-    for (const task of editableTasks()) {
-      const opt = document.createElement('option');
-      opt.value = task.key;
-      opt.textContent = task.name;
-      taskSelect.appendChild(opt);
+    const targetSelect = document.createElement('select');
+    if (taskEntries.length) {
+      const og = document.createElement('optgroup');
+      og.label = t('taskLabel');
+      for (const t of taskEntries) {
+        const opt = document.createElement('option');
+        opt.value = `task:${t.key}`;
+        opt.textContent = t.name;
+        og.appendChild(opt);
+      }
+      targetSelect.appendChild(og);
+    }
+    if (groupEntries.length) {
+      const og = document.createElement('optgroup');
+      og.label = t('globalGroupLabel');
+      for (const g of groupEntries) {
+        const opt = document.createElement('option');
+        opt.value = g.value;
+        opt.textContent = g.label;
+        og.appendChild(opt);
+      }
+      targetSelect.appendChild(og);
     }
     if (!accounts.includes(accountSelection.account)) accountSelection.account = accounts[0];
     accountSelect.value = accountSelection.account;
-    if (![...taskSelect.options].some(opt => opt.value === accountSelection.taskKey)) accountSelection.taskKey = taskSelect.value;
-    taskSelect.value = accountSelection.taskKey;
+    if (![...targetSelect.options].some(o => o.value === accountSelection.target)) {
+      accountSelection.target = targetSelect.value;
+    }
+    targetSelect.value = accountSelection.target;
 
     const formHost = document.createElement('div');
     formHost.className = 'account-override-form';
     const rebuildForm = () => {
-      const taskInfo = editableTasks().find(t => t.key === accountSelection.taskKey);
+      const target = accountSelection.target || '';
+      if (target.startsWith('global:')) {
+        // 全局配置组的按账号覆盖（如滑索/键位）：fields 来自 probe 的 globalConfigGroups
+        const groupName = target.slice('global:'.length);
+        const group = (state.globalGroups || []).find(g => g.name === groupName);
+        const override = accountOverrideFor(store, accountSelection.account, groupName);
+        const fakeTask = { module: `__account__::${accountSelection.account}`, className: groupName };
+        const fakeKey = taskKey(fakeTask);
+        state.taskConfigs[fakeKey] = { params: { ...override } };
+        const fakeSchema = {
+          fields: (group?.fields || []).map(f => ({
+            ...f,
+            value: (f.key in override) ? override[f.key] : (f.default !== undefined ? f.default : f.value),
+          })),
+          configGroups: {},
+          groupLabels: {},
+          groupSelector: '',
+        };
+        formHost.replaceChildren(
+          globalThis.TaskLauncherConfigPanel.buildConfigPanel(fakeTask, fakeSchema, { defaultGroupOpen: true }),
+        );
+        const clearG = document.createElement('div');
+        clearG.style.padding = '6px 12px';
+        const clearGBtn = document.createElement('button');
+        clearGBtn.className = 'btn-mini';
+        clearGBtn.textContent = t('clearOverrideBtn');
+        clearGBtn.addEventListener('click', () => {
+          post({ type: 'clearAccountOverride', account: accountSelection.account, taskName: groupName });
+        });
+        clearG.appendChild(clearGBtn);
+        formHost.appendChild(clearG);
+        return;
+      }
+      const taskKeySel = target.slice('task:'.length);
+      const taskInfo = taskEntries.find(t => t.key === taskKeySel);
       const taskClassName = taskInfo
         ? taskInfo.className
-        : (accountSelection.taskKey.split('::')[1] || '');
+        : (taskKeySel.split('::')[1] || '');
       const allowedKeys = new Set(taskInfo ? taskInfo.keys : []);
       const override = accountOverrideFor(
-        store, accountSelection.account, taskClassName, state.schemas[accountSelection.taskKey]?.fields,
+        store, accountSelection.account, taskClassName, state.schemas[taskKeySel]?.fields,
       );
-      const schema = state.schemas[accountSelection.taskKey];
+      const schema = state.schemas[taskKeySel];
       const fakeTask = { module: `__account__::${accountSelection.account}`, className: taskClassName };
       const fakeKey = taskKey(fakeTask);
       state.taskConfigs[fakeKey] = { params: { ...override } };
@@ -402,8 +476,8 @@
       accountSelection.account = accountSelect.value;
       rebuildForm();
     });
-    taskSelect.addEventListener('change', () => {
-      accountSelection.taskKey = taskSelect.value;
+    targetSelect.addEventListener('change', () => {
+      accountSelection.target = targetSelect.value;
       rebuildForm();
     });
     body.append(
@@ -600,6 +674,68 @@
     document.addEventListener('keydown', (event) => {
       if (event.key === 'Escape') closeDrawer();
     });
+  }
+
+  /** 每账号的地图 content（滑索/地图数据文本）：独立编辑卡 */
+  function buildMapCard(info, store) {
+    const card = document.createElement('section');
+    card.className = 'gconfig-card';
+    const head = document.createElement('header');
+    head.className = 'gconfig-card__head';
+    const title = document.createElement('div');
+    title.className = 'gconfig-card__name';
+    title.textContent = t('mapContentTitle');
+    head.appendChild(title);
+    const actions = document.createElement('div');
+    actions.className = 'gconfig-card__actions';
+    const save = document.createElement('button');
+    save.className = 'btn-mini';
+    save.textContent = t('saveBtn');
+    actions.appendChild(save);
+    head.appendChild(actions);
+
+    const body = document.createElement('div');
+    body.className = 'gconfig-card__body';
+    const accounts = (store.accountListText || '').split('\n').map(line => line.trim()).filter(Boolean);
+    if (!accounts.length) {
+      const empty = document.createElement('div');
+      empty.className = 'config-empty';
+      empty.textContent = t('accountNotAvailable');
+      body.appendChild(empty);
+      card.append(head, body);
+      return card;
+    }
+    const accountSelect = document.createElement('select');
+    for (const name of accounts) {
+      const opt = document.createElement('option');
+      opt.value = name;
+      opt.textContent = name;
+      accountSelect.appendChild(opt);
+    }
+    const textarea = document.createElement('textarea');
+    textarea.rows = 6;
+    const loadContent = () => {
+      const accId = resolveAccId(store, accountSelect.value);
+      textarea.value = accId ? (store.mapContents || {})[accId] || '' : '';
+    };
+    loadContent();
+    accountSelect.addEventListener('change', loadContent);
+    save.addEventListener('click', () => {
+      post({ type: 'saveAccountMap', account: accountSelect.value, content: textarea.value });
+      textarea.disabled = true;
+      setTimeout(() => { textarea.disabled = false; }, 600);
+    });
+    const wrap = document.createElement('div');
+    wrap.className = 'config-field';
+    textarea.style.minHeight = '0';
+    wrap.appendChild(textarea);
+    body.appendChild(wrap);
+    const hint = document.createElement('div');
+    hint.className = 'hint';
+    hint.textContent = t('mapContentHint');
+    body.appendChild(hint);
+    card.append(head, body);
+    return card;
   }
 
   globalThis.TaskLauncherConsole = {
