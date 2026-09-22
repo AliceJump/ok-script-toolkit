@@ -159,6 +159,7 @@
     if (store) {
       host.appendChild(buildAccountListCard(info, store));
       host.appendChild(buildAccountOverrideCard(info, store));
+      host.appendChild(buildMapCard(info, store));
     } else if (info.hasStoreModule === false) {
       const warn = document.createElement('div');
       warn.className = 'config-broken';

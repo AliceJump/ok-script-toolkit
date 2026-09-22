@@ -76,7 +76,7 @@ def load_store_module(project_dir: str):
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("project_dir")
-    parser.add_argument("command", choices=["get", "set_list", "set_override", "clear_override"])
+    parser.add_argument("command", choices=["get", "set_list", "set_override", "clear_override", "set_map"])
     args, extra = parser.parse_known_args()
     kwargs = {}
     for i in range(0, len(extra) - 1, 2):
@@ -94,6 +94,7 @@ def main() -> None:
                 "account_list_text": data.get("account_list_text", ""),
                 "registry": data.get("account_registry", {}),
                 "accounts": data.get("accounts", {}),
+                "map_contents": data.get("map_contents", {}),
             }
         elif args.command == "set_list":
             store.set_account_list_text(json.loads(kwargs["text"]))
@@ -102,6 +103,10 @@ def main() -> None:
             store.set_account_task_overrides(
                 kwargs["account"], kwargs["task"], json.loads(kwargs.get("values", "{}"))
             )
+            payload = {"saved": True}
+        elif args.command == "set_map":
+            # 每账号的地图 content（滑索/地图数据），文本经 JSON 传输还原
+            store.set_account_map_content(kwargs["account"], json.loads(kwargs["content"]))
             payload = {"saved": True}
         else:
             store.remove_account_task_overrides(kwargs["account"], kwargs["task"])

@@ -140,8 +140,10 @@ interface AccountStoreData {
   accountListText?: string;
   /** 注册表：acc_id -> {username, aliases} */
   registry?: Record<string, { username?: string; aliases?: string[] }>;
-  /** 覆盖表：acc_id -> {任务类名: {键: 值}} */
+  /** 覆盖表：acc_id -> {任务类名(或全局组名): {键: 值}} */
   accounts?: Record<string, Record<string, Record<string, unknown>>>;
+  /** 每账号的地图 content（acc_id -> 文本） */
+  mapContents?: Record<string, string>;
 }
 
 /** 常驻执行器回推的状态快照（对应 run_executor.py 的 OK_TOOLKIT_STATE 标记行） */
@@ -459,6 +461,12 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
             this.runAccountStore(['clear_override', '--account', String(msg.account), '--task', String(msg.taskName)]);
           }
           break;
+        case 'saveAccountMap':
+          // 每账号的地图 content（滑索/地图数据），经项目 store 的原子写落盘
+          if (msg.account && typeof msg.content === 'string') {
+            this.runAccountStore(['set_map', '--account', String(msg.account), '--content', JSON.stringify(msg.content)]);
+          }
+          break;
         case 'loadConfigs':
           this.loadTaskConfigs();
           break;
@@ -755,6 +763,7 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
           accountListText: parsed.account_list_text || '',
           registry: parsed.registry || {},
           accounts: parsed.accounts || {},
+          mapContents: parsed.map_contents || {},
         };
         this.view?.webview.postMessage({ type: 'accountStore', data: this.accountStoreData });
       } else {
