@@ -482,7 +482,7 @@
     });
     body.append(
       pickRow(t('accountLabel'), accountSelect),
-      pickRow(t('taskLabel'), taskSelect),
+      pickRow(t('targetLabel'), targetSelect),
     );
     body.appendChild(formHost);
     rebuildForm();
