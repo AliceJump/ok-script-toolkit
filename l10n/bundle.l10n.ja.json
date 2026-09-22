@@ -204,5 +204,6 @@
   "{count} file(s) still import {old} and will break: {files}": "{count} 個のファイルがまだ {old} を import しており、壊れます: {files}",
   "Overwrite anyway": "それでも上書き",
   "Not set — ask on save": "未設定 — 保存時に確認",
-  "Derived from the file name": "ファイル名から導出"
+  "Derived from the file name": "ファイル名から導出",
+  "Account store update failed: {error}": "アカウントストアの更新に失敗: {error}"
 }

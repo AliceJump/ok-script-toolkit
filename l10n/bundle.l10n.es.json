@@ -204,5 +204,6 @@
   "{count} file(s) still import {old} and will break: {files}": "{count} archivo(s) todavía importan {old} y se romperán: {files}",
   "Overwrite anyway": "Sobrescribir igualmente",
   "Not set — ask on save": "Sin definir — preguntar al guardar",
-  "Derived from the file name": "Derivado del nombre del archivo"
+  "Derived from the file name": "Derivado del nombre del archivo",
+  "Account store update failed: {error}": "Error al actualizar el almacén de cuentas: {error}"
 }

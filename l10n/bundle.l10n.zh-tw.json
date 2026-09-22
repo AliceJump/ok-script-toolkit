@@ -204,5 +204,6 @@
   "{count} file(s) still import {old} and will break: {files}": "還有 {count} 個檔案在 import {old}，它們會失效：{files}",
   "Overwrite anyway": "仍然覆蓋",
   "Not set — ask on save": "未設定 —— 儲存時詢問",
-  "Derived from the file name": "由檔名推導"
+  "Derived from the file name": "由檔名推導",
+  "Account store update failed: {error}": "帳號儲存更新失敗：{error}"
 }

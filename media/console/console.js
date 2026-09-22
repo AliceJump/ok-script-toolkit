@@ -42,9 +42,10 @@
     }
   }
 
-  function renderConfig(groups, snapshots) {
+  function renderConfig(groups, snapshots, expanded) {
     state.globalGroups = groups || [];
     state.globalSnapshots = snapshots || {};
+    state.expandedGlobalGroups = Array.isArray(expanded) ? expanded : [];
     syncGlobalPseudoTasks(state.globalGroups, state.globalSnapshots);
     const host = $('configList');
     if (!host) return;
@@ -57,11 +58,11 @@
       return;
     }
     for (const group of state.globalGroups) {
-      host.appendChild(buildGlobalCard(group));
+      host.appendChild(buildGlobalCard(group, state.expandedGlobalGroups.includes(group.name)));
     }
   }
 
-  function buildGlobalCard(group) {
+  function buildGlobalCard(group, expanded) {
     const fakeTask = { module: GLOBAL_MODULE, className: group.name, displayName: group.displayName || group.name };
     const fakeSchema = { fields: group.fields || [], configGroups: {}, groupLabels: {}, groupSelector: '' };
 
@@ -70,20 +71,43 @@
     card.dataset.group = group.name;
 
     const head = document.createElement('header');
-    head.className = 'gconfig-card__head';
+    head.className = 'gconfig-card__head gconfig-card__head--toggle';
+    head.setAttribute('role', 'button');
+    head.tabIndex = 0;
+    const chev = document.createElement('span');
+    chev.className = 'gconfig-card__chev';
+    chev.textContent = expanded ? '▾' : '▸';
     const title = document.createElement('div');
     title.className = 'gconfig-card__name';
     title.textContent = group.displayName || group.name;
     if (group.source === 'project_store') {
       const tag = document.createElement('span');
-      tag.className = 'tag tag--store';
+      tag.className = 'tag--store';
       tag.textContent = t('projectStoreTag');
       title.appendChild(tag);
     }
     const desc = document.createElement('div');
     desc.className = 'gconfig-card__desc';
     desc.textContent = group.description || '';
-    head.append(title, desc);
+    const meta = document.createElement('div');
+    meta.className = 'gconfig-card__meta';
+    meta.textContent = t('itemsCount', { count: (group.fields || []).length });
+    head.append(chev, title, desc, meta);
+
+    // 折叠切换（头部按钮区不触发切换）：展开状态由宿主持久化，重开面板按上次状态
+    const toggle = () => {
+      post({ type: 'toggleGlobalGroup', name: group.name, expanded: !expanded });
+    };
+    head.addEventListener('click', (event) => {
+      if (event.target.closest('button')) return;
+      toggle();
+    });
+    head.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        toggle();
+      }
+    });
 
     const actions = document.createElement('div');
     actions.className = 'gconfig-card__actions';
@@ -98,9 +122,13 @@
     actions.append(sync, reset);
     head.appendChild(actions);
 
+    // 收起的组不构建表单 DOM（伸缩性）；展开状态由宿主 globalGroups 消息驱动重渲染
     const body = document.createElement('div');
     body.className = 'gconfig-card__body';
-    body.appendChild(globalThis.TaskLauncherConfigPanel.buildConfigPanel(fakeTask, fakeSchema));
+    body.hidden = !expanded;
+    if (expanded) {
+      body.appendChild(globalThis.TaskLauncherConfigPanel.buildConfigPanel(fakeTask, fakeSchema));
+    }
 
     card.append(head, body);
     return card;
@@ -108,8 +136,12 @@
 
   // ── 账号分段：多账户存储只读概要（Phase 6 只读呈现，编辑器列后续） ──
 
-  function renderMultiAccount(info) {
+  /** 账号选择（模块级保持，重渲染不丢） */
+  let accountSelection = { account: '', taskKey: '' };
+
+  function renderMultiAccount(info, store) {
     state.multiAccount = info || { available: false };
+    state.accountStore = store || null;
     const host = $('accountList');
     if (!host) return;
     host.replaceChildren();
@@ -120,6 +152,13 @@
       host.appendChild(empty);
       return;
     }
+    // 卡 1：账号列表（account_list_text 编辑 + 保存，经 account_store.py 同步注册表）
+    host.appendChild(buildAccountListCard(info, store));
+    // 卡 2：账号 × 任务覆盖编辑器（有存储数据才有意义）
+    if (store) host.appendChild(buildAccountOverrideCard(info, store));
+  }
+
+  function buildAccountListCard(info, store) {
     const card = document.createElement('section');
     card.className = 'gconfig-card';
     const head = document.createElement('header');
@@ -130,43 +169,179 @@
     head.appendChild(title);
     const actions = document.createElement('div');
     actions.className = 'gconfig-card__actions';
+    const save = document.createElement('button');
+    save.className = 'btn-mini';
+    save.textContent = t('saveBtn');
+    const textarea = document.createElement('textarea');
+    textarea.rows = Math.min(6, Math.max(2, (store?.accountListText || '').split('\n').length));
+    textarea.value = store?.accountListText || '';
+    textarea.style.width = '100%';
+    save.addEventListener('click', () => {
+      post({ type: 'saveAccountList', text: textarea.value });
+      textarea.disabled = true;
+      setTimeout(() => { textarea.disabled = false; }, 600);
+    });
     const open = document.createElement('button');
     open.className = 'btn-mini';
     open.textContent = t('openDataBtn');
     open.addEventListener('click', () => post({ type: 'openPath', path: info.storePath }));
-    actions.appendChild(open);
+    actions.append(save, open);
     head.appendChild(actions);
     const body = document.createElement('div');
     body.className = 'gconfig-card__body';
-    const rows = [
-      [t('accountCountLabel'), String(info.accountCount ?? 0)],
-      [t('overrideAccountsLabel'), String(info.overrideAccounts ?? 0)],
-      ...(info.readable === false ? [[t('accountReadFailed'), '']] : []),
-    ];
-    for (const [k, v] of rows) {
+    const row = document.createElement('div');
+    row.className = 'row';
+    const label = document.createElement('div');
+    label.className = 'label';
+    const kt = document.createElement('div');
+    kt.className = 'k';
+    kt.textContent = t('accountListLabel');
+    label.appendChild(kt);
+    row.appendChild(label);
+    body.appendChild(row);
+    body.appendChild(textarea);
+    const hint = document.createElement('div');
+    hint.className = 'hint';
+    hint.textContent = t('accountListHint');
+    body.appendChild(hint);
+    card.append(head, body);
+    return card;
+  }
+
+  /** registry/账号名 解析出 accounts 表的实际键（acc_id，兼容旧结构的账号名直键） */
+  function resolveAccId(store, username) {
+    const registry = store?.registry || {};
+    for (const [id, meta] of Object.entries(registry)) {
+      if (meta && meta.username === username) return id;
+      if (meta && Array.isArray(meta.aliases) && meta.aliases.includes(username)) return id;
+    }
+    const accounts = store?.accounts || {};
+    return username in accounts ? username : '';
+  }
+
+  /** 覆盖值（acc_id 下该任务的键值表；无覆盖返回空表） */
+  function accountOverrideFor(store, username, taskClassName) {
+    const accId = resolveAccId(store, username);
+    const taskMap = accId ? (store.accounts || {})[accId] : null;
+    return (taskMap && taskMap[taskClassName]) || {};
+  }
+
+  /** 可编辑的任务清单：schema 就绪且有字段的任务（按 displayName 排序） */
+  function editableTasks() {
+    return Object.entries(state.schemas)
+      .filter(([, schema]) => !schema.broken && schema.fields?.length)
+      .map(([key, schema]) => ({ key, className: key.split('::')[1] || key, name: schema.displayName || key }))
+      .sort((a, b) => a.name.localeCompare(b.name, 'zh'));
+  }
+
+  function buildAccountOverrideCard(info, store) {
+    const card = document.createElement('section');
+    card.className = 'gconfig-card';
+    const head = document.createElement('header');
+    head.className = 'gconfig-card__head';
+    const title = document.createElement('div');
+    title.className = 'gconfig-card__name';
+    title.textContent = t('overrideTitle');
+    head.appendChild(title);
+    const body = document.createElement('div');
+    body.className = 'gconfig-card__body';
+
+    const accounts = (store.accountListText || '').split('\n').map(line => line.trim()).filter(Boolean);
+    if (!accounts.length || !editableTasks().length) {
+      const empty = document.createElement('div');
+      empty.className = 'config-empty';
+      empty.textContent = t('accountNotAvailable');
+      body.appendChild(empty);
+      card.append(head, body);
+      return card;
+    }
+
+    const pickRow = (labelText, select) => {
       const row = document.createElement('div');
       row.className = 'row';
       const label = document.createElement('div');
       label.className = 'label';
       const kt = document.createElement('div');
       kt.className = 'k';
-      kt.textContent = k;
+      kt.textContent = labelText;
       label.appendChild(kt);
-      const val = document.createElement('div');
-      val.className = 'ctrl';
-      val.textContent = v;
-      val.style.color = 'var(--text, inherit)';
-      row.append(label, val);
-      body.appendChild(row);
+      row.append(label, select);
+      return row;
+    };
+
+    const accountSelect = document.createElement('select');
+    for (const name of accounts) {
+      const opt = document.createElement('option');
+      opt.value = name;
+      opt.textContent = name;
+      accountSelect.appendChild(opt);
     }
-    if (Array.isArray(info.overriddenTasks) && info.overriddenTasks.length) {
-      const hint = document.createElement('div');
-      hint.className = 'hint';
-      hint.textContent = `${t('overriddenTasksLabel')}: ${info.overriddenTasks.join('、')}`;
-      body.appendChild(hint);
+    const taskSelect = document.createElement('select');
+    for (const task of editableTasks()) {
+      const opt = document.createElement('option');
+      opt.value = task.key;
+      opt.textContent = task.name;
+      taskSelect.appendChild(opt);
     }
+    if (!accounts.includes(accountSelection.account)) accountSelection.account = accounts[0];
+    accountSelect.value = accountSelection.account;
+    if (![...taskSelect.options].some(opt => opt.value === accountSelection.taskKey)) accountSelection.taskKey = taskSelect.value;
+    taskSelect.value = accountSelection.taskKey;
+
+    const formHost = document.createElement('div');
+    formHost.className = 'account-override-form';
+    const rebuildForm = () => {
+      const taskClassName = accountSelection.taskKey.split('::')[1] || '';
+      const override = accountOverrideFor(store, accountSelection.account, taskClassName);
+      const schema = state.schemas[accountSelection.taskKey];
+      const fakeTask = { module: `__account__::${accountSelection.account}`, className: taskClassName };
+      const fakeKey = taskKey(fakeTask);
+      state.taskConfigs[fakeKey] = { params: { ...override } };
+      const fakeSchema = {
+        fields: (schema?.fields || []).map(f => ({
+          ...f,
+          value: (f.key in override) ? override[f.key] : (f.default !== undefined ? f.default : f.value),
+        })),
+        configGroups: schema?.configGroups || {},
+        groupLabels: schema?.groupLabels || {},
+        groupSelector: schema?.groupSelector || '',
+      };
+      formHost.replaceChildren(
+        globalThis.TaskLauncherConfigPanel.buildConfigPanel(fakeTask, fakeSchema),
+      );
+      const clear = document.createElement('div');
+      clear.style.padding = '6px 12px';
+      const clearBtn = document.createElement('button');
+      clearBtn.className = 'btn-mini';
+      clearBtn.textContent = t('clearOverrideBtn');
+      clearBtn.addEventListener('click', () => {
+        post({ type: 'clearAccountOverride', account: accountSelection.account, taskName: taskClassName });
+      });
+      clear.appendChild(clearBtn);
+      formHost.appendChild(clear);
+    };
+    accountSelect.addEventListener('change', () => {
+      accountSelection.account = accountSelect.value;
+      rebuildForm();
+    });
+    taskSelect.addEventListener('change', () => {
+      accountSelection.taskKey = taskSelect.value;
+      rebuildForm();
+    });
+    body.append(
+      pickRow(t('accountLabel'), accountSelect),
+      pickRow(t('taskLabel'), taskSelect),
+    );
+    body.appendChild(formHost);
+    rebuildForm();
+
+    const hint = document.createElement('div');
+    hint.className = 'hint';
+    hint.textContent = t('overrideHint');
+    body.appendChild(hint);
+
     card.append(head, body);
-    host.appendChild(card);
+    return card;
   }
 
   // ── 游戏状态（状态条第一行 + 游戏分段卡片） ──────────────────────────

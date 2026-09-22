@@ -204,5 +204,6 @@
   "{count} file(s) still import {old} and will break: {files}": "{count} file(s) still import {old} and will break: {files}",
   "Overwrite anyway": "Overwrite anyway",
   "Not set — ask on save": "Not set — ask on save",
-  "Derived from the file name": "Derived from the file name"
+  "Derived from the file name": "Derived from the file name",
+  "Account store update failed: {error}": "Account store update failed: {error}"
 }

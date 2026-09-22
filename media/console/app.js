@@ -39,7 +39,7 @@
       case 'globalGroups':
         state.globalGroups = message.groups || [];
         state.globalSnapshots = message.snapshots || {};
-        Console.renderConfig(state.globalGroups, state.globalSnapshots);
+        Console.renderConfig(state.globalGroups, state.globalSnapshots, state.expandedGlobalGroups || []);
         break;
       case 'snapshotUpdated':
         if (message.target === 'task') {
@@ -51,12 +51,16 @@
           Console.refreshDrawer();
         } else if (message.target === 'global') {
           state.globalSnapshots[message.name] = message.values || {};
-          Console.renderConfig(state.globalGroups, state.globalSnapshots);
+          Console.renderConfig(state.globalGroups, state.globalSnapshots, state.expandedGlobalGroups || []);
         }
+        break;
+      // 多账户存储数据（account_store.py get 的结果）：账号分段编辑器数据源
+      case 'accountStore':
+        Console.renderMultiAccount(state.multiAccount, message.data || null);
         break;
       // 多账户存储只读概要（账号分段）
       case 'multiAccount':
-        Console.renderMultiAccount(message.info || { available: false });
+        Console.renderMultiAccount(message.info || { available: false }, state.accountStore);
         break;
       case 'executor':
         applyExecutor(message);

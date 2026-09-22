@@ -100,6 +100,8 @@ interface ProjectStore {
   enabledTriggers?: string[];
   /** 全局配置组快照：组名 -> {key: value}（配置接管模式的持久值） */
   globalConfigs?: Record<string, Record<string, unknown>>;
+  /** 用户展开过的全局配置组（默认收起；重开面板按上次状态） */
+  expandedGlobalGroups?: string[];
 }
 
 /** 所有任务配置的持久化结构 */
@@ -130,6 +132,16 @@ interface MultiAccountInfo {
   accountCount?: number;
   overrideAccounts?: number;
   overriddenTasks?: string[];
+}
+
+/** 多账户存储数据（python/account_store.py get 的结果，编辑器数据源） */
+interface AccountStoreData {
+  /** 账号列表原文（每行一个账号名） */
+  accountListText?: string;
+  /** 注册表：acc_id -> {username, aliases} */
+  registry?: Record<string, { username?: string; aliases?: string[] }>;
+  /** 覆盖表：acc_id -> {任务类名: {键: 值}} */
+  accounts?: Record<string, Record<string, Record<string, unknown>>>;
 }
 
 /** 常驻执行器回推的状态快照（对应 run_executor.py 的 OK_TOOLKIT_STATE 标记行） */
@@ -337,6 +349,10 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
   private globalSnapshots: Record<string, Record<string, unknown>> = {};
   /** 多账户存储只读概要（probe 探测 configs/account_scoped_overrides.json） */
   private multiAccount: MultiAccountInfo = { available: false };
+  /** 多账户存储数据（经 python/account_store.py 读写，含账号列表文本与覆盖表） */
+  private accountStoreData: AccountStoreData | null = null;
+  /** 用户展开过的全局配置组（持久化；不在集合内 = 收起） */
+  private expandedGlobalGroups = new Set<string>();
   /** 全局配置组推送防抖定时器 */
   private gparamsTimer: NodeJS.Timeout | undefined;
 
@@ -424,7 +440,24 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
           this.stopExecutor();
           break;
         case 'saveConfig':
+          // 账号覆盖编辑器：伪 task module = __account__::<账号名>，className = 任务类名
+          if (typeof msg.task?.module === 'string' && msg.task.module.startsWith('__account__::')) {
+            const account = msg.task.module.slice('__account__::'.length);
+            const cfgObj = (msg.config && typeof msg.config === 'object')
+              ? msg.config as { params?: Record<string, unknown> }
+              : undefined;
+            this.saveAccountOverride(account, String(msg.task.className || ''), cfgObj?.params || {});
+            break;
+          }
           if (this.isKnownTask(msg.task)) this.saveTaskConfig(msg.task, this.sanitizeTaskConfig(msg.task, msg.config));
+          break;
+        case 'saveAccountList':
+          if (typeof msg.text === 'string') this.runAccountStore(['set_list', '--text', JSON.stringify(msg.text)]);
+          break;
+        case 'clearAccountOverride':
+          if (msg.account && msg.taskName) {
+            this.runAccountStore(['clear_override', '--account', String(msg.account), '--task', String(msg.taskName)]);
+          }
           break;
         case 'loadConfigs':
           this.loadTaskConfigs();
@@ -432,6 +465,9 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
         // ── 配置接管（快照同步/恢复 + 全局组编辑）──
         case 'setGlobalValue':
           this.setGlobalValue(String(msg.group || ''), String(msg.key || ''), msg.value);
+          break;
+        case 'toggleGlobalGroup':
+          this.setGlobalGroupExpanded(String(msg.name || ''), msg.expanded === true);
           break;
         case 'syncDefault':
           {
@@ -548,15 +584,19 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
         const triggers = entry?.enabledTriggers || raw.enabledTriggers || [];
         this.enabledTriggers = new Set(triggers.filter((key) => typeof key === 'string'));
         this.globalSnapshots = entry?.globalConfigs || {};
+        const expanded = entry?.expandedGlobalGroups || [];
+        this.expandedGlobalGroups = new Set(expanded.filter((key) => typeof key === 'string'));
       } else {
         this.taskConfigs = {};
         this.enabledTriggers = new Set();
         this.globalSnapshots = {};
+        this.expandedGlobalGroups = new Set();
       }
     } catch (e) {
       this.taskConfigs = {};
       this.enabledTriggers = new Set();
       this.globalSnapshots = {};
+      this.expandedGlobalGroups = new Set();
       void vscode.window.showWarningMessage(tr('Failed to read task configuration: {error}', {
         error: e instanceof Error ? e.message : String(e),
       }));
@@ -645,7 +685,17 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
       type: 'globalGroups',
       groups: this.globalGroups,
       snapshots: this.globalSnapshots,
+      expanded: [...this.expandedGlobalGroups],
     });
+  }
+
+  /** 展开/收起全局配置组（持久化，重开面板按上次状态） */
+  private setGlobalGroupExpanded(name: string, expanded: boolean): void {
+    if (!name) return;
+    if (expanded) this.expandedGlobalGroups.add(name);
+    else this.expandedGlobalGroups.delete(name);
+    this.saveStore();
+    this.pushGlobalGroups();
   }
 
   /** 全局组单键写入（配置分段表单「修改即保存」）+ 运行中 gparams 推送 */
@@ -667,6 +717,55 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
       if (!Object.keys(this.globalSnapshots).length) return;
       this.writeCommand(`gparams ${JSON.stringify(this.globalSnapshots)}`);
     }, PARAMS_PUSH_DEBOUNCE_MS);
+  }
+
+  // ── 多账户配置编辑（写操作全部经 python/account_store.py 转调项目 store）──
+
+  /**
+   * spawn account_store.py：get 读存储并回推前端；写命令成功后自动重读刷新。
+   * 用项目 Python 运行（store 依赖 ok 包），写路径复用项目自己的锁/原子写/注册表同步。
+   */
+  private runAccountStore(command: string[]): void {
+    const { projectDir, pythonPath } = this.getConfig();
+    if (!projectDir) return;
+    const child = cp.spawn(
+      pythonPath,
+      [pythonScript(this.extensionUri, 'account_store.py'), projectDir, ...command],
+      { cwd: projectDir, windowsHide: true, env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' } },
+    );
+    let stdout = '';
+    child.stdout?.on('data', (d) => { stdout += d.toString('utf8'); });
+    child.on('close', () => {
+      const parsed = parseJsonFromStdout(stdout);
+      if (!parsed?.ok) {
+        this.view?.webview.postMessage({
+          type: 'status',
+          level: 'error',
+          text: tr('Account store update failed: {error}', { error: parsed?.error || 'unknown' }),
+        });
+        return;
+      }
+      if (command[0] === 'get') {
+        this.accountStoreData = {
+          accountListText: parsed.account_list_text || '',
+          registry: parsed.registry || {},
+          accounts: parsed.accounts || {},
+        };
+        this.view?.webview.postMessage({ type: 'accountStore', data: this.accountStoreData });
+      } else {
+        // 写入成功后重读一次，前端数据保持权威
+        this.runAccountStore(['get']);
+      }
+    });
+  }
+
+  /** 保存账号覆盖：account 传账号名（store 自动解析/创建 acc_id），taskName 用任务类名 */
+  private saveAccountOverride(account: string, taskClassName: string, params: Record<string, unknown>): void {
+    if (!account || !taskClassName) return;
+    this.runAccountStore([
+      'set_override', '--account', account, '--task', taskClassName,
+      '--values', JSON.stringify(params ?? {}),
+    ]);
   }
 
   /**
@@ -757,6 +856,7 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
         tasks: this.taskConfigs,
         enabledTriggers: [...this.enabledTriggers],
         globalConfigs: this.globalSnapshots,
+        expandedGlobalGroups: [...this.expandedGlobalGroups],
       };
       fs.writeFileSync(p, JSON.stringify(store, null, 2), 'utf-8');
       return true;
@@ -894,6 +994,8 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
 
     // 后台全量 import 采集 schema（失败不影响任务列表，仅提示）
     void this.probeSchemasInBackground(view, projectDir, pythonPath, locale, generation);
+    // 多账户存储数据（有存储文件的项目才拿得到；无则前端显示空态说明）
+    this.runAccountStore(['get']);
   }
 
   /** 后台采集任务参数 schema：全量 import 项目任务，成功则缓存并回推给 UI */
