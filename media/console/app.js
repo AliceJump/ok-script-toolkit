@@ -21,9 +21,12 @@
         state.schemas = message.schemas || state.schemas;
         renderTasks(message.tasks || []);
         Console.refreshDrawer();
+        // 多账户存储概要随 tasks 消息一起到达（probe 探测结果）
+        Console.renderMultiAccount(message.multiAccount || state.multiAccount);
         break;
       case 'schemas':
         state.schemas = message.schemas || state.schemas;
+        if (message.multiAccount) Console.renderMultiAccount(message.multiAccount);
         renderTasks(state.currentTasks);
         Console.refreshDrawer();
         break;
