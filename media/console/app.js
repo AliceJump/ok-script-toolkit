@@ -21,12 +21,14 @@
         state.schemas = message.schemas || state.schemas;
         renderTasks(message.tasks || []);
         Console.refreshDrawer();
-        // 多账户存储概要随 tasks 消息一起到达（probe 探测结果）
-        Console.renderMultiAccount(message.multiAccount || state.multiAccount);
+        // 多账户存储概要随 tasks 消息一起到达（probe 探测结果）；store 数据保持独立状态
+        Console.renderMultiAccount(message.multiAccount || state.multiAccount, state.accountStore);
         break;
       case 'schemas':
         state.schemas = message.schemas || state.schemas;
-        if (message.multiAccount) Console.renderMultiAccount(message.multiAccount);
+        // probe 完成回推：multiAccount 更新，但 store 数据由独立的 accountStore 消息维护——
+        // 这里必须带上 state.accountStore，否则编辑器会被「无法读取」空态顶掉
+        Console.renderMultiAccount(message.multiAccount || state.multiAccount, state.accountStore);
         renderTasks(state.currentTasks);
         Console.refreshDrawer();
         break;
@@ -58,7 +60,7 @@
         break;
       // 多账户存储数据（account_store.py get 的结果）：账号分段编辑器数据源
       case 'accountStore':
-        Console.renderMultiAccount(state.multiAccount, message.data || null);
+        Console.renderMultiAccount(state.multiAccount, message.data || null, message.error || '');
         break;
       // 多账户存储只读概要（账号分段）
       case 'multiAccount':
