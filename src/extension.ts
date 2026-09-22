@@ -21,8 +21,9 @@ import {
   TemplateGalleryViewProvider,
   repaintAllGalleries,
 } from './templatePanel';
-import { TaskLauncherViewProvider } from './taskLauncher';
-import { CharacterManagerLauncherViewProvider, CharacterManagerPanel } from './characterPanel';
+import { ConsoleViewProvider } from './consolePanel';
+import { CharacterManagerPanel } from './characterPanel';
+import { GameConnectService } from './toolboxConnect';
 import { TemplateAssetData } from './templateAssetData';
 import {
   TemplateAssetViewProvider,
@@ -302,12 +303,20 @@ export function activate(context: vscode.ExtensionContext): void {
     },
   });
 
-  const taskLauncher = new TaskLauncherViewProvider(context.extensionUri);
   const characterManagerDependencies = {
     extensionUri: context.extensionUri,
     features,
     thumbDir,
   };
+  // 游戏连接 + 调试浮层的共享宿主（原侧边栏工具箱逻辑）；控制台视图组合它而非继承
+  const gameConnect = new GameConnectService(context.extensionUri);
+  const okConsole = new ConsoleViewProvider(
+    context.extensionUri,
+    gameConnect,
+    () => CharacterManagerPanel.show(characterManagerDependencies),
+  );
+  // 浮层开关 → 运行中执行器即时生效（overlay_on/off stdin 命令）
+  gameConnect.overlayForwarder = (enabled) => okConsole.setOverlayEnabled(enabled);
 
   // 模板素材数据管理
   const templateAssetData = new TemplateAssetData(folder);
@@ -324,7 +333,7 @@ export function activate(context: vscode.ExtensionContext): void {
     purgeLegacyThumbFiles(tempThumbDir);
     void context.globalState.update(LEGACY_THUMB_PURGE_KEY, THUMB_KEY_VERSION);
   }
-  context.subscriptions.push(taskLauncher);
+  context.subscriptions.push(gameConnect, okConsole);
 
   context.subscriptions.push(
     vscode.languages.registerInlayHintsProvider(
@@ -374,12 +383,8 @@ export function activate(context: vscode.ExtensionContext): void {
       new TemplateGalleryViewProvider(context.extensionUri, features, thumbDir),
     ),
     vscode.window.registerWebviewViewProvider(
-      TaskLauncherViewProvider.viewType,
-      taskLauncher,
-    ),
-    vscode.window.registerWebviewViewProvider(
-      CharacterManagerLauncherViewProvider.viewType,
-      new CharacterManagerLauncherViewProvider(characterManagerDependencies),
+      ConsoleViewProvider.viewType,
+      okConsole,
     ),
     vscode.window.registerWebviewViewProvider(
       TemplateAssetViewProvider.viewType,
@@ -397,8 +402,8 @@ export function activate(context: vscode.ExtensionContext): void {
       TemplateGalleryPanel.show(features, thumbDir, context.extensionUri);
     }),
     vscode.commands.registerCommand('okScriptToolkit.showTaskLauncher', () => {
-      // 聚焦活动栏中的任务启动视图
-      void vscode.commands.executeCommand(`${TaskLauncherViewProvider.viewType}.focus`);
+      // 聚焦活动栏中的控制台视图（命令 id 沿用旧名，兼容既有键位/菜单引用）
+      void vscode.commands.executeCommand(`${ConsoleViewProvider.viewType}.focus`);
     }),
     vscode.commands.registerCommand('okScriptToolkit.openCharacterManager', () => {
       CharacterManagerPanel.show(characterManagerDependencies);

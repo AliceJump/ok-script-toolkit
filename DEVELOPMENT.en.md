@@ -27,8 +27,9 @@ src/                         VS Code extension host TypeScript source (30 module
 	effectData.ts              Effect ID mapping (parses effects.py)
 	characterData.ts           Character/skill data read-write (incl. synced-skill protection)
 	characterPanel.ts          Character & skill manager panel host side
+	consolePanel.ts            ok-script console host side (unified Tasks + Game view; schema probing, persistent executor, parameter channel)
+	toolboxConnect.ts          Shared game connection + debug overlay host (connect_game.py / overlay_host.py, overlay mutual exclusion)
 	providers.ts               Completion / hover / inlay providers
-	taskLauncher.ts            Task launcher host side (schema probing, persistent executor, parameter channel)
 	templateAssetData.ts       Template asset data (reads/writes <templates dir>/coco_annotations.json)
 	templateAssetPanel.ts      Template asset panel host side (incl. the "save to assets" export flow)
 	saveToAssetsPure.ts        Pure export-flow logic (target list + whether to prompt for the enum path)
@@ -51,7 +52,7 @@ media/                        Per-Webview HTML/CSS/JS (loaded by the host via CS
 	tempScreenshots/           Temp screenshot sidebar
 	templateAssetPanel/        Template asset management
 	templatePanel/             Template panel
-	taskLauncher/              Task launcher
+	console/                   ok-script console (Tasks + Game)
 	characterManager/          Character skill management
 python/                      Helper scripts shipped with the extension: task discovery, probing & execution (parse_config_tasks.py, probe_task_schemas.py, run_executor.py), plus game window capture & config probing for the template asset panel (capture_game_window.py, probe_window_config.py)
 	python/tests/              Development-time Python regression tests (test_probe_pure_group_labels.py, test_run_executor_sandbox.py); excluded from VSIX / JetBrains JAR per AGENT.md packaging rules

@@ -18,7 +18,7 @@ const path = require('path');
 const { JSDOM } = require('jsdom');
 
 const repoRoot = path.resolve(__dirname, '..');
-const fieldsSource = fs.readFileSync(path.join(repoRoot, 'media', 'taskLauncher', 'fields.js'), 'utf-8');
+const fieldsSource = fs.readFileSync(path.join(repoRoot, 'media', 'console', 'fields.js'), 'utf-8');
 
 const failures = [];
 function check(condition, message) {

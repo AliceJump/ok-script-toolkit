@@ -4,7 +4,8 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { injectWebviewLocalization, projectLocale, tr } from './localization';
 import { i18nPoDirectorySetting, resolveProjectDir } from './projectConfig';
-import { loadToolboxState, notifyExecutorRunning, saveToolboxState } from './toolboxState';
+import { loadToolboxState, notifyExecutorRunning, onToolboxStateChange, saveToolboxState } from './toolboxState';
+import { GameConnectService } from './toolboxConnect';
 import { errorPage, getNonce } from './webviewHtml';
 
 /** 单个任务的元信息 */
@@ -265,18 +266,18 @@ const FORCE_KILL_DELAY_MS = 12000;
 const PARAMS_PUSH_DEBOUNCE_MS = 400;
 
 /**
- * 侧边栏任务启动视图。
+ * 侧边栏「ok-script 控制台」视图 —— 任务启动器 + 游戏工具箱的统一宿主。
+ *
+ * 布局（media/console/）：顶部全局状态条（游戏连接 + 执行器），下方「任务 / 游戏」
+ * 两个分段。原侧边栏工具箱视图（okScriptToolkit.toolbox）已并入这里。
  *
  * 进程模型：整个项目只维持 **一个常驻执行器进程**（python/run_executor.py）——
  * 它连接一次游戏，然后按 ok-script 框架原生的 TaskExecutor 循环轮询所有已启用的
  * 触发任务；一次性任务以入队方式交给同一个执行器跑一次。
  * 因此本类不再有「当前任务 / 单进程」语义，改为维护执行器会话与启用集合。
  */
-export class TaskLauncherViewProvider implements vscode.WebviewViewProvider {
-  public static readonly viewType = 'okScriptToolkit.taskLauncher';
-
-  /** 当前活跃实例：工具箱经此向运行中的任务转发浮层开关命令 */
-  static current: TaskLauncherViewProvider | undefined;
+export class ConsoleViewProvider implements vscode.WebviewViewProvider {
+  public static readonly viewType = 'okScriptToolkit.console';
 
   private readonly output: vscode.OutputChannel;
   private configModule = 'src.config';
@@ -306,21 +307,39 @@ export class TaskLauncherViewProvider implements vscode.WebviewViewProvider {
   private forceKillTimer: NodeJS.Timeout | undefined;
   /** 参数覆盖推送防抖定时器 */
   private paramsTimer: NodeJS.Timeout | undefined;
+  /** 工具箱状态变化订阅（webview 打开期间把游戏/浮层状态镜像给 UI） */
+  private toolboxSubscription?: vscode.Disposable;
 
   constructor(
     private readonly extensionUri: vscode.Uri,
+    private readonly gameConnect: GameConnectService,
+    /** 「打开角色技能管理面板」按钮的回调（extension 注入，避免反向依赖 characterPanel） */
+    private readonly openCharacterManager?: () => void,
   ) {
-    this.output = vscode.window.createOutputChannel(tr('ok-script Task Launcher'));
+    this.output = vscode.window.createOutputChannel(tr('ok-script Console'));
   }
 
   resolveWebviewView(view: vscode.WebviewView): void {
     this.view = view;
-    TaskLauncherViewProvider.current = this;
     view.webview.options = {
       enableScripts: true,
-      localResourceRoots: [vscode.Uri.joinPath(this.extensionUri, 'media', 'taskLauncher')],
+      localResourceRoots: [vscode.Uri.joinPath(this.extensionUri, 'media', 'console')],
     };
     view.webview.html = this.buildHtml(view.webview);
+
+    // 游戏连接/浮层状态变化 → 镜像给 webview；宿主状态行文本 → 走统一 status 通道
+    this.gameConnect.attachUi(
+      (text) => this.setStatus(text ? 'info' : 'ok', text),
+      () => this.pushGameState(),
+    );
+    this.toolboxSubscription?.dispose();
+    this.toolboxSubscription = onToolboxStateChange(() => this.pushGameState());
+    view.onDidDispose(() => {
+      this.gameConnect.detachUi();
+      this.toolboxSubscription?.dispose();
+      this.toolboxSubscription = undefined;
+      if (this.view === view) this.view = null;
+    });
 
     view.webview.onDidReceiveMessage(async (msg) => {
       switch (msg.type) {
@@ -328,6 +347,7 @@ export class TaskLauncherViewProvider implements vscode.WebviewViewProvider {
           await this.refreshTasks(view);
           // webview 重建后同步执行器状态，避免切换侧边栏再回来时状态丢失
           this.pushExecutorState(view);
+          this.pushGameState();
           break;
         case 'refresh':
           await this.refreshTasks(view);
@@ -358,6 +378,21 @@ export class TaskLauncherViewProvider implements vscode.WebviewViewProvider {
           break;
         case 'loadConfigs':
           this.loadTaskConfigs();
+          break;
+        // ── 游戏分段（原侧边栏工具箱）──
+        case 'connectGame':
+          await this.gameConnect.connect();
+          // 无论成败都通知前端解锁连接按钮（成功时按钮随状态隐藏，失败时保持可重试）
+          void view.webview.postMessage({ type: 'connectDone' });
+          break;
+        case 'disconnectGame':
+          await this.gameConnect.disconnect();
+          break;
+        case 'setOverlay':
+          this.gameConnect.setOverlay(msg.enabled === true);
+          break;
+        case 'openCharacterManager':
+          this.openCharacterManager?.();
           break;
       }
     });
@@ -553,6 +588,7 @@ export class TaskLauncherViewProvider implements vscode.WebviewViewProvider {
     this.knownTasks = tasks;
     await view.webview.postMessage({ type: 'tasks', tasks, schemas: this.schemas });
     this.pushExecutorState(view);
+    this.pushGameState();
     void view.webview.postMessage({
       type: 'status',
       level: 'ok',
@@ -618,7 +654,7 @@ export class TaskLauncherViewProvider implements vscode.WebviewViewProvider {
    * 勾选 / 取消勾选触发任务：更新持久化集合，执行器运行中则即时入列 / 出列。
    *
    * 注意这里**不会**拉起执行器 —— 勾选只是「记录我要跑哪些触发任务」的意图，
-   * 不等于「现在开始跑」。想真正启动请点工具栏的启动按钮（`startExecutor`）。
+   * 不等于「现在开始跑」。想真正启动请点状态条的启动按钮（`startExecutor`）。
    * 执行器已在运行时勾选依然即时生效。
    */
   private async setTriggerEnabled(view: vscode.WebviewView, task: TaskInfo, enabled: boolean): Promise<void> {
@@ -632,7 +668,7 @@ export class TaskLauncherViewProvider implements vscode.WebviewViewProvider {
     this.writeCommand(enabled ? `trigger_enable ${key}` : `trigger_disable ${key}`);
   }
 
-  /** 显式启动执行器（工具栏按钮）：环境不满足时会在 UI 提示 */
+  /** 显式启动执行器（状态条按钮）：环境不满足时会在 UI 提示 */
   private async startExecutor(view: vscode.WebviewView): Promise<void> {
     if (!(await this.ensureExecutor(view))) return;
     this.pushExecutorState(view);
@@ -710,7 +746,7 @@ export class TaskLauncherViewProvider implements vscode.WebviewViewProvider {
       env: childEnv,
     });
     this.executor = child;
-    // 浮层互斥：执行器进程自己持有 Win32GdiOverlay，通知工具箱停掉独立浮层宿主
+    // 浮层互斥：执行器进程自己持有 Win32GdiOverlay，通知浮层宿主停掉独立进程
     notifyExecutorRunning(true, projectDir);
     // 子进程退出瞬间向 stdin 写入会以 error 事件异步报错（EPIPE），
     // 不挂监听会变成扩展宿主未捕获异常
@@ -843,7 +879,7 @@ export class TaskLauncherViewProvider implements vscode.WebviewViewProvider {
     this.snapshot = {};
     this.stdoutRemainder = '';
     this.overlayActive = false;
-    // 浮层互斥：执行器退出后把独立浮层宿主交还给工具箱（error / close 都会走到这里，
+    // 浮层互斥：执行器退出后把独立浮层宿主交还（error / close 都会走到这里，
     // notifyExecutorRunning 内部会去重）
     notifyExecutorRunning(false, this.currentProjectDir);
     this.pushExecutorState();
@@ -884,13 +920,26 @@ export class TaskLauncherViewProvider implements vscode.WebviewViewProvider {
     });
   }
 
-  private setStatus(level: 'ok' | 'warn' | 'error', text: string): void {
+  /** 把游戏连接 / 浮层状态推给 webview（状态条第一行 + 游戏分段） */
+  private pushGameState(): void {
+    const view = this.view;
+    if (!view) return;
+    const state = loadToolboxState(this.currentProjectDir);
+    void view.webview.postMessage({
+      type: 'game',
+      game: state.game || null,
+      overlay: state.overlay === true,
+    });
+  }
+
+  private setStatus(level: 'ok' | 'warn' | 'error' | 'info', text: string): void {
     void this.view?.webview.postMessage({ type: 'status', level, text });
   }
 
   /**
-   * 工具箱浮层开关 → 运行中执行器即时生效（stdin overlay_on/off 命令）。
-   * 无运行执行器时返回 false，开关状态由工具箱直接持久化、下次启动沿用。
+   * 浮层开关 → 运行中执行器即时生效（stdin overlay_on/off 命令）。
+   * 由 GameConnectService.overlayForwarder 调用；无运行执行器时返回 false，
+   * 开关状态由服务直接持久化、下次启动沿用。
    */
   setOverlayEnabled(enabled: boolean): boolean {
     if (!this.executor) return false;
@@ -979,20 +1028,22 @@ export class TaskLauncherViewProvider implements vscode.WebviewViewProvider {
 
   /** 释放资源（output channel 由扩展生命周期统一关闭） */
   dispose(): void {
-    if (TaskLauncherViewProvider.current === this) TaskLauncherViewProvider.current = undefined;
     if (this.forceKillTimer) clearTimeout(this.forceKillTimer);
     if (this.paramsTimer) clearTimeout(this.paramsTimer);
     if (this.executor) {
       this.executor.kill();
       this.executor = null;
     }
+    this.toolboxSubscription?.dispose();
+    this.toolboxSubscription = undefined;
+    this.gameConnect.detachUi();
     this.output.dispose();
   }
 
-  /** 读取任务启动器 Webview 外壳并注入 CSP 与本地资源 URI。 */
+  /** 读取控制台 Webview 外壳并注入 CSP 与本地资源 URI。 */
   private buildHtml(webview: vscode.Webview): string {
     const nonce = getNonce();
-    const htmlPath = path.join(this.extensionUri.fsPath, 'media', 'taskLauncher', 'index.html');
+    const htmlPath = path.join(this.extensionUri.fsPath, 'media', 'console', 'index.html');
     let html = '';
     try {
       html = fs.readFileSync(htmlPath, 'utf-8');
@@ -1004,17 +1055,18 @@ export class TaskLauncherViewProvider implements vscode.WebviewViewProvider {
       );
     }
     const resource = (name: string) => webview.asWebviewUri(
-      vscode.Uri.joinPath(this.extensionUri, 'media', 'taskLauncher', name),
+      vscode.Uri.joinPath(this.extensionUri, 'media', 'console', name),
     ).toString(true);
     return injectWebviewLocalization(
       html
         .split('__CSP_NONCE__').join(nonce)
         .split('__CSP_SOURCE__').join(webview.cspSource)
-        .split('__STYLE_URI__').join(resource('taskLauncher.css'))
+        .split('__STYLE_URI__').join(resource('console.css'))
         .split('__CORE_SCRIPT_URI__').join(resource('core.js'))
         .split('__FIELDS_SCRIPT_URI__').join(resource('fields.js'))
         .split('__CONFIG_PANEL_SCRIPT_URI__').join(resource('configPanel.js'))
         .split('__TASK_CARD_SCRIPT_URI__').join(resource('taskCard.js'))
+        .split('__CONSOLE_SCRIPT_URI__').join(resource('console.js'))
         .split('__APP_SCRIPT_URI__').join(resource('app.js')),
     );
   }

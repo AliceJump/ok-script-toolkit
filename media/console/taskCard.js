@@ -11,6 +11,10 @@
     running: 'taskRunning',
   };
 
+  /** 搜索过滤 + 分组折叠（模块级：renderTasks 重渲染时保持） */
+  let searchQuery = '';
+  const collapsedGroups = new Set();
+
   function createButton(className, text, handler) {
     const button = document.createElement('button');
     button.className = className;
@@ -53,6 +57,19 @@
     return badge;
   }
 
+  /** 参数入口：badge 样式按钮，点击把该任务的参数表单搬进抽屉 */
+  function buildConfigButton(task) {
+    const key = taskKey(task);
+    const button = createButton('task-card__config', `⚙ ${t('parameters')}`, () => {
+      globalThis.TaskLauncherConsole.openDrawer(task);
+    });
+    button.dataset.role = 'config-toggle';
+    button.dataset.taskKey = key;
+    const overrides = state.taskConfigs[key]?.params;
+    if (overrides && Object.keys(overrides).length) button.classList.add('has-overrides');
+    return button;
+  }
+
   function buildTaskCard(task) {
     const key = taskKey(task);
     const schema = state.schemas[key];
@@ -93,24 +110,14 @@
 
     const actions = document.createElement('div');
     actions.className = 'task-card__actions';
+    actions.appendChild(buildConfigButton(task));
     actions.appendChild(kind === 'trigger' ? buildTriggerToggle(task) : buildLaunchButton(task));
     header.append(identity, actions);
 
+    // 参数表单仍随卡片构建（保持 DOM 契约与测试兼容），但不再就地展开 ——
+    // 点击「参数」按钮时由 console.js 把这个节点搬运进抽屉显示。
     const configPanel = buildConfigPanel(task, schema);
-    if (state.openPanels.has(key)) configPanel.classList.add('open');
-    const footer = document.createElement('footer');
-    footer.className = 'task-card__footer';
-    const configToggle = createButton(
-      'task-card__config-toggle secondary',
-      configPanel.classList.contains('open') ? `▲ ${t('collapseParameters')}` : `⚙ ${t('parameters')}`,
-      () => {
-        const open = configPanel.classList.toggle('open');
-        if (open) state.openPanels.add(key); else state.openPanels.delete(key);
-        configToggle.textContent = open ? `▲ ${t('collapseParameters')}` : `⚙ ${t('parameters')}`;
-      },
-    );
-    footer.appendChild(configToggle);
-    card.append(header, footer, configPanel);
+    card.append(header, configPanel);
     return card;
   }
 
@@ -153,8 +160,33 @@
       }
       const launch = card.querySelector('[data-role="launch"]');
       if (launch) launch.disabled = status === 'queued' || status === 'running';
+      // 参数覆盖徽标：有覆盖时高亮为「已覆盖」样式
+      const configBtn = card.querySelector('[data-role="config-toggle"]');
+      if (configBtn) {
+        const overrides = state.taskConfigs[card.dataset.taskKey]?.params;
+        configBtn.classList.toggle('has-overrides', Boolean(overrides && Object.keys(overrides).length));
+      }
     }
     updateToolbar();
+  }
+
+  /** 状态条第二行：当前任务 + 一次性队列（空闲时隐藏） */
+  function updateExecutorSub() {
+    const sub = document.getElementById('executorSub');
+    if (!sub) return;
+    const executor = state.executor;
+    const parts = [];
+    if (executor.current) {
+      const task = state.currentTasks.find((item) => taskKey(item) === executor.current);
+      const schema = state.schemas[executor.current];
+      const label = task?.displayName || schema?.displayName || executor.current;
+      parts.push(t('executorCurrent', { task: label }));
+    }
+    if (executor.onetimeQueue.length) {
+      parts.push(t('executorQueueCount', { count: executor.onetimeQueue.length }));
+    }
+    sub.hidden = !parts.length;
+    sub.textContent = parts.join(' · ');
   }
 
   function updateToolbar() {
@@ -177,6 +209,15 @@
     elements.executorState.textContent = text;
     elements.executorState.className = `executor-state is-${level}`;
 
+    // 状态条圆点与行状态（gbar 由样式按行 class 着色）
+    const execRow = document.getElementById('execDot')?.closest('.gbar__row');
+    if (execRow) {
+      execRow.classList.toggle('is-run', level === 'running' || level === 'connecting');
+      execRow.classList.toggle('is-warn', level === 'paused');
+      execRow.classList.toggle('is-ok', level === 'idle');
+    }
+    updateExecutorSub();
+
     // 显式启动：执行器起来之前才显示，起来后让位给暂停/停止
     elements.startExecutor.hidden = active;
     elements.startExecutor.disabled = active;
@@ -190,14 +231,53 @@
     elements.stopExecutor.hidden = !active;
   }
 
-  function renderTasks(tasks) {
-    state.currentTasks = tasks;
+  /** 搜索匹配：显示名 / 类名 / 模块 / 描述 */
+  function matches(task) {
+    if (!searchQuery) return true;
+    const schema = state.schemas[taskKey(task)];
+    const haystack = [
+      task.displayName,
+      schema?.displayName,
+      task.className,
+      task.module,
+      schema?.description,
+    ].filter((value) => typeof value === 'string').join('\n').toLowerCase();
+    return haystack.includes(searchQuery);
+  }
+
+  function renderGroup(containerId, headId, countId, kind, tasks) {
+    const body = document.getElementById(containerId);
+    const head = document.getElementById(headId);
+    const count = document.getElementById(countId);
+    if (!body) return;
     const fragment = document.createDocumentFragment();
     for (const task of tasks) fragment.appendChild(buildTaskCard(task));
-    elements.tasks.replaceChildren(fragment);
+    body.replaceChildren(fragment);
+    const collapsed = collapsedGroups.has(kind);
+    body.classList.toggle('is-collapsed', collapsed);
+    if (head) head.classList.toggle('is-collapsed', collapsed);
+    if (count) count.textContent = t('taskCount', { count: tasks.length });
+  }
+
+  function renderTasks(tasks) {
+    state.currentTasks = tasks;
+    const visible = tasks.filter(matches);
+    renderGroup('gTriggers', 'triggerHead', 'triggerCount', 'trigger', visible.filter((task) => taskKind(task) === 'trigger'));
+    renderGroup('gOnetime', 'onetimeHead', 'onetimeCount', 'onetime', visible.filter((task) => taskKind(task) !== 'trigger'));
     elements.empty.hidden = tasks.length > 0;
     updateRunningState();
   }
 
-  globalThis.TaskLauncherTaskCard = { renderTasks, updateRunningState };
+  function setSearch(value) {
+    searchQuery = String(value || '').trim().toLowerCase();
+    renderTasks(state.currentTasks);
+  }
+
+  function toggleGroup(kind) {
+    if (collapsedGroups.has(kind)) collapsedGroups.delete(kind);
+    else collapsedGroups.add(kind);
+    renderTasks(state.currentTasks);
+  }
+
+  globalThis.TaskLauncherTaskCard = { renderTasks, updateRunningState, setSearch, toggleGroup };
 })();
