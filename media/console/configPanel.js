@@ -127,6 +127,7 @@
     const renderedFields = new Set();
     const renderedGroups = new Set();
     const inlineRules = {};
+    const groupEntries = [];  // 空组隐藏：记录每个组的 DOM（applyVisibility 统一计算）
 
     // 分组优先、显隐其次：同一个 key 不能既是折叠分组又带显隐 —— 折叠有权「吸收」显隐。
     //
@@ -183,6 +184,24 @@
       for (const [key, rows] of Object.entries(rowsByKey)) {
         for (const row of rows) row.hidden = !visible(key);
       }
+      // 空组隐藏（后序：先算子组再算父组）——body 里没有可见行、也没有可见子组的
+      // 分组整组隐藏；组头自带开关（headerField）的组不隐藏（开关本身有实际含义）。
+      const updateGroup = groupEl => {
+        for (const child of groupEl.querySelectorAll(':scope > .config-group')) updateGroup(child);
+        const bodyEl = groupEl.querySelector(':scope > .config-group__body');
+        if (!bodyEl) return;
+        let hasVisible = false;
+        for (const row of bodyEl.querySelectorAll(':scope > .config-field')) {
+          if (!row.hidden) { hasVisible = true; break; }
+        }
+        if (!hasVisible) {
+          for (const child of bodyEl.querySelectorAll(':scope > .config-group')) {
+            if (!child.hidden) { hasVisible = true; break; }
+          }
+        }
+        groupEl.hidden = !hasVisible;
+      };
+      for (const entry of groupEntries) updateGroup(entry.el);
     };
 
     const notifyChange = () => {
@@ -234,6 +253,7 @@
       header.appendChild(toggle);
       group.append(header, body);
       container.appendChild(group);
+      groupEntries.push({ el: group, body });
 
       if (headerField && inlineRules[headerField]) {
         const checking = new Set(options.checking || []); checking.add(headerField);

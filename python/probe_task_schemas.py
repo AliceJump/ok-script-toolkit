@@ -367,7 +367,7 @@ def collect_project_store_groups(catalog, broken):
     return groups
 
 
-def collect_multi_account(project_dir):
+def collect_multi_account(project_dir, tasks, broken):
     """探测多账户存储，返回只读概要与「打开数据位置」的路径。
 
     存储位置与执行器一致：沙箱（.vscode/ok-script-toolkit/configs/）优先——
@@ -389,6 +389,43 @@ def collect_multi_account(project_dir):
             break
         except Exception:  # noqa: BLE001 — 逐候选尝试
             info["hasStoreModule"] = False
+    enabled_tasks = {}
+    rules_module = None
+    for name in ("src.tasks.account.account_config_schema", "src.tasks.account_config_schema"):
+        try:
+            rules_module = importlib.import_module(name)
+            break
+        except Exception:  # noqa: BLE001 — 项目没有账号配置规则模块是常态
+            continue
+    if rules_module is not None:
+        for task_key, cls_name, task_kind, task in tasks:
+            if not getattr(task, "support_multi_account", False):
+                continue
+            try:
+                blacklist, whitelist = rules_module.account_config_rules(task)
+                default_config = dict(getattr(task, "default_config", {}) or {})
+                config_types = dict(getattr(task, "config_type", {}) or {})
+                keys = []
+                for key, default_value in default_config.items():
+                    if str(key).startswith("_") or key in blacklist:
+                        continue
+                    if not isinstance(default_value, (bool, int, float, str, list)):
+                        continue
+                    type_meta = config_types.get(key)
+                    if isinstance(type_meta, dict) and (
+                        type_meta.get("type") in ("global", "button")
+                        or ("type" not in type_meta and ("buttons" in type_meta or "callback" in type_meta))
+                    ):
+                        continue
+                    keys.append(str(key))
+                if keys:
+                    enabled_tasks[task_key] = {
+                        "storageName": str(getattr(task, "account_override_name", cls_name)),
+                        "keys": keys,
+                    }
+            except Exception as e:  # noqa: BLE001
+                broken.append({"task": f"<multi-account:{task_key}>", "error": f"{type(e).__name__}: {e}"})
+    info["enabledTasks"] = enabled_tasks
     data_path = sandbox_path if os.path.isfile(sandbox_path) else project_path
     try:
         with open(data_path, encoding="utf-8") as fp:
@@ -539,7 +576,7 @@ def main():
 
         global_groups = collect_global_config_groups(ok, catalog, broken)
         global_groups.extend(collect_project_store_groups(catalog, broken))
-        multi_account = collect_multi_account(project_dir)
+        multi_account = collect_multi_account(project_dir, tasks, broken)
 
         result = json.dumps({
             "ok": True,

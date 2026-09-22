@@ -272,11 +272,20 @@
     return value;
   }
 
-  /** 可编辑的任务清单：schema 就绪且有字段的任务（按 displayName 排序） */
+  /**
+   * 可编辑的任务清单：仅列出「可进多账户」的任务（probe 按项目自己的
+   * account_config_rules 算出每个任务的可编辑键集），并附 storageName/键集。
+   */
   function editableTasks() {
+    const enabled = state.multiAccount?.enabledTasks || {};
     return Object.entries(state.schemas)
-      .filter(([, schema]) => !schema.broken && schema.fields?.length)
-      .map(([key, schema]) => ({ key, className: key.split('::')[1] || key, name: schema.displayName || key }))
+      .filter(([key, schema]) => !schema.broken && schema.fields?.length && enabled[key]?.keys?.length)
+      .map(([key, schema]) => ({
+        key,
+        className: enabled[key].storageName || key.split('::')[1] || key,
+        name: schema.displayName || key,
+        keys: enabled[key].keys,
+      }))
       .sort((a, b) => a.name.localeCompare(b.name, 'zh'));
   }
 
@@ -341,7 +350,11 @@
     const formHost = document.createElement('div');
     formHost.className = 'account-override-form';
     const rebuildForm = () => {
-      const taskClassName = accountSelection.taskKey.split('::')[1] || '';
+      const taskInfo = editableTasks().find(t => t.key === accountSelection.taskKey);
+      const taskClassName = taskInfo
+        ? taskInfo.className
+        : (accountSelection.taskKey.split('::')[1] || '');
+      const allowedKeys = new Set(taskInfo ? taskInfo.keys : []);
       const override = accountOverrideFor(
         store, accountSelection.account, taskClassName, state.schemas[accountSelection.taskKey]?.fields,
       );
@@ -350,10 +363,13 @@
       const fakeKey = taskKey(fakeTask);
       state.taskConfigs[fakeKey] = { params: { ...override } };
       const fakeSchema = {
-        fields: (schema?.fields || []).map(f => ({
-          ...f,
-          value: (f.key in override) ? override[f.key] : (f.default !== undefined ? f.default : f.value),
-        })),
+        // 只保留「可进多账户」的配置键（probe 按项目 account_config_rules 算出）
+        fields: (schema?.fields || [])
+          .filter(f => allowedKeys.has(f.key))
+          .map(f => ({
+            ...f,
+            value: (f.key in override) ? override[f.key] : (f.default !== undefined ? f.default : f.value),
+          })),
         configGroups: schema?.configGroups || {},
         groupLabels: schema?.groupLabels || {},
         groupSelector: schema?.groupSelector || '',
