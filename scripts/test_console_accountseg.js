@@ -1,10 +1,11 @@
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 let jsdom;
 try {
   jsdom = require('jsdom');
 } catch {
-  const jsdomRoot = process.env.OK_LANG_HINTS_JSDOM_ROOT || path.join(process.env.TEMP, 'ok-script-toolkit-jsdom');
+  const jsdomRoot = process.env.OK_LANG_HINTS_JSDOM_ROOT || path.join(os.tmpdir(), 'ok-script-toolkit-jsdom');
   jsdom = require(path.join(jsdomRoot, 'node_modules', 'jsdom'));
 }
 const { JSDOM, VirtualConsole } = jsdom;
@@ -72,7 +73,7 @@ const schemas = {
 const globalGroups = [
   {
     name: 'Game Hotkey Config', displayName: 'Game Hotkey Config', source: 'framework',
-    fields: [{ key: '键位A', displayKey: '键位A', default: 'q', value: 'q', type: null, desc: '' }],
+    fields: [{ key: '键位A', displayKey: '键位A', default: false, value: false, type: null, desc: '' }],
   },
 ];
 const multiAccount = {
@@ -85,7 +86,7 @@ const multiAccount = {
 const store = {
   accountListText: '1111\n2222',
   registry: { acc_1: { username: '1111' }, acc_2: { username: '2222' } },
-  accounts: {},
+  accounts: { acc_1: { 'Game Hotkey Config': { '键位A': 'true' } } },
   mapContents: { acc_1: 'some content' },
 };
 
@@ -100,6 +101,19 @@ if (errors.length) {
 }
 assert(cards.length === 3, `应渲染 3 张卡（账号列表/覆盖/地图），实际 ${cards.length}`);
 
+console.log('1a. 覆盖卡头支持键盘折叠并同步 aria-expanded');
+const initialCardHead = document.querySelector('#accountList .gconfig-card__head--toggle');
+const initialCardBody = initialCardHead.nextElementSibling;
+assert(initialCardHead.getAttribute('aria-expanded') === 'true', '初始展开时 aria-expanded=true');
+const spaceEvent = new window.KeyboardEvent('keydown', { key: ' ', bubbles: true, cancelable: true });
+initialCardHead.dispatchEvent(spaceEvent);
+assert(initialCardBody.hidden === true && initialCardHead.getAttribute('aria-expanded') === 'false',
+  'Space 收起卡片并同步 aria-expanded=false');
+assert(spaceEvent.defaultPrevented, 'Space 激活时阻止默认滚动');
+initialCardHead.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+assert(initialCardBody.hidden === false && initialCardHead.getAttribute('aria-expanded') === 'true',
+  'Enter 重新展开卡片并同步 aria-expanded=true');
+
 console.log('2. 覆盖对象下拉有任务/全局组两个 optgroup');
 const optgroups = document.querySelectorAll('#accountList optgroup');
 assert(optgroups.length === 2, `应有 2 个 optgroup，实际 ${optgroups.length}`);
@@ -113,12 +127,25 @@ targetSelect.value = 'global:Game Hotkey Config';
 targetSelect.dispatchEvent(new window.Event('change', { bubbles: true }));
 const panel = document.querySelector('#accountList .account-override-form .config-panel');
 assert(panel, '全局组表单渲染');
+const globalCheckbox = panel.querySelector('input[type="checkbox"]');
+assert(globalCheckbox?.checked === true, '全局组账号覆盖按 field 类型将字符串 true 矫正为布尔值');
 if (errors.length) { console.log('RUNTIME ERRORS:', errors.slice(0, 3)); process.exit(1); }
 
 console.log('4. 地图卡存在且有 content');
 const mapCard = document.querySelectorAll('#accountList .gconfig-card')[2];
 const ta = mapCard.querySelector('textarea');
 assert(ta && ta.value === 'some content', '地图卡 textarea 显示 content');
+const mapAccountSelect = mapCard.querySelector('select');
+const mapAccountLabel = mapCard.querySelector('label');
+assert(mapAccountSelect && (mapAccountSelect.compareDocumentPosition(ta) & window.Node.DOCUMENT_POSITION_FOLLOWING),
+  '地图卡账号选择框位于 textarea 之前');
+assert(mapAccountLabel?.control === mapAccountSelect, '地图卡账号选择框有关联标签');
+mapAccountSelect.value = '2222';
+mapAccountSelect.dispatchEvent(new window.Event('change', { bubbles: true }));
+assert(ta.value === '', '切换账号后地图 content 同步刷新');
+mapAccountSelect.value = '1111';
+mapAccountSelect.dispatchEvent(new window.Event('change', { bubbles: true }));
+assert(ta.value === 'some content', '切回账号后恢复对应 content');
 
 console.log('5. 「启动设置」标题可折叠（收起字段区，再点恢复）');
 const overridePanel = document.querySelector('#accountList .account-override-form .config-panel');
@@ -172,5 +199,15 @@ triggerHead.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
 const gMsg = sent.filter(m => m.type === 'saveUiState').pop();
 assert(gMsg && gMsg.key === 'taskGroupCollapsed::trigger' && gMsg.value === true,
   `任务分组折叠落盘（got ${JSON.stringify(gMsg)}）`);
+
+console.log('9. 有 store 模块但无数据文件时显示空编辑器');
+send({
+  type: 'tasks', tasks: [], schemas, globalGroups,
+  multiAccount: { ...multiAccount, available: false },
+});
+send({ type: 'accountStore', data: { accountListText: '', registry: {}, accounts: {}, mapContents: {} } });
+const emptyStoreCards = document.querySelectorAll('#accountList .gconfig-card');
+assert(emptyStoreCards.length === 3, '无数据文件但有 store 模块时仍显示三张编辑卡');
+assert(emptyStoreCards[0].querySelector('textarea'), '空 store 仍可编辑账号列表');
 
 console.log('\n全部通过');

@@ -384,18 +384,24 @@ def collect_multi_account(project_dir, tasks, broken, global_groups):
         project_dir, ".vscode", "ok-script-toolkit", "configs", "account_scoped_overrides.json"
     )
     project_path = os.path.join(project_dir, "configs", "account_scoped_overrides.json")
-    if not os.path.isfile(sandbox_path) and not os.path.isfile(project_path):
-        return {"available": False}
-    info = {"available": True, "storePath": sandbox_path}
-    store_data = {}
     # store 模块可 import 性：区分「项目不支持账号编辑」与「读取失败（环境问题）」
+    has_store_module = False
     for name in ("src.tasks.account.account_scope_store", "src.tasks.account_scope_store"):
         try:
             importlib.import_module(name)
-            info["hasStoreModule"] = True
+            has_store_module = True
             break
         except Exception:  # noqa: BLE001 — 逐候选尝试
-            info["hasStoreModule"] = False
+            continue
+    has_data_file = os.path.isfile(sandbox_path) or os.path.isfile(project_path)
+    info = {
+        "available": has_data_file,
+        "storePath": sandbox_path,
+        "hasStoreModule": has_store_module,
+    }
+    if not has_data_file:
+        return info
+    store_data = {}
     enabled_tasks = {}
     rules_module = None
     for name in ("src.tasks.account.account_config_schema", "src.tasks.account_config_schema"):

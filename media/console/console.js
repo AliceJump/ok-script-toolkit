@@ -145,7 +145,7 @@
     const host = $('accountList');
     if (!host) return;
     host.replaceChildren();
-    if (!info || info.available !== true) {
+    if (!info || (info.available !== true && info.hasStoreModule !== true)) {
       const empty = document.createElement('div');
       empty.className = 'config-empty';
       empty.textContent = t('accountNotAvailable');
@@ -320,6 +320,7 @@
     const applyCardOpen = open => {
       chev.textContent = open ? '▾' : '▸';
       body.hidden = !open;
+      head.setAttribute('aria-expanded', String(open));
     };
     const setCardOpen = (open, persist = true) => {
       applyCardOpen(open);
@@ -328,6 +329,12 @@
     applyCardOpen(uiState.get(cardKey, false) !== true);
     head.addEventListener('click', e => {
       if (e.target.closest('button, select, input, textarea')) return;
+      setCardOpen(body.hidden);
+    });
+    head.addEventListener('keydown', e => {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      if (e.target.closest('button, select, input, textarea')) return;
+      e.preventDefault();
       setCardOpen(body.hidden);
     });
 
@@ -419,7 +426,7 @@
         // 全局配置组的按账号覆盖（如滑索/键位）：fields 来自 probe 的 globalConfigGroups
         const groupName = target.slice('global:'.length);
         const group = (state.globalGroups || []).find(g => g.name === groupName);
-        const override = accountOverrideFor(store, accountSelection.account, groupName);
+        const override = accountOverrideFor(store, accountSelection.account, groupName, group?.fields);
         const fakeTask = { module: `__account__::${accountSelection.account}`, className: groupName };
         const fakeKey = taskKey(fakeTask);
         state.taskConfigs[fakeKey] = { params: { ...override } };
@@ -739,6 +746,21 @@
       textarea.disabled = true;
       setTimeout(() => { textarea.disabled = false; }, 600);
     });
+    const selectRow = document.createElement('div');
+    selectRow.className = 'row';
+    const selectLabel = document.createElement('label');
+    selectLabel.className = 'label';
+    selectLabel.htmlFor = 'account-map-account-select';
+    const selectLabelText = document.createElement('span');
+    selectLabelText.className = 'k';
+    selectLabelText.textContent = t('accountLabel');
+    selectLabel.appendChild(selectLabelText);
+    accountSelect.id = 'account-map-account-select';
+    const selectWrap = document.createElement('div');
+    selectWrap.className = 'config-field';
+    selectWrap.appendChild(accountSelect);
+    selectRow.append(selectLabel, selectWrap);
+    body.appendChild(selectRow);
     const wrap = document.createElement('div');
     wrap.className = 'config-field';
     textarea.style.minHeight = '0';

@@ -11,13 +11,15 @@
 """
 import os
 import sys
+import tempfile
+from unittest.mock import patch
 
 # 测试放在 tests/ 子目录，被测脚本在上一级 python/。加 .. 而不是 .，
 # 这样测试文件不会被随插件发布的 `python/*.py` 通配打包收进去。
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.stdout.reconfigure(encoding="utf-8")
 
-from probe_task_schemas import find_pure_group_labels  # noqa: E402
+from probe_task_schemas import collect_multi_account, find_pure_group_labels  # noqa: E402
 
 failures = []
 
@@ -95,6 +97,26 @@ print("\n[5] 假值也算「有值」")
 falsy = {"开关": False, "文本": "", "数字": 0}
 pure = find_pure_group_labels({"开关": [], "文本": [], "数字": []}, falsy, {})
 check(pure == set(), f"False/空串/0 都算有值，实际={sorted(pure)}")
+
+# 6) 无存储文件时仍应独立探测 store 模块，便于前端展示可初始化的空编辑器。
+print("\n[6] 无数据文件时的 store 能力探测")
+
+
+def fake_import(name):
+    if name == "src.tasks.account.account_scope_store":
+        return object()
+    raise ImportError(name)
+
+
+with tempfile.TemporaryDirectory() as project_dir:
+    with patch("probe_task_schemas.importlib.import_module", side_effect=fake_import):
+        multi_account = collect_multi_account(project_dir, [], [], [])
+    check(multi_account["available"] is False, "无数据文件时 available=false")
+    check(multi_account["hasStoreModule"] is True, "无数据文件仍报告 hasStoreModule=true")
+    expected_store_path = os.path.join(
+        project_dir, ".vscode", "ok-script-toolkit", "configs", "account_scoped_overrides.json"
+    )
+    check(multi_account["storePath"] == expected_store_path, "无数据文件仍返回沙箱存储路径")
 
 print()
 if failures:

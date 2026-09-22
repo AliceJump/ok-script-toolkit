@@ -755,7 +755,8 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
 
   /** 全局组单键写入（配置分段表单「修改即保存」）+ 运行中 gparams 推送 */
   private setGlobalValue(group: string, key: string, value: unknown): void {
-    if (!group || !key) return;
+    const groupSchema = this.globalGroups.find((item) => item.name === group);
+    if (!groupSchema || !groupSchema.fields.some((field) => field.key === key)) return;
     const snap = { ...(this.globalSnapshots[group] || {}), [key]: value };
     this.globalSnapshots = { ...this.globalSnapshots, [group]: snap };
     if (!this.saveStore()) return;
@@ -1072,8 +1073,6 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
 
     // 后台全量 import 采集 schema（失败不影响任务列表，仅提示）
     void this.probeSchemasInBackground(view, projectDir, pythonPath, locale, generation);
-    // 多账户存储数据（有存储文件的项目才拿得到；无则前端显示空态说明）
-    this.runAccountStore(['get']);
   }
 
   /** 后台采集任务参数 schema：全量 import 项目任务，成功则缓存并回推给 UI */
@@ -1110,6 +1109,7 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
       ...(probe.projectGlobalGroups || []),
     ];
     this.multiAccount = probe.multiAccount || { available: false };
+    if (this.multiAccount.hasStoreModule === true) this.runAccountStore(['get']);
     this.saveSchemaCache(projectDir, locale, probe.schemas, this.globalGroups, this.multiAccount);
     const brokenCount = Object.values(probe.schemas).filter((s) => s.broken).length;
     // 配置接管：物化快照（首建继承项目值 / 新键补出厂值 / 孤儿键保留），落盘并回推
