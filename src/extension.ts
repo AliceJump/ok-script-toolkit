@@ -40,7 +40,10 @@ export function activate(context: vscode.ExtensionContext): void {
   const folder = vscode.workspace.workspaceFolders?.[0];
   // 模板目录名可配，但 `pngCrop` **刻意不自己读配置**（它被纯 Node 沙箱测试直接 require，
   // 见 `setTemplatesDirName` 的注释），由宿主注入；配置变更时在下面重新注入一次。
-  setTemplatesDirName(templatesDirectory(folder?.uri.fsPath));
+  // 记住当前值：配置变更时只有它**真的变了**才需要清缩略图目录（见下面 onDidChangeConfiguration）。
+  const currentTemplatesDir = templatesDirectory(folder?.uri.fsPath);
+  let templatesDir = currentTemplatesDir;
+  setTemplatesDirName(currentTemplatesDir);
   const data = new LangData(folder);
   const features = new FeatureData(folder);
   const effects = new EffectData(folder);
@@ -133,10 +136,17 @@ export function activate(context: vscode.ExtensionContext): void {
           clearSourceThumbs(thumbDir, src);
           cacheInvalidated = true;
         }
-      } else {
-        // 无变更信息时（如手动触发），清全部
+      } else if (changedUris === undefined) {
+        // 未带变更信息（手动触发等）→ 无法做选择性失效，只能清全部
         clearCropCache();
         clearThumbDir(thumbDir);
+        cacheInvalidated = true;
+      } else {
+        // changedUris 是**空数组**：数据要重载，但缩略图一个都不用动。
+        // 缓存键 = 内容 hash + bbox + 目标高度 —— 数据变了自然落新文件，
+        // 不删也绝不会复用旧图；删了只会把预热成果全部丢掉。
+        // ⚠️ 2026-09-22 实测：激活时的无参调用走到这里，导致每次启动都把
+        // 磁盘缩略图清空再全量重建。要"连数据带缓存一起重置"请显式传 undefined。
         cacheInvalidated = true;
       }
       if (cacheInvalidated) {
@@ -275,7 +285,10 @@ export function activate(context: vscode.ExtensionContext): void {
   // 探到的真实路径要等到下次文件变动才生效，而"配置生效不了"是静默的。
   void refreshCocoFeaturePath(folder?.uri.fsPath).then(() => {
     recreateWatcher();
-    refreshFeatures();
+    // 空数组 =「重载数据 + 预热，但**不清**缩略图」—— 探到真实路径 ≠ 数据变了。
+    // 此前这里是无参调用，会命中上面的「清全部」分支：每次启动都把磁盘缩略图
+    // 删光再全量重切（实测 156 张原图 ≈ 8s），这就是"重开 VS Code 缓存就没了"的元凶。
+    refreshFeatures([]);
   });
   context.subscriptions.push({
     dispose: () => {
@@ -414,13 +427,19 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration('okScriptToolkit')) {
         // 模板目录名可能变了，先重新注入 —— 下面 clearThumbDir/prewarm 都会用到它
-        setTemplatesDirName(templatesDirectory(folder?.uri.fsPath));
+        const nextTemplatesDir = templatesDirectory(folder?.uri.fsPath);
+        setTemplatesDirName(nextTemplatesDir);
         recreateWatcher();
         data.refresh(true);
         features.refresh(true);
         effects.refresh(true);
-        clearCropCache();
-        clearThumbDir(thumbDir);
+        // 只有模板目录名**真的变了**才清缩略图目录：来源子目录跟着目录名走，
+        // 名字没变时旧缩略图依然按内容 hash 命中，删了只会白切一遍。
+        if (nextTemplatesDir !== templatesDir) {
+          templatesDir = nextTemplatesDir;
+          clearCropCache();
+          clearThumbDir(thumbDir);
+        }
         prewarm();
         inlay.fire();
         jsonInlay.fire();
