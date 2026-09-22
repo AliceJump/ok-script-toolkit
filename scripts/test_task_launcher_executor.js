@@ -10,7 +10,7 @@ try {
 const { JSDOM, VirtualConsole } = jsdom;
 
 const root = path.resolve(__dirname, '..');
-const componentRoot = path.join(root, 'media', 'taskLauncher');
+const componentRoot = path.join(root, 'media', 'console');
 let html = fs.readFileSync(path.join(componentRoot, 'index.html'), 'utf8');
 
 const dictionary = {
@@ -32,12 +32,13 @@ html = html
   .replaceAll('__CSP_NONCE__', 'test')
   .replaceAll('__CSP_SOURCE__', "'self'")
   .replaceAll('__I18N_JSON__', JSON.stringify(dictionary))
-  .replace('<link rel="stylesheet" href="__STYLE_URI__">', `<style>${fs.readFileSync(path.join(componentRoot, 'taskLauncher.css'), 'utf8')}</style>`);
+  .replace('<link rel="stylesheet" href="__STYLE_URI__">', `<style>${fs.readFileSync(path.join(componentRoot, 'console.css'), 'utf8')}</style>`);
 for (const [marker, file] of [
   ['__CORE_SCRIPT_URI__', 'core.js'],
   ['__FIELDS_SCRIPT_URI__', 'fields.js'],
   ['__CONFIG_PANEL_SCRIPT_URI__', 'configPanel.js'],
   ['__TASK_CARD_SCRIPT_URI__', 'taskCard.js'],
+  ['__CONSOLE_SCRIPT_URI__', 'console.js'],
   ['__APP_SCRIPT_URI__', 'app.js'],
 ]) {
   html = html.replace(`<script src="${marker}"></script>`, `<script>${fs.readFileSync(path.join(componentRoot, file), 'utf8')}</script>`);

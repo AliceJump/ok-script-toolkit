@@ -27,8 +27,9 @@ src/                         VS Code 扩展宿主 TypeScript 源码（30 个模�
 	effectData.ts              效果 ID 映射（解析 effects.py）
 	characterData.ts           角色/技能数据读写（含同步技能保护）
 	characterPanel.ts          角色技能管理面板宿主侧
+	consolePanel.ts            ok-script 控制台宿主侧（任务 + 游戏统一视图；schema 探测、常驻执行器、参数通道）
+	toolboxConnect.ts          游戏连接 + 调试浮层共享宿主（connect_game.py / overlay_host.py、浮层互斥）
 	providers.ts               补全 / hover / inlay 提供器
-	taskLauncher.ts            任务启动器宿主侧（schema 探测、常驻执行器、参数通道）
 	templateAssetData.ts       模板素材数据（读写 <模板目录>/coco_annotations.json）
 	templateAssetPanel.ts      模板素材面板宿主侧（含「保存到 assets」导出流程）
 	saveToAssetsPure.ts        导出流程的纯逻辑（目标列表 + 枚举路径要不要问）
@@ -51,7 +52,7 @@ media/                        每个外置 Webview 的 HTML/CSS/JS（宿主经 C
 	tempScreenshots/           临时截图侧边栏
 	templateAssetPanel/        模板素材管理
 	templatePanel/             模板面板
-	taskLauncher/              任务启动器
+	console/                   ok-script 控制台（任务 + 游戏）
 	characterManager/          角色技能管理
 python/                       随扩展发布的辅助脚本：任务发现、探测与执行（parse_config_tasks.py、probe_task_schemas.py、run_executor.py），以及模板素材面板的游戏窗口截图与配置探测（capture_game_window.py、probe_window_config.py）
 	python/tests/              开发期 Python 回归测试（test_probe_pure_group_labels.py、test_run_executor_sandbox.py）；按 AGENT.md 打包规范不进 VSIX / JetBrains JAR

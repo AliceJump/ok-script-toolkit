@@ -110,17 +110,10 @@
       "okTools": [
         {
           "type": "webview",
-          "id": "okScriptToolkit.toolbox",
-          "name": "%view.toolbox%",
-          "title": "%view.toolbox.title%",
-          "icon": "media/icons/toolbox.svg"
-        },
-        {
-          "type": "webview",
-          "id": "okScriptToolkit.taskLauncher",
-          "name": "%view.taskLauncher%",
-          "title": "%view.taskLauncher.title%",
-          "icon": "media/icons/task.svg",
+          "id": "okScriptToolkit.console",
+          "name": "%view.console%",
+          "title": "%view.console.title%",
+          "icon": "media/icons/toolbox.svg",
           "webviewOptions": {
             "retainContextWhenHidden": true
           }
