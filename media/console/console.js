@@ -156,6 +156,15 @@
     // 卡 2：账号 × 任务覆盖编辑器。store 缺失 = account_store.py 读取失败（项目无
     // account_scope_store / venv 缺 ok）——显示具体原因（输出频道有完整细节），绝不显示
     // 可编辑空卡（否则保存必然失败，制造「保存后被重置」的假象）。
+    // schemas 未就绪 = probe 还在采集（任务/键筛选数据来自 probe）——显示加载态，
+    // 不能显示「未检测到」（probe 完成前无法判定）。
+    if (store && !Object.keys(state.schemas || {}).length) {
+      const loading = document.createElement('div');
+      loading.className = 'config-empty';
+      loading.textContent = t('accountLoading');
+      host.appendChild(loading);
+      return;
+    }
     if (store) {
       host.appendChild(buildAccountListCard(info, store));
       host.appendChild(buildAccountOverrideCard(info, store));

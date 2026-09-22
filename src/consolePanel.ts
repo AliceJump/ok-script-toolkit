@@ -129,9 +129,12 @@ interface MultiAccountInfo {
   available: boolean;
   storePath?: string;
   readable?: boolean;
+  hasStoreModule?: boolean;
   accountCount?: number;
   overrideAccounts?: number;
   overriddenTasks?: string[];
+  /** 可进多账户的任务：taskKey -> {storageName, keys}（键筛选数据源） */
+  enabledTasks?: Record<string, { storageName: string; keys: string[] }>;
 }
 
 /** 多账户存储数据（python/account_store.py get 的结果，编辑器数据源） */
@@ -901,10 +904,14 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
         const raw = JSON.parse(fs.readFileSync(p, 'utf-8')) as SchemaProbeResult & { projectDir?: string; locale?: string };
         const cachedLocale = raw.locale || Object.values(raw.schemas || {})[0]?.locale;
         if (raw.projectDir !== projectDir || cachedLocale !== locale) return empty;
+        // 缓存版本化：旧格式缓存没有 enabledTasks（账号编辑器键集）——作废重探，
+        // 否则账号编辑器永远拿不到任务/键筛选数据
+        const cachedMulti = raw.multiAccount;
+        if (cachedMulti && cachedMulti.available === true && cachedMulti.enabledTasks === undefined) return empty;
         return {
           schemas: raw.schemas || {},
           globalGroups: raw.globalConfigGroups || [],
-          multiAccount: raw.multiAccount || empty.multiAccount,
+          multiAccount: cachedMulti || empty.multiAccount,
         };
       }
     } catch { /* 忽略损坏的缓存 */ }
