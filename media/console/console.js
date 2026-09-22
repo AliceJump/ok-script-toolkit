@@ -328,12 +328,21 @@
 
     const accounts = (store.accountListText || '').split('\n').map(line => line.trim()).filter(Boolean);
     const taskEntries = editableTasks();
-    const groupEntries = (state.globalGroups || []).map(g => ({
-      value: `global:${g.name}`,
-      label: g.displayName || g.name,
-      fields: g.fields || [],
-      storageName: g.name,
-    }));
+    // 全局组条目只列 enabledTasks 里标 global 的（probe 按项目 Proxy 声明/存储证据判定）——
+    // 不是全部全局组（ok-end-field 只有键位/滑索两个组支持账号覆盖）
+    const enabledGlobals = new Set(
+      Object.entries(state.multiAccount?.enabledTasks || {})
+        .filter(([, v]) => v && v.global === true)
+        .map(([k]) => k),
+    );
+    const groupEntries = (state.globalGroups || [])
+      .filter(g => enabledGlobals.has(g.name))
+      .map(g => ({
+        value: `global:${g.name}`,
+        label: g.displayName || g.name,
+        fields: g.fields || [],
+        storageName: g.name,
+      }));
     if (!accounts.length || (!taskEntries.length && !groupEntries.length)) {
       const empty = document.createElement('div');
       empty.className = 'config-empty';

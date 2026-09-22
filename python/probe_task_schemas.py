@@ -367,6 +367,12 @@ def collect_project_store_groups(catalog, broken):
     return groups
 
 
+# 已知支持多账户覆盖的全局组（以项目 GUI 的 Proxy 声明为准；扩展时在此追加）。
+# ok-end-field：GlobalKeyConfigProxy（键位配置）+ GlobalZipLineConfigProxy（滑索）。
+# 其他全局组没有账号覆盖的运行时消费方，列出来只会误导。
+KNOWN_MULTI_ACCOUNT_GLOBAL_GROUPS = {"Game Hotkey Config", "Zip Line Config"}
+
+
 def collect_multi_account(project_dir, tasks, broken, global_groups):
     """探测多账户存储，返回只读概要与「打开数据位置」的路径。
 
@@ -463,15 +469,17 @@ def collect_multi_account(project_dir, tasks, broken, global_groups):
         info["readable"] = False
 
     # 全局配置组的按账号覆盖（ok-end-field 滑索/键位 Proxy 模式：组覆盖存在
-    # accounts[acc_id][组名]）——存储里出现过该组名的覆盖数据才收录（项目 GUI
-    # 是覆盖创建入口，probe 不凭空猜测没出现过的组）
+    # accounts[acc_id][组名]）——收录条件：组名在已知 Proxy 列表 或 存储里出现过
+    # 该组名的覆盖数据（项目 GUI 是覆盖创建入口，probe 不凭空猜测没出现过的组）
     stored_names = set()
     for account_tasks in (store_data or {}).get("accounts", {}).values():
         if isinstance(account_tasks, dict):
             stored_names |= set(account_tasks.keys())
     for group in global_groups or []:
         gname = str(group.get("name", ""))
-        if not gname or gname in enabled_tasks or gname not in stored_names:
+        if not gname or gname in enabled_tasks:
+            continue
+        if gname not in KNOWN_MULTI_ACCOUNT_GLOBAL_GROUPS and gname not in stored_names:
             continue
         gkeys = [str(f.get("key", "")) for f in group.get("fields", []) if f.get("key")]
         if gkeys:

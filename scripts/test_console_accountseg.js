@@ -77,7 +77,10 @@ const globalGroups = [
 ];
 const multiAccount = {
   available: true, storePath: 'x', hasStoreModule: true,
-  enabledTasks: { [TASK_A]: { storageName: 'DailyTask', keys: ['开关'] } },
+  enabledTasks: {
+    [TASK_A]: { storageName: 'DailyTask', keys: ['开关'] },
+    'Game Hotkey Config': { storageName: 'Game Hotkey Config', keys: ['键位A'], global: true },
+  },
 };
 const store = {
   accountListText: '1111\n2222',
