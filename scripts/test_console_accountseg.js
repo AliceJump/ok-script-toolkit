@@ -135,4 +135,33 @@ const css = fs.readFileSync(path.join(componentRoot, 'console.css'), 'utf8');
 assert(/\[hidden\]\s*\{[^}]*display:\s*none\s*!important/.test(css),
   'console.css 必须包含 [hidden] { display: none !important }（否则 .config-fields 的 grid 会顶掉 hidden）');
 
+console.log('7. 折叠状态持久化：点击折叠发出 saveUiState，注入 uiState 后初始即收起');
+sent.length = 0;
+titleEl.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+const uiMsg = sent.filter(m => m.type === 'saveUiState').pop();
+assert(uiMsg && uiMsg.key.startsWith('sectionCollapsed::') && uiMsg.value === true,
+  `section 折叠落盘（got ${JSON.stringify(uiMsg)}）`);
+// 覆盖卡折叠也落盘
+const cardHead = document.querySelector('#accountList .gconfig-card__head--toggle');
+cardHead.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+const uiMsg2 = sent.filter(m => m.type === 'saveUiState').pop();
+assert(uiMsg2 && uiMsg2.key === 'cardCollapsed::accountOverride' && uiMsg2.value === true,
+  `覆盖卡折叠落盘（got ${JSON.stringify(uiMsg2)}）`);
+// 重发 taskConfigs 带 uiState：section 与卡片都应初始收起
+// （账号表单的 section key 是伪 task 维度：__account__::<账号>::<storageName>）
+// 当前 target 是第 3 步选中的全局组，section key 与之对应
+send({
+  type: 'taskConfigs', configs: {},
+  uiState: {
+    'sectionCollapsed::__account__::1111::Game Hotkey Config': true,
+    'cardCollapsed::accountOverride': true,
+  },
+});
+send({ type: 'accountStore', data: store });
+const panel2 = document.querySelector('#accountList .account-override-form .config-panel');
+const fieldHost2 = panel2.querySelector(':scope > .config-fields');
+assert(fieldHost2.hidden === true, '复用 uiState：启动设置区初始收起');
+const cardBody2 = document.querySelectorAll('#accountList .gconfig-card')[1].querySelector(':scope > .gconfig-card__body');
+assert(cardBody2.hidden === true, '复用 uiState：覆盖卡初始收起');
+
 console.log('\n全部通过');

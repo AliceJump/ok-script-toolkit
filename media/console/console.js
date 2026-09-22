@@ -9,7 +9,7 @@
  * 3. 静态文案绑定与一次性事件接线（app.js 加载后调用 init()）。
  */
 (() => {
-  const { t, post, state, elements, taskKey } = globalThis.TaskLauncherCore;
+  const { t, post, state, elements, taskKey, uiState } = globalThis.TaskLauncherCore;
 
   const $ = (id) => document.getElementById(id);
 
@@ -315,15 +315,20 @@
     head.appendChild(title);
     const body = document.createElement('div');
     body.className = 'gconfig-card__body';
-    // 整卡可折叠（默认展开）——点组头把表单收起只留标题行
-    const setCardOpen = open => {
+    // 整卡可折叠——点组头把表单收起只留标题行；状态落盘（uiState）重开复用
+    const cardKey = 'cardCollapsed::accountOverride';
+    const applyCardOpen = open => {
       chev.textContent = open ? '▾' : '▸';
       body.hidden = !open;
     };
-    setCardOpen(true);
+    const setCardOpen = (open, persist = true) => {
+      applyCardOpen(open);
+      if (persist) uiState.set(cardKey, !open);
+    };
+    applyCardOpen(uiState.get(cardKey, false) !== true);
     head.addEventListener('click', e => {
       if (e.target.closest('button, select, input, textarea')) return;
-      setCardOpen(!body.hidden);
+      setCardOpen(body.hidden);
     });
 
     const accounts = (store.accountListText || '').split('\n').map(line => line.trim()).filter(Boolean);

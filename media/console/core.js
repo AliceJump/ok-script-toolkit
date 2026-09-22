@@ -7,8 +7,8 @@
     schemas: {},
     taskConfigs: {},
     currentTasks: [],
-    openPanels: new Set(),
-    openConfigGroups: new Map(),
+    // UI 折叠状态（落盘于插件项目存储，重开面板复用）：键 -> 值
+    uiState: {},
     // 常驻执行器会话：整个项目只有一个进程，连接一次后按启用集合轮询触发任务
     executor: {
       status: 'idle',
@@ -17,6 +17,18 @@
       currentIsTrigger: false,
       onetimeQueue: [],
       enabledTriggers: [],
+    },
+  };
+
+  /**
+   * UI 折叠状态读写：所有折叠点（启动设置区、配置分组、卡片等）统一走这里，
+   * 值即时落盘（宿主项目存储），重开面板/切分段后复用上次状态。
+   */
+  const uiState = {
+    get: (key, fallback) => (state.uiState && key in state.uiState ? state.uiState[key] : fallback),
+    set: (key, value) => {
+      state.uiState = { ...(state.uiState || {}), [key]: value };
+      post({ type: 'saveUiState', key, value });
     },
   };
 
@@ -62,6 +74,7 @@
     t,
     post,
     state,
+    uiState,
     elements,
     taskKey,
     taskKind,

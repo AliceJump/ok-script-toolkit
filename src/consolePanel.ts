@@ -102,6 +102,8 @@ interface ProjectStore {
   globalConfigs?: Record<string, Record<string, unknown>>;
   /** 用户展开过的全局配置组（默认收起；重开面板按上次状态） */
   expandedGlobalGroups?: string[];
+  /** webview UI 折叠状态（键 -> 值）：启动设置区、配置分组、卡片等，重开面板复用 */
+  uiState?: Record<string, unknown>;
 }
 
 /** 所有任务配置的持久化结构 */
@@ -378,6 +380,8 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
   private accountStoreData: AccountStoreData | null = null;
   /** 用户展开过的全局配置组（持久化；不在集合内 = 收起） */
   private expandedGlobalGroups = new Set<string>();
+  /** webview UI 折叠状态（键 -> 值），落盘项目存储供重开面板复用 */
+  private uiState: Record<string, unknown> = {};
   /** 全局配置组推送防抖定时器 */
   private gparamsTimer: NodeJS.Timeout | undefined;
 
@@ -510,6 +514,13 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
         case 'toggleGlobalGroup':
           this.setGlobalGroupExpanded(String(msg.name || ''), msg.expanded === true);
           break;
+        case 'saveUiState':
+          // webview 折叠状态（启动设置区/配置分组/卡片）落盘，重开面板复用
+          if (typeof msg.key === 'string' && msg.key && msg.key.length <= 200) {
+            this.uiState = { ...this.uiState, [msg.key]: msg.value };
+            this.saveStore();
+          }
+          break;
         case 'syncDefault':
           {
             const added = this.syncDefaultToSnapshot(String(msg.target || ''), String(msg.name || ''));
@@ -627,23 +638,26 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
         this.globalSnapshots = entry?.globalConfigs || {};
         const expanded = entry?.expandedGlobalGroups || [];
         this.expandedGlobalGroups = new Set(expanded.filter((key) => typeof key === 'string'));
+        this.uiState = entry?.uiState && typeof entry.uiState === 'object' ? { ...entry.uiState } : {};
       } else {
         this.taskConfigs = {};
         this.enabledTriggers = new Set();
         this.globalSnapshots = {};
         this.expandedGlobalGroups = new Set();
+        this.uiState = {};
       }
     } catch (e) {
       this.taskConfigs = {};
       this.enabledTriggers = new Set();
       this.globalSnapshots = {};
       this.expandedGlobalGroups = new Set();
+      this.uiState = {};
       void vscode.window.showWarningMessage(tr('Failed to read task configuration: {error}', {
         error: e instanceof Error ? e.message : String(e),
       }));
     }
     if (this.view) {
-      void this.view.webview.postMessage({ type: 'taskConfigs', configs: this.taskConfigs });
+      void this.view.webview.postMessage({ type: 'taskConfigs', configs: this.taskConfigs, uiState: this.uiState });
     }
   }
 
@@ -714,7 +728,7 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
     if (added > 0) {
       this.saveStore();
       // 物化改变了 params/全局组，让前端表单与注入数据保持最新
-      this.view?.webview.postMessage({ type: 'taskConfigs', configs: this.taskConfigs });
+      this.view?.webview.postMessage({ type: 'taskConfigs', configs: this.taskConfigs, uiState: this.uiState });
       this.pushGlobalGroups();
     }
     return added;
@@ -916,6 +930,7 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
         enabledTriggers: [...this.enabledTriggers],
         globalConfigs: this.globalSnapshots,
         expandedGlobalGroups: [...this.expandedGlobalGroups],
+        uiState: this.uiState,
       };
       fs.writeFileSync(p, JSON.stringify(store, null, 2), 'utf-8');
       return true;

@@ -34,6 +34,8 @@
         break;
       case 'taskConfigs':
         state.taskConfigs = message.configs || {};
+        // UI 折叠状态（启动设置区/配置分组/卡片）随任务配置一起下发，重开面板复用
+        if (message.uiState) state.uiState = message.uiState;
         renderTasks(state.currentTasks);
         Console.refreshDrawer();
         break;

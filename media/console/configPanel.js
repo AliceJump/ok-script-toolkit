@@ -1,5 +1,5 @@
 (() => {
-  const { t, post, state, taskKey } = globalThis.TaskLauncherCore;
+  const { t, post, state, taskKey, uiState } = globalThis.TaskLauncherCore;
   const { buildField, fieldValue } = globalThis.TaskLauncherFields;
 
   const rulesOf = typeMeta => {
@@ -99,7 +99,10 @@
     showSaved = buildRuntimeFields(panel, config, persist);
 
     // 「启动设置」区整块可折叠（任务抽屉与账号表单一致）：点击标题收起面板里
-    // 除标题外的全部直属内容（顶层字段/分组/重置按钮），分组自身的折叠不受影响
+    // 除标题外的全部直属内容（顶层字段/分组/重置按钮），分组自身的折叠不受影响。
+    // 折叠状态按 taskKey 落盘（uiState），重开面板复用。
+    // 初始态在面板内容全部 append 之后再应用（否则 host 尚不存在，收不起来）
+    let applySectionOpenInit;
     const titleEl = panel.querySelector(':scope > .config-section-title');
     if (titleEl && options.collapsibleSection !== false) {
       const chev = document.createElement('span');
@@ -109,13 +112,18 @@
       titleEl.classList.add('config-section-title--toggle');
       titleEl.setAttribute('role', 'button');
       titleEl.tabIndex = 0;
+      const sectionKey = `sectionCollapsed::${taskKey(task)}`;
       const applySectionOpen = open => {
         chev.textContent = open ? '▾' : '▸';
         for (const child of panel.children) {
           if (child !== titleEl) child.hidden = !open;
         }
       };
-      const toggleSection = () => applySectionOpen(chev.textContent !== '▾');
+      const setSectionOpen = (open, persist = true) => {
+        applySectionOpen(open);
+        if (persist) uiState.set(sectionKey, !open);
+      };
+      const toggleSection = () => setSectionOpen(chev.textContent !== '▾');
       titleEl.addEventListener('click', toggleSection);
       titleEl.addEventListener('keydown', event => {
         if (event.key === 'Enter' || event.key === ' ') {
@@ -123,6 +131,7 @@
           toggleSection();
         }
       });
+      applySectionOpenInit = () => applySectionOpen(uiState.get(sectionKey, false) !== true);
     }
 
     if (schema?.broken) {
@@ -143,6 +152,8 @@
     }
 
     createActions(panel, config, Boolean(schema?.fields?.length), persist);
+    // 内容渲染完毕后再套用折叠初始态（上次收起过就保持收起，首次默认展开）
+    if (applySectionOpenInit) applySectionOpenInit();
     return panel;
   }
 
@@ -269,12 +280,13 @@
       toggle.className = 'config-group__toggle secondary';
       const body = document.createElement('div');
       body.className = 'config-group__body';
-      const stateKey = `${taskKey(task)}::${path.join('>')}`;
-      const setOpen = open => {
+      // 分组折叠状态按 任务+路径 落盘（uiState），重开面板/切分段复用
+      const stateKey = `groupOpen::${taskKey(task)}::${path.join('>')}`;
+      const setOpen = (open, persist = true) => {
         group.classList.toggle('open', open);
         toggle.textContent = open ? '▲' : '▼';
         toggle.title = open ? t('collapseParameters') : t('parameters');
-        state.openConfigGroups.set(stateKey, open);
+        if (persist) uiState.set(stateKey, open);
       };
       toggle.addEventListener('click', () => setOpen(!group.classList.contains('open')));
       header.appendChild(toggle);
@@ -318,8 +330,7 @@
       } else {
         // 未记忆的组用调用方的默认态（账号编辑器传 true——覆盖表单分组默认展开，
         // 否则整个表单只剩一排收起的组头开关，与任务抽屉观感割裂）
-        const stored = state.openConfigGroups.get(stateKey);
-        setOpen(stored === undefined ? defaultGroupOpen : stored);
+        setOpen(uiState.get(stateKey, defaultGroupOpen), false);
       }
       return true;
     };
