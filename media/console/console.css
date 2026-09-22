@@ -1066,3 +1066,25 @@ button.secondary:hover:not(:disabled) { background: var(--vscode-button-secondar
 .account-override-form .config-panel { border-top: 1px solid var(--border); }
 
 .config-broken { white-space: pre-wrap; }
+
+.ms-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 4px;
+  background: color-mix(in srgb, var(--surface) 70%, transparent);
+}
+.ms-list__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 6px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 12px;
+  color: inherit;
+}
+.ms-list__item:hover { background: var(--surface-hover); }
+.ms-list__item input { accent-color: #3794ff; margin: 0; }

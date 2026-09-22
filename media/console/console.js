@@ -233,11 +233,39 @@
     return username in accounts ? username : '';
   }
 
-  /** 覆盖值（acc_id 下该任务的键值表；无覆盖返回空表） */
-  function accountOverrideFor(store, username, taskClassName) {
+  /** 覆盖值（acc_id 下该任务的键值表；无覆盖返回空表）。值按 schema 类型自愈矫正。 */
+  function accountOverrideFor(store, username, taskClassName, fields) {
     const accId = resolveAccId(store, username);
     const taskMap = accId ? (store.accounts || {})[accId] : null;
-    return (taskMap && taskMap[taskClassName]) || {};
+    const raw = (taskMap && taskMap[taskClassName]) || {};
+    const fieldsByKey = Object.fromEntries((fields || []).map(f => [f.key, f]));
+    const fixed = {};
+    for (const [key, value] of Object.entries(raw)) {
+      const field = fieldsByKey[key];
+      fixed[key] = field ? coerceToFieldType(field, value) : value;
+    }
+    return fixed;
+  }
+
+  /**
+   * 把存储值矫正回 schema 字段的类型：早先文本框渲染期间保存过字符串 "True"/"False"，
+   * 会在账号覆盖里留下与任务 schema 类型不符的值（bool 键渲染回文本框、sub_configs
+   * 分支判断失效）。以 field.default / field.value 的类型为准强制转换。
+   */
+  function coerceToFieldType(field, value) {
+    if (value === undefined || value === null) return value;
+    const reference = field.default !== undefined ? field.default : field.value;
+    if (typeof reference === 'boolean' && typeof value !== 'boolean') {
+      const lowered = String(value).trim().toLowerCase();
+      if (lowered === 'true' || lowered === '1') return true;
+      if (lowered === 'false' || lowered === '0' || lowered === '') return false;
+      return value;
+    }
+    if (typeof reference === 'number' && typeof value === 'string') {
+      const num = Number(value);
+      if (!Number.isNaN(num)) return num;
+    }
+    return value;
   }
 
   /** 可编辑的任务清单：schema 就绪且有字段的任务（按 displayName 排序） */
@@ -306,7 +334,9 @@
     formHost.className = 'account-override-form';
     const rebuildForm = () => {
       const taskClassName = accountSelection.taskKey.split('::')[1] || '';
-      const override = accountOverrideFor(store, accountSelection.account, taskClassName);
+      const override = accountOverrideFor(
+        store, accountSelection.account, taskClassName, state.schemas[accountSelection.taskKey]?.fields,
+      );
       const schema = state.schemas[accountSelection.taskKey];
       const fakeTask = { module: `__account__::${accountSelection.account}`, className: taskClassName };
       const fakeKey = taskKey(fakeTask);
