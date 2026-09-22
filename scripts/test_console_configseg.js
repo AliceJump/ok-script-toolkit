@@ -19,7 +19,7 @@ const dictionary = {
   noConfigParameters: 'None', projectStoreTag: 'store', syncDefaultBtn: 'Sync', resetDefaultBtn: 'Reset',
   itemsCount: '{count} item(s)', ungrouped: 'Ungrouped', searchTasks: 'Search', launch: 'Launch',
   oneTimeTask: 'One-time', triggerTask: 'Trigger', taskCount: '{count}', triggerTask: 'Trigger',
-  enableTrigger: 'Enable', startExecutor: 'Start', accountNotAvailable: 'N/A',
+  enableTrigger: 'Enable', startExecutor: 'Start', accountNotAvailable: 'N/A', accountStoreUnavailable: 'N/A', accountNoEditor: 'N/A', accountStoreSeeOutput: '',
   accountStoreTitle: 'Store', saveBtn: 'Save', openDataBtn: 'Open', accountListLabel: 'List',
   accountListHint: '', overrideTitle: 'Overrides', accountLabel: 'Account', taskLabel: 'Task',
   clearOverrideBtn: 'Clear', overrideHint: '', parameters: 'Parameters',
