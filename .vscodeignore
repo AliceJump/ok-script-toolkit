@@ -7,12 +7,21 @@ tsconfig.json
 .git/**
 .github/**
 .workbuddy-ai/**
+# 协作 agent 的本地工作记录（记忆/日志）。与 .workbuddy-ai 同类 —— 属于开发工具状态，
+# 不是项目内容。**必须留这条**：.gitignore 里忽略了它，但 vsce 只认 .vscodeignore，
+# 2026-09-22 实测漏排时 `vsce ls` 里确实出现了 .workbuddy/memory/*.md，会被发到 Marketplace。
+.workbuddy/**
 .tools/**
 scripts/**
 jetbrains/**
 .gitmodules
 RELEASING.md
 DEVELOPMENT.md
+DEVELOPMENT.en.md
+# 仓库自身的忽略规则对运行时毫无用处，打进 VSIX 只是噪音
+.gitignore
+# 开发文档：代码里的引用全是注释（docs/project-config.md 共 10 处，无一处运行时访问）
+docs/**
 configs/**
 logs/**/*.txt
 logs/**/*.log

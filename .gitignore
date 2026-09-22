@@ -23,3 +23,11 @@ __pycache__
 # 原子写的临时产物（写入中的 .tmp 与旧版备份）
 *.ok-script-toolkit.tmp
 *.bak
+
+# 审查/修复计划类的一次性工作目录（verification-<日期> at <时间>/ 等）。
+# 与 .vscodeignore 同一条规则 —— 每次审查都会新建一个带时间戳的目录，逐个列名必然漏。
+verification-*/
+verification */
+# ok 脚本项目的模板目录（本仓库是扩展不是游戏项目）。⚠️ 空目录 git 不报 ??，
+# 曾长期潜伏：一旦有文件落进去就会被 `git add .` 扫进来。
+ok_templates/

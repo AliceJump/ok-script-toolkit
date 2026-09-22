@@ -5,8 +5,12 @@
       "name": "运行扩展（主仓库 VS Code 扩展）",
       "type": "extensionHost",
       "request": "launch",
-      "args": ["--extensionDevelopmentPath=${workspaceFolder}"],
-      "outFiles": ["${workspaceFolder}/out/**/*.js"],
+      "args": [
+        "--extensionDevelopmentPath=${workspaceFolder}"
+      ],
+      "outFiles": [
+        "${workspaceFolder}/out/**/*.js"
+      ],
       "preLaunchTask": "插件·编译（主仓库 VS Code 扩展）",
       "sourceMaps": true
     },
@@ -14,11 +18,15 @@
       "name": "运行扩展·watch 热重载（主仓库 VS Code 扩展）",
       "type": "extensionHost",
       "request": "launch",
-      "args": ["--extensionDevelopmentPath=${workspaceFolder}"],
-      "outFiles": ["${workspaceFolder}/out/**/*.js"],
+      "args": [
+        "--extensionDevelopmentPath=${workspaceFolder}"
+      ],
+      "outFiles": [
+        "${workspaceFolder}/out/**/*.js"
+      ],
       "preLaunchTask": "插件·watch 编译（主仓库 VS Code 扩展）",
       "sourceMaps": true
-    }
+    },
     // 「附加到沙箱 IDE」**没法用内置调试器做** —— VS Code 内置的调试类型只有
     // node / chrome / msedge / extensionHost / mock，**没有 JDWP**；
     // `"type": "java"` 来自扩展 vscjava.vscode-java-debug，没装就会报
@@ -32,12 +40,12 @@
     //
     // 若装了 vscjava.vscode-java-debug，把下面这段取消注释就能用回图形化调试器：
     //
-    // {
-    //   "name": "附加到沙箱 IDE（子仓库 JetBrains 插件，5005）",
-    //   "type": "java",
-    //   "request": "attach",
-    //   "hostName": "localhost",
-    //   "port": 5005
-    // }
+    {
+      "name": "附加到沙箱 IDE（子仓库 JetBrains 插件，5005）",
+      "type": "java",
+      "request": "attach",
+      "hostName": "localhost",
+      "port": 5005
+    }
   ]
 }
