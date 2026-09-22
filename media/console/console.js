@@ -213,7 +213,11 @@
     label.appendChild(kt);
     row.appendChild(label);
     body.appendChild(row);
-    body.appendChild(textarea);
+    const fieldWrap = document.createElement('div');
+    fieldWrap.className = 'config-field';
+    textarea.style.minHeight = '0';
+    fieldWrap.appendChild(textarea);
+    body.appendChild(fieldWrap);
     const hint = document.createElement('div');
     hint.className = 'hint';
     hint.textContent = t('accountListHint');
@@ -307,7 +311,11 @@
       kt.className = 'k';
       kt.textContent = labelText;
       label.appendChild(kt);
-      row.append(label, select);
+      // .config-field 作用域让 select 命中主样式（否则是浏览器原生外观）
+      const wrap = document.createElement('div');
+      wrap.className = 'config-field';
+      wrap.appendChild(select);
+      row.append(label, wrap);
       return row;
     };
 
