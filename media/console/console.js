@@ -16,10 +16,10 @@
   // ── 分段切换 ─────────────────────────────────────────────────────────
 
   function switchSeg(seg) {
-    for (const button of document.querySelectorAll('.seg__btn')) {
-      const active = button.dataset.seg === seg;
-      button.classList.toggle('is-active', active);
-      button.setAttribute('aria-selected', active ? 'true' : 'false');
+    for (const item of document.querySelectorAll('.lay-side__item')) {
+      const active = item.dataset.seg === seg;
+      item.classList.toggle('is-active', active);
+      item.setAttribute('aria-selected', active ? 'true' : 'false');
     }
     $('pageTasks').hidden = seg !== 'tasks';
     $('pageGame').hidden = seg !== 'game';
@@ -55,11 +55,56 @@
       empty.className = 'config-empty';
       empty.textContent = t('noConfigParameters');
       host.appendChild(empty);
+      renderHealth();
       return;
     }
     for (const group of state.globalGroups) {
       host.appendChild(buildGlobalCard(group, state.expandedGlobalGroups.includes(group.name)));
     }
+    renderHealth();
+  }
+
+  /** 配置健康度条：快照组 / 快照字段 / 已定制任务（全部来自既有真实数据） */
+  function renderHealth() {
+    const strip = $('healthStrip');
+    if (!strip) return;
+    const groups = state.globalGroups || [];
+    if (!groups.length) {
+      strip.hidden = true;
+      strip.textContent = '';
+      return;
+    }
+    let fieldCount = 0;
+    for (const group of groups) fieldCount += (group.fields || []).length;
+    const owned = document.querySelectorAll('[data-role="config-toggle"].has-overrides').length;
+    strip.textContent = '';
+    const head = document.createElement('div');
+    head.className = 'rc-health__head';
+    const title = document.createElement('span');
+    title.className = 'rc-health__title';
+    title.textContent = t('healthTitle');
+    const cells = document.createElement('div');
+    cells.className = 'rc-health__cells';
+    const defs = [
+      ['healthGroups', groups.length, 'ok'],
+      ['healthFields', fieldCount, 'ok'],
+      ['healthOwned', owned, owned > 0 ? 'warn' : 'ok'],
+    ];
+    for (const [key, value, tone] of defs) {
+      const cell = document.createElement('div');
+      cell.className = `rc-cell is-${tone}`;
+      const label = document.createElement('div');
+      label.className = 'rc-cell__label';
+      label.textContent = t(key);
+      const num = document.createElement('div');
+      num.className = 'rc-cell__value';
+      num.textContent = String(value);
+      cell.append(label, num);
+      cells.appendChild(cell);
+    }
+    head.append(title, cells);
+    strip.append(head);
+    strip.hidden = false;
   }
 
   function buildGlobalCard(group, expanded) {
@@ -638,15 +683,25 @@
   function init() {
     document.title = t('consoleTitle');
 
-    // 分段导航
-    $('segTasks').textContent = t('consoleTabTasks');
-    $('segGame').textContent = t('consoleTabGame');
-    $('segConfig').textContent = t('consoleTabConfig');
-    $('segAccounts').textContent = t('consoleTabAccounts');
-    $('segTasks').addEventListener('click', () => switchSeg('tasks'));
-    $('segGame').addEventListener('click', () => switchSeg('game'));
-    $('segConfig').addEventListener('click', () => switchSeg('config'));
-    $('segAccounts').addEventListener('click', () => switchSeg('accounts'));
+    // 侧栏导航（主从双栏）：文案 + 点击/键盘切换
+    const sideTabs = [
+      ['segTasks', 'consoleTabTasks'],
+      ['segGame', 'consoleTabGame'],
+      ['segConfig', 'consoleTabConfig'],
+      ['segAccounts', 'consoleTabAccounts'],
+    ];
+    for (const [id, key] of sideTabs) {
+      const item = $(id);
+      item.querySelector('.lay-side__label').textContent = t(key);
+      item.addEventListener('click', () => switchSeg(item.dataset.seg));
+      item.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          switchSeg(item.dataset.seg);
+        }
+      });
+    }
+    $('sideFoot').textContent = t('consoleTitle');
 
     // 任务分段
     const search = $('taskSearch');
@@ -787,6 +842,7 @@
     closeDrawer,
     refreshDrawer,
     renderConfig,
+    renderHealth,
     renderMultiAccount,
   };
 })();

@@ -126,6 +126,52 @@
     return [sync, reset];
   }
 
+  /** 悬停弹出：参数表单分组概要（数据与 configPanel 同源：configGroups / groupLabels） */
+  function buildGroupPop(task, schema) {
+    const groups = schema?.configGroups && typeof schema.configGroups === 'object'
+      ? Object.entries(schema.configGroups) : [];
+    if (!groups.length) return null;
+    const pop = document.createElement('div');
+    pop.className = 'pop';
+    const title = document.createElement('div');
+    title.className = 'pop-title';
+    title.textContent = schema?.displayName || task.displayName || '';
+    const sub = document.createElement('span');
+    sub.className = 'pop-sub';
+    sub.textContent = t('depsPopSub', { count: groups.length });
+    title.appendChild(sub);
+    pop.appendChild(title);
+    for (const [key, fieldKeys] of groups) {
+      const list = Array.isArray(fieldKeys) ? fieldKeys : [];
+      const grp = document.createElement('div');
+      grp.className = 'grp';
+      const head = document.createElement('div');
+      head.className = 'grp-head';
+      const name = document.createElement('b');
+      name.textContent = schema.groupLabels?.[key] || key;
+      const cnt = document.createElement('span');
+      cnt.className = 'cnt';
+      cnt.textContent = t('itemsCount', { count: list.length });
+      head.append(name, cnt);
+      const body = document.createElement('div');
+      body.className = 'grp-body';
+      for (const fieldKey of list.slice(0, 3)) {
+        const it = document.createElement('div');
+        it.className = 'it';
+        const label = document.createElement('span');
+        label.textContent = fieldKey;
+        const st = document.createElement('span');
+        st.className = 'st ok';
+        st.textContent = t('depsPopTaken');
+        it.append(label, st);
+        body.appendChild(it);
+      }
+      grp.append(head, body);
+      pop.appendChild(grp);
+    }
+    return pop;
+  }
+
   function buildTaskCard(task) {
     const key = taskKey(task);
     const schema = state.schemas[key];
@@ -143,6 +189,10 @@
     identity.className = 'task-card__identity';
     const titleRow = document.createElement('div');
     titleRow.className = 'task-card__title-row';
+    const dot = document.createElement('span');
+    dot.className = 'rc-dot';
+    dot.setAttribute('aria-hidden', 'true');
+    titleRow.appendChild(dot);
     const name = document.createElement('div');
     name.className = 'task-card__name';
     name.textContent = displayName;
@@ -175,6 +225,11 @@
     // 点击「参数」按钮时由 console.js 把这个节点搬运进抽屉显示。
     const configPanel = buildConfigPanel(task, schema);
     card.append(header, configPanel);
+    const pop = buildGroupPop(task, schema);
+    if (pop) {
+      card.classList.add('task-card--pop');
+      card.appendChild(pop);
+    }
     return card;
   }
 
@@ -203,6 +258,7 @@
   function updateRunningState() {
     for (const card of elements.tasks.querySelectorAll('.task-card')) {
       const status = cardState(card);
+      card.dataset.run = status || 'idle';
       card.classList.toggle('is-active', status === 'polling' || status === 'running');
       const badge = card.querySelector('[data-role="status"]');
       if (badge) {
@@ -226,6 +282,39 @@
     updateToolbar();
   }
 
+  /** 任务显示名：tasks 列表 → schema → 原始 key 兜底 */
+  function displayNameOf(key) {
+    const task = state.currentTasks.find((item) => taskKey(item) === key);
+    return task?.displayName || state.schemas[key]?.displayName || key;
+  }
+
+  /** 执行队列条：一次性队列可视化（队列芯片随 executor 消息刷新） */
+  function renderQueueStrip() {
+    const strip = document.getElementById('queueStrip');
+    if (!strip) return;
+    const queue = state.executor.onetimeQueue || [];
+    strip.textContent = '';
+    if (!queue.length) {
+      strip.hidden = true;
+      return;
+    }
+    const head = document.createElement('div');
+    head.className = 'rc-queue__head';
+    const title = document.createElement('b');
+    title.textContent = t('queueTitle');
+    head.appendChild(title);
+    const chips = document.createElement('div');
+    chips.className = 'rc-queue__chips';
+    for (const key of queue) {
+      const chip = document.createElement('span');
+      chip.className = 'rc-queue__chip';
+      chip.textContent = displayNameOf(key);
+      chips.appendChild(chip);
+    }
+    strip.append(head, chips);
+    strip.hidden = false;
+  }
+
   /** 状态条第二行：当前任务 + 一次性队列（空闲时隐藏） */
   function updateExecutorSub() {
     const sub = document.getElementById('executorSub');
@@ -233,16 +322,14 @@
     const executor = state.executor;
     const parts = [];
     if (executor.current) {
-      const task = state.currentTasks.find((item) => taskKey(item) === executor.current);
-      const schema = state.schemas[executor.current];
-      const label = task?.displayName || schema?.displayName || executor.current;
-      parts.push(t('executorCurrent', { task: label }));
+      parts.push(t('executorCurrent', { task: displayNameOf(executor.current) }));
     }
     if (executor.onetimeQueue.length) {
       parts.push(t('executorQueueCount', { count: executor.onetimeQueue.length }));
     }
     sub.hidden = !parts.length;
     sub.textContent = parts.join(' · ');
+    renderQueueStrip();
   }
 
   function updateToolbar() {

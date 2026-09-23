@@ -9,6 +9,26 @@
 </head>
 <body>
   <main class="console">
+    <div class="shell">
+
+    <!-- ── 主从双栏 · 侧栏导航（任务/游戏/配置/账号） ─────────────── -->
+    <aside class="lay-side" id="sideNav" role="tablist">
+      <div class="lay-side__item is-active" id="segTasks" data-seg="tasks" role="tab" tabindex="0" aria-selected="true">
+        <span class="lay-side__ico" aria-hidden="true"></span><span class="lay-side__label"></span>
+      </div>
+      <div class="lay-side__item" id="segGame" data-seg="game" role="tab" tabindex="0" aria-selected="false">
+        <span class="lay-side__ico" aria-hidden="true"></span><span class="lay-side__label"></span>
+      </div>
+      <div class="lay-side__item" id="segConfig" data-seg="config" role="tab" tabindex="0" aria-selected="false">
+        <span class="lay-side__ico" aria-hidden="true"></span><span class="lay-side__label"></span>
+      </div>
+      <div class="lay-side__item" id="segAccounts" data-seg="accounts" role="tab" tabindex="0" aria-selected="false">
+        <span class="lay-side__ico" aria-hidden="true"></span><span class="lay-side__label"></span>
+      </div>
+      <div class="lay-side__foot" id="sideFoot"></div>
+    </aside>
+
+    <div class="lay-main">
 
     <!-- ── 全局状态条：游戏连接 + 常驻执行器 ─────────────────────── -->
     <header class="gbar">
@@ -38,16 +58,9 @@
     <!-- ── 状态横幅（加载错误 / 连接提示等） ──────────────────────── -->
     <section id="status" class="status-banner" hidden aria-live="polite"></section>
 
-    <!-- ── 分段导航 ──────────────────────────────────────────────── -->
-    <nav class="seg" id="segNav" role="tablist">
-      <button class="seg__btn is-active" id="segTasks" data-seg="tasks" type="button" role="tab"></button>
-      <button class="seg__btn" id="segGame" data-seg="game" type="button" role="tab"></button>
-      <button class="seg__btn" id="segConfig" data-seg="config" type="button" role="tab"></button>
-      <button class="seg__btn" id="segAccounts" data-seg="accounts" type="button" role="tab"></button>
-    </nav>
-
-    <!-- ── 分段：任务 ────────────────────────────────────────────── -->
+    <!-- ── 分段：任务（含配置健康度条 + 执行队列条） ──────────────── -->
     <section class="page" id="pageTasks" role="tabpanel">
+      <section id="healthStrip" class="rc-health" hidden aria-live="polite"></section>
       <div class="search-row">
         <div class="search">
           <svg class="search__ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
@@ -55,6 +68,8 @@
         </div>
         <button id="refresh" class="icon-btn" type="button"></button>
       </div>
+
+      <section id="queueStrip" class="rc-queue" hidden aria-live="polite"></section>
 
       <div id="tasks" class="task-list" aria-live="polite">
         <div class="group-head" id="triggerHead" role="button" tabindex="0">
@@ -117,6 +132,8 @@
       <button id="openCharacterManager" class="secondary-btn tool-entry" type="button"></button>
     </section>
 
+    </div><!-- /lay-main -->
+    </div><!-- /shell -->
   </main>
 
   <!-- ── 参数抽屉（点击任务卡片的「参数」把表单搬运到这里） ───────── -->
