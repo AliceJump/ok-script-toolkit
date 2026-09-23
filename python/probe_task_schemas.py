@@ -10,6 +10,7 @@
 """
 import ast
 import importlib
+import importlib.util
 import json
 import os
 import shutil
@@ -181,11 +182,28 @@ def load_gui_group_names(project_dir):
                 tree = ast.parse(stream.read())
         except Exception:
             continue
+        # 该文件所在包（如 "src.gui"）。相对导入必须按它解析 —— 只取 `node.module` 会把
+        # `from ..core.BattleConfig import X` 记成顶层 "core.BattleConfig"，随后
+        # `_resolve_gui_constant` 去 import 它：轻则 ImportError（该条映射静默丢失、
+        # 配置分段退回英文 config 名），重则撞上同名的无关顶层模块（取到错值并执行其副作用）。
+        package = ".".join(rel[:-1])
         imports = {}
         for node in ast.walk(tree):
-            if isinstance(node, ast.ImportFrom) and node.module:
+            if isinstance(node, ast.ImportFrom) and (node.module or node.level):
+                module_name = node.module
+                if node.level:
+                    try:
+                        module_name = importlib.util.resolve_name(
+                            "." * node.level + (node.module or ""), package
+                        )
+                    except (ImportError, ValueError):
+                        # 越出顶层包的相对导入（level 超过包层数）—— 丢弃这一条，不影响其余
+                        continue
+                    if module_name.endswith("."):
+                        # `from . import X`（无 module 部分）会解出带尾点的包名
+                        module_name = module_name[:-1]
                 for alias in node.names:
-                    imports[alias.asname or alias.name] = (node.module, alias.name)
+                    imports[alias.asname or alias.name] = (module_name, alias.name)
         for node in tree.body:
             if not isinstance(node, ast.Assign):
                 continue

@@ -88,6 +88,54 @@ with tempfile.TemporaryDirectory() as root:
     finally:
         unstub_constant_modules()
 
+print("\n[2b] 相对导入（同一目标写成 `from ..core.X import Y`）")
+with tempfile.TemporaryDirectory() as root:
+    stub_constant_modules()
+    try:
+        write_project(root, 'from ..core.BattleConfig import BATTLE_CONFIG_NAME\n'
+                            'from ..core.global_config_store import ZIP_LINE_CONFIG_NAME\n'
+                            '\n'
+                            'GLOBAL_CONFIG_GROUPS = {\n'
+                            '    "战斗配置": [BATTLE_CONFIG_NAME],\n'
+                            '    "滑索配置": [ZIP_LINE_CONFIG_NAME],\n'
+                            '}\n')
+        mapping = load_gui_group_names(root)
+        check(mapping == {
+            "Battle Config": "战斗配置",
+            "Zip Line Config": "滑索配置",
+        }, f"相对导入须按文件所在包 src.gui 解析出 src.core.*，实际 {mapping}")
+    finally:
+        unstub_constant_modules()
+
+print("\n[2c] `from . import 常量`（无 module 部分、level=1，解析到包自身）")
+with tempfile.TemporaryDirectory() as root:
+    gui_pkg = types.ModuleType("src.gui")
+    gui_pkg.BATTLE_CONFIG_NAME = "Battle Config"
+    sys.modules["src.gui"] = gui_pkg
+    try:
+        write_project(root, 'from . import BATTLE_CONFIG_NAME\n'
+                            '\n'
+                            'GLOBAL_CONFIG_GROUPS = {\n'
+                            '    "战斗配置": [BATTLE_CONFIG_NAME],\n'
+                            '}\n')
+        mapping = load_gui_group_names(root)
+        check(mapping == {"Battle Config": "战斗配置"},
+              f"应求值到包 src.gui 的属性，实际 {mapping}")
+    finally:
+        sys.modules.pop("src.gui", None)
+
+print("\n[2d] 越出顶层包的相对导入（level 过大）只丢该条，不抛异常")
+with tempfile.TemporaryDirectory() as root:
+    write_project(root, 'from ...core.BattleConfig import BATTLE_CONFIG_NAME\n'
+                        '\n'
+                        'GLOBAL_CONFIG_GROUPS = {\n'
+                        '    "战斗配置": [BATTLE_CONFIG_NAME],\n'
+                        '    "键位配置": ["Game Hotkey Config"],\n'
+                        '}\n')
+    mapping = load_gui_group_names(root)
+    check(mapping == {"Game Hotkey Config": "键位配置"},
+          f"越界相对导入应静默丢弃该条，其余保留，实际 {mapping}")
+
 print("\n[3] 无 GUI 模块的项目（ok-gf2 等）返回空表")
 with tempfile.TemporaryDirectory() as root:
     check(load_gui_group_names(root) == {}, "无约定文件应返回 {}")
