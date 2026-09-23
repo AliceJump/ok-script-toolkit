@@ -136,62 +136,184 @@
   let popSuppressUntil = 0;
 
   /**
-   * 弹层内容：参数分组概要（configGroups / groupLabels / displayKey）。
-   * 有分组层次 → 按组展示 + 「其他参数」（没进任何 configGroups 的字段也是参数）；
-   * 没层次但有字段 → 折叠成单个「参数」伪组列扁平字段；
-   * 两者皆无（连字段都没有）→ 不弹。
+   * field.type.sub_configs → [{ valueLabel, keys }]（对齐 configPanel 的规则归一）：
+   * boolean 开关 → 开/关规则；下拉/多选 → 选项规则（显示名走 sub_config_labels > options > 原值）。
+   */
+  function condRulesOf(field) {
+    const typeMeta = field?.type;
+    const rules = typeMeta && typeof typeMeta.sub_configs === 'object' && !Array.isArray(typeMeta.sub_configs)
+      ? typeMeta.sub_configs : null;
+    if (!rules || !Object.keys(rules).length) return [];
+    const labels = typeof typeMeta.sub_config_labels === 'object' && typeMeta.sub_config_labels
+      ? typeMeta.sub_config_labels : {};
+    const isBool = typeof field.default === 'boolean' || typeof field.value === 'boolean';
+    const opts = typeMeta.options && typeof typeMeta.options === 'object' && !Array.isArray(typeMeta.options)
+      ? typeMeta.options : null;
+    const out = [];
+    for (const [choice, controlled] of Object.entries(rules)) {
+      const keys = (Array.isArray(controlled) ? controlled : [controlled])
+        .filter((k) => typeof k === 'string');
+      if (!keys.length) continue;
+      let valueLabel = labels[choice];
+      if (!valueLabel && isBool) valueLabel = t(String(choice).toLowerCase() === 'true' ? 'boolOn' : 'boolOff');
+      if (!valueLabel) valueLabel = opts ? String(opts[choice] ?? choice) : String(choice);
+      out.push({ valueLabel, keys });
+    }
+    return out;
+  }
+
+  /**
+   * 弹层内容：参数分组概要 —— 两种组一视同仁渲染，可互相嵌套：
+   *   · 静态组（configGroups）：字段按组归类，组内可嵌套子静态组；
+   *   · 条件组（field.type.sub_configs）：勾选/选中父字段某值才显示的受控字段，
+   *     组头 = 父字段显示名 +「显隐组」徽标，规则行 =「值 → N 项」；
+   *   · 嵌套：受控字段自己也有 sub_configs → 在其规则下递归缩进（深度上限 4 防环）；
+   *   · 同一字段既在静态组又被条件组受控 → 两处都渲染（一视同仁）；
+   *   · 未归属任何组/条件的字段 → 「其他参数」。
+   * 归并规则与 configPanel 对齐：分组名自身的显隐规则子项吸收进该组 children。
    */
   function groupPopContent(task, schema) {
     const fields = schema?.fields || [];
-    const groupEntries = schema?.configGroups && typeof schema.configGroups === 'object'
+    if (!fields.length) return null;
+    const fieldsByKey = Object.fromEntries(fields.map((f) => [f.key, f]));
+    const labelOf = (key) => fieldsByKey[key]?.displayKey || schema.groupLabels?.[key] || key;
+    const rawGroups = schema?.configGroups && typeof schema.configGroups === 'object'
       ? Object.entries(schema.configGroups) : [];
-    const labels = Object.fromEntries(fields.map((f) => [f.key, f.displayKey || f.key]));
-    const entries = [];
-    if (groupEntries.length) {
-      const grouped = new Set();
-      for (const [key, fieldKeys] of groupEntries) {
-        const list = Array.isArray(fieldKeys) ? fieldKeys : [];
-        for (const fieldKey of list) grouped.add(fieldKey);
-        entries.push({ label: schema.groupLabels?.[key] || key, keys: list });
+    const groupMap = new Map(rawGroups.map(([k, v]) => [k, Array.isArray(v) ? [...v] : []]));
+
+    // 分组名自身的显隐规则子项吸收进组 children（对齐 configPanel 规则 1）
+    for (const [gkey, children] of [...groupMap]) {
+      const f = fieldsByKey[gkey];
+      if (!f) continue;
+      const declared = new Set(children);
+      for (const rule of condRulesOf(f)) {
+        for (const key of rule.keys) if (!declared.has(key)) children.push(key);
       }
-      const others = fields.filter((f) => !grouped.has(f.key)).map((f) => f.key);
-      if (others.length) entries.push({ label: t('depsPopOthers'), keys: others });
-    } else if (fields.length) {
-      entries.push({ label: t('parameters'), keys: fields.map((f) => f.key) });
+      groupMap.set(gkey, children);
     }
-    if (!entries.length) return null;
+
+    // 条件组父字段（分组名除外）与受控字段集合
+    const condParents = [];
+    const controlled = new Set();
+    for (const f of fields) {
+      if (groupMap.has(f.key)) continue;
+      const rules = condRulesOf(f);
+      if (rules.length) {
+        condParents.push({ field: f, rules });
+        for (const rule of rules) for (const key of rule.keys) controlled.add(key);
+      }
+    }
+
+    const groupChildren = new Set();
+    for (const children of groupMap.values()) for (const key of children) groupChildren.add(key);
+    const others = fields.filter((f) => !groupMap.has(f.key) && !groupChildren.has(f.key) && !controlled.has(f.key));
+
+    if (!groupMap.size && !condParents.length && !others.length) return null;
+
     const frag = document.createDocumentFragment();
     const title = document.createElement('div');
     title.className = 'pop-title';
     title.textContent = schema?.displayName || task.displayName || '';
     const sub = document.createElement('span');
     sub.className = 'pop-sub';
-    sub.textContent = groupEntries.length
-      ? t('depsPopSub', { count: entries.length })
-      : t('itemsCount', { count: fields.length });
+    sub.textContent = t('depsPopSub', { count: groupMap.size + condParents.length + (others.length ? 1 : 0) });
     title.appendChild(sub);
     frag.appendChild(title);
-    for (const entry of entries) {
+
+    function renderItem(key, container, depth) {
+      const it = document.createElement('div');
+      it.className = 'it';
+      const label = document.createElement('span');
+      label.textContent = labelOf(key);
+      it.appendChild(label);
+      container.appendChild(it);
+      const f = fieldsByKey[key];
+      if (f && depth < 4) {
+        const rules = condRulesOf(f);
+        if (rules.length) appendCondGroup(f, rules, container, depth + 1);
+      }
+    }
+
+    /** 一个父字段 = 一个条件组；组内每条规则 = 规则行（值 → N 项）+ 受控字段缩进列表 */
+    function appendCondGroup(parentField, rules, container, depth) {
+      const grp = document.createElement('div');
+      grp.className = 'grp grp--cond';
+      const head = document.createElement('div');
+      head.className = 'grp-head';
+      const name = document.createElement('b');
+      name.textContent = parentField.displayKey || parentField.key;
+      const tag = document.createElement('span');
+      tag.className = 'grp-tag';
+      tag.textContent = t('condGroupTag');
+      head.append(name, tag);
+      const body = document.createElement('div');
+      body.className = 'grp-body';
+      for (const rule of rules) {
+        const ruleRow = document.createElement('div');
+        ruleRow.className = 'it it--rule';
+        const val = document.createElement('span');
+        val.textContent = rule.valueLabel;
+        const cnt = document.createElement('span');
+        cnt.className = 'cnt';
+        cnt.textContent = t('itemsCount', { count: rule.keys.length });
+        ruleRow.append(val, cnt);
+        body.appendChild(ruleRow);
+        const list = document.createElement('div');
+        list.className = 'grp-body';
+        for (const key of rule.keys) renderItem(key, list, depth);
+        body.appendChild(list);
+      }
+      grp.append(head, body);
+      container.appendChild(grp);
+    }
+
+    function appendStaticGroup(gkey, container, depth) {
+      const children = groupMap.get(gkey) || [];
       const grp = document.createElement('div');
       grp.className = 'grp';
       const head = document.createElement('div');
       head.className = 'grp-head';
       const name = document.createElement('b');
-      name.textContent = entry.label;
+      name.textContent = schema.groupLabels?.[gkey] || gkey;
       const cnt = document.createElement('span');
       cnt.className = 'cnt';
-      cnt.textContent = t('itemsCount', { count: entry.keys.length });
+      cnt.textContent = t('itemsCount', { count: children.length });
       head.append(name, cnt);
       const body = document.createElement('div');
       body.className = 'grp-body';
-      for (const fieldKey of entry.keys) {
-        const it = document.createElement('div');
-        it.className = 'it';
-        const label = document.createElement('span');
-        label.textContent = labels[fieldKey] || fieldKey;
-        it.appendChild(label);
-        body.appendChild(it);
+      for (const key of children) {
+        if (groupMap.has(key)) appendStaticGroup(key, body, depth + 1); // 静态组嵌静态组
+        else renderItem(key, body, depth);
       }
+      grp.append(head, body);
+      container.appendChild(grp);
+    }
+
+    // 静态组（嵌套子组随父组渲染，不重复出现在顶层）
+    const nested = new Set();
+    for (const children of groupMap.values()) for (const key of children) if (groupMap.has(key)) nested.add(key);
+    for (const gkey of groupMap.keys()) {
+      if (!nested.has(gkey)) appendStaticGroup(gkey, frag, 0);
+    }
+    // 条件组（与静态组同级，一视同仁；一个父字段一个组）
+    for (const { field, rules } of condParents) {
+      appendCondGroup(field, rules, frag, 0);
+    }
+    // 其他参数（无静态组时的「参数」伪组沿用旧语义标签）
+    if (others.length) {
+      const grp = document.createElement('div');
+      grp.className = 'grp';
+      const head = document.createElement('div');
+      head.className = 'grp-head';
+      const name = document.createElement('b');
+      name.textContent = groupMap.size ? t('depsPopOthers') : t('parameters');
+      const cnt = document.createElement('span');
+      cnt.className = 'cnt';
+      cnt.textContent = t('itemsCount', { count: others.length });
+      head.append(name, cnt);
+      const body = document.createElement('div');
+      body.className = 'grp-body';
+      for (const f of others) renderItem(f.key, body, 0);
       grp.append(head, body);
       frag.appendChild(grp);
     }

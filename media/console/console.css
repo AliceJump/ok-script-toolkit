@@ -1241,6 +1241,21 @@ button.secondary:hover:not(:disabled) { background: var(--vscode-button-secondar
 }
 .gpop::-webkit-scrollbar-thumb:hover { background: var(--border-strong); }
 .gpop::-webkit-scrollbar-track { background: transparent; }
+/* 条件组（field.type.sub_configs 显隐组）：与静态组一视同仁，蓝色系区分语义 */
+.gpop .grp-tag {
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  background: color-mix(in srgb, var(--vscode-charts-blue, #3794ff) 16%, transparent);
+  color: var(--vscode-charts-blue, #3794ff);
+}
+.gpop .it--rule {
+  border-left-color: var(--vscode-charts-blue, #3794ff);
+  background: color-mix(in srgb, var(--vscode-charts-blue, #3794ff) 10%, transparent);
+  font-weight: 600;
+}
+/* 条件组内的嵌套子组（条件组套条件组 / 静态组）保持节奏一致的间距 */
+.gpop .grp-body .grp { margin: 6px 0 2px; }
 @keyframes popfade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 .gpop .pop-title {
   display: flex; align-items: baseline; justify-content: space-between;
