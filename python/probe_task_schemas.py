@@ -85,31 +85,68 @@ def load_po_catalog(project_dir, locale, po_directory="i18n", domain="ok"):
 # ── 框架 Qt 翻译层（GUI tr() 的第一优先级）─────────────────────────────────
 #
 # 框架把内置文案（Basic Options / Notification 等的字段名与描述）的翻译编译成
-# .qm 藏在 Qt 资源 :/i18n（ok/ui/qt/resources.py），GUI 的 tr() 先查
-# QCoreApplication.translate('app', key)，没有才回落 gettext（项目 po）。
-# 实测：'Auto Start Game When App Starts' -> '程序启动时候自动启动游戏'、
-# 'System Notification' -> '系统通知'。探针此前只接 gettext 层，框架文案
-# 全部显示英文原值 —— 与 GUI 不一致。这里补上同一层，优先级与 GUI 对齐：
+# .qm 藏在 Qt 资源 :/i18n，GUI 的 tr() 先查 QCoreApplication.translate('app', key)，
+# 没有才回落 gettext（项目 po）。实测：'Auto Start Game When App Starts' ->
+# '程序启动时候自动启动游戏'、'Basic Options' -> '基本设置'。探针此前只接 gettext 层，
+# 框架文案全部显示英文原值 —— 与 GUI 不一致。这里补上同一层，优先级与 GUI 对齐：
 # Qt(.qm) > 项目 po > 原文。项目 venv 没有 PySide6 时静默跳过，行为退回纯 po。
+#
+# 资源模块路径随框架大版本变过：1.0.x 是 ok.gui.resources，2.0.x 迁到
+# ok.ui.qt.resources。只认后者会让 1.0.x 项目（如 ok-gm，ok-script==1.0.179）
+# 整层翻译静默丢失 —— 框架文案全英文，与 GUI 不一致且没有任何提示。
+QT_RESOURCE_MODULES = ("ok.ui.qt.resources", "ok.gui.resources")
+
 _QT_TRANSLATOR = None
+_QT_TRANSLATOR_REASON = None
 
 
 def load_qt_translator(locale):
-    """加载框架 Qt 资源 :/i18n/<locale>.qm；失败返回 None（探针继续用 po）。"""
-    global _QT_TRANSLATOR
-    try:
-        import ok.ui.qt.resources  # noqa: F401  —— import 副作用：注册 :/i18n 资源
-        from PySide6.QtCore import QCoreApplication, QTranslator
+    """加载框架 Qt 资源 :/i18n/<locale>.qm；失败返回 None（探针继续用 po）。
 
-        app = QCoreApplication.instance()
-        if app is None:
-            app = QCoreApplication([sys.argv[0] if sys.argv else 'probe'])
-        translator = QTranslator(app)
-        if translator.load(locale, ':/i18n'):
-            app.installTranslator(translator)
-            _QT_TRANSLATOR = translator
-    except Exception:
+    刻意**不创建 QCoreApplication**：
+      * 探针只用 translator.translate() 直接查表，既不 installTranslator 也不要
+        事件循环 —— 实测无 app 实例时 QTranslator 照样能 load 并翻译。
+      * 一旦先建了 QCoreApplication，项目导入链里任何 `QApplication(sys.argv)`
+        （ok 2.x 的 App -> init_app_config）都会抛
+        "libshiboken: Please destroy the QCoreApplication singleton before
+        creating a new QApplication instance."，整个探针报废。
+    """
+    global _QT_TRANSLATOR, _QT_TRANSLATOR_REASON
+    module_used = None
+    for module_name in QT_RESOURCE_MODULES:
+        try:
+            importlib.import_module(module_name)  # import 副作用：注册 :/i18n 资源
+            module_used = module_name
+            break
+        except Exception:  # noqa: BLE001 — 该版本没有这个模块，试下一个
+            continue
+    if module_used is None:
         _QT_TRANSLATOR = None
+        _QT_TRANSLATOR_REASON = f"未找到 Qt 资源模块 {QT_RESOURCE_MODULES}"
+        # venv 没装 Qt 的项目（纯 headless/web）属正常，不报；装了 Qt 却认不出
+        # 资源模块 = 框架布局又变了，这种"整层翻译静默消失"必须留痕。
+        try:
+            import PySide6  # noqa: F401
+            sys.stderr.write(f"[probe] {_QT_TRANSLATOR_REASON}，框架文案回落到 po/原文\n")
+        except Exception:  # noqa: BLE001 — 无 Qt 的 venv，静默退回纯 po
+            pass
+        return None
+    try:
+        from PySide6.QtCore import QTranslator
+
+        translator = QTranslator()
+        if translator.load(locale, ':/i18n'):
+            _QT_TRANSLATOR = translator
+            _QT_TRANSLATOR_REASON = None
+        else:
+            # 框架只为非源语言编译 .qm（en_US 是源语言）—— 该 locale 没有 .qm 是
+            # 正常情况，译文等于原文，不报。
+            _QT_TRANSLATOR = None
+            _QT_TRANSLATOR_REASON = f"{module_used} 未提供 {locale}.qm"
+    except Exception as e:  # noqa: BLE001 — 有资源模块却 import 不到 Qt，属异常
+        _QT_TRANSLATOR = None
+        _QT_TRANSLATOR_REASON = f"{type(e).__name__}: {e}"
+        sys.stderr.write(f"[probe] Qt 翻译层不可用：{_QT_TRANSLATOR_REASON}\n")
     return _QT_TRANSLATOR
 
 
@@ -636,6 +673,25 @@ def collect_multi_account(project_dir, tasks, broken, global_groups):
     return info
 
 
+def force_headless(cfg):
+    """就地抹掉 cfg 里的 UI 声明，强制框架走 HeadlessApp。返回同一个 dict。
+
+    ok-script 2.x 的 `config['gui'] = {'type': 'qt'}` 在
+    `ok.core.ui_config.resolve_ui_config()` 里**优先于** `use_gui`：只改 use_gui
+    时它照样判定为 qt，`do_init()` 于是走 `self.app` -> `App.__init__` ->
+    `init_app_config()` -> `QApplication(sys.argv)`，把整套 Qt GUI 拉起来 ——
+    探针只要 schema，不需要任何窗口，这一步既慢又会和 Qt 单例/事件循环纠缠。
+    置 `gui = None` 让 resolve_ui_config() 返回 None（HeadlessApp + 同步事件分发），
+    与 run_executor.py 同一手法。
+
+    注意 `gui = None` 而不是 `del cfg['gui']`：框架判的是 `"gui" in config`，
+    显式 None 走的是同一条分支且不改变键集合，对项目的 `config.get('gui')` 更安全。
+    """
+    cfg["use_gui"] = False
+    cfg["gui"] = None
+    return cfg
+
+
 def main():
     if len(sys.argv) < 2:
         print(json.dumps({"ok": False, "error": "缺少 project_dir 参数"}, ensure_ascii=False))
@@ -681,7 +737,7 @@ def main():
     from ok import OK
 
     cfg = dict(config)
-    cfg["use_gui"] = False
+    force_headless(cfg)
     cfg["check_mutex"] = False
     cfg["custom_tasks"] = False
     cfg["config_folder"] = temp_config_folder
