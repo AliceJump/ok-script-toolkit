@@ -26,6 +26,7 @@
     onetime_enqueue <module::Class>   一次性任务入队，执行一次后自动出队
     task_disable                      停掉当前正在执行的任务，轮询继续
     params          <json>            更新参数覆盖并即时应用到已加载任务
+    gparams         <json>            更新全局配置组 {"组名": {key: value}} 并即时生效
     pause / resume                    暂停 / 恢复执行器循环（全局）
     overlay_on / overlay_off          即时开 / 关调试浮层
     stop                              关闭执行器
@@ -34,6 +35,8 @@
     OK_TOOLKIT_TRIGGERS      启动即入列的触发任务 key，JSON 数组；集合是权威值，
                              未列出的触发任务一律置为未启用
     OK_LANG_HINTS_INJECT     参数覆盖 {"module::Class": {key: value}}（沿用旧脚本语义）
+    OK_TOOLKIT_GCONFIG       全局配置组快照 {"组名": {key: value}}，启动时合并进
+                             沙箱 configs/<组名>.json（在项目 configs 拷贝之后、OK() 之前）
     OK_TOOLKIT_USE_OVERLAY=1 调试浮层（设备连上后由 _apply_startup_overlay 落地）
 
 stdout 标记行（宿主按行扫描）:
@@ -180,8 +183,87 @@ def apply_config_sandbox(config: dict) -> str:
         except OSError as e:  # noqa: BLE001 — 拷贝失败退回「默认值」语义，绝不阻断启动
             _note(f"项目 configs 拷入沙箱失败（任务将读到默认值）：{e}")
 
+    # 插件侧的全局配置组快照（OK_TOOLKIT_GCONFIG）：merge 进沙箱 configs/<组名>.json。
+    # 必须在 copytree 之后 —— 插件值优先于项目值；在 OK(config) 之前 —— 框架实例化
+    # GlobalConfig 时 Config.__init__ 读的就是这份文件。
+    apply_global_group_snapshot(config_folder)
+
     _note(f"配置沙箱已启用：{config_folder}")
     return run_dir
+
+
+# 项目自建 store / 任务运行期会以 get_relative_path("configs", ...) 在 **import 期**
+# 固定存储路径（不走 Config.config_folder），必须在这类 import 发生前改道。
+# 账号存储（account_scoped_overrides.json）同样进沙箱：插件编辑不落项目文件，
+# 与「项目 GUI 与插件独立」的语义一致（代价：GUI 写的账号数据执行器侧不可见，
+# 以执行器/插件侧为准）。
+def install_config_path_patch() -> None:
+    """把 get_relative_path("configs", ...) 的相对调用改道到沙箱 configs。
+
+    必须在 import 项目 config 之前安装（store 模块在导入期就用该函数固定路径）。
+    ok.util.config 在模块导入时复制了函数引用，需要同步替换。
+    """
+    run_dir = os.environ.get("OK_TOOLKIT_RUN_DIR", "").strip()
+    if not run_dir:
+        return
+    sandbox_configs = os.path.join(os.path.abspath(run_dir), "configs")
+    try:
+        import ok.util.config as ok_config
+        import ok.util.file as ok_file
+    except Exception as e:  # noqa: BLE001 — ok 未就绪时跳过（import config 后仍有 apply_config_sandbox 兜底）
+        _note(f"get_relative_path 改道跳过：{e}")
+        return
+
+    original = ok_file.get_relative_path
+
+    def sandboxed_get_relative_path(*files):
+        if files and os.path.normcase(str(files[0])) == "configs":
+            return os.path.normpath(os.path.join(sandbox_configs, *files[1:]))
+        return original(*files)
+
+    ok_file.get_relative_path = sandboxed_get_relative_path
+    ok_config.get_relative_path = sandboxed_get_relative_path
+    _note("configs 相对路径已改道沙箱（自建 store / 账号存储 / 运行期写入一并隔离）")
+
+
+def apply_global_group_snapshot(config_folder) -> None:
+    """把 OK_TOOLKIT_GCONFIG 的全局配置组快照 merge 进沙箱 configs/<组名>.json。
+
+    快照结构 {"组名": {key: value}}，来自插件 tasks.json 的全局组段落。
+    read-modify-write：组文件里已有的键保留（项目值），快照里的键覆盖/新增 ——
+    与任务侧「基线 + 覆盖」同语义。孤儿键（default 已删）写进来后会被框架
+    verify_config 过滤掉，无害：插件快照仍是权威，键回归时复活。
+    """
+    raw = os.environ.get("OK_TOOLKIT_GCONFIG", "").strip()
+    if not raw:
+        return
+    try:
+        parsed = json.loads(raw)
+    except Exception as e:  # noqa: BLE001
+        _note(f"OK_TOOLKIT_GCONFIG 不是合法 JSON，忽略：{e}")
+        return
+    if not isinstance(parsed, dict):
+        return
+    applied = 0
+    for group_name, values in parsed.items():
+        if not isinstance(values, dict) or not values:
+            continue
+        target = os.path.join(config_folder, f"{group_name}.json")
+        existing = {}
+        try:
+            if os.path.isfile(target):
+                with open(target, "r", encoding="utf-8") as f:
+                    loaded = json.load(f)
+                if isinstance(loaded, dict):
+                    existing = loaded
+            existing.update(values)
+            with open(target, "w", encoding="utf-8") as f:
+                json.dump(existing, f, ensure_ascii=False, indent=2)
+            applied += 1
+        except (OSError, ValueError) as e:  # noqa: BLE001 — 单组失败不阻断其他组
+            _note(f"全局配置组 {group_name} 写入沙箱失败：{e}")
+    if applied:
+        _note(f"全局配置组快照已写入沙箱：{applied} 组")
 
 
 # ── 目标项目自带的启动补丁 ────────────────────────────────────────────
@@ -620,6 +702,55 @@ def _apply_startup_overlay(enabled: bool) -> None:
         _note(f"调试浮层启用失败：{type(e).__name__}: {e}")
 
 
+def resolve_group_config(executor, group_name: str):
+    """全局配置组解析：先框架 GlobalConfig，失败再按约定探测项目自建 store。
+
+    ok-end-field / OK-AzurPromilia 的自定义全局配置（战斗/键位/滑索）由项目自建
+    store 管理（src.core.global_config_store.get_global_config，接口与框架同形），
+    不在框架 GlobalConfig 注册表里 —— 这里按约定 try-import 兜底。
+    """
+    try:
+        return executor.global_config.get_config(group_name)
+    except Exception:  # noqa: BLE001 — 转入项目 store 探测
+        pass
+    for module_name in ("src.core.global_config_store",):
+        try:
+            module = importlib.import_module(module_name)
+        except Exception:  # noqa: BLE001 — 项目没有自建 store 是常态
+            continue
+        getter = getattr(module, "get_global_config", None)
+        if callable(getter):
+            return getter(group_name)
+    raise ValueError(f"unknown global config group: {group_name}")
+
+
+def _apply_gparams(executor, argument: str) -> None:
+    """更新全局配置组并即时生效。
+
+    结构 {"组名": {key: value}}。走 Config.__setitem__（会落沙箱盘）—— 全局配置组
+    的修改应当持久，与任务覆盖「只改内存」不同：全局组没有 save patch 的还原语义，
+    且插件 UI 显示的就是这份持久值。组不存在时 raise，由 handle_command 回传错误。
+    """
+    if not argument:
+        return
+    try:
+        parsed = json.loads(argument)
+    except Exception as e:  # noqa: BLE001 — 回传给宿主展示
+        raise ValueError(f"invalid gparams payload: {e}")
+    if not isinstance(parsed, dict):
+        raise ValueError("gparams payload must be an object")
+    touched = []
+    for group_name, values in parsed.items():
+        if not isinstance(values, dict):
+            raise ValueError(f"group {group_name} payload must be an object")
+        gconfig = resolve_group_config(executor, str(group_name))
+        for key, value in values.items():
+            gconfig[key] = value
+        touched.append(f"{group_name}({len(values)})")
+    if touched:
+        _note("全局配置组已更新并落沙箱：" + "、".join(touched))
+
+
 def _apply_params(executor, argument: str) -> None:
     """整体替换参数覆盖表，并即时应用到已加载的任务实例。
 
@@ -675,6 +806,8 @@ def handle_command(ok, line: str) -> None:
             executor.stop_current_task()
         elif verb == "params":
             _apply_params(executor, argument)
+        elif verb == "gparams":
+            _apply_gparams(executor, argument)
         elif verb == "pause":
             # executor.pause()：置 paused 标志并唤醒执行循环；任务在下一次取 frame
             # 时挂起。已处于暂停时返回 None（幂等），同样回标记让宿主同步状态。
@@ -761,6 +894,13 @@ def main() -> None:
 
     read_overrides()
     sys.path.insert(0, ".")
+    # 自建 store（如 ok-end-field global_config_store）在模块导入期就用
+    # get_relative_path("configs") 固定存储路径 —— 必须在 import config 前改道。
+    # 仅改相对的 "configs" 前缀；OK(config) 后 Config.config_folder 的正式改道不受影响。
+    try:
+        install_config_path_patch()
+    except Exception as e:  # noqa: BLE001
+        _note(f"configs 路径改道失败（自建 store 将直写项目 configs）：{e}")
 
     # 目标项目的约定文件（`ok-script-toolkit.json`，只读）。
     # 项目 main.py 里的启动准备由它声明 —— config.py 里没有这类信息，

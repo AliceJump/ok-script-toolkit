@@ -23,6 +23,11 @@
   "Python interpreter does not exist: {path}": "Python インタープリターが存在しません: {path}",
   "▶ Debug overlay: enabled": "▶ デバッグ オーバーレイ: 有効",
   "Parameter overrides: {count}": "パラメーター上書き: {count} 件",
+  "Configuration takeover: {count} snapshot key(s) materialized": "設定テイクオーバー: スナップショット鍵 {count} 件を生成",
+  "Synced default_config: {count} key(s) added": "default_config を同期: 鍵 {count} 件を追加",
+  "Snapshot already covers every default_config key": "スナップショットは default_config の全鍵を既にカバー",
+  "Restored factory defaults: {count} key(s)": "出荷時値に復元: 鍵 {count} 件",
+  "Snapshot already matches factory defaults": "スナップショットは出荷時値と一致",
   "Failed to launch task: {error}": "タスクを起動できませんでした: {error}",
   "Error": "エラー",
   "Unable to read view file: {error}": "ビュー ファイルを読み込めません: {error}",
@@ -199,5 +204,6 @@
   "{count} file(s) still import {old} and will break: {files}": "{count} 個のファイルがまだ {old} を import しており、壊れます: {files}",
   "Overwrite anyway": "それでも上書き",
   "Not set — ask on save": "未設定 — 保存時に確認",
-  "Derived from the file name": "ファイル名から導出"
+  "Derived from the file name": "ファイル名から導出",
+  "Account store update failed: {error}": "アカウントストアの更新に失敗: {error}"
 }

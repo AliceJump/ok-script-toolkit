@@ -23,6 +23,11 @@
   "Python interpreter does not exist: {path}": "Python 인터프리터가 없습니다: {path}",
   "▶ Debug overlay: enabled": "▶ 디버그 오버레이: 활성화됨",
   "Parameter overrides: {count}": "매개변수 재정의: {count}개",
+  "Configuration takeover: {count} snapshot key(s) materialized": "설정 테이크오버: 스냅샷 키 {count}개 생성",
+  "Synced default_config: {count} key(s) added": "default_config 동기화: 키 {count}개 추가",
+  "Snapshot already covers every default_config key": "스냅샷이 default_config의 모든 키를 이미 포함",
+  "Restored factory defaults: {count} key(s)": "출고값 복원: 키 {count}개",
+  "Snapshot already matches factory defaults": "스냅샷이 출고값과 일치",
   "Failed to launch task: {error}": "작업을 실행하지 못했습니다: {error}",
   "Error": "오류",
   "Unable to read view file: {error}": "보기 파일을 읽을 수 없습니다: {error}",
@@ -199,5 +204,6 @@
   "{count} file(s) still import {old} and will break: {files}": "{count} 개 파일이 아직 {old} 를 import 하고 있어 깨집니다: {files}",
   "Overwrite anyway": "그래도 덮어쓰기",
   "Not set — ask on save": "설정 안 됨 — 저장할 때 묻기",
-  "Derived from the file name": "파일 이름에서 유도"
+  "Derived from the file name": "파일 이름에서 유도",
+  "Account store update failed: {error}": "계정 스토어 업데이트 실패: {error}"
 }

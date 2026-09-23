@@ -113,18 +113,28 @@
   }
 
   function buildMultiSelection(options, optionLabels, rawValue, setValue) {
+    // checkbox 列表：原生 <select multiple> 是浏览器默认样式（暗色下白底突兀），
+    // 且「按住 Ctrl 多选」体验差；checkbox 点击即选，样式随主题。
     const wrapper = document.createElement('div');
-    const select = document.createElement('select');
-    select.multiple = true;
-    select.size = Math.min(7, options.length + 1);
-    const selectedValues = (Array.isArray(rawValue) ? rawValue : []).map(String);
+    wrapper.className = 'ms-list';
+    const selectedValues = new Set((Array.isArray(rawValue) ? rawValue : []).map(String));
     options.forEach((optionValue, index) => {
-      select.appendChild(createSelectOption(index, optionLabels[index] || optionValue, selectedValues.includes(String(optionValue))));
+      const label = document.createElement('label');
+      label.className = 'ms-list__item';
+      const input = document.createElement('input');
+      input.type = 'checkbox';
+      input.checked = selectedValues.has(String(optionValue));
+      input.addEventListener('change', () => {
+        if (input.checked) selectedValues.add(String(optionValue));
+        else selectedValues.delete(String(optionValue));
+        setValue(options.filter((_, i) => selectedValues.has(String(options[i]))));
+      });
+      const text = document.createElement('span');
+      text.textContent = optionLabels[index] || optionValue;
+      label.append(input, text);
+      wrapper.appendChild(label);
     });
-    select.addEventListener('change', () => {
-      setValue(Array.from(select.selectedOptions).map(option => options[Number(option.value)]));
-    });
-    wrapper.append(select, createHint(t('holdCtrlMulti')));
+    if (!options.length) wrapper.appendChild(createHint(t('noConfigParameters')));
     return wrapper;
   }
 

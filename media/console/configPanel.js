@@ -1,5 +1,5 @@
 (() => {
-  const { t, post, state, taskKey } = globalThis.TaskLauncherCore;
+  const { t, post, state, taskKey, uiState } = globalThis.TaskLauncherCore;
   const { buildField, fieldValue } = globalThis.TaskLauncherFields;
 
   const rulesOf = typeMeta => {
@@ -83,7 +83,7 @@
     panel.appendChild(actions);
   }
 
-  function buildConfigPanel(task, schema) {
+  function buildConfigPanel(task, schema, options = {}) {
     const panel = document.createElement('div');
     panel.className = 'config-panel';
     const saved = state.taskConfigs[taskKey(task)] || {};
@@ -107,7 +107,7 @@
       const host = document.createElement('div');
       host.className = 'config-fields';
       panel.appendChild(host);
-      renderSchema(host, task, schema, config, persist);
+      renderSchema(host, task, schema, config, persist, options.defaultGroupOpen === true);
     } else {
       const empty = document.createElement('div');
       empty.className = 'config-empty';
@@ -119,7 +119,7 @@
     return panel;
   }
 
-  function renderSchema(host, task, schema, config, onConfigChange) {
+  function renderSchema(host, task, schema, config, onConfigChange, defaultGroupOpen = false) {
     const fieldsByKey = Object.fromEntries(schema.fields.map(field => [field.key, field]));
     const groups = schema.configGroups && typeof schema.configGroups === 'object' ? schema.configGroups : {};
     const selectorKey = schema.groupSelector && fieldsByKey[schema.groupSelector] ? schema.groupSelector : '';
@@ -127,6 +127,7 @@
     const renderedFields = new Set();
     const renderedGroups = new Set();
     const inlineRules = {};
+    const groupEntries = [];  // 空组隐藏：记录每个组的 DOM（applyVisibility 统一计算）
 
     // 分组优先、显隐其次：同一个 key 不能既是折叠分组又带显隐 —— 折叠有权「吸收」显隐。
     //
@@ -183,6 +184,24 @@
       for (const [key, rows] of Object.entries(rowsByKey)) {
         for (const row of rows) row.hidden = !visible(key);
       }
+      // 空组隐藏（后序：先算子组再算父组）——body 里没有可见行、也没有可见子组的
+      // 分组整组隐藏；组头自带开关（headerField）的组不隐藏（开关本身有实际含义）。
+      const updateGroup = groupEl => {
+        const bodyEl = groupEl.querySelector(':scope > .config-group__body');
+        if (!bodyEl) return;
+        for (const child of bodyEl.querySelectorAll(':scope > .config-group')) updateGroup(child);
+        let hasVisible = false;
+        for (const row of bodyEl.querySelectorAll(':scope > .config-field')) {
+          if (!row.hidden) { hasVisible = true; break; }
+        }
+        if (!hasVisible) {
+          for (const child of bodyEl.querySelectorAll(':scope > .config-group')) {
+            if (!child.hidden) { hasVisible = true; break; }
+          }
+        }
+        groupEl.hidden = !hasVisible;
+      };
+      for (const entry of groupEntries) updateGroup(entry.el);
     };
 
     const notifyChange = () => {
@@ -223,17 +242,19 @@
       toggle.className = 'config-group__toggle secondary';
       const body = document.createElement('div');
       body.className = 'config-group__body';
-      const stateKey = `${taskKey(task)}::${path.join('>')}`;
-      const setOpen = open => {
+      // 分组折叠状态按 任务+路径 落盘（uiState），重开面板/切分段复用
+      const stateKey = `groupOpen::${taskKey(task)}::${path.join('>')}`;
+      const setOpen = (open, persist = true) => {
         group.classList.toggle('open', open);
         toggle.textContent = open ? '▲' : '▼';
         toggle.title = open ? t('collapseParameters') : t('parameters');
-        state.openConfigGroups.set(stateKey, open);
+        if (persist) uiState.set(stateKey, open);
       };
       toggle.addEventListener('click', () => setOpen(!group.classList.contains('open')));
       header.appendChild(toggle);
       group.append(header, body);
       container.appendChild(group);
+      groupEntries.push({ el: group, body });
 
       if (headerField && inlineRules[headerField]) {
         const checking = new Set(options.checking || []); checking.add(headerField);
@@ -269,7 +290,9 @@
         toggle.hidden = true;
         group.classList.add('open');
       } else {
-        setOpen(state.openConfigGroups.get(stateKey) || false);
+        // 未记忆的组用调用方的默认态（账号编辑器传 true——覆盖表单分组默认展开，
+        // 否则整个表单只剩一排收起的组头开关，与任务抽屉观感割裂）
+        setOpen(uiState.get(stateKey, defaultGroupOpen), false);
       }
       return true;
     };

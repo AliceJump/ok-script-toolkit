@@ -23,6 +23,11 @@
   "Python interpreter does not exist: {path}": "El intérprete de Python no existe: {path}",
   "▶ Debug overlay: enabled": "▶ Superposición de depuración: activada",
   "Parameter overrides: {count}": "Parámetros reemplazados: {count}",
+  "Configuration takeover: {count} snapshot key(s) materialized": "Toma de control de configuración: {count} clave(s) de instantánea materializadas",
+  "Synced default_config: {count} key(s) added": "default_config sincronizada: {count} clave(s) añadidas",
+  "Snapshot already covers every default_config key": "La instantánea ya cubre todas las claves de default_config",
+  "Restored factory defaults: {count} key(s)": "Valores de fábrica restaurados: {count} clave(s)",
+  "Snapshot already matches factory defaults": "La instantánea ya coincide con los valores de fábrica",
   "Failed to launch task: {error}": "No se pudo iniciar la tarea: {error}",
   "Error": "Error",
   "Unable to read view file: {error}": "No se pudo leer el archivo de la vista: {error}",
@@ -199,5 +204,6 @@
   "{count} file(s) still import {old} and will break: {files}": "{count} archivo(s) todavía importan {old} y se romperán: {files}",
   "Overwrite anyway": "Sobrescribir igualmente",
   "Not set — ask on save": "Sin definir — preguntar al guardar",
-  "Derived from the file name": "Derivado del nombre del archivo"
+  "Derived from the file name": "Derivado del nombre del archivo",
+  "Account store update failed: {error}": "Error al actualizar el almacén de cuentas: {error}"
 }

@@ -55,6 +55,12 @@ interface TaskSchema {
   displayName?: string;
   description?: string;
   kind?: 'onetime' | 'trigger';
+  /** 任务分组（BaseTask.group_name，源文案 key 走 tr）；空串 = standalone */
+  groupName?: string;
+  /** 组图标名（FluentIcon/Icon 的 enum name） */
+  groupIcon?: string;
+  /** 任务侧声明不进任务列表（框架原生不消费，ok-nte patch 语义） */
+  showInTaskTab?: boolean;
   /** 项目声明的配置分组/子任务树：组名 -> 字段或子组 key。 */
   configGroups?: Record<string, string[]>;
   groupLabels?: Record<string, string>;
@@ -63,16 +69,27 @@ interface TaskSchema {
   locale?: string;
 }
 
-/**
- * 每个任务的独立配置（持久化到 .vscode/ok-script-toolkit-tasks.json）。
+/** 全局配置组（框架 GlobalConfig 可见组，probe 的 globalConfigGroups 段） */
+interface GlobalConfigGroup {
+  name: string;
+  displayName?: string;
+  description?: string;
+  fields: TaskParamField[];
+  /** 来源：framework = 框架 GlobalConfig；project_store = 项目自建 store（Phase 5） */
+  source?: 'framework' | 'project_store';
+}
+
+/** 每个任务的独立配置（持久化到 .vscode/ok-script-toolkit-tasks.json）。
  *
+ * params 在「配置接管」模式下是**全量快照**：schema 的每个键都有值（首建继承项目
+ * configs 当前值，之后独立演化），执行器按它全量注入 —— UI 显示 = 实际执行。
  * extraArgs / env 是历史字段：常驻执行器把全部任务跑在同一个进程里，进程级参数
  * 无法再按任务区分，因此不再生效（仅保留数据，不做删除）。UI 早已移除这两项。
  */
 interface TaskConfig {
   extraArgs?: string;
   env?: Record<string, string>;
-  /** 任务参数覆盖：key=任务 default_config 的 key，value=覆盖值 */
+  /** 任务参数快照：key=任务 default_config 的 key（含孤儿键），value=快照值 */
   params?: Record<string, unknown>;
 }
 
@@ -81,6 +98,12 @@ interface ProjectStore {
   tasks: Record<string, TaskConfig>;
   /** 已勾选「启用」的触发任务 key（module::Class），重开面板 / IDE 自动入列 */
   enabledTriggers?: string[];
+  /** 全局配置组快照：组名 -> {key: value}（配置接管模式的持久值） */
+  globalConfigs?: Record<string, Record<string, unknown>>;
+  /** 用户展开过的全局配置组（默认收起；重开面板按上次状态） */
+  expandedGlobalGroups?: string[];
+  /** webview UI 折叠状态（键 -> 值）：启动设置区、配置分组、卡片等，重开面板复用 */
+  uiState?: Record<string, unknown>;
 }
 
 /** 所有任务配置的持久化结构 */
@@ -95,6 +118,37 @@ interface SchemaProbeResult {
   schemas?: Record<string, TaskSchema>;
   /** 参与采集的任务总数 */
   total?: number;
+  /** 全局配置组（框架 GlobalConfig 可见组） */
+  globalConfigGroups?: GlobalConfigGroup[];
+  /** 项目自建全局配置 store 的组（约定接口：global_config_store.get_all_visible_configs） */
+  projectGlobalGroups?: GlobalConfigGroup[];
+  /** 多账户存储只读概要（configs/account_scoped_overrides.json） */
+  multiAccount?: MultiAccountInfo;
+}
+
+/** 多账户存储只读概要（Phase 6 只读呈现，不做编辑器） */
+interface MultiAccountInfo {
+  available: boolean;
+  storePath?: string;
+  readable?: boolean;
+  hasStoreModule?: boolean;
+  accountCount?: number;
+  overrideAccounts?: number;
+  overriddenTasks?: string[];
+  /** 可进多账户的任务：taskKey -> {storageName, keys}（键筛选数据源） */
+  enabledTasks?: Record<string, { storageName: string; keys: string[] }>;
+}
+
+/** 多账户存储数据（python/account_store.py get 的结果，编辑器数据源） */
+interface AccountStoreData {
+  /** 账号列表原文（每行一个账号名） */
+  accountListText?: string;
+  /** 注册表：acc_id -> {username, aliases} */
+  registry?: Record<string, { username?: string; aliases?: string[] }>;
+  /** 覆盖表：acc_id -> {任务类名(或全局组名): {键: 值}} */
+  accounts?: Record<string, Record<string, Record<string, unknown>>>;
+  /** 每账号的地图 content（acc_id -> 文本） */
+  mapContents?: Record<string, string>;
 }
 
 /** 常驻执行器回推的状态快照（对应 run_executor.py 的 OK_TOOLKIT_STATE 标记行） */
@@ -123,6 +177,26 @@ export function parseJsonFromStdout(stdout: string): any {
     } catch { /* 跳过非 JSON 行 */ }
   }
   return null;
+}
+
+/** JSON-compatible config values use deep value equality; primitives retain strict comparison. */
+export function configValuesEqual(left: unknown, right: unknown): boolean {
+  if (left === right) return true;
+  if (!left || !right || typeof left !== 'object' || typeof right !== 'object') return false;
+  if (Array.isArray(left) || Array.isArray(right)) {
+    if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length) return false;
+    for (let index = 0; index < left.length; index += 1) {
+      if (!configValuesEqual(left[index], right[index])) return false;
+    }
+    return true;
+  }
+  const leftRecord = left as Record<string, unknown>;
+  const rightRecord = right as Record<string, unknown>;
+  const leftKeys = Object.keys(leftRecord);
+  const rightKeys = Object.keys(rightRecord);
+  if (leftKeys.length !== rightKeys.length) return false;
+  return leftKeys.every((key) => Object.prototype.hasOwnProperty.call(rightRecord, key)
+    && configValuesEqual(leftRecord[key], rightRecord[key]));
 }
 
 interface PythonResult {
@@ -232,7 +306,14 @@ async function probeTaskSchemas(
     if (!parsed || !parsed.ok) {
       return { ok: false, error: parsed?.error || tr('Failed to collect task schema') };
     }
-    return { ok: true, schemas: parsed.schemas, total: parsed.total };
+    return {
+      ok: true,
+      schemas: parsed.schemas,
+      total: parsed.total,
+      globalConfigGroups: parsed.globalConfigGroups || [],
+      projectGlobalGroups: parsed.projectGlobalGroups || [],
+      multiAccount: parsed.multiAccount || { available: false },
+    };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }
@@ -289,6 +370,20 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
   private knownTasks: TaskInfo[] = [];
   /** 采集到的任务参数 schema（缓存到 .vscode/ok-script-toolkit-schema.json） */
   private schemas: Record<string, TaskSchema> = {};
+  /** 全局配置组（probe 的 globalConfigGroups 段，缓存随 schema 落盘） */
+  private globalGroups: GlobalConfigGroup[] = [];
+  /** 全局配置组快照（持久化到 tasks.json 的 globalConfigs 段；执行器按它注入） */
+  private globalSnapshots: Record<string, Record<string, unknown>> = {};
+  /** 多账户存储只读概要（probe 探测 configs/account_scoped_overrides.json） */
+  private multiAccount: MultiAccountInfo = { available: false };
+  /** 多账户存储数据（经 python/account_store.py 读写，含账号列表文本与覆盖表） */
+  private accountStoreData: AccountStoreData | null = null;
+  /** 用户展开过的全局配置组（持久化；不在集合内 = 收起） */
+  private expandedGlobalGroups = new Set<string>();
+  /** webview UI 折叠状态（键 -> 值），落盘项目存储供重开面板复用 */
+  private uiState: Record<string, unknown> = {};
+  /** 全局配置组推送防抖定时器 */
+  private gparamsTimer: NodeJS.Timeout | undefined;
 
   // ── 执行器会话 ───────────────────────────────────────────────────────
   /** 常驻执行器子进程；null 表示执行器未启动 */
@@ -374,10 +469,81 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
           this.stopExecutor();
           break;
         case 'saveConfig':
+          // 全局配置编辑器：伪 task module = __global__，className = 全局组名
+          if (msg.task?.module === '__global__') {
+            const group = String(msg.task.className || '');
+            const rawParams = msg.config?.params;
+            const params = rawParams && typeof rawParams === 'object' && !Array.isArray(rawParams)
+              ? rawParams as Record<string, unknown>
+              : {};
+            for (const [key, value] of Object.entries(params)) this.setGlobalValue(group, key, value);
+            break;
+          }
+          // 账号覆盖编辑器：伪 task module = __account__::<账号名>，className = 任务类名
+          if (typeof msg.task?.module === 'string' && msg.task.module.startsWith('__account__::')) {
+            const account = msg.task.module.slice('__account__::'.length);
+            const cfgObj = (msg.config && typeof msg.config === 'object')
+              ? msg.config as { params?: Record<string, unknown> }
+              : undefined;
+            this.saveAccountOverride(account, String(msg.task.className || ''), cfgObj?.params || {});
+            break;
+          }
           if (this.isKnownTask(msg.task)) this.saveTaskConfig(msg.task, this.sanitizeTaskConfig(msg.task, msg.config));
+          break;
+        case 'saveAccountList':
+          if (typeof msg.text === 'string') this.runAccountStore(['set_list', '--text', JSON.stringify(msg.text)]);
+          break;
+        case 'clearAccountOverride':
+          if (msg.account && msg.taskName) {
+            this.runAccountStore(['clear_override', '--account', String(msg.account), '--task', String(msg.taskName)]);
+          }
+          break;
+        case 'saveAccountMap':
+          // 每账号的地图 content（滑索/地图数据），经项目 store 的原子写落盘
+          if (msg.account && typeof msg.content === 'string') {
+            this.runAccountStore(['set_map', '--account', String(msg.account), '--content', JSON.stringify(msg.content)]);
+          }
           break;
         case 'loadConfigs':
           this.loadTaskConfigs();
+          break;
+        // ── 配置接管（快照同步/恢复 + 全局组编辑）──
+        case 'setGlobalValue':
+          this.setGlobalValue(String(msg.group || ''), String(msg.key || ''), msg.value);
+          break;
+        case 'toggleGlobalGroup':
+          this.setGlobalGroupExpanded(String(msg.name || ''), msg.expanded === true);
+          break;
+        case 'saveUiState':
+          // webview 折叠状态（启动设置区/配置分组/卡片）落盘，重开面板复用
+          if (typeof msg.key === 'string' && msg.key && msg.key.length <= 200) {
+            this.uiState = { ...this.uiState, [msg.key]: msg.value };
+            this.saveStore();
+          }
+          break;
+        case 'syncDefault':
+          {
+            const added = this.syncDefaultToSnapshot(String(msg.target || ''), String(msg.name || ''));
+            void view.webview.postMessage({
+              type: 'status',
+              level: 'ok',
+              text: added > 0
+                ? tr('Synced default_config: {count} key(s) added', { count: added })
+                : tr('Snapshot already covers every default_config key'),
+            });
+          }
+          break;
+        case 'resetDefault':
+          {
+            const reset = this.resetSnapshotToDefault(String(msg.target || ''), String(msg.name || ''));
+            void view.webview.postMessage({
+              type: 'status',
+              level: 'ok',
+              text: reset > 0
+                ? tr('Restored factory defaults: {count} key(s)', { count: reset })
+                : tr('Snapshot already matches factory defaults'),
+            });
+          }
           break;
         // ── 游戏分段（原侧边栏工具箱）──
         case 'connectGame':
@@ -393,6 +559,12 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
           break;
         case 'openCharacterManager':
           this.openCharacterManager?.();
+          break;
+        case 'openPath':
+          // 多账户存储等数据文件的「打开位置」：交给操作系统文件管理器定位
+          if (typeof msg.path === 'string' && msg.path) {
+            void vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(msg.path));
+          }
           break;
       }
     });
@@ -429,6 +601,11 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
         for (const [key, item] of Object.entries(raw.params as Record<string, unknown>)) {
           if (allowed.has(key)) params[key] = item;
         }
+        // 配置接管：schema 未列出的键是孤儿键（default 已删），从既有快照原样保留——
+        // 决议 1「永不删键」：键回归时设置自动复活
+        for (const [key, item] of Object.entries(existing.params || {})) {
+          if (!allowed.has(key) && !(key in params)) params[key] = item;
+        }
       }
       if (Object.keys(params).length) config.params = params;
     }
@@ -458,19 +635,29 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
         this.taskConfigs = entry?.tasks || raw.tasks || {};
         const triggers = entry?.enabledTriggers || raw.enabledTriggers || [];
         this.enabledTriggers = new Set(triggers.filter((key) => typeof key === 'string'));
+        this.globalSnapshots = entry?.globalConfigs || {};
+        const expanded = entry?.expandedGlobalGroups || [];
+        this.expandedGlobalGroups = new Set(expanded.filter((key) => typeof key === 'string'));
+        this.uiState = entry?.uiState && typeof entry.uiState === 'object' ? { ...entry.uiState } : {};
       } else {
         this.taskConfigs = {};
         this.enabledTriggers = new Set();
+        this.globalSnapshots = {};
+        this.expandedGlobalGroups = new Set();
+        this.uiState = {};
       }
     } catch (e) {
       this.taskConfigs = {};
       this.enabledTriggers = new Set();
+      this.globalSnapshots = {};
+      this.expandedGlobalGroups = new Set();
+      this.uiState = {};
       void vscode.window.showWarningMessage(tr('Failed to read task configuration: {error}', {
         error: e instanceof Error ? e.message : String(e),
       }));
     }
     if (this.view) {
-      void this.view.webview.postMessage({ type: 'taskConfigs', configs: this.taskConfigs });
+      void this.view.webview.postMessage({ type: 'taskConfigs', configs: this.taskConfigs, uiState: this.uiState });
     }
   }
 
@@ -480,6 +667,249 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
     if (!this.saveStore()) return;
     // 执行器是常驻进程，参数覆盖必须即时推送才能生效（否则要重启执行器）
     this.scheduleParamsPush();
+  }
+
+  // ── 配置接管：快照物化 / 同步 / 恢复默认 ─────────────────────────────
+  /**
+   * 物化单个任务的快照：params 缺失的 schema 键补齐。
+   * - 首建（params 为空）：全键取 schema.value —— 一次性继承项目 configs 当前值（方案 b）
+   * - 已有快照：仅补 default_config 新增的键，取 field.default（决议 1：同步以出厂值进入）
+   * - params 里 schema 没有的键（孤儿键）原样保留，永不删除
+   * 返回补齐的键数。
+   */
+  private materializeTaskSnapshot(taskKey: string, schema: TaskSchema): number {
+    if (schema.broken) return 0;
+    const existing = { ...(this.taskConfigs[taskKey]?.params || {}) };
+    const isFirst = Object.keys(existing).length === 0;
+    let added = 0;
+    for (const f of schema.fields) {
+      if (f.key in existing) continue;
+      existing[f.key] = isFirst
+        ? f.value
+        : (f.default !== undefined ? f.default : f.value);
+      added += 1;
+    }
+    if (added > 0) {
+      this.taskConfigs = {
+        ...this.taskConfigs,
+        [taskKey]: { ...this.taskConfigs[taskKey], params: existing },
+      };
+    }
+    return added;
+  }
+
+  /** 物化全局配置组快照（语义与任务一致：首建继承当前值，新键取 default） */
+  private materializeGlobalSnapshot(group: GlobalConfigGroup): number {
+    const existing = { ...(this.globalSnapshots[group.name] || {}) };
+    const isFirst = Object.keys(existing).length === 0;
+    let added = 0;
+    for (const f of group.fields) {
+      if (f.key in existing) continue;
+      existing[f.key] = isFirst
+        ? f.value
+        : (f.default !== undefined ? f.default : f.value);
+      added += 1;
+    }
+    if (added > 0) {
+      this.globalSnapshots = { ...this.globalSnapshots, [group.name]: existing };
+    }
+    return added;
+  }
+
+  /** 物化全部快照（probe 成功 / schema 缓存加载后调用）并落盘，返回新增键总数 */
+  private materializeAllSnapshots(): number {
+    let added = 0;
+    for (const [key, schema] of Object.entries(this.schemas)) {
+      added += this.materializeTaskSnapshot(key, schema);
+    }
+    for (const group of this.globalGroups) {
+      added += this.materializeGlobalSnapshot(group);
+    }
+    if (added > 0) {
+      this.saveStore();
+      // 物化改变了 params/全局组，让前端表单与注入数据保持最新
+      this.view?.webview.postMessage({ type: 'taskConfigs', configs: this.taskConfigs, uiState: this.uiState });
+      this.pushGlobalGroups();
+    }
+    return added;
+  }
+
+  /** 把全局配置组与其快照推给前端（配置分段渲染数据源） */
+  private pushGlobalGroups(): void {
+    this.view?.webview.postMessage({
+      type: 'globalGroups',
+      groups: this.globalGroups,
+      snapshots: this.globalSnapshots,
+      expanded: [...this.expandedGlobalGroups],
+    });
+  }
+
+  /** 展开/收起全局配置组（持久化，重开面板按上次状态） */
+  private setGlobalGroupExpanded(name: string, expanded: boolean): void {
+    if (!name) return;
+    if (expanded) this.expandedGlobalGroups.add(name);
+    else this.expandedGlobalGroups.delete(name);
+    this.saveStore();
+    this.pushGlobalGroups();
+  }
+
+  /** 全局组单键写入（配置分段表单「修改即保存」）+ 运行中 gparams 推送 */
+  private setGlobalValue(group: string, key: string, value: unknown): void {
+    const groupSchema = this.globalGroups.find((item) => item.name === group);
+    if (!groupSchema || !groupSchema.fields.some((field) => field.key === key)) return;
+    const snap = { ...(this.globalSnapshots[group] || {}), [key]: value };
+    this.globalSnapshots = { ...this.globalSnapshots, [group]: snap };
+    if (!this.saveStore()) return;
+    this.scheduleGParamsPush();
+  }
+
+  /** 全局组快照推送防抖（与任务 params 同节奏） */
+  private scheduleGParamsPush(): void {
+    if (!this.executor) return;
+    if (this.gparamsTimer) clearTimeout(this.gparamsTimer);
+    this.gparamsTimer = setTimeout(() => {
+      this.gparamsTimer = undefined;
+      if (!this.executor) return;
+      if (!Object.keys(this.globalSnapshots).length) return;
+      this.writeCommand(`gparams ${JSON.stringify(this.globalSnapshots)}`);
+    }, PARAMS_PUSH_DEBOUNCE_MS);
+  }
+
+  // ── 多账户配置编辑（写操作全部经 python/account_store.py 转调项目 store）──
+
+  /**
+   * spawn account_store.py：get 读存储并回推前端；写命令成功后自动重读刷新。
+   * 用项目 Python 运行（store 依赖 ok 包），写路径复用项目自己的锁/原子写/注册表同步。
+   */
+  private runAccountStore(command: string[]): void {
+    const { projectDir, pythonPath } = this.getConfig();
+    if (!projectDir) return;
+    // 存储位置与执行器一致：--run-dir 让 account_store.py 把 configs 改道沙箱
+    const runDir = path.join(projectDir, '.vscode', 'ok-script-toolkit');
+    const child = cp.spawn(
+      pythonPath,
+      [pythonScript(this.extensionUri, 'account_store.py'), projectDir, ...command, '--run-dir', runDir],
+      { cwd: projectDir, windowsHide: true, env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' } },
+    );
+    let stdout = '';
+    let launchFailed = false;
+    child.stdout?.on('data', (d) => { stdout += d.toString('utf8'); });
+    child.once('error', (error) => {
+      launchFailed = true;
+      const message = error.message || String(error);
+      this.output.appendLine(`[toolkit] account_store ${command[0]} 启动失败：${message}`);
+      this.view?.webview.postMessage({
+        type: 'accountStore',
+        data: null,
+        error: message,
+      });
+    });
+    child.on('close', () => {
+      if (launchFailed) return;
+      const parsed = parseJsonFromStdout(stdout);
+      if (!parsed?.ok) {
+        const error = parsed?.error || `exit code ${child.exitCode}`;
+        // 错误详情进输出频道（toast 会消失，频道可回看）
+        this.output.appendLine(`[toolkit] account_store ${command[0]} 失败：${error}`);
+        this.view?.webview.postMessage({
+          type: 'accountStore',
+          data: null,
+          error,
+        });
+        return;
+      }
+      if (command[0] === 'get') {
+        this.accountStoreData = {
+          accountListText: parsed.account_list_text || '',
+          registry: parsed.registry || {},
+          accounts: parsed.accounts || {},
+          mapContents: parsed.map_contents || {},
+        };
+        this.view?.webview.postMessage({ type: 'accountStore', data: this.accountStoreData });
+      } else {
+        // 写入成功后重读一次，前端数据保持权威
+        this.runAccountStore(['get']);
+      }
+    });
+  }
+
+  /** 保存账号覆盖：account 传账号名（store 自动解析/创建 acc_id），taskName 用任务类名 */
+  private saveAccountOverride(account: string, taskClassName: string, params: Record<string, unknown>): void {
+    if (!account || !taskClassName) return;
+    this.runAccountStore([
+      'set_override', '--account', account, '--task', taskClassName,
+      '--values', JSON.stringify(params ?? {}),
+    ]);
+  }
+
+  /**
+   * 同步 default_config（决议 1：并集扩张）——补缺键（取出厂值），已有键值不动，孤儿键保留。
+   * target='task' 时 name 为任务 key；target='global' 时 name 为组名。返回新增键数。
+   */
+  private syncDefaultToSnapshot(target: string, name: string): number {
+    const fields = target === 'task'
+      ? this.schemas[name]?.fields
+      : this.globalGroups.find((g) => g.name === name)?.fields;
+    if (!fields?.length) return 0;
+    const existing = target === 'task'
+      ? { ...(this.taskConfigs[name]?.params || {}) }
+      : { ...(this.globalSnapshots[name] || {}) };
+    let added = 0;
+    for (const f of fields) {
+      if (f.key in existing) continue;
+      existing[f.key] = f.default !== undefined ? f.default : f.value;
+      added += 1;
+    }
+    if (!added) return 0;
+    if (target === 'task') {
+      this.taskConfigs = { ...this.taskConfigs, [name]: { ...this.taskConfigs[name], params: existing } };
+    } else {
+      this.globalSnapshots = { ...this.globalSnapshots, [name]: existing };
+    }
+    this.saveStore();
+    this.scheduleParamsPush();
+    this.scheduleGParamsPush();
+    this.view?.webview.postMessage({
+      type: 'snapshotUpdated', target, name,
+      params: target === 'task' ? existing : undefined,
+      values: target === 'global' ? existing : undefined,
+    });
+    return added;
+  }
+
+  /**
+   * 恢复默认（决议 2：出厂值）——快照里 default 仍存在的键重置为出厂值；孤儿键保留。
+   * 返回重置键数。
+   */
+  private resetSnapshotToDefault(target: string, name: string): number {
+    const fields = target === 'task'
+      ? this.schemas[name]?.fields
+      : this.globalGroups.find((g) => g.name === name)?.fields;
+    if (!fields?.length) return 0;
+    const existing = target === 'task'
+      ? { ...(this.taskConfigs[name]?.params || {}) }
+      : { ...(this.globalSnapshots[name] || {}) };
+    let reset = 0;
+    for (const f of fields) {
+      if (f.default === undefined || configValuesEqual(existing[f.key], f.default)) continue;
+      existing[f.key] = f.default;
+      reset += 1;
+    }
+    if (!reset) return 0;
+    if (target === 'task') {
+      this.taskConfigs = { ...this.taskConfigs, [name]: { ...this.taskConfigs[name], params: existing } };
+    } else {
+      this.globalSnapshots = { ...this.globalSnapshots, [name]: existing };
+    }
+    this.saveStore();
+    this.scheduleParamsPush();
+    this.scheduleGParamsPush();
+    this.view?.webview.postMessage({
+      type: 'snapshotUpdated', target, name,
+      params: target === 'task' ? existing : undefined,
+      values: target === 'global' ? existing : undefined,
+    });
+    return reset;
   }
 
   /** 把任务配置与启用集合写回 .vscode/ok-script-toolkit-tasks.json */
@@ -499,6 +929,9 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
         ...existing,
         tasks: this.taskConfigs,
         enabledTriggers: [...this.enabledTriggers],
+        globalConfigs: this.globalSnapshots,
+        expandedGlobalGroups: [...this.expandedGlobalGroups],
+        uiState: this.uiState,
       };
       fs.writeFileSync(p, JSON.stringify(store, null, 2), 'utf-8');
       return true;
@@ -513,24 +946,52 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
   }
 
   /** 读取 schema 缓存；无缓存时返回空 */
-  private loadSchemaCache(projectDir: string, locale: string): Record<string, TaskSchema> {
+  private loadSchemaCache(projectDir: string, locale: string): {
+    schemas: Record<string, TaskSchema>;
+    globalGroups: GlobalConfigGroup[];
+    multiAccount: MultiAccountInfo;
+  } {
+    const empty = {
+      schemas: {} as Record<string, TaskSchema>,
+      globalGroups: [] as GlobalConfigGroup[],
+      multiAccount: { available: false } as MultiAccountInfo,
+    };
     try {
       const p = this.dataFile('ok-script-toolkit-schema.json');
       if (fs.existsSync(p)) {
         const raw = JSON.parse(fs.readFileSync(p, 'utf-8')) as SchemaProbeResult & { projectDir?: string; locale?: string };
         const cachedLocale = raw.locale || Object.values(raw.schemas || {})[0]?.locale;
-        return raw.projectDir === projectDir && cachedLocale === locale ? raw.schemas || {} : {};
+        if (raw.projectDir !== projectDir || cachedLocale !== locale) return empty;
+        // 缓存版本化：旧格式缓存没有 enabledTasks（账号编辑器键集）——作废重探，
+        // 否则账号编辑器永远拿不到任务/键筛选数据
+        const cachedMulti = raw.multiAccount;
+        if (cachedMulti && cachedMulti.available === true && cachedMulti.enabledTasks === undefined) return empty;
+        return {
+          schemas: raw.schemas || {},
+          globalGroups: raw.globalConfigGroups || [],
+          multiAccount: cachedMulti || empty.multiAccount,
+        };
       }
     } catch { /* 忽略损坏的缓存 */ }
-    return {};
+    return empty;
   }
 
   /** 写入 schema 缓存 */
-  private saveSchemaCache(projectDir: string, locale: string, schemas: Record<string, TaskSchema>): void {
+  private saveSchemaCache(
+    projectDir: string,
+    locale: string,
+    schemas: Record<string, TaskSchema>,
+    globalGroups: GlobalConfigGroup[],
+    multiAccount: MultiAccountInfo,
+  ): void {
     try {
       const p = this.dataFile('ok-script-toolkit-schema.json');
       fs.mkdirSync(path.dirname(p), { recursive: true });
-      fs.writeFileSync(p, JSON.stringify({ ok: true, projectDir, locale, schemas }, null, 2), 'utf-8');
+      fs.writeFileSync(
+        p,
+        JSON.stringify({ ok: true, projectDir, locale, schemas, globalConfigGroups: globalGroups, multiAccount }, null, 2),
+        'utf-8',
+      );
     } catch { /* 缓存失败不阻塞 */ }
   }
 
@@ -566,8 +1027,13 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
     }
     // 先读缓存（可能有上次采集的 schema，先让 UI 能用）
     this.currentProjectDir = projectDir;
-    this.schemas = this.loadSchemaCache(projectDir, locale);
+    const cached = this.loadSchemaCache(projectDir, locale);
+    this.schemas = cached.schemas;
+    this.globalGroups = cached.globalGroups;
+    this.multiAccount = cached.multiAccount;
     this.loadTaskConfigs(projectDir);
+    // 缓存 schema 也要物化快照：保证启动执行器时注入的是全量接管值
+    this.materializeAllSnapshots();
     const result = await parseConfigTasks(this.extensionUri, projectDir, pythonPath);
     if (generation !== this.refreshGeneration) return;
     if (!result.ok) {
@@ -586,7 +1052,15 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
       kind: task.kind || this.schemas[this.taskKey(task)]?.kind,
     }));
     this.knownTasks = tasks;
-    await view.webview.postMessage({ type: 'tasks', tasks, schemas: this.schemas });
+    await view.webview.postMessage({
+      type: 'tasks',
+      tasks,
+      schemas: this.schemas,
+      globalGroups: this.globalGroups,
+      globalSnapshots: this.globalSnapshots,
+      multiAccount: this.multiAccount,
+    });
+    this.pushGlobalGroups();
     this.pushExecutorState(view);
     this.pushGameState();
     void view.webview.postMessage({
@@ -630,10 +1104,32 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
       return;
     }
     this.schemas = probe.schemas;
-    this.saveSchemaCache(projectDir, locale, probe.schemas);
+    this.globalGroups = [
+      ...(probe.globalConfigGroups || []),
+      ...(probe.projectGlobalGroups || []),
+    ];
+    this.multiAccount = probe.multiAccount || { available: false };
+    if (this.multiAccount.hasStoreModule === true) this.runAccountStore(['get']);
+    this.saveSchemaCache(projectDir, locale, probe.schemas, this.globalGroups, this.multiAccount);
     const brokenCount = Object.values(probe.schemas).filter((s) => s.broken).length;
+    // 配置接管：物化快照（首建继承项目值 / 新键补出厂值 / 孤儿键保留），落盘并回推
+    const materialized = this.materializeAllSnapshots();
     // 只回推 schema 更新，让 UI 把已展开的任务卡片渲染出参数表单
-    void view.webview.postMessage({ type: 'schemas', schemas: this.schemas });
+    void view.webview.postMessage({
+      type: 'schemas',
+      schemas: this.schemas,
+      globalGroups: this.globalGroups,
+      globalSnapshots: this.globalSnapshots,
+      multiAccount: this.multiAccount,
+    });
+    this.pushGlobalGroups();
+    if (materialized > 0) {
+      void view.webview.postMessage({
+        type: 'status',
+        level: 'ok',
+        text: tr('Configuration takeover: {count} snapshot key(s) materialized', { count: materialized }),
+      });
+    }
     if (!this.executor) {
       void view.webview.postMessage({
         type: 'status',
@@ -720,6 +1216,10 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
     // 参数注入通过环境变量传递（避免命令行长度/转义问题）；key 是 module::Class，
     // 执行器按任务各自取自己的覆盖，因此可以整体合并后一次性传入。
     if (overrideCount) childEnv.OK_LANG_HINTS_INJECT = JSON.stringify(overrides);
+    // 全局配置组快照：执行器启动时 merge 进沙箱 configs/<组名>.json（run_executor 侧处理）
+    if (Object.keys(this.globalSnapshots).length) {
+      childEnv.OK_TOOLKIT_GCONFIG = JSON.stringify(this.globalSnapshots);
+    }
     // 工具箱共享配置：执行器启动无感沿用调试浮层开关与游戏连接
     const toolbox = loadToolboxState(projectDir);
     this.overlayActive = toolbox.overlay === true;
