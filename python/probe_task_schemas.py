@@ -81,10 +81,135 @@ def load_po_catalog(project_dir, locale, po_directory="i18n", domain="ok"):
     return catalog
 
 
+# ── 框架 Qt 翻译层（GUI tr() 的第一优先级）─────────────────────────────────
+#
+# 框架把内置文案（Basic Options / Notification 等的字段名与描述）的翻译编译成
+# .qm 藏在 Qt 资源 :/i18n（ok/ui/qt/resources.py），GUI 的 tr() 先查
+# QCoreApplication.translate('app', key)，没有才回落 gettext（项目 po）。
+# 实测：'Auto Start Game When App Starts' -> '程序启动时候自动启动游戏'、
+# 'System Notification' -> '系统通知'。探针此前只接 gettext 层，框架文案
+# 全部显示英文原值 —— 与 GUI 不一致。这里补上同一层，优先级与 GUI 对齐：
+# Qt(.qm) > 项目 po > 原文。项目 venv 没有 PySide6 时静默跳过，行为退回纯 po。
+_QT_TRANSLATOR = None
+
+
+def load_qt_translator(locale):
+    """加载框架 Qt 资源 :/i18n/<locale>.qm；失败返回 None（探针继续用 po）。"""
+    global _QT_TRANSLATOR
+    try:
+        import ok.ui.qt.resources  # noqa: F401  —— import 副作用：注册 :/i18n 资源
+        from PySide6.QtCore import QCoreApplication, QTranslator
+
+        app = QCoreApplication.instance()
+        if app is None:
+            app = QCoreApplication([sys.argv[0] if sys.argv else 'probe'])
+        translator = QTranslator(app)
+        if translator.load(locale, ':/i18n'):
+            app.installTranslator(translator)
+            _QT_TRANSLATOR = translator
+    except Exception:
+        _QT_TRANSLATOR = None
+    return _QT_TRANSLATOR
+
+
+def qt_translate(value):
+    """查 Qt 层译文；未加载 / 未命中时返回 None（调用方回落 po）。"""
+    if _QT_TRANSLATOR is None or not isinstance(value, str) or not value:
+        return None
+    translated_value = _QT_TRANSLATOR.translate('app', value)
+    return translated_value if translated_value and translated_value != value else None
+
+
 def translated(catalog, value):
     if not isinstance(value, str) or not value:
         return value
+    qt_value = qt_translate(value)
+    if qt_value is not None:
+        return qt_value
     return catalog.get(value, value)
+
+
+# ── 项目 GUI 的全局配置分组名（对齐 Qt GUI 的标题翻译链路）──────────────────
+#
+# 项目自建配置页 <project>/src/gui/[Gg]lobal[Cc]onfig[Tt]ab.py 用
+# GLOBAL_CONFIG_GROUPS = {"中文分组名": ["config 名", ...]} 给全局配置归组，
+# 并把**中文分组名**传给 ConfigCard(None, group_name, ...) 当卡片标题。
+# 于是 GUI 标题的翻译链路是 tr("战斗配置") —— po 里的 msgid 是中文分组名
+# （ja_JP: 戦闘設定、en_US: Battle Config…），而不是英文 config 名。
+# 本探针此前拿 config 名（"Battle Config"）查 po 永远落空，于是显示英文原值。
+# 这里按同一约定反查分组名，再用它过 po，与 GUI 逐字对齐。
+
+GUI_GROUP_TAB_CANDIDATES = (
+    ("src", "gui", "GlobalConfigTab.py"),
+    ("src", "gui", "global_config_tab.py"),
+)
+
+
+def _resolve_gui_constant(node, imports):
+    """求值分组映射里的节点：字符串字面量直接取；名字引用从 import 的模块常量取。"""
+    if isinstance(node, ast.Constant):
+        return node.value if isinstance(node.value, str) else None
+    if isinstance(node, ast.Name):
+        target = imports.get(node.id)
+        if not target:
+            return None
+        module_name, attr = target
+        # 探针主流程已 import 项目 config（任务→core 链），store 模块通常已在
+        # sys.modules；不在时再 import 一次，失败只影响这一条映射。
+        module = sys.modules.get(module_name)
+        if module is None:
+            try:
+                module = importlib.import_module(module_name)
+            except Exception:
+                return None
+        value = getattr(module, attr, None)
+        return value if isinstance(value, str) else None
+    return None
+
+
+def load_gui_group_names(project_dir):
+    """读项目 GUI 的 GLOBAL_CONFIG_GROUPS，返回 {config 名: 中文分组名}。
+
+    无该约定的项目返回 {}，此时回退用 config 名查 po，行为不变。
+    """
+    for rel in GUI_GROUP_TAB_CANDIDATES:
+        path = os.path.join(project_dir, *rel)
+        if not os.path.isfile(path):
+            continue
+        try:
+            with open(path, encoding="utf-8") as stream:
+                tree = ast.parse(stream.read())
+        except Exception:
+            continue
+        imports = {}
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.module:
+                for alias in node.names:
+                    imports[alias.asname or alias.name] = (node.module, alias.name)
+        for node in tree.body:
+            if not isinstance(node, ast.Assign):
+                continue
+            if not any(isinstance(t, ast.Name) and t.id == "GLOBAL_CONFIG_GROUPS" for t in node.targets):
+                continue
+            if not isinstance(node.value, ast.Dict):
+                continue
+            mapping = {}
+            for key_node, value_node in zip(node.value.keys, node.value.values):
+                group_name = _resolve_gui_constant(key_node, imports)
+                if not group_name or not isinstance(value_node, (ast.List, ast.Tuple)):
+                    continue
+                for element in value_node.elts:
+                    config_name = _resolve_gui_constant(element, imports)
+                    if config_name:
+                        mapping.setdefault(config_name, group_name)
+            return mapping
+    return {}
+
+
+def group_display_name(catalog, gui_names, gname):
+    """全局配置组显示名：GUI 分组名过 po（对齐 Qt GUI 标题）> config 名过 po。"""
+    gname = str(gname)
+    return translated(catalog, gui_names.get(gname, gname))
 
 
 def translated_type_meta(type_meta, catalog):
@@ -275,7 +400,7 @@ def field_payload(key, default_config, runtime_config, config_type, config_descr
     }
 
 
-def collect_global_config_groups(ok, catalog, broken):
+def collect_global_config_groups(ok, catalog, broken, gui_names=None):
     """采集框架 GlobalConfig 的全部可见配置组（含内置 Basic Options/Notification 等）。
 
     输出与任务 schema 的 fields 同构，前端 configPanel 可直接复用。
@@ -307,7 +432,7 @@ def collect_global_config_groups(ok, catalog, broken):
                     gfields.append(payload)
             groups.append({
                 "name": str(gname),
-                "displayName": translated(catalog, str(gname)),
+                "displayName": group_display_name(catalog, gui_names or {}, gname),
                 "description": translated(catalog, str(getattr(goption, "description", "") or "")),
                 "fields": gfields,
                 "source": "framework",
@@ -322,7 +447,7 @@ def collect_global_config_groups(ok, catalog, broken):
 PROJECT_STORE_MODULES = ("src.core.global_config_store",)
 
 
-def collect_project_store_groups(catalog, broken):
+def collect_project_store_groups(catalog, broken, gui_names=None):
     """按约定探测项目自建全局配置 store，输出与框架组同构的 payload。
 
     这些项目的全局配置不走框架 GlobalConfig（自建 store + 聚合 Tab），probe
@@ -357,7 +482,7 @@ def collect_project_store_groups(catalog, broken):
                         gfields.append(payload)
                 groups.append({
                     "name": str(gname),
-                    "displayName": translated(catalog, str(gname)),
+                    "displayName": group_display_name(catalog, gui_names or {}, gname),
                     "description": translated(catalog, str(getattr(goption, "description", "") or "")),
                     "fields": gfields,
                     "source": "project_store",
@@ -501,6 +626,7 @@ def main():
     locale = sys.argv[2] if len(sys.argv) > 2 else "zh_CN"
     po_directory = sys.argv[3] if len(sys.argv) > 3 else "i18n"
     catalog = load_po_catalog(project_dir, locale, po_directory)
+    load_qt_translator(locale)
     sys.path.insert(0, project_dir)
     os.chdir(project_dir)
 
@@ -621,8 +747,12 @@ def main():
                     "locale": locale,
                 }
 
-        global_groups = collect_global_config_groups(ok, catalog, broken)
-        global_groups.extend(collect_project_store_groups(catalog, broken))
+        # 项目 GUI 的分组名映射要在 OK(cfg) 构造之后取——此时任务→core 的 import
+        # 链已把 src.core.global_config_store 等常量模块带进 sys.modules，
+        # GLOBAL_CONFIG_GROUPS 里的常量引用（BATTLE_CONFIG_NAME 等）才能就地求值。
+        gui_names = load_gui_group_names(project_dir)
+        global_groups = collect_global_config_groups(ok, catalog, broken, gui_names)
+        global_groups.extend(collect_project_store_groups(catalog, broken, gui_names))
         multi_account = collect_multi_account(project_dir, tasks, broken, global_groups)
 
         result = json.dumps({
