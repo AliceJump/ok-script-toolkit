@@ -1300,6 +1300,21 @@ button.secondary:hover:not(:disabled) { background: var(--vscode-button-secondar
   background: var(--border-strong); opacity: .7;
 }
 .gpop .it > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 拍平行（嵌套到 cap 后第 3 层起）：字段名 + 条件摘要徽标换行平铺，蓝系对齐条件组语义。
+   特异性必须压过上方 .gpop .it > span 的 nowrap/ellipsis，否则长徽标被裁成一行 */
+.gpop .it--flat { flex-wrap: wrap; row-gap: 1px; }
+.gpop .it--flat > .it__cond {
+  flex: 1 1 100%;
+  min-width: 0;
+  display: block;
+  font-size: 10px;
+  line-height: 1.4;
+  max-height: 2.8em; /* 最长两条规则摘要封顶两行 */
+  color: var(--vscode-charts-blue, #3794ff);
+  white-space: normal;
+  word-break: break-all;
+  overflow: hidden;
+}
 
 /* 分段切换内容淡入重放（弹出层规范配套：切 Tab 后 1.2s 抑制弹出 + 内容重放淡入） */
 .page.is-entering { animation: pagefade .26s ease both; }

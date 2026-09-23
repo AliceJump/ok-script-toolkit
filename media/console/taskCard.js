@@ -155,8 +155,14 @@
         .filter((k) => typeof k === 'string');
       if (!keys.length) continue;
       let valueLabel = labels[choice];
-      if (!valueLabel && isBool) valueLabel = t(String(choice).toLowerCase() === 'true' ? 'boolOn' : 'boolOff');
-      if (!valueLabel) valueLabel = opts ? String(opts[choice] ?? choice) : String(choice);
+      const rawStr = String(choice);
+      // 探针把缺省 sub_config_labels 填成原始值字符串（"True"/"False"），
+      // bool 字段须翻成开/关——否则中文界面漏出英文原值
+      if (isBool && (valueLabel === undefined || valueLabel === rawStr)
+        && (rawStr.toLowerCase() === 'true' || rawStr.toLowerCase() === 'false')) {
+        valueLabel = t(rawStr.toLowerCase() === 'true' ? 'boolOn' : 'boolOff');
+      }
+      if (!valueLabel) valueLabel = opts ? String(opts[choice] ?? choice) : rawStr;
       out.push({ valueLabel, keys });
     }
     return out;
@@ -167,11 +173,15 @@
    *   · 静态组（configGroups）：字段按组归类，组内可嵌套子静态组；
    *   · 条件组（field.type.sub_configs）：勾选/选中父字段某值才显示的受控字段，
    *     组头 = 父字段显示名 +「显隐组」徽标，规则行 =「值 → N 项」；
-   *   · 嵌套：受控字段自己也有 sub_configs → 在其规则下递归缩进（深度上限 4 防环）；
-   *   · 同一字段既在静态组又被条件组受控 → 两处都渲染（一视同仁）；
+   *   · 嵌套拍平：条件组最多嵌套 COND_NEST_CAP 层，第 3 层起不再建嵌套组卡，
+   *     字段行行尾挂「条件摘要徽标」（开→排轴序列 …）——ok-end-field 实测最深
+   *     4 节点链（使用独立配置→自动技能列表→启用排轴→排轴序列），全展开会把
+   *     250px 弹层压扁；同字段既在静态组又被条件组受控 → 两处都渲染（一视同仁）；
    *   · 未归属任何组/条件的字段 → 「其他参数」。
    * 归并规则与 configPanel 对齐：分组名自身的显隐规则子项吸收进该组 children。
    */
+  const COND_NEST_CAP = 2;
+
   function groupPopContent(task, schema) {
     const fields = schema?.fields || [];
     if (!fields.length) return null;
@@ -220,18 +230,29 @@
     title.appendChild(sub);
     frag.appendChild(title);
 
+    /** 拍平徽标：该字段自身条件规则的摘要文本（值→受控字段显示名…；多规则分号连接） */
+    function condBadgeText(rules) {
+      return rules.map((rule) => `${rule.valueLabel}→${rule.keys.map(labelOf).join('、')}`).join('；');
+    }
+
+    /** depth = 该字段已被嵌套在几层条件组里；到 cap 不再建嵌套组，改为行尾摘要徽标 */
     function renderItem(key, container, depth) {
       const it = document.createElement('div');
       it.className = 'it';
       const label = document.createElement('span');
       label.textContent = labelOf(key);
       it.appendChild(label);
-      container.appendChild(it);
       const f = fieldsByKey[key];
-      if (f && depth < 4) {
-        const rules = condRulesOf(f);
-        if (rules.length) appendCondGroup(f, rules, container, depth + 1);
+      const rules = f ? condRulesOf(f) : [];
+      if (rules.length && depth >= COND_NEST_CAP) {
+        it.classList.add('it--flat');
+        const badge = document.createElement('span');
+        badge.className = 'it__cond';
+        badge.textContent = condBadgeText(rules);
+        it.appendChild(badge);
       }
+      container.appendChild(it);
+      if (rules.length && depth < COND_NEST_CAP) appendCondGroup(f, rules, container, depth);
     }
 
     /** 一个父字段 = 一个条件组；组内每条规则 = 规则行（值 → N 项）+ 受控字段缩进列表 */
@@ -260,14 +281,14 @@
         body.appendChild(ruleRow);
         const list = document.createElement('div');
         list.className = 'grp-body';
-        for (const key of rule.keys) renderItem(key, list, depth);
+        for (const key of rule.keys) renderItem(key, list, depth + 1);
         body.appendChild(list);
       }
       grp.append(head, body);
       container.appendChild(grp);
     }
 
-    function appendStaticGroup(gkey, container, depth) {
+    function appendStaticGroup(gkey, container, depth, seen) {
       const children = groupMap.get(gkey) || [];
       const grp = document.createElement('div');
       grp.className = 'grp';
@@ -282,18 +303,23 @@
       const body = document.createElement('div');
       body.className = 'grp-body';
       for (const key of children) {
-        if (groupMap.has(key)) appendStaticGroup(key, body, depth + 1); // 静态组嵌静态组
-        else renderItem(key, body, depth);
+        // 静态组嵌静态组；seen 沿递归路径防环（如「多账户模式」组 children 含自己）
+        if (groupMap.has(key)) {
+          if (!seen.has(key)) appendStaticGroup(key, body, depth + 1, new Set([...seen, key]));
+        } else renderItem(key, body, depth);
       }
       grp.append(head, body);
       container.appendChild(grp);
     }
 
-    // 静态组（嵌套子组随父组渲染，不重复出现在顶层）
+    // 静态组（嵌套子组随父组渲染，不重复出现在顶层；
+    // 自引用不算被嵌套——ok-end-field 的「多账户模式」组 children 就是它自己）
     const nested = new Set();
-    for (const children of groupMap.values()) for (const key of children) if (groupMap.has(key)) nested.add(key);
+    for (const [gkey, children] of groupMap) {
+      for (const key of children) if (groupMap.has(key) && key !== gkey) nested.add(key);
+    }
     for (const gkey of groupMap.keys()) {
-      if (!nested.has(gkey)) appendStaticGroup(gkey, frag, 0);
+      if (!nested.has(gkey)) appendStaticGroup(gkey, frag, 0, new Set([gkey]));
     }
     // 条件组（与静态组同级，一视同仁；一个父字段一个组）
     for (const { field, rules } of condParents) {
