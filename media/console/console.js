@@ -16,6 +16,8 @@
   // ── 分段切换 ─────────────────────────────────────────────────────────
 
   function switchSeg(seg) {
+    // 弹出层规范：切 Tab 后 1.2s 内抑制悬停弹出 + 目标页内容淡入重放
+    globalThis.TaskLauncherTaskCard?.suppressPopups?.();
     for (const item of document.querySelectorAll('.lay-side__item')) {
       const active = item.dataset.seg === seg;
       item.classList.toggle('is-active', active);
@@ -24,7 +26,14 @@
     $('pageTasks').hidden = seg !== 'tasks';
     $('pageGame').hidden = seg !== 'game';
     $('pageConfig').hidden = seg !== 'config';
-    $('pageAccounts').hidden = seg !== 'accounts';  }
+    $('pageAccounts').hidden = seg !== 'accounts';
+    const target = document.getElementById(`page${seg.charAt(0).toUpperCase()}${seg.slice(1)}`);
+    if (target) {
+      target.classList.remove('is-entering');
+      void target.offsetWidth; // 强制 reflow，保证动画每次都重放
+      target.classList.add('is-entering');
+    }
+  }
 
   // ── 配置分段：全局配置组卡片（复用 configPanel，伪 task = __global__::组名） ──
 

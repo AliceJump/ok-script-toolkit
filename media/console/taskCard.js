@@ -126,13 +126,22 @@
     return [sync, reset];
   }
 
-  /** 悬停弹出：参数表单分组概要（数据与 configPanel 同源：configGroups / groupLabels） */
-  function buildGroupPop(task, schema) {
+  /* ── 悬停弹出（body 级单例 + fixed 定位）──────────────────────────
+     卡内 absolute + left:calc(100%+12px) 会被任务列表滚动容器的
+     overflow 裁掉（lab 里 B/C 布局同款翻车），挂到 body 上用
+     getBoundingClientRect + 视口夹紧定位，右缘对齐卡片、优先下方、
+     底部放不下自动翻上方。只读无按钮；内容与 configPanel 同源。 */
+  let popEl = null;
+  let popHideTimer = 0;
+  let popSuppressUntil = 0;
+
+  /** 弹层内容：参数分组概要（configGroups / groupLabels / displayKey） */
+  function groupPopContent(task, schema) {
     const groups = schema?.configGroups && typeof schema.configGroups === 'object'
       ? Object.entries(schema.configGroups) : [];
     if (!groups.length) return null;
-    const pop = document.createElement('div');
-    pop.className = 'pop';
+    const labels = Object.fromEntries((schema?.fields || []).map((f) => [f.key, f.displayKey || f.key]));
+    const frag = document.createDocumentFragment();
     const title = document.createElement('div');
     title.className = 'pop-title';
     title.textContent = schema?.displayName || task.displayName || '';
@@ -140,7 +149,7 @@
     sub.className = 'pop-sub';
     sub.textContent = t('depsPopSub', { count: groups.length });
     title.appendChild(sub);
-    pop.appendChild(title);
+    frag.appendChild(title);
     for (const [key, fieldKeys] of groups) {
       const list = Array.isArray(fieldKeys) ? fieldKeys : [];
       const grp = document.createElement('div');
@@ -155,22 +164,68 @@
       head.append(name, cnt);
       const body = document.createElement('div');
       body.className = 'grp-body';
-      for (const fieldKey of list.slice(0, 3)) {
+      for (const fieldKey of list.slice(0, 4)) {
         const it = document.createElement('div');
         it.className = 'it';
         const label = document.createElement('span');
-        label.textContent = fieldKey;
-        const st = document.createElement('span');
-        st.className = 'st ok';
-        st.textContent = t('depsPopTaken');
-        it.append(label, st);
+        label.textContent = labels[fieldKey] || fieldKey;
+        it.appendChild(label);
         body.appendChild(it);
       }
       grp.append(head, body);
-      pop.appendChild(grp);
+      frag.appendChild(grp);
     }
-    return pop;
+    return frag;
   }
+
+  function hideHoverPop(immediate = false) {
+    window.clearTimeout(popHideTimer);
+    if (!popEl) return;
+    if (immediate) {
+      popEl.classList.remove('is-visible');
+      return;
+    }
+    popHideTimer = window.setTimeout(() => popEl?.classList.remove('is-visible'), 120);
+  }
+
+  function showHoverPop(card, task, schema) {
+    if (Date.now() < popSuppressUntil) return;
+    const content = groupPopContent(task, schema);
+    if (!content) return;
+    if (!popEl) {
+      popEl = document.createElement('div');
+      popEl.className = 'gpop';
+      popEl.setAttribute('role', 'tooltip');
+      popEl.addEventListener('mouseenter', () => window.clearTimeout(popHideTimer));
+      popEl.addEventListener('mouseleave', () => hideHoverPop());
+      document.body.appendChild(popEl);
+    }
+    popEl.replaceChildren(content);
+    popEl.classList.remove('is-visible'); // 先归零再测量，避免位置跳变闪烁
+    const rect = card.getBoundingClientRect();
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const pw = popEl.offsetWidth;
+    const ph = popEl.offsetHeight;
+    let left = rect.right - pw - 10; // 右缘对齐卡片右缘
+    left = Math.max(8, Math.min(left, vw - pw - 8));
+    let top = rect.bottom + 8; // 优先放下方
+    if (top + ph > vh - 8) top = rect.top - ph - 8; // 底部放不下 → 翻上方
+    top = Math.max(8, Math.min(top, Math.max(8, vh - ph - 8)));
+    popEl.style.left = `${Math.round(left)}px`;
+    popEl.style.top = `${Math.round(top)}px`;
+    popEl.classList.add('is-visible');
+  }
+
+  /** 切分段后短暂抑制弹出（弹出层规范：点 Tab 后 1.2s 内不弹 + 内容淡入重放） */
+  function suppressPopups() {
+    popSuppressUntil = Date.now() + 1200;
+    hideHoverPop(true);
+  }
+
+  // 列表滚动 / 窗口缩放时弹层立刻收起，避免钉在旧位置
+  window.addEventListener('scroll', () => hideHoverPop(true), { capture: true, passive: true });
+  window.addEventListener('resize', () => hideHoverPop(true));
 
   function buildTaskCard(task) {
     const key = taskKey(task);
@@ -225,10 +280,11 @@
     // 点击「参数」按钮时由 console.js 把这个节点搬运进抽屉显示。
     const configPanel = buildConfigPanel(task, schema);
     card.append(header, configPanel);
-    const pop = buildGroupPop(task, schema);
-    if (pop) {
+    // 有参数分组才挂悬停弹出（内容按需构建，body 级单例见 showHoverPop）
+    if (schema?.configGroups && Object.keys(schema.configGroups).length) {
       card.classList.add('task-card--pop');
-      card.appendChild(pop);
+      card.addEventListener('mouseenter', () => showHoverPop(card, task, schema));
+      card.addEventListener('mouseleave', () => hideHoverPop());
     }
     return card;
   }
@@ -464,6 +520,7 @@
 
   function renderTasks(tasks) {
     state.currentTasks = tasks;
+    hideHoverPop(true); // 重渲染后旧弹层位置失效，直接收起
     // show_in_task_tab=False 的任务不进列表（框架原生不消费，插件按隐藏对待）
     const listed = tasks.filter((task) => state.schemas[taskKey(task)]?.showInTaskTab !== false);
     const visible = listed.filter(matches);
@@ -483,5 +540,5 @@
     renderTasks(state.currentTasks);
   }
 
-  globalThis.TaskLauncherTaskCard = { renderTasks, updateRunningState, setSearch, toggleGroup };
+  globalThis.TaskLauncherTaskCard = { renderTasks, updateRunningState, setSearch, toggleGroup, suppressPopups };
 })();
