@@ -1233,6 +1233,24 @@ button.secondary:hover:not(:disabled) { background: var(--vscode-button-secondar
   pointer-events: auto; /* 内容超高时允许内部滚动 */
   transition: opacity .16s ease, transform .16s cubic-bezier(.2,.9,.3,1.2), visibility 0s;
 }
+/* 朝向桥：伪元素补住卡片与弹层之间的 8px 间隙，鼠标从卡片跨进弹层时
+   popEl 的 mouseenter 先清掉卡片 mouseleave 挂起的隐藏定时器，弹层不闪收 */
+.gpop[data-pos="below"]::after,
+.gpop[data-pos="above"]::after {
+  content: '';
+  position: absolute;
+  left: 0; right: 0; height: 12px;
+}
+.gpop[data-pos="below"]::after { top: -12px; }
+.gpop[data-pos="above"]::after { bottom: -12px; }
+/* 弹层内部滚动条（内容超高时全量翻阅） */
+.gpop::-webkit-scrollbar { width: 8px; }
+.gpop::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--border-strong) 80%, transparent);
+  border-radius: 4px;
+}
+.gpop::-webkit-scrollbar-thumb:hover { background: var(--border-strong); }
+.gpop::-webkit-scrollbar-track { background: transparent; }
 @keyframes popfade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 .gpop .pop-title {
   display: flex; align-items: baseline; justify-content: space-between;

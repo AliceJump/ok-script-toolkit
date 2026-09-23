@@ -174,7 +174,7 @@
       head.append(name, cnt);
       const body = document.createElement('div');
       body.className = 'grp-body';
-      for (const fieldKey of list.slice(0, key === null ? 6 : 4)) {
+      for (const fieldKey of list) {
         const it = document.createElement('div');
         it.className = 'it';
         const label = document.createElement('span');
@@ -222,8 +222,10 @@
     let left = rect.right - pw - 10; // 右缘对齐卡片右缘
     left = Math.max(8, Math.min(left, vw - pw - 8));
     let top = rect.bottom + 8; // 优先放下方
-    if (top + ph > vh - 8) top = rect.top - ph - 8; // 底部放不下 → 翻上方
+    const below = top + ph <= vh - 8;
+    if (!below) top = rect.top - ph - 8; // 底部放不下 → 翻上方
     top = Math.max(8, Math.min(top, Math.max(8, vh - ph - 8)));
+    popEl.dataset.pos = below ? 'below' : 'above'; // 桥的朝向：CSS 伪元素补住与卡片间的间隙
     popEl.style.left = `${Math.round(left)}px`;
     popEl.style.top = `${Math.round(top)}px`;
     popEl.classList.add('is-visible');
@@ -235,8 +237,13 @@
     hideHoverPop(true);
   }
 
-  // 列表滚动 / 窗口缩放时弹层立刻收起，避免钉在旧位置
-  window.addEventListener('scroll', () => hideHoverPop(true), { capture: true, passive: true });
+  // 列表滚动 / 窗口缩放时弹层立刻收起，避免钉在旧位置。
+  // 弹层自身内部滚动不收——capture 阶段会收到非冒泡的 scroll 事件，
+  // 用户正在弹层里翻全量内容，收掉等于毁掉「悬停可进弹层」。
+  window.addEventListener('scroll', (event) => {
+    if (popEl && event.target instanceof Node && popEl.contains(event.target)) return;
+    hideHoverPop(true);
+  }, { capture: true, passive: true });
   window.addEventListener('resize', () => hideHoverPop(true));
 
   function buildTaskCard(task) {
