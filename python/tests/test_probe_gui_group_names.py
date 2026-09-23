@@ -126,15 +126,19 @@ with tempfile.TemporaryDirectory() as root:
 
 print("\n[2d] 越出顶层包的相对导入（level 过大）只丢该条，不抛异常")
 with tempfile.TemporaryDirectory() as root:
-    write_project(root, 'from ...core.BattleConfig import BATTLE_CONFIG_NAME\n'
-                        '\n'
-                        'GLOBAL_CONFIG_GROUPS = {\n'
-                        '    "战斗配置": [BATTLE_CONFIG_NAME],\n'
-                        '    "键位配置": ["Game Hotkey Config"],\n'
-                        '}\n')
-    mapping = load_gui_group_names(root)
-    check(mapping == {"Game Hotkey Config": "键位配置"},
-          f"越界相对导入应静默丢弃该条，其余保留，实际 {mapping}")
+    stub_constant_modules()
+    try:
+        write_project(root, 'from ...core.BattleConfig import BATTLE_CONFIG_NAME\n'
+                            '\n'
+                            'GLOBAL_CONFIG_GROUPS = {\n'
+                            '    "战斗配置": [BATTLE_CONFIG_NAME],\n'
+                            '    "键位配置": ["Game Hotkey Config"],\n'
+                            '}\n')
+        mapping = load_gui_group_names(root)
+        check(mapping == {"Game Hotkey Config": "键位配置"},
+              f"越界相对导入应静默丢弃该条，其余保留，实际 {mapping}")
+    finally:
+        unstub_constant_modules()
 
 print("\n[3] 无 GUI 模块的项目（ok-gf2 等）返回空表")
 with tempfile.TemporaryDirectory() as root:

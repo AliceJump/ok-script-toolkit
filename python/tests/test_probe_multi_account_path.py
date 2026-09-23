@@ -83,6 +83,39 @@ with tempfile.TemporaryDirectory() as proj:
     check(probe.resolve_run_dir(proj) == expected,
           f"空白应退回默认值，实际 {probe.resolve_run_dir(proj)!r}")
 
+print("\n[4b] main 在 chdir 前把项目参数绝对化")
+with tempfile.TemporaryDirectory() as proj:
+    relative_proj = os.path.relpath(proj)
+    captured = []
+    saved_argv = sys.argv
+    saved_chdir = os.chdir
+    saved_load_po_catalog = probe.load_po_catalog
+    saved_load_qt_translator = probe.load_qt_translator
+
+    class ChdirReached(Exception):
+        pass
+
+    def capture_chdir(path):
+        captured.append(path)
+        raise ChdirReached
+
+    try:
+        sys.argv = ["probe_task_schemas.py", relative_proj]
+        os.chdir = capture_chdir
+        probe.load_po_catalog = lambda *_args: {}
+        probe.load_qt_translator = lambda *_args: None
+        try:
+            probe.main()
+        except ChdirReached:
+            pass
+        check(captured == [os.path.abspath(relative_proj)],
+              f"chdir 应收到绝对项目路径，实际 {captured!r}")
+    finally:
+        probe.load_qt_translator = saved_load_qt_translator
+        probe.load_po_catalog = saved_load_po_catalog
+        os.chdir = saved_chdir
+        sys.argv = saved_argv
+
 restore_env()
 
 
@@ -102,18 +135,21 @@ with tempfile.TemporaryDirectory() as proj:
     check(".vscode" not in info["storePath"],
           "JetBrains 宿主的 storePath 不应再出现 .vscode")
 
-print("\n[6] 项目侧文件回退仍生效：available=True，但 storePath 仍报沙箱")
+print("\n[6] 自定义 config_folder 同时用于项目回退与沙箱 storePath")
 with tempfile.TemporaryDirectory() as proj:
     set_run_dir(os.path.join(proj, ".idea", "ok-script-toolkit"))
-    os.makedirs(os.path.join(proj, "configs"), exist_ok=True)
-    with open(os.path.join(proj, "configs", "account_scoped_overrides.json"),
+    os.makedirs(os.path.join(proj, "src"), exist_ok=True)
+    with open(os.path.join(proj, "src", "config.py"), "w", encoding="utf-8") as fh:
+        fh.write("config = {'config_folder': 'custom-configs'}\n")
+    os.makedirs(os.path.join(proj, "custom-configs"), exist_ok=True)
+    with open(os.path.join(proj, "custom-configs", "account_scoped_overrides.json"),
               "w", encoding="utf-8") as fh:
         json.dump({"account_registry": {"acc1": {"username": "A"}}, "accounts": {}}, fh)
     info = probe.collect_multi_account(proj, [], [], [])
-    check(info["available"] is True, "项目侧文件存在时 available 应为 True")
+    check(info["available"] is True, "自定义目录中的项目侧文件应使 available=True")
     check(info["storePath"] == os.path.join(
-        proj, ".idea", "ok-script-toolkit", "configs", "account_scoped_overrides.json"),
-        f"即便回退读项目侧，storePath 也应报沙箱，实际 {info['storePath']!r}")
+        proj, ".idea", "ok-script-toolkit", "custom-configs", "account_scoped_overrides.json"),
+        f"storePath 应使用自定义配置目录，实际 {info['storePath']!r}")
     check(info.get("accountCount") == 1,
           f"应从项目侧文件读出账号数 1，实际 {info.get('accountCount')!r}")
 

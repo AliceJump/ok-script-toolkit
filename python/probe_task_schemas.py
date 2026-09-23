@@ -573,18 +573,19 @@ def resolve_run_dir(project_dir):
 def collect_multi_account(project_dir, tasks, broken, global_groups):
     """探测多账户存储，返回只读概要与「打开数据位置」的路径。
 
-    存储位置与执行器一致：沙箱（`<run_dir>/configs/`）优先——执行器与插件的账号
-    编辑都落沙箱；项目侧文件仅作首次探测回退（执行器启动 copytree 会把它带进
-    沙箱）。storePath 一律报沙箱路径。
+    存储位置与执行器一致：沙箱（`<run_dir>/<config_folder>/`）优先——执行器
+    与插件的账号编辑都落沙箱；项目侧文件仅作首次探测回退（执行器启动
+    copytree 会把它带进沙箱）。storePath 一律报沙箱路径。
 
     ⚠️ 沙箱根目录**按宿主解析**（见 `resolve_run_dir`）：曾写死
     `.vscode/ok-script-toolkit`，JetBrains 宿主会拿到一个根本不存在、也永远不会被
     读写的路径（它的沙箱是 `.idea/ok-script-toolkit`）。
     """
+    config_folder = detect_config_folder(project_dir)
     sandbox_path = os.path.join(
-        resolve_run_dir(project_dir), "configs", "account_scoped_overrides.json"
+        resolve_run_dir(project_dir), config_folder, "account_scoped_overrides.json"
     )
-    project_path = os.path.join(project_dir, "configs", "account_scoped_overrides.json")
+    project_path = os.path.join(project_dir, config_folder, "account_scoped_overrides.json")
     # store 模块可 import 性：区分「项目不支持账号编辑」与「读取失败（环境问题）」
     has_store_module = False
     for name in ("src.tasks.account.account_scope_store", "src.tasks.account_scope_store"):
@@ -717,7 +718,7 @@ def main():
     if len(sys.argv) < 2:
         print(json.dumps({"ok": False, "error": "缺少 project_dir 参数"}, ensure_ascii=False))
         sys.exit(1)
-    project_dir = sys.argv[1]
+    project_dir = os.path.abspath(sys.argv[1])
     locale = sys.argv[2] if len(sys.argv) > 2 else "zh_CN"
     po_directory = sys.argv[3] if len(sys.argv) > 3 else "i18n"
     catalog = load_po_catalog(project_dir, locale, po_directory)

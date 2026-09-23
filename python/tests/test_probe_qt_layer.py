@@ -147,6 +147,12 @@ def probe_env(modules=(), load_result=True):
     if "PySide6" in modules:
         sys.modules.update(stub.build())
     stub_modules([m for m in modules if m != "PySide6"])
+    requested = set(modules)
+    if "PySide6" in requested:
+        requested.add("PySide6.QtCore")
+    for name in STUB_PREFIXES:
+        if name not in requested:
+            sys.modules[name] = None
     buffer = io.StringIO()
     try:
         with contextlib.redirect_stderr(buffer):
