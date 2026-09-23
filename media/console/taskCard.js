@@ -137,7 +137,8 @@
 
   /**
    * 弹层内容：参数分组概要（configGroups / groupLabels / displayKey）。
-   * 有分组层次 → 按组展示；没层次但有字段 → 折叠成单个「参数」伪组列扁平字段；
+   * 有分组层次 → 按组展示 + 「其他参数」（没进任何 configGroups 的字段也是参数）；
+   * 没层次但有字段 → 折叠成单个「参数」伪组列扁平字段；
    * 两者皆无（连字段都没有）→ 不弹。
    */
   function groupPopContent(task, schema) {
@@ -145,9 +146,19 @@
     const groupEntries = schema?.configGroups && typeof schema.configGroups === 'object'
       ? Object.entries(schema.configGroups) : [];
     const labels = Object.fromEntries(fields.map((f) => [f.key, f.displayKey || f.key]));
-    const entries = groupEntries.length
-      ? groupEntries
-      : (fields.length ? [[null, fields.map((f) => f.key)]] : []);
+    const entries = [];
+    if (groupEntries.length) {
+      const grouped = new Set();
+      for (const [key, fieldKeys] of groupEntries) {
+        const list = Array.isArray(fieldKeys) ? fieldKeys : [];
+        for (const fieldKey of list) grouped.add(fieldKey);
+        entries.push({ label: schema.groupLabels?.[key] || key, keys: list });
+      }
+      const others = fields.filter((f) => !grouped.has(f.key)).map((f) => f.key);
+      if (others.length) entries.push({ label: t('depsPopOthers'), keys: others });
+    } else if (fields.length) {
+      entries.push({ label: t('parameters'), keys: fields.map((f) => f.key) });
+    }
     if (!entries.length) return null;
     const frag = document.createDocumentFragment();
     const title = document.createElement('div');
@@ -156,25 +167,24 @@
     const sub = document.createElement('span');
     sub.className = 'pop-sub';
     sub.textContent = groupEntries.length
-      ? t('depsPopSub', { count: groupEntries.length })
+      ? t('depsPopSub', { count: entries.length })
       : t('itemsCount', { count: fields.length });
     title.appendChild(sub);
     frag.appendChild(title);
-    for (const [key, fieldKeys] of entries) {
-      const list = Array.isArray(fieldKeys) ? fieldKeys : [];
+    for (const entry of entries) {
       const grp = document.createElement('div');
       grp.className = 'grp';
       const head = document.createElement('div');
       head.className = 'grp-head';
       const name = document.createElement('b');
-      name.textContent = key === null ? t('parameters') : (schema.groupLabels?.[key] || key);
+      name.textContent = entry.label;
       const cnt = document.createElement('span');
       cnt.className = 'cnt';
-      cnt.textContent = t('itemsCount', { count: list.length });
+      cnt.textContent = t('itemsCount', { count: entry.keys.length });
       head.append(name, cnt);
       const body = document.createElement('div');
       body.className = 'grp-body';
-      for (const fieldKey of list) {
+      for (const fieldKey of entry.keys) {
         const it = document.createElement('div');
         it.className = 'it';
         const label = document.createElement('span');
@@ -219,13 +229,11 @@
     const vh = window.innerHeight;
     const pw = popEl.offsetWidth;
     const ph = popEl.offsetHeight;
-    let left = rect.right - pw - 10; // 右缘对齐卡片右缘
+    // 左侧展开：右缘距卡片左缘 8px，垂直顶对齐卡片——向下/向右弹都会盖住别的任务卡
+    let left = rect.left - pw - 8;
+    if (left < 8) left = Math.min(rect.right + 8, vw - pw - 8); // 左侧放不下 → 回退右侧
     left = Math.max(8, Math.min(left, vw - pw - 8));
-    let top = rect.bottom + 8; // 优先放下方
-    const below = top + ph <= vh - 8;
-    if (!below) top = rect.top - ph - 8; // 底部放不下 → 翻上方
-    top = Math.max(8, Math.min(top, Math.max(8, vh - ph - 8)));
-    popEl.dataset.pos = below ? 'below' : 'above'; // 桥的朝向：CSS 伪元素补住与卡片间的间隙
+    const top = Math.max(8, Math.min(rect.top, Math.max(8, vh - ph - 8)));
     popEl.style.left = `${Math.round(left)}px`;
     popEl.style.top = `${Math.round(top)}px`;
     popEl.classList.add('is-visible');
