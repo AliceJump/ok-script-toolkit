@@ -312,13 +312,17 @@
     const title = document.createElement('div');
     title.className = 'gconfig-card__name';
     title.textContent = t('overrideTitle');
-    head.appendChild(title);
+    // 折叠可见性：箭头必须真实入 DOM（此前漏 append 导致整卡可折叠但无任何提示），
+    // 再配 tooltip 与 aria-expanded 让「可折叠」有明确 affordance。
+    head.title = t('overrideToggleHint');
+    head.append(chev, title);
     const body = document.createElement('div');
     body.className = 'gconfig-card__body';
     // 整卡可折叠——点组头把表单收起只留标题行；状态落盘（uiState）重开复用
     const cardKey = 'cardCollapsed::accountOverride';
     const applyCardOpen = open => {
       chev.textContent = open ? '▾' : '▸';
+      head.setAttribute('aria-expanded', String(open));
       body.hidden = !open;
       head.setAttribute('aria-expanded', String(open));
     };

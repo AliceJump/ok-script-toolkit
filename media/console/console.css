@@ -1053,7 +1053,13 @@ button.secondary:hover:not(:disabled) { background: var(--vscode-button-secondar
   .list-dialog__pane--narrow { flex: 1; }
 }
 
-.gconfig-card__head--toggle { cursor: pointer; user-select: none; }
+.gconfig-card__head--toggle {
+  cursor: pointer; user-select: none;
+  transition: background-color .12s ease;
+}
+.gconfig-card__head--toggle:hover { background: var(--surface-hover); }
+.gconfig-card__head--toggle:hover .gconfig-card__chev { color: var(--vscode-focusBorder); }
+.gconfig-card__head--toggle .gconfig-card__chev { transition: color .12s ease; }
 .gconfig-card__chev { width: 11px; color: var(--muted); flex: 0 0 auto; }
 .gconfig-card__meta {
   flex: 0 0 auto;

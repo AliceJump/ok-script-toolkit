@@ -147,47 +147,37 @@ mapAccountSelect.value = '1111';
 mapAccountSelect.dispatchEvent(new window.Event('change', { bubbles: true }));
 assert(ta.value === 'some content', '切回账号后恢复对应 content');
 
-console.log('5. 「启动设置」标题可折叠（收起字段区，再点恢复）');
+console.log('5. 「启动设置」区不可折叠（折叠已移除，标题是普通标题）');
 const overridePanel = document.querySelector('#accountList .account-override-form .config-panel');
 const titleEl = overridePanel.querySelector(':scope > .config-section-title');
-assert(titleEl && titleEl.classList.contains('config-section-title--toggle'), '标题带折叠标记');
-titleEl.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+assert(titleEl && !titleEl.classList.contains('config-section-title--toggle'), '标题不带折叠标记');
 const fieldsHost = overridePanel.querySelector(':scope > .config-fields');
-assert(fieldsHost.hidden === true, '收起后字段区隐藏');
-titleEl.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
-assert(fieldsHost.hidden === false, '再点恢复显示');
+assert(fieldsHost && fieldsHost.hidden === false, '字段区常驻显示');
 
 console.log('6. CSS 兜底：hidden 必须压过作者样式的 display（真机折叠生效的前提）');
 const css = fs.readFileSync(path.join(componentRoot, 'console.css'), 'utf8');
 assert(/\[hidden\]\s*\{[^}]*display:\s*none\s*!important/.test(css),
   'console.css 必须包含 [hidden] { display: none !important }（否则 .config-fields 的 grid 会顶掉 hidden）');
 
-console.log('7. 折叠状态持久化：点击折叠发出 saveUiState，注入 uiState 后初始即收起');
+console.log('7. 折叠状态持久化：覆盖卡点击折叠发出 saveUiState，注入 uiState 后初始即收起');
 sent.length = 0;
-titleEl.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
-const uiMsg = sent.filter(m => m.type === 'saveUiState').pop();
-assert(uiMsg && uiMsg.key.startsWith('sectionCollapsed::') && uiMsg.value === true,
-  `section 折叠落盘（got ${JSON.stringify(uiMsg)}）`);
-// 覆盖卡折叠也落盘
 const cardHead = document.querySelector('#accountList .gconfig-card__head--toggle');
+// 折叠可见性回归：chev 必须真实入 DOM（此前漏 append 导致整卡可折叠但界面无任何提示）
+const chevEl = cardHead.querySelector(':scope > .gconfig-card__chev');
+assert(chevEl, '覆盖卡头部渲染折叠箭头（affordance）');
+assert(cardHead.title && cardHead.title.length > 0, '覆盖卡头部带折叠提示 tooltip');
 cardHead.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
 const uiMsg2 = sent.filter(m => m.type === 'saveUiState').pop();
 assert(uiMsg2 && uiMsg2.key === 'cardCollapsed::accountOverride' && uiMsg2.value === true,
   `覆盖卡折叠落盘（got ${JSON.stringify(uiMsg2)}）`);
-// 重发 taskConfigs 带 uiState：section 与卡片都应初始收起
-// （账号表单的 section key 是伪 task 维度：__account__::<账号>::<storageName>）
-// 当前 target 是第 3 步选中的全局组，section key 与之对应
+// 重发 taskConfigs 带 uiState：覆盖卡应初始收起
 send({
   type: 'taskConfigs', configs: {},
   uiState: {
-    'sectionCollapsed::__account__::1111::Game Hotkey Config': true,
     'cardCollapsed::accountOverride': true,
   },
 });
 send({ type: 'accountStore', data: store });
-const panel2 = document.querySelector('#accountList .account-override-form .config-panel');
-const fieldHost2 = panel2.querySelector(':scope > .config-fields');
-assert(fieldHost2.hidden === true, '复用 uiState：启动设置区初始收起');
 const cardBody2 = document.querySelectorAll('#accountList .gconfig-card')[1].querySelector(':scope > .gconfig-card__body');
 assert(cardBody2.hidden === true, '复用 uiState：覆盖卡初始收起');
 
