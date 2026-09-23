@@ -225,14 +225,16 @@
     popEl.replaceChildren(content);
     popEl.classList.remove('is-visible'); // 先归零再测量，避免位置跳变闪烁
     const rect = card.getBoundingClientRect();
-    const vw = window.innerWidth;
     const vh = window.innerHeight;
+    // 恒定左侧展开（用户要求：不回退右侧）。空间不足先收窄宽度（下限 180px），
+    // 连下限都放不下就贴视口左缘（left 钳到 8），允许少量压住卡片——悬停即走，无碍。
+    const POP_W = 250; // 与 console.css .gpop 的 width 保持一致
+    const availLeft = rect.left - 16; // 卡片间隙 8px + 视口边距 8px
+    popEl.style.width = `${Math.round(Math.max(180, Math.min(POP_W, availLeft)))}px`;
     const pw = popEl.offsetWidth;
     const ph = popEl.offsetHeight;
     // 左侧展开：右缘距卡片左缘 8px，垂直顶对齐卡片——向下/向右弹都会盖住别的任务卡
-    let left = rect.left - pw - 8;
-    if (left < 8) left = Math.min(rect.right + 8, vw - pw - 8); // 左侧放不下 → 回退右侧
-    left = Math.max(8, Math.min(left, vw - pw - 8));
+    const left = Math.max(8, rect.left - pw - 8);
     const top = Math.max(8, Math.min(rect.top, Math.max(8, vh - ph - 8)));
     popEl.style.left = `${Math.round(left)}px`;
     popEl.style.top = `${Math.round(top)}px`;
