@@ -135,36 +135,46 @@
   let popHideTimer = 0;
   let popSuppressUntil = 0;
 
-  /** 弹层内容：参数分组概要（configGroups / groupLabels / displayKey） */
+  /**
+   * 弹层内容：参数分组概要（configGroups / groupLabels / displayKey）。
+   * 有分组层次 → 按组展示；没层次但有字段 → 折叠成单个「参数」伪组列扁平字段；
+   * 两者皆无（连字段都没有）→ 不弹。
+   */
   function groupPopContent(task, schema) {
-    const groups = schema?.configGroups && typeof schema.configGroups === 'object'
+    const fields = schema?.fields || [];
+    const groupEntries = schema?.configGroups && typeof schema.configGroups === 'object'
       ? Object.entries(schema.configGroups) : [];
-    if (!groups.length) return null;
-    const labels = Object.fromEntries((schema?.fields || []).map((f) => [f.key, f.displayKey || f.key]));
+    const labels = Object.fromEntries(fields.map((f) => [f.key, f.displayKey || f.key]));
+    const entries = groupEntries.length
+      ? groupEntries
+      : (fields.length ? [[null, fields.map((f) => f.key)]] : []);
+    if (!entries.length) return null;
     const frag = document.createDocumentFragment();
     const title = document.createElement('div');
     title.className = 'pop-title';
     title.textContent = schema?.displayName || task.displayName || '';
     const sub = document.createElement('span');
     sub.className = 'pop-sub';
-    sub.textContent = t('depsPopSub', { count: groups.length });
+    sub.textContent = groupEntries.length
+      ? t('depsPopSub', { count: groupEntries.length })
+      : t('itemsCount', { count: fields.length });
     title.appendChild(sub);
     frag.appendChild(title);
-    for (const [key, fieldKeys] of groups) {
+    for (const [key, fieldKeys] of entries) {
       const list = Array.isArray(fieldKeys) ? fieldKeys : [];
       const grp = document.createElement('div');
       grp.className = 'grp';
       const head = document.createElement('div');
       head.className = 'grp-head';
       const name = document.createElement('b');
-      name.textContent = schema.groupLabels?.[key] || key;
+      name.textContent = key === null ? t('parameters') : (schema.groupLabels?.[key] || key);
       const cnt = document.createElement('span');
       cnt.className = 'cnt';
       cnt.textContent = t('itemsCount', { count: list.length });
       head.append(name, cnt);
       const body = document.createElement('div');
       body.className = 'grp-body';
-      for (const fieldKey of list.slice(0, 4)) {
+      for (const fieldKey of list.slice(0, key === null ? 6 : 4)) {
         const it = document.createElement('div');
         it.className = 'it';
         const label = document.createElement('span');
@@ -282,8 +292,8 @@
     // 点击「参数」按钮时由 console.js 把这个节点搬运进抽屉显示。
     const configPanel = buildConfigPanel(task, schema);
     card.append(header, configPanel);
-    // 有参数分组才挂悬停弹出（内容按需构建，body 级单例见 showHoverPop）
-    if (schema?.configGroups && Object.keys(schema.configGroups).length) {
+    // 悬停弹出：有分组层次按组展示，没层次但有字段折叠成「参数」伪组（见 groupPopContent）
+    if ((schema?.configGroups && Object.keys(schema.configGroups).length) || schema?.fields?.length) {
       card.classList.add('task-card--pop');
       card.addEventListener('mouseenter', () => showHoverPop(card, task, schema));
       card.addEventListener('mouseleave', () => hideHoverPop());
