@@ -189,6 +189,8 @@
   }
 
   function showHoverPop(card, task, schema) {
+    window.clearTimeout(popHideTimer); // 关键：撤掉上一张卡 mouseleave 挂起的隐藏定时器，
+    // 否则快速移到相邻卡片时，新弹层显示 ~40ms 后被旧定时器藏掉（真机复现过）
     if (Date.now() < popSuppressUntil) return;
     const content = groupPopContent(task, schema);
     if (!content) return;
