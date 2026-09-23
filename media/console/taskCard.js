@@ -169,16 +169,19 @@
   }
 
   /**
-   * 弹层内容：参数分组概要 —— 两种组一视同仁渲染，可互相嵌套：
-   *   · 静态组（configGroups）：字段按组归类，组内可嵌套子静态组；
-   *   · 条件组（field.type.sub_configs）：勾选/选中父字段某值才显示的受控字段，
+   * 弹层内容：参数分组概要 —— 与抽屉参数面板同一归属语义（分组吸收显隐，无重复）：
+   *   · 静态组（configGroups）：字段按组归类；组名与组成员自身带 sub_configs →
+   *     子项随字段在组内展开（吸收显隐），不开独立条件组；
+   *   · 条件组（field.type.sub_configs）：只给「不归属任何组的根显隐源」开组，
    *     组头 = 父字段显示名 +「显隐组」徽标，规则行 =「值 → N 项」；
    *   · 嵌套拍平：条件组最多嵌套 COND_NEST_CAP 层，第 3 层起不再建嵌套组卡，
    *     字段行行尾挂「条件摘要徽标」（开→排轴序列 …）——ok-end-field 实测最深
    *     4 节点链（使用独立配置→自动技能列表→启用排轴→排轴序列），全展开会把
-   *     250px 弹层压扁；同字段既在静态组又被条件组受控 → 两处都渲染（一视同仁）；
-   *   · 未归属任何组/条件的字段 → 「其他参数」。
-   * 归并规则与 configPanel 对齐：分组名自身的显隐规则子项吸收进该组 children。
+   *     250px 弹层压扁；
+   *   · 去重：一个字段全弹层只渲染一次（rendered 集合）。静态组先渲染，
+   *     条件组受控字段若已归属静态组 → 该行跳过；受控字段全部已归属 →
+   *     整个条件组跳过，父字段落回「其他参数」当普通行（如 BattleTask 的「配置选择」）；
+   *   · 未归属任何组/条件/受控链的字段 → 「其他参数」。
    */
   const COND_NEST_CAP = 2;
 
@@ -202,23 +205,42 @@
       groupMap.set(gkey, children);
     }
 
-    // 条件组父字段（分组名除外）与受控字段集合
-    const condParents = [];
-    const controlled = new Set();
-    for (const f of fields) {
-      if (groupMap.has(f.key)) continue;
-      const rules = condRulesOf(f);
-      if (rules.length) {
-        condParents.push({ field: f, rules });
-        for (const rule of rules) for (const key of rule.keys) controlled.add(key);
-      }
-    }
-
     const groupChildren = new Set();
     for (const children of groupMap.values()) for (const key of children) groupChildren.add(key);
-    const others = fields.filter((f) => !groupMap.has(f.key) && !groupChildren.has(f.key) && !controlled.has(f.key));
 
-    if (!groupMap.size && !condParents.length && !others.length) return null;
+    // 递归收集所有显隐受控字段（防环）——被控制的字段不再自己开条件组，
+    // 其子项在受控它的位置展开（分组吸收显隐，对齐抽屉参数面板的归属语义）
+    const controlledAll = new Set();
+    const collectControlled = (key, seen) => {
+      const f = fieldsByKey[key];
+      for (const rule of condRulesOf(f)) {
+        for (const k of rule.keys) {
+          if (!fieldsByKey[k] || seen.has(k)) continue;
+          if (!controlledAll.has(k)) {
+            controlledAll.add(k);
+            collectControlled(k, new Set([...seen, k]));
+          }
+        }
+      }
+    };
+    for (const f of fields) {
+      if (condRulesOf(f).length) collectControlled(f.key, new Set([f.key]));
+    }
+
+    // 条件组父字段 = 不归属任何组的「根显隐源」：
+    // 组名源 → 子项已吸收进组 children；组成员源 → 子项随字段在组内展开
+    const condParents = [];
+    for (const f of fields) {
+      if (groupMap.has(f.key) || groupChildren.has(f.key)) continue;
+      const rules = condRulesOf(f);
+      if (rules.length) condParents.push({ field: f, rules });
+    }
+
+    const orphanCount = fields.filter((f) => !groupMap.has(f.key) && !groupChildren.has(f.key)
+      && !controlledAll.has(f.key) && !condParents.some((p) => p.field.key === f.key)).length;
+    if (!groupMap.size && !condParents.length && !orphanCount) return null;
+
+    const rendered = new Set(); // 全弹层去重：一个字段只渲染一次
 
     const frag = document.createDocumentFragment();
     const title = document.createElement('div');
@@ -226,7 +248,7 @@
     title.textContent = schema?.displayName || task.displayName || '';
     const sub = document.createElement('span');
     sub.className = 'pop-sub';
-    sub.textContent = t('depsPopSub', { count: groupMap.size + condParents.length + (others.length ? 1 : 0) });
+    sub.textContent = t('depsPopSub', { count: groupMap.size + condParents.length + (orphanCount ? 1 : 0) });
     title.appendChild(sub);
     frag.appendChild(title);
 
@@ -237,6 +259,8 @@
 
     /** depth = 该字段已被嵌套在几层条件组里；到 cap 不再建嵌套组，改为行尾摘要徽标 */
     function renderItem(key, container, depth) {
+      if (rendered.has(key)) return; // 已被静态组/其他位置吸收 → 不重复
+      rendered.add(key);
       const it = document.createElement('div');
       it.className = 'it';
       const label = document.createElement('span');
@@ -255,8 +279,12 @@
       if (rules.length && depth < COND_NEST_CAP) appendCondGroup(f, rules, container, depth);
     }
 
-    /** 一个父字段 = 一个条件组；组内每条规则 = 规则行（值 → N 项）+ 受控字段缩进列表 */
+    /** 一个父字段 = 一个条件组；组内每条规则 = 规则行（值 → N 项）+ 受控字段缩进列表。
+     *  受控字段若已全部被静态组吸收渲染 → 整组跳过（返回 false，父字段落回其他参数） */
     function appendCondGroup(parentField, rules, container, depth) {
+      const hasPending = rules.some((rule) => rule.keys.some((k) => fieldsByKey[k] && !rendered.has(k)));
+      if (!hasPending) return false;
+      rendered.add(parentField.key);
       const grp = document.createElement('div');
       grp.className = 'grp grp--cond';
       const head = document.createElement('div');
@@ -286,6 +314,7 @@
       }
       grp.append(head, body);
       container.appendChild(grp);
+      return true;
     }
 
     function appendStaticGroup(gkey, container, depth, seen) {
@@ -303,9 +332,11 @@
       const body = document.createElement('div');
       body.className = 'grp-body';
       for (const key of children) {
-        // 静态组嵌静态组；seen 沿递归路径防环（如「多账户模式」组 children 含自己）
+        // 静态组嵌静态组；seen 沿递归路径防环（「多账户模式」组 children 含自己：
+        // 跳过递归但渲染字段行，字段本体仍可见且只出现一次）
         if (groupMap.has(key)) {
-          if (!seen.has(key)) appendStaticGroup(key, body, depth + 1, new Set([...seen, key]));
+          if (seen.has(key)) renderItem(key, body, depth);
+          else appendStaticGroup(key, body, depth + 1, new Set([...seen, key]));
         } else renderItem(key, body, depth);
       }
       grp.append(head, body);
@@ -321,11 +352,15 @@
     for (const gkey of groupMap.keys()) {
       if (!nested.has(gkey)) appendStaticGroup(gkey, frag, 0, new Set([gkey]));
     }
-    // 条件组（与静态组同级，一视同仁；一个父字段一个组）
+    // 条件组（只给根显隐源开组；受控字段已全部归属静态组 → 整组跳过，
+    // 父字段落回「其他参数」当普通行，如 BattleTask 的「配置选择」）
+    const skippedCondParents = [];
     for (const { field, rules } of condParents) {
-      appendCondGroup(field, rules, frag, 0);
+      if (!appendCondGroup(field, rules, frag, 0)) skippedCondParents.push(field);
     }
-    // 其他参数（无静态组时的「参数」伪组沿用旧语义标签）
+    // 其他参数：还没渲染过的剩余字段（非组名、非根条件源）+ 被整组跳过的条件源
+    const others = fields.filter((f) => !rendered.has(f.key) && !groupMap.has(f.key)
+      && (!condParents.some((p) => p.field.key === f.key) || skippedCondParents.includes(f)));
     if (others.length) {
       const grp = document.createElement('div');
       grp.className = 'grp';
