@@ -552,16 +552,37 @@ def collect_project_store_groups(catalog, broken, gui_names=None):
 # 其他全局组没有账号覆盖的运行时消费方，列出来只会误导。
 KNOWN_MULTI_ACCOUNT_GLOBAL_GROUPS = {"Game Hotkey Config", "Zip Line Config"}
 
+# 沙箱根目录的**历史默认值**（VS Code 宿主）。JetBrains 宿主经 OK_TOOLKIT_RUN_DIR
+# 传自己的（.idea/ok-script-toolkit）—— 两端沙箱目录不同，不能写死一个。
+LEGACY_RUN_DIR_PARTS = (".vscode", "ok-script-toolkit")
+
+
+def resolve_run_dir(project_dir):
+    """返回宿主的沙箱根目录（绝对路径）。
+
+    与 `run_executor.py` / `account_store.py` 同一约定：宿主经环境变量
+    `OK_TOOLKIT_RUN_DIR` 传入。**不设时退回 VS Code 的历史默认值** ——
+    VS Code 侧当前不给探针设这个变量，退回默认才能保持既有输出逐字不变。
+    """
+    run_dir = os.environ.get("OK_TOOLKIT_RUN_DIR", "").strip()
+    if run_dir:
+        return os.path.abspath(run_dir)
+    return os.path.join(project_dir, *LEGACY_RUN_DIR_PARTS)
+
 
 def collect_multi_account(project_dir, tasks, broken, global_groups):
     """探测多账户存储，返回只读概要与「打开数据位置」的路径。
 
-    存储位置与执行器一致：沙箱（.vscode/ok-script-toolkit/configs/）优先——
-    执行器与插件的账号编辑都落沙箱；项目侧文件仅作首次探测回退（执行器启动
-    copytree 会把它带进沙箱）。storePath 一律报沙箱路径。
+    存储位置与执行器一致：沙箱（`<run_dir>/configs/`）优先——执行器与插件的账号
+    编辑都落沙箱；项目侧文件仅作首次探测回退（执行器启动 copytree 会把它带进
+    沙箱）。storePath 一律报沙箱路径。
+
+    ⚠️ 沙箱根目录**按宿主解析**（见 `resolve_run_dir`）：曾写死
+    `.vscode/ok-script-toolkit`，JetBrains 宿主会拿到一个根本不存在、也永远不会被
+    读写的路径（它的沙箱是 `.idea/ok-script-toolkit`）。
     """
     sandbox_path = os.path.join(
-        project_dir, ".vscode", "ok-script-toolkit", "configs", "account_scoped_overrides.json"
+        resolve_run_dir(project_dir), "configs", "account_scoped_overrides.json"
     )
     project_path = os.path.join(project_dir, "configs", "account_scoped_overrides.json")
     # store 模块可 import 性：区分「项目不支持账号编辑」与「读取失败（环境问题）」
