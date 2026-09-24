@@ -29,6 +29,10 @@ html = html
   .replaceAll('__CSP_NONCE__', 'test')
   .replaceAll('__CSP_SOURCE__', "'self'")
   .replaceAll('__I18N_JSON__', JSON.stringify(dictionary))
+  .replace('<link rel="stylesheet" href="__SHARED_TOKENS_URI__">',
+    `<style>${fs.readFileSync(path.join(root, 'media', 'shared', 'tokens.css'), 'utf8')}</style>`)
+  .replace('<link rel="stylesheet" href="__SHARED_CONTROLS_URI__">',
+    `<style>${fs.readFileSync(path.join(root, 'media', 'shared', 'controls.css'), 'utf8')}</style>`)
   .replace('<link rel="stylesheet" href="__STYLE_URI__">', `<style>${fs.readFileSync(path.join(componentRoot, 'console.css'), 'utf8')}</style>`);
 for (const [marker, file] of [
   ['__CORE_SCRIPT_URI__', 'core.js'],

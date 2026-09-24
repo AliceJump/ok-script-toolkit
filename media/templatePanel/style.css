@@ -1,102 +1,91 @@
-  :root { --thumb-h: 96px; }
-  body {
-    color: var(--vscode-editor-foreground);
-    background: var(--vscode-editor-background);
-    font-family: var(--vscode-font-family);
-    font-size: var(--vscode-font-size, 13px);
-    margin: 0;
-    padding: 10px 12px 20px;
-  }
-  .toolbar {
-    position: sticky;
-    top: 0;
-    z-index: 10;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    align-items: center;
-    padding: 6px 0;
-    background: var(--vscode-editor-background);
-  }
-  #search {
-    flex: 1;
-    min-width: 120px;
-    padding: 4px 8px;
-    border-radius: 3px;
-    border: 1px solid var(--vscode-input-border, transparent);
-    background: var(--vscode-input-background);
-    color: var(--vscode-input-foreground);
-    outline: none;
-  }
-  #search:focus { border-color: var(--vscode-focusBorder); }
-  #count { opacity: .75; font-size: 11px; white-space: nowrap; }
-  .hint { opacity: .6; font-size: 11px; width: 100%; }
-  #grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
-    gap: 8px;
-    margin-top: 4px;
-  }
-  .card {
-    border: 1px solid var(--vscode-panel-border, rgba(128,128,128,.25));
-    border-radius: 6px;
-    overflow: hidden;
-    cursor: pointer;
-    background: var(--vscode-editorWidget-background, rgba(128,128,128,.08));
-    transition: transform .08s ease, border-color .08s ease;
-    user-select: none;
-  }
-  .card:hover { transform: translateY(-2px); border-color: var(--vscode-focusBorder); }
-  .thumb-box {
-    height: var(--thumb-h);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    position: relative;
-    background:
-      repeating-conic-gradient(rgba(128,128,128,.14) 0% 25%, transparent 0% 50%) 0 0/16px 16px;
-  }
-  .thumb-box img {
-    max-width: 100%;
-    max-height: 100%;
-    image-rendering: pixelated;
-  }
-  .open-btn {
-    position: absolute;
-    top: 3px;
-    right: 3px;
-    width: 22px;
-    height: 22px;
-    border-radius: 4px;
-    background: rgba(0,0,0,.55);
-    color: #fff;
-    border: none;
-    cursor: pointer;
-    font-size: 13px;
-    line-height: 22px;
-    text-align: center;
-    padding: 0;
-    opacity: 0;
-    transition: opacity .12s ease;
-    z-index: 2;
-  }
-  .thumb-box:hover .open-btn { opacity: 1; }
-  .open-btn:hover { background: rgba(0,0,0,.8); }
-  .placeholder { opacity: .35; font-size: 11px; }
-  .meta { padding: 5px 7px 6px; }
-  .name {
-    font-weight: 600;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    margin-bottom: 2px;
-  }
-  .size { opacity: .65; font-size: 11px; }
-  .empty {
-    margin-top: 32px;
-    text-align: center;
-    opacity: .6;
-    line-height: 1.8;
-    white-space: pre-line;
-    padding: 0 12px;
-  }
+/* 模板画廊面板（共享层见 media/shared/tokens.css + controls.css）
+   本文件只保留面板特有部分：缩略图 tile、悬浮打开按钮、网格与空态排版。
+   颜色 / 圆角 / 间距 / 字号一律引用共享 token。 */
+
+:root { --thumb-h: 96px; }
+
+body {
+  margin: 0;
+  padding: var(--space-md) 12px var(--space-xl);
+  color: var(--text-primary);
+  background: var(--bg-page);
+  font-family: var(--font-ui);
+  font-size: var(--font-size-root);
+}
+
+#search { flex: 1; min-width: 120px; }
+#count { color: var(--text-muted); font-size: var(--font-xs); white-space: nowrap; }
+.hint { color: var(--text-muted); font-size: var(--font-xs); width: 100%; }
+
+#grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
+  gap: var(--space-sm);
+  margin-top: var(--space-xs);
+}
+
+/* 缩略图 tile：视觉底子沿用共享 .card（容器底色 + --radius-lg + 描边），
+   这里只加裁切与交互反馈 */
+.card {
+  overflow: hidden;
+  cursor: pointer;
+  user-select: none;
+  transition: transform .08s ease, border-color .08s ease;
+}
+.card:hover { transform: translateY(-2px); border-color: var(--border-strong); }
+
+.thumb-box {
+  height: var(--thumb-h);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  background: repeating-conic-gradient(
+    color-mix(in srgb, var(--text-muted) 14%, transparent) 0% 25%, transparent 0% 50%
+  ) 0 0 / 16px 16px;
+}
+.thumb-box img { max-width: 100%; max-height: 100%; image-rendering: pixelated; }
+
+/* 打开按钮：常驻可见（默认约 85% 不透明度）——可点击控件不能只在 hover 时现身；
+   底色用控件面、文字用前景色，避免原先 rgba(0,0,0,.55)+#fff 在浅色主题成为黑块 */
+.open-btn {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 22px;
+  height: 22px;
+  min-height: 22px;
+  padding: 0;
+  border: var(--border-width) solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-control);
+  color: var(--text-primary);
+  font-size: var(--font-md);
+  line-height: 1;
+  opacity: .85;
+  transition: opacity .12s ease, background-color .12s ease;
+  z-index: 2;
+}
+.open-btn:hover,
+.open-btn:focus-visible { opacity: 1; background: var(--bg-control-hover); border-color: var(--border-strong); }
+
+.placeholder { color: var(--text-muted); font-size: var(--font-xs); }
+
+.meta { padding: 5px 7px 6px; }
+.name {
+  font-weight: var(--weight-medium);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 2px;
+}
+.size { color: var(--text-muted); font-size: var(--font-xs); }
+
+.empty {
+  margin-top: var(--space-xl);
+  text-align: center;
+  color: var(--text-muted);
+  line-height: 1.8;
+  white-space: pre-line;
+  padding: 0 12px;
+}

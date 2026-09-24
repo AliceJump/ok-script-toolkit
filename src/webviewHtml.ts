@@ -1,4 +1,5 @@
 import * as crypto from 'crypto';
+import type * as vscode from 'vscode';
 
 /**
  * Webview HTML 组装的公共约定。
@@ -6,12 +7,59 @@ import * as crypto from 'crypto';
  * 这个文件收拢了两条**看起来像样板、其实是安全边界**的规则。它们原先各自散在
  * 5 个 panel 文件里逐份复制，于是既出现了实现漂移（nonce 长度 24/32 混用），
  * 也出现了漏改（有的地方把错误消息直接拼进 HTML）。
+ *
+ * `vscode` 只做类型导入 + 函数体内延迟 require：本文件里的 `escapeHtml` /
+ * `getNonce` / `errorPage` 是**纯函数**，要能在扩展宿主之外（如 scripts/ 下的
+ * 单测）被 require；顶层 `import ... from 'vscode'` 会让这些测试直接崩在
+ * `Cannot find module 'vscode'`。
  */
+
+interface VscodeApi {
+  Uri: { joinPath(base: vscode.Uri, ...segments: string[]): vscode.Uri };
+}
+
+function vscodeApi(): VscodeApi {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  return require('vscode') as VscodeApi;
+}
 
 /** CSP nonce 的长度（字符数）。历史上有 24 与 32 两种，统一取 32。 */
 const NONCE_LENGTH = 32;
 
 const NONCE_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+
+/**
+ * 共享设计层（`media/shared`）的 webview 资源根。
+ *
+ * 各面板的 `localResourceRoots` 必须包含它，否则 `asWebviewUri` 出来的
+ * tokens.css / controls.css 会被 webview 拒绝加载（面板样式静默失效）。
+ * 放行整个 extensionUri 的面板天然包含它，收紧到 media/<面板> 的面板必须显式加。
+ */
+export function sharedResourceRoot(extensionUri: vscode.Uri): vscode.Uri {
+  return vscodeApi().Uri.joinPath(extensionUri, 'media', 'shared');
+}
+
+/**
+ * 把共享设计层的 URI 注入面板 HTML 的两个占位符。
+ *
+ * 顺序语义由面板 HTML 保证：`__SHARED_TOKENS_URI__` / `__SHARED_CONTROLS_URI__`
+ * 两个 `<link>` 必须排在面板自身样式之前，面板才能覆盖共享层。
+ * 收在这里是为了不让 6 个面板各自抄一遍 `asWebviewUri` 组装逻辑（历史上正是
+ * 这种逐份复制导致过 nonce 长度与转义漂移）。
+ */
+export function applySharedAssets(
+  webview: vscode.Webview,
+  extensionUri: vscode.Uri,
+  html: string,
+): string {
+  const joinPath = vscodeApi().Uri.joinPath;
+  const uri = (name: string) => webview.asWebviewUri(
+    joinPath(extensionUri, 'media', 'shared', name),
+  ).toString(true);
+  return html
+    .split('__SHARED_TOKENS_URI__').join(uri('tokens.css'))
+    .split('__SHARED_CONTROLS_URI__').join(uri('controls.css'));
+}
 
 /**
  * 生成 CSP nonce。

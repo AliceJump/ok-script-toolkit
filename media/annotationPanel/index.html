@@ -3,19 +3,21 @@
 <head>
 <meta charset="UTF-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src __CSP_SOURCE__; script-src __CSP_SOURCE__ 'nonce-__CSP_NONCE__'; img-src data: __CSP_SOURCE__">
+<link rel="stylesheet" href="__SHARED_TOKENS_URI__">
+<link rel="stylesheet" href="__SHARED_CONTROLS_URI__">
 <link rel="stylesheet" href="__STYLE_URI__">
 </head>
 <body>
-  <div class="toolbar">
-    <button id="drawBtn">Draw (R)</button>
-    <button id="coordBtn">Coords (C)</button>
-    <button id="deleteBtn">Delete (D)</button>
-    <button id="undoBtn" title="Undo">↩</button>
-    <button id="redoBtn" title="Redo">↪</button>
+  <div class="panel-toolbar toolbar">
+    <button class="mini-btn" id="drawBtn">Draw (R)</button>
+    <button class="mini-btn" id="coordBtn">Coords (C)</button>
+    <button class="mini-btn" id="deleteBtn">Delete (D)</button>
+    <button class="icon-btn" id="undoBtn" title="Undo">↩</button>
+    <button class="icon-btn" id="redoBtn" title="Redo">↪</button>
     <div class="spacer"></div>
     <span class="info" id="navInfo"></span>
-    <button id="prevBtn" title="Previous image">◀</button>
-    <button id="nextBtn" title="Next image">▶</button>
+    <button class="icon-btn" id="prevBtn" title="Previous image">◀</button>
+    <button class="icon-btn" id="nextBtn" title="Next image">▶</button>
   </div>
   <div class="canvas-wrap">
     <canvas id="canvas"></canvas>
@@ -40,8 +42,8 @@
       <div class="row"><label id="bboxWLabel">Width:</label><input type="number" id="bboxW" min="1" /></div>
       <div class="row"><label id="bboxHLabel">Height:</label><input type="number" id="bboxH" min="1" /></div>
       <div class="actions">
-        <button id="bboxCancel">Cancel</button>
-        <button id="bboxOk" class="primary">OK</button>
+        <button class="mini-btn" id="bboxCancel">Cancel</button>
+        <button class="mini-btn mini-btn--primary" id="bboxOk">OK</button>
       </div>
     </div>
   </div>

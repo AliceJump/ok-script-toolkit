@@ -5,7 +5,7 @@ import { FeatureData } from './featureData';
 import { cropTemplateThumbFileAsync, openAnnotatedImage, THUMB_HEIGHT } from './pngCrop';
 import { featureAliases } from './providers';
 import { injectWebviewLocalization, tr } from './localization';
-import { getNonce } from './webviewHtml';
+import { applySharedAssets, getNonce } from './webviewHtml';
 
 /** 发送给 webview 的模板元数据（不含图片） */
 interface TemplateMeta {
@@ -293,11 +293,11 @@ function galleryHtml(webview: vscode.Webview, cspSource: string, extensionUri: v
   const resource = (name: string) => webview.asWebviewUri(
     vscode.Uri.joinPath(extensionUri, 'media', 'templatePanel', name),
   ).toString(true);
-  return injectWebviewLocalization(
+  return injectWebviewLocalization(applySharedAssets(webview, extensionUri,
     fs.readFileSync(file, 'utf-8')
       .split('__CSP_NONCE__').join(nonce)
       .split('__CSP_SOURCE__').join(webview.cspSource)
       .split('__STYLE_URI__').join(resource('style.css'))
       .split('__APP_SCRIPT_URI__').join(resource('app.js')),
-  );
+  ));
 }

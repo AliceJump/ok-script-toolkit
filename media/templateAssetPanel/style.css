@@ -1,107 +1,127 @@
-  :root { --thumb-h: 96px; }
-  body {
-    color: var(--vscode-editor-foreground);
-    background: var(--vscode-editor-background);
-    font-family: var(--vscode-font-family);
-    font-size: var(--vscode-font-size, 13px);
-    margin: 0; padding: 10px 12px 20px;
-  }
-  .toolbar {
-    position: sticky; top: 0; z-index: 10;
-    display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
-    padding: 6px 0;
-    background: var(--vscode-editor-background);
-  }
-  .toolbar button {
-    padding: 4px 10px; border-radius: 3px;
-    border: 1px solid var(--vscode-button-secondaryBackground, rgba(128,128,128,.3));
-    background: var(--vscode-button-secondaryBackground);
-    color: var(--vscode-button-secondaryForeground);
-    cursor: pointer; font-size: 12px; white-space: nowrap;
-  }
-  .toolbar button:hover { background: var(--vscode-button-secondaryHoverBackground); }
-  .toolbar button.primary {
-    background: var(--vscode-button-background);
-    color: var(--vscode-button-foreground);
-    border-color: var(--vscode-button-background);
-  }
-  .toolbar button.primary:hover { opacity: .9; }
-  #search {
-    flex: 1; min-width: 120px; padding: 4px 8px; border-radius: 3px;
-    border: 1px solid var(--vscode-input-border, transparent);
-    background: var(--vscode-input-background); color: var(--vscode-input-foreground);
-    outline: none; font-size: 12px;
-  }
-  #search:focus { border-color: var(--vscode-focusBorder); }
-  #count { opacity: .75; font-size: 11px; white-space: nowrap; }
-  .spacer { flex: 1; }
-  .toolbar .fg-check {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    font-size: 12px;
-    color: var(--vscode-foreground);
-    cursor: pointer;
-    user-select: none;
-    white-space: nowrap;
-  }
-  .toolbar .fg-check input { margin: 0; }
-  #grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
-    gap: 8px; margin-top: 8px;
-  }
-  .card {
-    border: 1px solid var(--vscode-panel-border, rgba(128,128,128,.25));
-    border-radius: 6px; overflow: hidden; cursor: pointer;
-    background: var(--vscode-editorWidget-background, rgba(128,128,128,.08));
-    transition: transform .08s ease, border-color .08s ease;
-    user-select: none;
-  }
-  .card:hover { transform: translateY(-2px); border-color: var(--vscode-focusBorder); }
-  .thumb-box {
-    height: var(--thumb-h);
-    display: flex; align-items: center; justify-content: center;
-    position: relative;
-    background: repeating-conic-gradient(rgba(128,128,128,.14) 0% 25%, transparent 0% 50%) 0 0/16px 16px;
-  }
-  .thumb-box img { max-width: 100%; max-height: 100%; image-rendering: pixelated; }
-  .placeholder { opacity: .35; font-size: 11px; }
-  .meta { padding: 5px 7px 6px; }
-  .name {
-    font-weight: 600; white-space: nowrap; overflow: hidden;
-    text-overflow: ellipsis; margin-bottom: 2px; font-size: 11px;
-  }
-  .cats { opacity: .65; font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .size { opacity: .5; font-size: 10px; }
-  .actions {
-    position: absolute; bottom: 3px; right: 3px;
-    display: flex; gap: 2px; opacity: 0; transition: opacity .12s ease; z-index: 2;
-  }
-  .card:hover .actions { opacity: 1; }
-  .actions button {
-    width: 22px; height: 22px; border-radius: 4px;
-    background: rgba(0,0,0,.6); color: #fff; border: none;
-    cursor: pointer; font-size: 12px; line-height: 22px;
-    text-align: center; padding: 0;
-  }
-  .actions button:hover { background: rgba(0,0,0,.85); }
-  .empty {
-    margin-top: 32px; text-align: center; opacity: .6;
-    line-height: 1.8; white-space: pre-line; padding: 0 12px;
-  }
-  /* 拖拽临时截图进入时的高亮提示 */
-  .drop-hint {
-    display: none;
-    position: fixed; inset: 6px;
-    border: 2px dashed var(--vscode-focusBorder, #0078d4);
-    border-radius: 8px;
-    background: rgba(0,120,212,.08);
-    align-items: center; justify-content: center;
-    text-align: center; padding: 16px;
-    font-size: 13px; font-weight: 600;
-    color: var(--vscode-focusBorder, #0078d4);
-    pointer-events: none;
-    z-index: 50;
-  }
-  body.drop-active .drop-hint { display: flex; }
+/* 模板资源面板（共享层见 media/shared/tokens.css + controls.css）
+   工具条按钮用共享 .mini-btn 类；本文件只保留 tile / 悬浮操作 / 拖拽提示等特有部分。 */
+
+:root { --thumb-h: 96px; }
+
+body {
+  margin: 0;
+  padding: var(--space-md) 12px var(--space-xl);
+  color: var(--text-primary);
+  background: var(--bg-page);
+  font-family: var(--font-ui);
+  font-size: var(--font-size-root);
+}
+
+#search { flex: 1; min-width: 120px; }
+#count { color: var(--text-muted); font-size: var(--font-xs); white-space: nowrap; }
+.spacer { flex: 1; }
+
+.toolbar .fg-check {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  color: var(--text-primary);
+  font-size: var(--font-sm);
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+.toolbar .fg-check input { margin: 0; }
+
+#grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
+  gap: var(--space-sm);
+  margin-top: var(--space-sm);
+}
+
+/* 缩略图 tile：底子沿用共享 .card，这里只加裁切与交互反馈 */
+.card {
+  overflow: hidden;
+  cursor: pointer;
+  user-select: none;
+  transition: transform .08s ease, border-color .08s ease;
+}
+.card:hover { transform: translateY(-2px); border-color: var(--border-strong); }
+
+.thumb-box {
+  height: var(--thumb-h);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  background: repeating-conic-gradient(
+    color-mix(in srgb, var(--text-muted) 14%, transparent) 0% 25%, transparent 0% 50%
+  ) 0 0 / 16px 16px;
+}
+.thumb-box img { max-width: 100%; max-height: 100%; image-rendering: pixelated; }
+.placeholder { color: var(--text-muted); font-size: var(--font-xs); }
+
+.meta { padding: 5px 7px 6px; }
+.name {
+  font-weight: var(--weight-medium);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 2px;
+  font-size: var(--font-xs);
+}
+.cats { color: var(--text-muted); font-size: var(--font-2xs); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.size { color: var(--text-muted); font-size: var(--font-2xs); }
+
+/* tile 上的操作按钮组：常驻可见（默认 85%），底色/文字走 token，
+   不再用 rgba(0,0,0,.6)+#fff（浅色主题下是黑块） */
+.actions {
+  position: absolute;
+  bottom: 3px;
+  right: 3px;
+  display: flex;
+  gap: 2px;
+  opacity: .85;
+  transition: opacity .12s ease;
+  z-index: 2;
+}
+.card:hover .actions { opacity: 1; }
+.actions button {
+  width: 22px;
+  height: 22px;
+  min-height: 22px;
+  padding: 0;
+  border: var(--border-width) solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-control);
+  color: var(--text-primary);
+  font-size: var(--font-sm);
+  line-height: 1;
+  text-align: center;
+}
+.actions button:hover { background: var(--bg-control-hover); border-color: var(--border-strong); }
+
+.empty {
+  margin-top: var(--space-xl);
+  text-align: center;
+  color: var(--text-muted);
+  line-height: 1.8;
+  white-space: pre-line;
+  padding: 0 12px;
+}
+
+/* 拖拽临时截图进入时的高亮提示 */
+.drop-hint {
+  display: none;
+  position: fixed;
+  inset: 6px;
+  border: 2px dashed var(--border-strong);
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--border-strong) 8%, transparent);
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: var(--space-lg);
+  font-size: var(--font-md);
+  font-weight: var(--weight-medium);
+  color: var(--border-strong);
+  pointer-events: none;
+  z-index: 50;
+}
+body.drop-active .drop-hint { display: flex; }
