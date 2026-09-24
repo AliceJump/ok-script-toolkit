@@ -15,7 +15,7 @@ Language key completion · OCR fix hints · Template browsing · Task launching 
 
 [![VS Code Marketplace](https://img.shields.io/badge/VS%20Code%20Marketplace-ok--script%20Toolkit-007ACC?logo=visualstudiocode&logoColor=white)](https://marketplace.visualstudio.com/items?itemName=AliceJump.ok-script-toolkit)
 [![JetBrains Marketplace](https://img.shields.io/badge/JetBrains%20Marketplace-ok--script%20Toolkit-000000?logo=jetbrains&logoColor=white)](https://plugins.jetbrains.com/plugin/34091-ok-script-toolkit)
-[![Version](https://img.shields.io/badge/version-1.11.0-blue)](package.json)
+[![Version](https://img.shields.io/badge/version-1.12.0-blue)](package.json)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![VS Code](https://img.shields.io/badge/VS%20Code-%5E1.85.0-007ACC)](package.json)
 
