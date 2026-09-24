@@ -59,7 +59,6 @@
           renderTasks(state.currentTasks);
           Console.refreshDrawer();
           Console.renderHealth();
-        Console.renderHealth();
         } else if (message.target === 'global') {
           state.globalSnapshots[message.name] = message.values || {};
           Console.renderConfig(state.globalGroups, state.globalSnapshots, state.expandedGlobalGroups || []);

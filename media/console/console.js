@@ -89,7 +89,13 @@
     }
     let fieldCount = 0;
     for (const group of groups) fieldCount += (group.fields || []).length;
-    const owned = document.querySelectorAll('[data-role="config-toggle"].has-overrides').length;
+    // 已定制任务按数据计数（state.currentTasks + 快照≠出厂），不依赖卡片 DOM——
+    // 搜索过滤/分组折叠会改变可见卡片数，DOM 计数会跟着漂移（CodeRabbit review）
+    const listed = (state.currentTasks || [])
+      .filter((task) => state.schemas[taskKey(task)]?.showInTaskTab !== false);
+    const owned = listed
+      .filter((task) => globalThis.TaskLauncherTaskCard.snapshotDiffersFromFactory(taskKey(task)))
+      .length;
     strip.textContent = '';
     const head = document.createElement('div');
     head.className = 'rc-health__head';

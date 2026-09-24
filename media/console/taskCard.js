@@ -134,6 +134,7 @@
   let popEl = null;
   let popHideTimer = 0;
   let popSuppressUntil = 0;
+  let popFocusCard = null; // 焦点所在的弹层宿主卡（键盘可达性：焦点在卡内时弹层保持）
 
   /**
    * field.type.sub_configs → [{ valueLabel, keys }]（对齐 configPanel 的规则归一）：
@@ -402,9 +403,14 @@
     if (!popEl) {
       popEl = document.createElement('div');
       popEl.className = 'gpop';
+      popEl.id = 'gpop-tooltip'; // 焦点元素的 aria-describedby 指向这里（键盘可达性）
       popEl.setAttribute('role', 'tooltip');
       popEl.addEventListener('mouseenter', () => window.clearTimeout(popHideTimer));
-      popEl.addEventListener('mouseleave', () => hideHoverPop());
+      popEl.addEventListener('mouseleave', () => {
+        // 焦点仍留在宿主卡内（键盘用户 Tab 进来的）时，指针离开弹层不隐藏
+        if (popFocusCard && popFocusCard.contains(document.activeElement)) return;
+        hideHoverPop();
+      });
       document.body.appendChild(popEl);
     }
     popEl.replaceChildren(content);
@@ -412,14 +418,17 @@
     const rect = card.getBoundingClientRect();
     const vh = window.innerHeight;
     // 恒定左侧展开（用户要求：不回退右侧）。空间不足先收窄宽度（下限 180px），
-    // 连下限都放不下就贴视口左缘（left 钳到 8），允许少量压住卡片——悬停即走，无碍。
+    // 连下限都放不下就贴主栏左缘——左界钳在 .lay-main 内 +8px（找不到主栏退回
+    // 视口 8px），弹层不允许盖住侧栏；再不够就允许压住卡片，悬停即走无碍。
     const POP_W = 250; // 与 console.css .gpop 的 width 保持一致
-    const availLeft = rect.left - 16; // 卡片间隙 8px + 视口边距 8px
+    const main = card.closest('.lay-main');
+    const minLeft = main ? Math.max(8, main.getBoundingClientRect().left + 8) : 8;
+    const availLeft = rect.left - 8 - minLeft; // 卡片间隙 8px：弹层右缘距卡片左缘 8px
     popEl.style.width = `${Math.round(Math.max(180, Math.min(POP_W, availLeft)))}px`;
     const pw = popEl.offsetWidth;
     const ph = popEl.offsetHeight;
     // 左侧展开：右缘距卡片左缘 8px，垂直顶对齐卡片——向下/向右弹都会盖住别的任务卡
-    const left = Math.max(8, rect.left - pw - 8);
+    const left = Math.max(minLeft, rect.left - pw - 8);
     const top = Math.max(8, Math.min(rect.top, Math.max(8, vh - ph - 8)));
     popEl.style.left = `${Math.round(left)}px`;
     popEl.style.top = `${Math.round(top)}px`;
@@ -506,7 +515,27 @@
     if (!hasContent) return false;
     card.classList.add('task-card--pop');
     card.addEventListener('mouseenter', () => showHoverPop(card, task, schema));
-    card.addEventListener('mouseleave', () => hideHoverPop());
+    card.addEventListener('mouseleave', () => {
+      // 键盘可达性：焦点仍在卡内（Tab 进来的）时，指针离开不隐藏
+      if (popFocusCard === card && card.contains(document.activeElement)) return;
+      hideHoverPop();
+    });
+    // 键盘可达性（CodeRabbit review）：focusin 显示弹层，并把焦点元素用
+    // aria-describedby 关联到弹层（role=tooltip）；focusout 焦点真正离开卡片才解除
+    card.addEventListener('focusin', (event) => {
+      popFocusCard = card;
+      showHoverPop(card, task, schema);
+      if (popEl && event.target instanceof Element) {
+        event.target.setAttribute('aria-describedby', popEl.id);
+      }
+    });
+    card.addEventListener('focusout', (event) => {
+      if (event.target instanceof Element) event.target.removeAttribute('aria-describedby');
+      const next = event.relatedTarget;
+      if (next instanceof Node && card.contains(next)) return; // 焦点在卡内移动
+      if (popFocusCard === card) popFocusCard = null;
+      hideHoverPop();
+    });
     return true;
   }
 
@@ -761,5 +790,5 @@
     renderTasks(state.currentTasks);
   }
 
-  globalThis.TaskLauncherTaskCard = { renderTasks, updateRunningState, setSearch, toggleGroup, suppressPopups, hideHoverPop, bindHoverPop };
+  globalThis.TaskLauncherTaskCard = { renderTasks, updateRunningState, setSearch, toggleGroup, suppressPopups, hideHoverPop, bindHoverPop, snapshotDiffersFromFactory };
 })();
