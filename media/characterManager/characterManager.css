@@ -4,7 +4,6 @@
      --border / --muted / --surface 直接来自共享层。 */
   --surface2: var(--bg-container-raised);
   --selected: var(--selected-bg);
-  --selected-fg: var(--selected-fg);
   --hover: var(--surface-hover);
   --accent: var(--border-strong);
   --danger: var(--err);

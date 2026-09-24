@@ -91,9 +91,9 @@ for (const panel of panels) {
       `${rel} 直引了 VS Code 变量：${vscodeVars.join(', ')}（唯一允许处是 media/shared/tokens.css）`);
 
     console.log(`4. [${rel}] 圆角/字号走 scale`);
-    const rawRadius = css.match(/border-radius:\s*\d+px/g) || [];
+    const rawRadius = css.match(/border-radius:\s*\d+(?:\.\d+)?px/g) || [];
     assert(rawRadius.length === 0, `${rel} 有裸 px 圆角：${rawRadius.join(', ')}（改用 --radius-*）`);
-    const rawFont = css.match(/font-size:\s*\d+px/g) || [];
+    const rawFont = css.match(/font-size:\s*\d+(?:\.\d+)?px/g) || [];
     assert(rawFont.length === 0, `${rel} 有裸 px 字号：${rawFont.join(', ')}（改用 --font-*）`);
 
     console.log(`5. [${rel}] var() 全部有定义`);
