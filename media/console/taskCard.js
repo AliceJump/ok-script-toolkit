@@ -227,11 +227,13 @@
       if (condRulesOf(f).length) collectControlled(f.key, new Set([f.key]));
     }
 
-    // 条件组父字段 = 不归属任何组的「根显隐源」：
-    // 组名源 → 子项已吸收进组 children；组成员源 → 子项随字段在组内展开
+    // 条件组父字段 = 「根显隐源」：不归属任何组、也不在任何控制链下游。
+    // 被控字段（如全局 Battle Config 的启用排轴——fields 顺序排在根源
+    // 自动技能列表之前）绝不能自己开顶层组，否则链从属关系断裂；
+    // 其子项在受控它的位置展开（分组吸收显隐，对齐抽屉参数面板语义）
     const condParents = [];
     for (const f of fields) {
-      if (groupMap.has(f.key) || groupChildren.has(f.key)) continue;
+      if (groupMap.has(f.key) || groupChildren.has(f.key) || controlledAll.has(f.key)) continue;
       const rules = condRulesOf(f);
       if (rules.length) condParents.push({ field: f, rules });
     }
@@ -493,12 +495,19 @@
     const configPanel = buildConfigPanel(task, schema);
     card.append(header, configPanel);
     // 悬停弹出：有分组层次按组展示，没层次但有字段折叠成「参数」伪组（见 groupPopContent）
-    if ((schema?.configGroups && Object.keys(schema.configGroups).length) || schema?.fields?.length) {
-      card.classList.add('task-card--pop');
-      card.addEventListener('mouseenter', () => showHoverPop(card, task, schema));
-      card.addEventListener('mouseleave', () => hideHoverPop());
-    }
+    bindHoverPop(card, task, schema);
     return card;
+  }
+
+  /** 卡片悬停弹层绑定（任务卡与配置分段全局组卡共用）：有字段才弹 + hover 边框提示 */
+  function bindHoverPop(card, task, schema) {
+    const hasContent = (schema?.configGroups && Object.keys(schema.configGroups).length)
+      || Boolean(schema?.fields?.length);
+    if (!hasContent) return false;
+    card.classList.add('task-card--pop');
+    card.addEventListener('mouseenter', () => showHoverPop(card, task, schema));
+    card.addEventListener('mouseleave', () => hideHoverPop());
+    return true;
   }
 
   /** 单个卡片的执行状态：触发任务看入列/轮询，一次性任务看排队/执行 */
@@ -752,5 +761,5 @@
     renderTasks(state.currentTasks);
   }
 
-  globalThis.TaskLauncherTaskCard = { renderTasks, updateRunningState, setSearch, toggleGroup, suppressPopups };
+  globalThis.TaskLauncherTaskCard = { renderTasks, updateRunningState, setSearch, toggleGroup, suppressPopups, hideHoverPop, bindHoverPop };
 })();

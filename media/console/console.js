@@ -52,6 +52,10 @@
   }
 
   function renderConfig(groups, snapshots, expanded) {
+    // 折叠切换/快照刷新会重建全部配置卡：旧卡被移除后悬停弹层成了幽灵，先收掉。
+    // 不用 suppressPopups——那会上 1.2s 抑制窗口，初始加载时 globalGroups 先于
+    // tasks 到达会把任务卡的悬停弹出一起闷掉（CDP 场景实测踩中）。
+    globalThis.TaskLauncherTaskCard?.hideHoverPop?.(true);
     state.globalGroups = groups || [];
     state.globalSnapshots = snapshots || {};
     state.expandedGlobalGroups = Array.isArray(expanded) ? expanded : [];
@@ -185,6 +189,9 @@
     }
 
     card.append(head, body);
+    // 悬停参数概要弹层（与任务卡同款）：全局组字段与任务 schema 同构，直接复用
+    // groupPopContent —— 条件链按「分组吸收显隐」归属，深层拍平徽标。
+    globalThis.TaskLauncherTaskCard?.bindHoverPop?.(card, fakeTask, fakeSchema);
     return card;
   }
 
