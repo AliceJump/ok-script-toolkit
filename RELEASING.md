@@ -87,6 +87,8 @@ GitHub Secret 支持多行文本，可直接粘贴 PEM/CRT 全文；也可先 Ba
 > **推荐用一键脚本**：`npm run release -- --minor`（或 `sh scripts/release.sh --minor`，
 > Windows 可用 `scripts/release.ps1`）。它会自动完成下面全部步骤——同步七处版本、
 > 验证、按「先子后父」提交推送、最后打标签推送。加 `--dry-run` 可先预览。
+> 脚本只允许在 main 分支执行（父仓库与 jetbrains 子模块均要求），其他分支会直接
+> 拒绝——发版 commit 会落在执行时所在的分支（v1.12.0 实测踩坑）。
 > 手动发布时请严格按下面顺序，**不要漏掉任何一步**。
 
 例如发布 `0.6.0`：
@@ -218,7 +220,10 @@ GitHub Secrets support multi-line text; you can paste PEM/CRT full text directly
 > **Prefer the one-shot script**: `npm run release -- --minor` (or `sh scripts/release.sh --minor`;
 > Windows can use `scripts/release.ps1`). It performs every step below automatically — syncing the
 > five version locations, verifying, committing/pushing sub-repo then parent, and finally tagging.
-> Add `--dry-run` to preview first. If releasing manually, follow the order below exactly and
+> Add `--dry-run` to preview first. The script only runs on the `main` branch
+> (required for both the parent repo and the jetbrains submodule) and refuses
+> otherwise — the release commit lands on whatever branch it runs from (hit on v1.12.0).
+> If releasing manually, follow the order below exactly and
 > **do not skip any step**.
 
 For example, releasing `0.6.0`:

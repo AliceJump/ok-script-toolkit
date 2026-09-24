@@ -12,6 +12,9 @@
 #   5. 提交父仓库版本变更（含 README 徽章与子模块指针）并推送
 #   6. 创建 v{新版本} 标签并推送（这一步才会真正触发发布流水线）
 #
+# 前置条件: 父仓库与 jetbrains 子模块都必须处于 main 分支，否则脚本直接拒绝
+#   （从其他分支发版会把发版 commit 落在该分支上，v1.12.0 实测踩坑）。
+#
 # 用法:
 #   ./scripts/release.sh [--major|--minor|--patch] [--dry-run] [version]
 #   npm run release -- [同上参数]
@@ -113,9 +116,27 @@ run() {
 # ── 主流程 ──────────────────────────────────────────────
 printf '\n\033[32m🚀 发版: %s → v%s\033[0m\n\n' "$OLD_VERSION" "$NEW_VERSION"
 
-# ① 检查工作区是否干净
+# ① 检查当前分支：发版只允许在 main 上执行。这里直接调 git 而不走 run()——
+#    run() 在 dry-run 下不执行命令、只打印标签并返回空，会让只读检查拿到空值形同虚设。
+echo '▸ 检查当前分支...'
+PARENT_BRANCH=$(git -C "$ROOT_GIT" rev-parse --abbrev-ref HEAD)
+if [ "$PARENT_BRANCH" != "main" ]; then
+    echo "" >&2
+    echo "错误: 父仓库当前在分支 [$PARENT_BRANCH] 上，发版必须在 main 分支执行（git checkout main）。" >&2
+    echo "      从其他分支发版会把发版 commit 落在该分支上（v1.12.0 就这样漏到了 PR 分支）。" >&2
+    exit 1
+fi
+
+JETBRAINS_BRANCH=$(git -C "$JETBRAINS_DIR_GIT" rev-parse --abbrev-ref HEAD)
+if [ "$JETBRAINS_BRANCH" != "main" ]; then
+    echo "" >&2
+    echo "错误: jetbrains 子模块当前在分支 [$JETBRAINS_BRANCH] 上，发版要求子模块处于 main 分支。" >&2
+    exit 1
+fi
+
+# ② 检查工作区是否干净
 echo '▸ 检查工作区状态...'
-PARENT_STATUS=$(run 'git status (parent)' git -C "$ROOT_GIT" status --porcelain)
+PARENT_STATUS=$(git -C "$ROOT_GIT" status --porcelain)
 if [ -n "$PARENT_STATUS" ]; then
     echo "" >&2
     echo "错误: 父仓库工作区有未提交的更改，请先处理：" >&2
@@ -123,7 +144,7 @@ if [ -n "$PARENT_STATUS" ]; then
     exit 1
 fi
 
-JETBRAINS_STATUS=$(run 'git status (jetbrains)' git -C "$JETBRAINS_DIR_GIT" status --porcelain)
+JETBRAINS_STATUS=$(git -C "$JETBRAINS_DIR_GIT" status --porcelain)
 if [ -n "$JETBRAINS_STATUS" ]; then
     echo "" >&2
     echo "错误: jetbrains 子模块工作区有未提交的更改，请先处理：" >&2
@@ -131,21 +152,21 @@ if [ -n "$JETBRAINS_STATUS" ]; then
     exit 1
 fi
 
-# ② 同步版本号
+# ③ 同步版本号
 echo "▸ 同步版本号 → $NEW_VERSION"
 run 'version:sync' node "$ROOT/scripts/release/sync-version.js" "$NEW_VERSION"
 
-# ③ 验证版本一致性
+# ④ 验证版本一致性
 echo '▸ 验证版本一致性...'
 run 'verify:version' node "$ROOT/scripts/release/verify-version.js"
 
-# ④ 提交 jetbrains 子模块
+# ⑤ 提交 jetbrains 子模块
 echo '▸ 提交 jetbrains 子模块...'
 run 'git add (jetbrains)' git -C "$JETBRAINS_DIR_GIT" add -A
 run 'git commit (jetbrains)' git -C "$JETBRAINS_DIR_GIT" commit -m "chore(release): prepare v$NEW_VERSION"
 run 'git push (jetbrains)' git -C "$JETBRAINS_DIR_GIT" push origin main
 
-# ⑤ 提交父仓库（含子模块指针更新）
+# ⑥ 提交父仓库（含子模块指针更新）
 echo '▸ 提交父仓库...'
 # README 徽章文件必须**逐一显式**纳入：sync-version.js 会改写全部四份 README
 # 的版本徽章，但它们对 git 而言可能是未跟踪/已修改状态，`git commit`（非 -a）
@@ -156,7 +177,7 @@ run 'git add (parent)' git -C "$ROOT_GIT" add package.json package-lock.json REA
 run 'git commit (parent)' git -C "$ROOT_GIT" commit -m "chore(release): prepare v$NEW_VERSION"
 run 'git push (parent)' git -C "$ROOT_GIT" push origin main
 
-# ⑥ 打标签并推送
+# ⑦ 打标签并推送
 echo "▸ 创建标签 v$NEW_VERSION..."
 run 'git tag' git -C "$ROOT_GIT" tag -a "v$NEW_VERSION" -m "Release v$NEW_VERSION"
 run 'git push tag' git -C "$ROOT_GIT" push origin "v$NEW_VERSION"

@@ -13,6 +13,10 @@
       5. Commit and push parent repo (with README badge and submodule pointer update)
       6. Create and push the v{newVersion} tag (this is what triggers the release pipeline)
 
+    Precondition: both the parent repo and the jetbrains submodule must be on the
+    'main' branch; the script refuses to run otherwise (releasing from another
+    branch strands the release commit there — hit on v1.12.0).
+
 .PARAMETER Version
     Explicit version number (MAJOR.MINOR.PATCH). If omitted, auto-increments minor.
 
@@ -112,38 +116,53 @@ Write-Host ""
 Write-Host "Release: $oldVersion -> v$newVersion" -ForegroundColor Green
 Write-Host ""
 
-# 1. Check clean workspaces
+# 1. Check current branch: releases are only allowed on main. These git calls are
+#    made directly (not via Invoke-Cmd) on purpose: Invoke-Cmd no-ops in dry-run
+#    and would return an empty value, defeating read-only checks.
+Write-Host "> Checking current branch..."
+$parentBranch = (git -C $Root rev-parse --abbrev-ref HEAD).Trim()
+if ($parentBranch -ne 'main') {
+    Write-Error "`nParent repo is on branch [$parentBranch]. Releases must run on 'main' (git checkout main). Releasing from another branch lands the release commit there (hit on v1.12.0)."
+    exit 1
+}
+$jetbrainsBranch = (git -C $JetbrainsDir rev-parse --abbrev-ref HEAD).Trim()
+if ($jetbrainsBranch -ne 'main') {
+    Write-Error "`nJetbrains submodule is on branch [$jetbrainsBranch]. Releases require the submodule to be on 'main'."
+    exit 1
+}
+
+# 2. Check clean workspaces (direct git calls, same dry-run rationale as step 1)
 Write-Host "> Checking workspace status..."
-$parentStatus = Invoke-Cmd 'git status --porcelain' 'git status (parent)'
+$parentStatus = (git -C $Root status --porcelain | Out-String).Trim()
 if ($parentStatus) {
     Write-Error "`nParent repo has uncommitted changes:`n$parentStatus"
     exit 1
 }
 
-$jetbrainsStatus = Invoke-Cmd 'git status --porcelain' 'git status (jetbrains)' $JetbrainsDir
+$jetbrainsStatus = (git -C $JetbrainsDir status --porcelain | Out-String).Trim()
 if ($jetbrainsStatus) {
     Write-Error "`nJetbrains submodule has uncommitted changes:`n$jetbrainsStatus"
     exit 1
 }
 
-# 2. Sync version
+# 3. Sync version
 Write-Host "> Syncing version -> $newVersion"
 $syncScript = Join-Path $Root 'scripts\release\sync-version.js'
 Invoke-Cmd "node `"$syncScript`" $newVersion" 'version:sync'
 
-# 3. Verify version consistency
+# 4. Verify version consistency
 Write-Host "> Verifying version consistency..."
 $verifyScript = Join-Path $Root 'scripts\release\verify-version.js'
 Invoke-Cmd "node `"$verifyScript`"" 'verify:version'
 
-# 4. Commit jetbrains submodule
+# 5. Commit jetbrains submodule
 Write-Host "> Committing jetbrains submodule..."
 Invoke-Cmd 'git add -A' 'git add (jetbrains)' $JetbrainsDir
 $commitMsg = "chore(release): prepare v$newVersion"
 Invoke-Cmd "git commit -m `"$commitMsg`"" 'git commit (jetbrains)' $JetbrainsDir
 Invoke-Cmd 'git push origin main' 'git push (jetbrains)' $JetbrainsDir
 
-# 5. Commit parent repo (with submodule pointer update)
+# 6. Commit parent repo (with submodule pointer update)
 # README badge files must be added EXPLICITLY one by one: sync-version.js rewrites
 # all four README badges, but `git commit` (without -a) only picks up staged files.
 # This list used to omit README.en.md, leaving the English badge update stuck in the
@@ -154,7 +173,7 @@ Invoke-Cmd 'git add package.json package-lock.json README.md README.en.md jetbra
 Invoke-Cmd "git commit -m `"$commitMsg`"" 'git commit (parent)'
 Invoke-Cmd 'git push origin main' 'git push (parent)'
 
-# 6. Create tag and push
+# 7. Create tag and push
 Write-Host "> Creating tag v$newVersion..."
 Invoke-Cmd "git tag -a v$newVersion -m `"Release v$newVersion`"" 'git tag'
 Invoke-Cmd "git push origin v$newVersion" 'git push tag'
