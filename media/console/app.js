@@ -21,6 +21,7 @@
         state.schemas = message.schemas || state.schemas;
         renderTasks(message.tasks || []);
         Console.refreshDrawer();
+        Console.renderHealth();
         // 多账户存储概要随 tasks 消息一起到达（probe 探测结果）；store 数据保持独立状态
         Console.renderMultiAccount(message.multiAccount || state.multiAccount, state.accountStore);
         break;
@@ -31,6 +32,7 @@
         Console.renderMultiAccount(message.multiAccount || state.multiAccount, state.accountStore);
         renderTasks(state.currentTasks);
         Console.refreshDrawer();
+        Console.renderHealth();
         break;
       case 'taskConfigs':
         state.taskConfigs = message.configs || {};
@@ -38,6 +40,7 @@
         if (message.uiState) state.uiState = message.uiState;
         renderTasks(state.currentTasks);
         Console.refreshDrawer();
+        Console.renderHealth();
         break;
       // 配置接管：全局配置组 + 快照（配置分段数据源）
       case 'globalGroups':
@@ -55,6 +58,7 @@
           };
           renderTasks(state.currentTasks);
           Console.refreshDrawer();
+          Console.renderHealth();
         } else if (message.target === 'global') {
           state.globalSnapshots[message.name] = message.values || {};
           Console.renderConfig(state.globalGroups, state.globalSnapshots, state.expandedGlobalGroups || []);
