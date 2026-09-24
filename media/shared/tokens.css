@@ -1,0 +1,137 @@
+/* ═══════════════════════════════════════════════════════════════════════
+   ok-script-toolkit · Design Tokens（全面板唯一视觉真源）
+
+   规则（见 docs/design-system.md）：
+   - 颜色、间距、尺寸、圆角、边框、阴影一律引用本文件 token；
+   - 页面 / 组件不得自造颜色与尺寸，不得直引 --vscode-* 变量（本文件除外）；
+   - 层级：页面背景 > 一级容器 > 控件面 > Hover/Active；
+   - 真按钮（Button/IconButton）默认态用 --bg-control（控件面 + 描边）；
+   - 行级可点击区（组头 / 折叠标题行）用 --bg-row（极浅色调、无描边）——
+     同样「未悬浮即有底色」，但不与按钮同权重，避免层层方块（2026-09-23 定案）。
+   ═══════════════════════════════════════════════════════════════════════ */
+
+:root {
+  color-scheme: light dark;
+
+  /* ── 1. 骨架与容器 ───────────────────────────────────────────────── */
+  --bg-page: var(--vscode-editor-background, #1e1e1e);
+  --bg-container: var(--vscode-editorWidget-background, color-mix(in srgb, var(--vscode-editor-background) 92%, var(--vscode-foreground) 8%));
+  --bg-container-raised: var(--vscode-sideBar-background, var(--bg-container));
+
+  /* 兼容别名（既有样式沿用，新代码请用上面的语义名） */
+  --surface: var(--bg-container);
+  --surface-raised: var(--bg-container-raised);
+
+  /* ── 2. 控件面与交互态 ───────────────────────────────────────────── */
+  --bg-control: color-mix(in srgb, var(--vscode-button-secondaryBackground, var(--bg-container-raised)) 80%, var(--vscode-foreground) 14%);
+  --bg-control-hover: color-mix(in srgb, var(--bg-control) 82%, var(--vscode-foreground) 18%);
+  --bg-control-active: color-mix(in srgb, var(--bg-control) 72%, var(--vscode-foreground) 26%);
+  --surface-hover: var(--vscode-list-hoverBackground, color-mix(in srgb, var(--bg-container) 86%, var(--vscode-focusBorder) 14%));
+
+  /* 行级可点击区（组头 / 折叠标题行）：极浅色调——默认可识别，但不形成方块墙 */
+  --bg-row: color-mix(in srgb, var(--bg-control) 42%, transparent);
+  --bg-row-hover: color-mix(in srgb, var(--bg-control) 70%, transparent);
+
+  /* ── 6. VS Code 主题映射（本文件是全项目唯一允许直引 --vscode-* 的地方）──
+     面板 CSS 一律用下面这些语义 token，便于换主题/换宿主时一处调整。 */
+  --font-ui: var(--vscode-font-family, system-ui, 'Segoe UI', sans-serif);
+  --font-mono: var(--vscode-editor-font-family, ui-monospace, monospace);
+  --font-size-root: var(--vscode-font-size, 13px);
+  --btn-bg: var(--vscode-button-background, #0e639c);
+  --btn-fg: var(--vscode-button-foreground, #ffffff);
+  --btn-bg-hover: var(--vscode-button-hoverBackground, #1177bb);
+  --btn-secondary-bg: var(--vscode-button-secondaryBackground, color-mix(in srgb, var(--text-primary) 12%, transparent));
+  --btn-secondary-fg: var(--vscode-button-secondaryForeground, var(--text-primary));
+  --btn-secondary-bg-hover: var(--vscode-button-secondaryHoverBackground, color-mix(in srgb, var(--text-primary) 18%, transparent));
+  --input-bg: var(--vscode-input-background, var(--bg-container));
+  --input-fg: var(--vscode-input-foreground, var(--text-primary));
+  --input-border: var(--vscode-input-border, var(--border));
+  --input-placeholder: var(--vscode-input-placeholderForeground, var(--text-muted));
+  --badge-bg: var(--vscode-badge-background, var(--border-strong));
+  --badge-fg: var(--vscode-badge-foreground, var(--text-primary));
+  --selected-bg: var(--vscode-list-activeSelectionBackground, color-mix(in srgb, var(--border-strong) 26%, transparent));
+  --selected-fg: var(--vscode-list-activeSelectionForeground, var(--text-primary));
+  --danger-bg: var(--vscode-inputValidation-errorBackground, color-mix(in srgb, var(--err) 30%, var(--bg-container)));
+  --warn-bg: var(--vscode-inputValidation-warningBackground, color-mix(in srgb, var(--warn) 14%, var(--bg-container)));
+  --info-bg: var(--vscode-inputValidation-infoBackground, color-mix(in srgb, var(--border-strong) 12%, var(--bg-container)));
+  --scrollbar: var(--vscode-scrollbarSlider-background, color-mix(in srgb, var(--text-muted) 35%, transparent));
+
+  /* ── 遮罩与投影（跨主题统一，故不走语义色）───────────────────────── */
+  --scrim: color-mix(in srgb, #000 55%, transparent);
+  --scrim-strong: color-mix(in srgb, #000 82%, transparent);
+  --on-accent: color-mix(in srgb, #000 78%, transparent);
+  --shadow-sm: 0 1px 2px color-mix(in srgb, #000 18%, transparent);
+  --shadow-lg: 0 12px 36px color-mix(in srgb, #000 42%, transparent);
+
+  /* 语法糖别名（历史命名，与上面等价） */
+  --clickable-bg: var(--bg-control);
+  --clickable-bg-hover: var(--bg-control-hover);
+
+  /* ── 3. 边框 ────────────────────────────────────────────────────── */
+  --border: var(--vscode-panel-border, color-mix(in srgb, var(--vscode-foreground) 18%, transparent));
+  --border-strong: var(--vscode-focusBorder, #007acc);
+  --border-width: 1px;
+
+  /* ── 4. 文字 ────────────────────────────────────────────────────── */
+  --text-primary: var(--vscode-editor-foreground);
+  --text-muted: var(--vscode-descriptionForeground, color-mix(in srgb, var(--vscode-editor-foreground) 64%, transparent));
+  --text-disabled: color-mix(in srgb, var(--vscode-editor-foreground) 38%, transparent);
+
+  /* 兼容别名 */
+  --muted: var(--text-muted);
+  --fg: var(--text-primary);
+
+  /* ── 5. 语义状态色 ──────────────────────────────────────────────── */
+  --ok: var(--vscode-charts-green, #3fb950);
+  --run: var(--vscode-charts-blue, #4a9eff);
+  --warn: var(--vscode-charts-yellow, #d7a12c);
+  --pause: var(--vscode-charts-orange, #d18616);
+  --err: var(--vscode-errorForeground, #f44);
+
+  /* ── 6. 间距（spacing scale）─────────────────────────────────────── */
+  --space-xs: 4px;
+  --space-sm: 6px;
+  --space-md: 10px;
+  --space-lg: 14px;
+  --space-xl: 20px;
+
+  /* ── 7. 圆角与阴影 ──────────────────────────────────────────────── */
+  --radius-sm: 5px;
+  --radius-md: 8px;
+  --radius-lg: 11px;
+  --radius-pill: 999px;
+  --shadow: 0 4px 14px color-mix(in srgb, #000 15%, transparent);
+
+  /* ── 8. 控件尺寸（高度）──────────────────────────────────────────── */
+  --control-h-sm: 24px;
+  --control-h-md: 30px;
+  --control-h-lg: 34px;
+
+  /* ── 9. 字号与字重 ──────────────────────────────────────────────── */
+  --font-2xs: 10px;
+  --font-xs: 11px;
+  --font-sm: 12px;
+  --font-md: 13px;
+  --font-lg: 15px;
+  --font-xl: 20px;
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-bold: 700;
+}
+
+* { box-sizing: border-box; }
+
+html, body { min-height: 100%; }
+
+body {
+  margin: 0;
+  color: var(--text-primary);
+  background: var(--bg-page);
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size, var(--font-md));
+  line-height: 1.5;
+}
+
+/* hidden 属性兜底：作者样式里的 display 会覆盖 UA 的 [hidden]{display:none}，
+   导致所有基于 hidden 的折叠/显隐在真机上失效（jsdom 测试只查属性所以测不出来）。 */
+[hidden] { display: none !important; }

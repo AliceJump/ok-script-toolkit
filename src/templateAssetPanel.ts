@@ -11,7 +11,7 @@ import { takePendingDrag } from './tempDrag';
 import { currentWorkspaceFolderUri, ideSetting, labelEnumClassName, labelEnumPathInputError, labelEnumPathSetting, normalizeLabelEnumPathInput, setIdeSetting, templatesDirectory } from './projectConfig';
 import { labelEnumRenameImpact, labelEnumRenameMessage, referencingFiles, writableClassName } from './labelEnumGuard';
 import { derivedEnumPath, isPathInsideRoot, needsEnumPathPrompt, SaveTarget, saveToAssetsItems } from './saveToAssetsPure';
-import { getNonce } from './webviewHtml';
+import { applySharedAssets, getNonce } from './webviewHtml';
 
 /* ---------------- 控制器 ---------------- */
 
@@ -593,11 +593,11 @@ function assetGalleryHtml(webview: vscode.Webview, extensionUri: vscode.Uri): st
   const resource = (name: string) => webview.asWebviewUri(
     vscode.Uri.joinPath(extensionUri, 'media', 'templateAssetPanel', name),
   ).toString(true);
-  return injectWebviewLocalization(
+  return injectWebviewLocalization(applySharedAssets(webview, extensionUri,
     fs.readFileSync(file, 'utf-8')
       .split('__CSP_NONCE__').join(nonce)
       .split('__CSP_SOURCE__').join(webview.cspSource)
       .split('__STYLE_URI__').join(resource('style.css'))
       .split('__APP_SCRIPT_URI__').join(resource('app.js')),
-  );
+  ));
 }

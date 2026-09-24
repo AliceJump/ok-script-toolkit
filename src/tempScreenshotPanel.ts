@@ -9,7 +9,7 @@ import { captureGameWindow } from './screenshotCapture';
 import { clearPendingDrag, setPendingDrag } from './tempDrag';
 import { cropTemplateThumbFileAsync, readImageSize, removeTemplateThumbFile, THUMB_HEIGHT } from './pngCrop';
 import { injectWebviewLocalization, tr } from './localization';
-import { getNonce } from './webviewHtml';
+import { applySharedAssets, getNonce } from './webviewHtml';
 
 /* ---------------- 剪贴板读图（Windows 回退路径） ---------------- */
 
@@ -317,11 +317,11 @@ function tempScreenshotHtml(webview: vscode.Webview, extensionUri: vscode.Uri): 
   const resource = (name: string) => webview.asWebviewUri(
     vscode.Uri.joinPath(extensionUri, 'media', 'tempScreenshots', name),
   ).toString(true);
-  return injectWebviewLocalization(
+  return injectWebviewLocalization(applySharedAssets(webview, extensionUri,
     fs.readFileSync(file, 'utf-8')
       .split('__CSP_NONCE__').join(nonce)
       .split('__CSP_SOURCE__').join(webview.cspSource)
       .split('__STYLE_URI__').join(resource('style.css'))
       .split('__APP_SCRIPT_URI__').join(resource('app.js')),
-  );
+  ));
 }

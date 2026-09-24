@@ -31,6 +31,10 @@ html = html
   .replaceAll('__CSP_NONCE__', 'test')
   .replaceAll('__CSP_SOURCE__', "'self'")
   .replaceAll('__I18N_JSON__', JSON.stringify(dictionary))
+  .replace('<link rel="stylesheet" href="__SHARED_TOKENS_URI__">',
+    `<style>${fs.readFileSync(path.join(root, 'media', 'shared', 'tokens.css'), 'utf8')}</style>`)
+  .replace('<link rel="stylesheet" href="__SHARED_CONTROLS_URI__">',
+    `<style>${fs.readFileSync(path.join(root, 'media', 'shared', 'controls.css'), 'utf8')}</style>`)
   .replace('<link rel="stylesheet" href="__STYLE_URI__">', `<style>${fs.readFileSync(path.join(componentRoot, 'console.css'), 'utf8')}</style>`);
 for (const [marker, file] of [
   ['__CORE_SCRIPT_URI__', 'core.js'],
@@ -156,8 +160,12 @@ assert(fieldsHost && fieldsHost.hidden === false, '字段区常驻显示');
 
 console.log('6. CSS 兜底：hidden 必须压过作者样式的 display（真机折叠生效的前提）');
 const css = fs.readFileSync(path.join(componentRoot, 'console.css'), 'utf8');
+const sharedTokens = fs.readFileSync(path.join(root, 'media', 'shared', 'tokens.css'), 'utf8');
+const sharedControls = fs.readFileSync(path.join(root, 'media', 'shared', 'controls.css'), 'utf8');
 assert(/\[hidden\]\s*\{[^}]*display:\s*none\s*!important/.test(css),
   'console.css 必须包含 [hidden] { display: none !important }（否则 .config-fields 的 grid 会顶掉 hidden）');
+assert(/\[hidden\]\s*\{[^}]*display:\s*none\s*!important/.test(sharedTokens),
+  'shared/tokens.css 必须包含 [hidden] { display: none !important }（否则 .config-fields 的 grid 会顶掉 hidden）');
 
 console.log('7. 折叠状态持久化：覆盖卡点击折叠发出 saveUiState，注入 uiState 后初始即收起');
 sent.length = 0;
@@ -199,5 +207,21 @@ send({ type: 'accountStore', data: { accountListText: '', registry: {}, accounts
 const emptyStoreCards = document.querySelectorAll('#accountList .gconfig-card');
 assert(emptyStoreCards.length === 3, '无数据文件但有 store 模块时仍显示三张编辑卡');
 assert(emptyStoreCards[0].querySelector('textarea'), '空 store 仍可编辑账号列表');
+
+console.log('10. 可点击规范：真按钮=控件面+描边，行级区=极浅底色（无描边）');
+assert(sharedControls.includes('可点击性硬规范'), 'shared/controls.css 含可点击规范段落');
+assert(sharedTokens.includes('--bg-control') && sharedTokens.includes('--bg-control-hover'),
+  'tokens 定义控件面底色（未悬浮即有底色）');
+assert(sharedTokens.includes('--bg-row') && sharedTokens.includes('--bg-row-hover'),
+  'tokens 定义行级可点击区的极浅底色 + hover');
+assert(/\.config-group__toggle\s*\{[^}]*border:/.test(css), '分组折叠按键（真按钮）有描边');
+assert(/\.config-section-title--toggle\s*\{[^}]*background:\s*var\(--bg-row\)/.test(css),
+  '启动设置折叠头用行级浅底色');
+assert(/\.subgroup-head\s*\{[^}]*background:\s*var\(--bg-row\)/.test(css),
+  '任务分组头用行级浅底色');
+assert(/\.group-head\s*\{[^}]*background:\s*var\(--bg-row\)/.test(css),
+  'kind 级任务组头用行级浅底色');
+assert(!/\.group-head\s*\{[^}]*border:\s*var\(--border-width/.test(css), '行级组头不再有描边（避免方块墙）');
+assert(!/\.subgroup-head\s*\{[^}]*border:\s*var\(--border-width/.test(css), '业务分组头不再有描边');
 
 console.log('\n全部通过');

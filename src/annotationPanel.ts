@@ -3,7 +3,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { TemplateAssetData } from './templateAssetData';
 import { injectWebviewLocalization, tr } from './localization';
-import { getNonce } from './webviewHtml';
+import { applySharedAssets, getNonce } from './webviewHtml';
 
 /* ---------------- 标注数据类型 ---------------- */
 
@@ -252,11 +252,11 @@ function annotationHtml(cspSource: string, extensionUri: vscode.Uri, webview: vs
   const resource = (name: string) => webview.asWebviewUri(
     vscode.Uri.joinPath(extensionUri, 'media', 'annotationPanel', name),
   ).toString(true);
-  return injectWebviewLocalization(
+  return injectWebviewLocalization(applySharedAssets(webview, extensionUri,
     fs.readFileSync(file, 'utf-8')
       .split('__CSP_NONCE__').join(nonce)
       .split('__CSP_SOURCE__').join(cspSource)
       .split('__STYLE_URI__').join(resource('style.css'))
       .split('__APP_SCRIPT_URI__').join(resource('app.js')),
-  );
+  ));
 }

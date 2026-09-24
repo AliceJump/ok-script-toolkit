@@ -3,14 +3,16 @@
 <head>
 <meta charset="UTF-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src __CSP_SOURCE__; script-src __CSP_SOURCE__ 'nonce-__CSP_NONCE__'; img-src data: __CSP_SOURCE__">
+<link rel="stylesheet" href="__SHARED_TOKENS_URI__">
+<link rel="stylesheet" href="__SHARED_CONTROLS_URI__">
 <link rel="stylesheet" href="__STYLE_URI__">
 </head>
 <body>
-  <div class="toolbar">
-    <button class="primary" id="importBtn">Import</button>
-    <button id="screenshotBtn">Screenshot</button>
+  <div class="panel-toolbar toolbar">
+    <button class="mini-btn mini-btn--primary" id="importBtn">Import</button>
+    <button class="mini-btn" id="screenshotBtn">Screenshot</button>
     <label class="fg-check" id="fgCheck" title="Hard foreground"><input id="hardForegroundChk" type="checkbox"><span id="hardForegroundLabel">Hard foreground</span></label>
-    <button id="saveBtn">Save to Assets</button>
+    <button class="mini-btn" id="saveBtn">Save to Assets</button>
     <div class="spacer"></div>
     <input id="search" type="text" />
     <span id="count"></span>

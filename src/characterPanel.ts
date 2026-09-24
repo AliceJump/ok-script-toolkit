@@ -28,7 +28,7 @@ import {
   warmCropCache,
   THUMB_HEIGHT,
 } from './pngCrop';
-import { errorPage, getNonce } from './webviewHtml';
+import { applySharedAssets, errorPage, getNonce, sharedResourceRoot } from './webviewHtml';
 
 export interface CharacterManagerDependencies {
   extensionUri: vscode.Uri;
@@ -173,6 +173,7 @@ export class CharacterManagerPanel implements vscode.Disposable {
         localResourceRoots: [
           vscode.Uri.joinPath(dependencies.extensionUri, 'media', 'characterManager'),
           vscode.Uri.file(dependencies.thumbDir),
+          sharedResourceRoot(dependencies.extensionUri),
         ],
       },
     );
@@ -226,13 +227,13 @@ export class CharacterManagerPanel implements vscode.Disposable {
       const resource = (name: string) => webview.asWebviewUri(
         vscode.Uri.joinPath(this.dependencies.extensionUri, 'media', 'characterManager', name),
       ).toString(true);
-      return injectWebviewLocalization(
+      return injectWebviewLocalization(applySharedAssets(webview, this.dependencies.extensionUri,
         fs.readFileSync(file, 'utf-8')
           .split('__CSP_NONCE__').join(nonce)
           .split('__CSP_SOURCE__').join(webview.cspSource)
           .split('__STYLE_URI__').join(resource('characterManager.css'))
           .split('__APP_SCRIPT_URI__').join(resource('app.js')),
-      );
+      ));
     } catch (error) {
       // 错误消息里会带文件路径，路径可合法包含 < > & " —— 必须转义后再拼进 HTML
       return errorPage(

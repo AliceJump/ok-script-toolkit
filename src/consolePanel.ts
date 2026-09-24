@@ -6,7 +6,7 @@ import { injectWebviewLocalization, projectLocale, tr } from './localization';
 import { i18nPoDirectorySetting, resolveProjectDir } from './projectConfig';
 import { loadToolboxState, notifyExecutorRunning, onToolboxStateChange, saveToolboxState } from './toolboxState';
 import { GameConnectService } from './toolboxConnect';
-import { errorPage, getNonce } from './webviewHtml';
+import { applySharedAssets, errorPage, getNonce } from './webviewHtml';
 
 /** 单个任务的元信息 */
 interface TaskInfo {
@@ -418,7 +418,10 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
     this.view = view;
     view.webview.options = {
       enableScripts: true,
-      localResourceRoots: [vscode.Uri.joinPath(this.extensionUri, 'media', 'console')],
+      localResourceRoots: [
+        vscode.Uri.joinPath(this.extensionUri, 'media', 'console'),
+        vscode.Uri.joinPath(this.extensionUri, 'media', 'shared'),
+      ],
     };
     view.webview.html = this.buildHtml(view.webview);
 
@@ -1557,8 +1560,7 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
     const resource = (name: string) => webview.asWebviewUri(
       vscode.Uri.joinPath(this.extensionUri, 'media', 'console', name),
     ).toString(true);
-    return injectWebviewLocalization(
-      html
+    return injectWebviewLocalization(applySharedAssets(webview, this.extensionUri, html
         .split('__CSP_NONCE__').join(nonce)
         .split('__CSP_SOURCE__').join(webview.cspSource)
         .split('__STYLE_URI__').join(resource('console.css'))
@@ -1568,6 +1570,6 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
         .split('__TASK_CARD_SCRIPT_URI__').join(resource('taskCard.js'))
         .split('__CONSOLE_SCRIPT_URI__').join(resource('console.js'))
         .split('__APP_SCRIPT_URI__').join(resource('app.js')),
-    );
+    ));
   }
 }

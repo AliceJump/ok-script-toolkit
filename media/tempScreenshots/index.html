@@ -3,14 +3,16 @@
 <head>
 <meta charset="UTF-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src __CSP_SOURCE__; script-src __CSP_SOURCE__ 'nonce-__CSP_NONCE__'; img-src data: __CSP_SOURCE__">
+<link rel="stylesheet" href="__SHARED_TOKENS_URI__">
+<link rel="stylesheet" href="__SHARED_CONTROLS_URI__">
 <link rel="stylesheet" href="__STYLE_URI__">
 </head>
 <body>
-  <div class="toolbar">
-    <button id="pasteBtn">Paste</button>
-    <button id="captureBtn">Capture</button>
+  <div class="panel-toolbar toolbar">
+    <button class="mini-btn" id="pasteBtn">Paste</button>
+    <button class="mini-btn" id="captureBtn">Capture</button>
     <label class="fg-check" id="fgCheck" title="Hard foreground"><input id="hardForegroundChk" type="checkbox"><span id="hardForegroundLabel">Hard foreground</span></label>
-    <button id="clearBtn">Clear</button>
+    <button class="mini-btn" id="clearBtn">Clear</button>
     <div class="spacer"></div>
     <span class="count" id="count"></span>
   </div>
@@ -34,8 +36,8 @@
   </div>
 
   <div class="stage-bar">
-    <button id="carouselBtn">0.1s</button>
-    <button id="coordBtn">Box</button>
+    <button class="mini-btn" id="carouselBtn">0.1s</button>
+    <button class="mini-btn" id="coordBtn">Box</button>
     <div class="spacer"></div>
     <span class="coord" id="coordInfo"></span>
   </div>
@@ -48,8 +50,8 @@
   <div class="confirm" id="confirmBar">
     <span id="confirmText"></span>
     <div class="confirm-actions">
-      <button id="confirmCancel">Cancel</button>
-      <button id="confirmOk" class="danger">OK</button>
+      <button class="mini-btn" id="confirmCancel">Cancel</button>
+      <button class="mini-btn mini-btn--danger" id="confirmOk">OK</button>
     </div>
   </div>
 
