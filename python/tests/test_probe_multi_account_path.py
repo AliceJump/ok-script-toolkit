@@ -135,7 +135,7 @@ with tempfile.TemporaryDirectory() as proj:
     check(".vscode" not in info["storePath"],
           "JetBrains 宿主的 storePath 不应再出现 .vscode")
 
-print("\n[6] 自定义 config_folder 同时用于项目回退与沙箱 storePath")
+print("\n[6] 自定义 config_folder 用于项目回退，沙箱仍使用 configs")
 with tempfile.TemporaryDirectory() as proj:
     set_run_dir(os.path.join(proj, ".idea", "ok-script-toolkit"))
     os.makedirs(os.path.join(proj, "src"), exist_ok=True)
@@ -148,8 +148,8 @@ with tempfile.TemporaryDirectory() as proj:
     info = probe.collect_multi_account(proj, [], [], [])
     check(info["available"] is True, "自定义目录中的项目侧文件应使 available=True")
     check(info["storePath"] == os.path.join(
-        proj, ".idea", "ok-script-toolkit", "custom-configs", "account_scoped_overrides.json"),
-        f"storePath 应使用自定义配置目录，实际 {info['storePath']!r}")
+        proj, ".idea", "ok-script-toolkit", "configs", "account_scoped_overrides.json"),
+        f"storePath 应使用沙箱 configs 目录，实际 {info['storePath']!r}")
     check(info.get("accountCount") == 1,
           f"应从项目侧文件读出账号数 1，实际 {info.get('accountCount')!r}")
 
