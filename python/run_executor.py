@@ -65,10 +65,11 @@ stdout 标记行（宿主按行扫描）:
 配置沙箱：调试插件绝不允许改动目标项目的 `configs/`。宿主经
 `OK_TOOLKIT_RUN_DIR` 传入沙箱根目录（如 `<workspace>/.vscode/ok-script-toolkit`），
 `config['config_folder']` 与 `config['screenshots_folder']` 一并改道，ok 框架的读写
-全部落在沙箱内。沙箱初始化时把项目 configs/ 整目录拷进来 —— 任务读到的是
-**项目当前配置 + 插件参数覆盖**；执行器的写入只落沙箱，项目侧文件保持原样。
+全部落在沙箱内。沙箱初始化时把项目配置目录拷进来 —— 任务读到的是
+**项目当前配置 + 插件参数覆盖**；账号覆盖文件在首次拷入后保留沙箱编辑。
+执行器的写入只落沙箱，项目侧文件保持原样。
 
-`devices.json` 是唯一例外：工具箱的 connect_game.py 把连接结果写在
+`devices.json` 是连接信息的特例：工具箱的 connect_game.py 把连接结果写在
 `<项目>/configs/devices.json`（`folder=` 硬指定，不受 config_folder 影响），
 而执行器需要读到同一个窗口。故启动时把它**拷进沙箱**做桥接；此后执行器对它的
 写入只落沙箱，项目侧文件保持原样。
@@ -80,6 +81,7 @@ import json
 import os
 import shutil
 import sys
+import tempfile
 import threading
 import time
 
@@ -129,6 +131,36 @@ def task_key(task) -> str:
 
 # ── 配置沙箱 ──────────────────────────────────────────────────────────
 
+def copy_account_file_once(source: str, target: str) -> None:
+    """以完整文件发布项目账号初值；已有沙箱编辑绝不覆盖。"""
+    if not os.path.isfile(source) or os.path.lexists(target):
+        return
+    fd, temporary = tempfile.mkstemp(
+        prefix=".account-store-", suffix=".tmp", dir=os.path.dirname(target)
+    )
+    os.close(fd)
+    try:
+        shutil.copyfile(source, temporary)
+        try:
+            os.link(temporary, target)
+        except FileExistsError:
+            pass
+        except OSError:
+            # 不支持硬链接的文件系统退回排他创建，仍不会覆盖沙箱编辑。
+            created = False
+            try:
+                with open(temporary, "rb") as input_file, open(target, "xb") as output_file:
+                    created = True
+                    shutil.copyfileobj(input_file, output_file)
+            except FileExistsError:
+                pass
+            except Exception:
+                if created:
+                    os.unlink(target)
+                raise
+    finally:
+        os.unlink(temporary)
+
 def apply_config_sandbox(config: dict) -> str:
     """把 ok 框架的配置读写改道到沙箱目录，避免污染目标项目的 configs/。
 
@@ -162,8 +194,9 @@ def apply_config_sandbox(config: dict) -> str:
     # connect_game.py 写的项目侧文件对执行器可见）。不拷的话任务读到的全是默认值，
     # 与插件 UI（probe 会拷项目配置读「当前值」）和项目自身 GUI 完全脱钩 ——
     # 实测被报告为「执行器配置跟插件的配置不相关联」。
-    # copytree(dirs_exist_ok=True) 对同名文件整体覆盖：沙箱视图每次启动都从项目
-    # 配置重建，上一次运行留在沙箱里的状态不参与。
+    # copytree(dirs_exist_ok=True) 对普通同名文件整体覆盖：沙箱视图每次启动都从
+    # 项目配置重建。账号覆盖由插件编辑、执行器读取；已有沙箱文件必须保留，
+    # 否则每次启动都会把用户编辑覆盖成项目里的旧文件。
     # 注意必须**先**读项目原值再覆盖 config["config_folder"] —— 覆盖之后 config
     # 里已经是沙箱路径，再读就拷了个寂寞（首次实现就栽在这里，被测试 4 抓住）。
     source_folder = str(config.get("config_folder") or "configs")
@@ -179,7 +212,25 @@ def apply_config_sandbox(config: dict) -> str:
 
     if os.path.isdir(source_configs):
         try:
-            shutil.copytree(source_configs, config_folder, dirs_exist_ok=True)
+            account_file = "account_scoped_overrides.json"
+            sandbox_account_file = os.path.join(config_folder, account_file)
+
+            def defer_account_file(source_dir, names):
+                if (
+                    os.path.normcase(os.path.abspath(source_dir))
+                    == os.path.normcase(os.path.abspath(source_configs))
+                    and account_file in names
+                ):
+                    return {account_file}
+                return set()
+
+            shutil.copytree(
+                source_configs, config_folder, dirs_exist_ok=True,
+                ignore=defer_account_file,
+            )
+            copy_account_file_once(
+                os.path.join(source_configs, account_file), sandbox_account_file,
+            )
         except OSError as e:  # noqa: BLE001 — 拷贝失败退回「默认值」语义，绝不阻断启动
             _note(f"项目 configs 拷入沙箱失败（任务将读到默认值）：{e}")
 

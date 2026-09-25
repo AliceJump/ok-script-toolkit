@@ -573,9 +573,9 @@ def resolve_run_dir(project_dir):
 def collect_multi_account(project_dir, tasks, broken, global_groups):
     """探测多账户存储，返回只读概要与「打开数据位置」的路径。
 
-    存储位置与执行器一致：沙箱（`<run_dir>/<config_folder>/`）优先——执行器
-    与插件的账号编辑都落沙箱；项目侧文件仅作首次探测回退（执行器启动
-    copytree 会把它带进沙箱）。storePath 一律报沙箱路径。
+    存储位置与执行器一致：沙箱 `<run_dir>/configs/` 优先——执行器
+    与插件的账号编辑都落沙箱；项目侧源文件按声明的 config_folder 查找，
+    首次启动或编辑时复制到沙箱。storePath 一律报实际沙箱路径。
 
     ⚠️ 沙箱根目录**按宿主解析**（见 `resolve_run_dir`）：曾写死
     `.vscode/ok-script-toolkit`，JetBrains 宿主会拿到一个根本不存在、也永远不会被
@@ -583,7 +583,7 @@ def collect_multi_account(project_dir, tasks, broken, global_groups):
     """
     config_folder = detect_config_folder(project_dir)
     sandbox_path = os.path.join(
-        resolve_run_dir(project_dir), config_folder, "account_scoped_overrides.json"
+        resolve_run_dir(project_dir), "configs", "account_scoped_overrides.json"
     )
     project_path = os.path.join(project_dir, config_folder, "account_scoped_overrides.json")
     # store 模块可 import 性：区分「项目不支持账号编辑」与「读取失败（环境问题）」
@@ -600,9 +600,10 @@ def collect_multi_account(project_dir, tasks, broken, global_groups):
         "available": has_data_file,
         "storePath": sandbox_path,
         "hasStoreModule": has_store_module,
+        "accountCount": 0,
+        "overrideAccounts": 0,
+        "overriddenTasks": [],
     }
-    if not has_data_file:
-        return info
     store_data = {}
     enabled_tasks = {}
     rules_module = None
@@ -657,30 +658,34 @@ def collect_multi_account(project_dir, tasks, broken, global_groups):
         except Exception as e:  # noqa: BLE001
             broken.append({"task": f"<multi-account:{task_key}>", "error": f"{type(e).__name__}: {e}"})
     info["enabledTasks"] = enabled_tasks
-    data_path = sandbox_path if os.path.isfile(sandbox_path) else project_path
-    try:
-        with open(data_path, encoding="utf-8") as fp:
-            data = json.load(fp)
-        store_data = data
-        if isinstance(data, dict):
-            registry = data.get("account_registry")
-            accounts = data.get("accounts")
-            info["accountCount"] = len(registry) if isinstance(registry, dict) else 0
-            info["overrideAccounts"] = len(accounts) if isinstance(accounts, dict) else 0
-            if isinstance(accounts, dict):
-                tasks = set()
-                for value in accounts.values():
-                    if isinstance(value, dict):
-                        tasks.update(value.keys())
-                info["overriddenTasks"] = sorted(str(item) for item in tasks)
-    except (OSError, ValueError):
-        info["readable"] = False
+    if has_data_file:
+        data_path = sandbox_path if os.path.isfile(sandbox_path) else project_path
+        try:
+            with open(data_path, encoding="utf-8") as fp:
+                data = json.load(fp)
+            if isinstance(data, dict):
+                store_data = data
+                registry = data.get("account_registry")
+                accounts = data.get("accounts")
+                info["accountCount"] = len(registry) if isinstance(registry, dict) else 0
+                info["overrideAccounts"] = len(accounts) if isinstance(accounts, dict) else 0
+                if isinstance(accounts, dict):
+                    stored_tasks = set()
+                    for value in accounts.values():
+                        if isinstance(value, dict):
+                            stored_tasks.update(value.keys())
+                    info["overriddenTasks"] = sorted(str(item) for item in stored_tasks)
+            else:
+                info["readable"] = False
+        except (OSError, ValueError):
+            info["readable"] = False
 
     # 全局配置组的按账号覆盖（ok-end-field 滑索/键位 Proxy 模式：组覆盖存在
     # accounts[acc_id][组名]）——收录条件：组名在已知 Proxy 列表 或 存储里出现过
     # 该组名的覆盖数据（项目 GUI 是覆盖创建入口，probe 不凭空猜测没出现过的组）
     stored_names = set()
-    for account_tasks in (store_data or {}).get("accounts", {}).values():
+    stored_accounts = store_data.get("accounts")
+    for account_tasks in (stored_accounts if isinstance(stored_accounts, dict) else {}).values():
         if isinstance(account_tasks, dict):
             stored_names |= set(account_tasks.keys())
     for group in global_groups or []:
