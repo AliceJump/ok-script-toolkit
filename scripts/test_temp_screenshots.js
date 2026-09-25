@@ -197,8 +197,8 @@ function mouse(type, target, x, y, button = 0) {
 
   const copy = lastPost('copyText');
   assert(copy, 'box-select must post a copyText message');
-  assert(copy.text === '0.2500,0.2000,0.7500,0.6667',
-    'normalized coords must be x,y,tox,toy with 4 decimals, got ' + copy.text);
+  assert(copy.text === '0.2500, 0.2000, 0.7500, 0.6667',
+    'default normalized coords must be "x, y, tox, toy" with 4 decimals (copyCoordsSpace=true), got ' + copy.text);
   assert(document.getElementById('selBox').classList.contains('visible'),
     'the selection box must stay visible after copying so it can be compared against moving frames');
 
@@ -210,7 +210,7 @@ function mouse(type, target, x, y, button = 0) {
   mouse('mouseup', window, 250, 165);
   await flush();
   assert(post('copyText').length === copyBefore + 1, 'moving the box must copy again');
-  assert(lastPost('copyText').text === '0.3750,0.3333,0.8750,0.8000',
+  assert(lastPost('copyText').text === '0.3750, 0.3333, 0.8750, 0.8000',
     'moved box must copy the updated coords, got ' + lastPost('copyText').text);
 
   /* ---------- 3b. 拖动手柄缩放并重新复制 ---------- */
@@ -221,7 +221,7 @@ function mouse(type, target, x, y, button = 0) {
   mouse('mouseup', window, 390, 247.5);
   await flush();
   assert(post('copyText').length === copyBefore + 1, 'resizing the box must copy again');
-  assert(lastPost('copyText').text === '0.3750,0.3333,0.9750,0.9333',
+  assert(lastPost('copyText').text === '0.3750, 0.3333, 0.9750, 0.9333',
     'resized box must copy the updated coords, got ' + lastPost('copyText').text);
 
   /* ---------- 3c. 点击非交互部分清除坐标框 ---------- */
@@ -235,12 +235,46 @@ function mouse(type, target, x, y, button = 0) {
   assert(!document.getElementById('selBox').classList.contains('visible'),
     'the box must disappear after clicking empty area');
 
+  /* ---------- 3c-2. config 消息切换「逗号后加空格」偏好 ---------- */
+  // 关掉空格 → 复制格式回退为 x,y,tox,toy；再打开 → 恢复默认（"x, y, tox, toy"）
+  window.postMessage({ type: 'config', copyCoordsSpace: false }, '*');
+  await flush();
+  copyBefore = post('copyText').length;
+  mouse('mousedown', overlay, 100, 50);
+  mouse('mousemove', window, 200, 150);
+  mouse('mouseup', window, 200, 150);
+  await flush();
+  assert(post('copyText').length === copyBefore + 1, 'box-select must copy after toggling space off');
+  assert(lastPost('copyText').text === '0.2500,0.0556,0.5000,0.5000',
+    // 几何值带前面步骤遗留的舞台 y 变换，这里只关心分隔符
+    'copyCoordsSpace=false must join coords with bare commas, got ' + lastPost('copyText').text);
+  // 清掉旧框：否则 (100,50) 落在框的 tl 手柄上，会触发缩放而不是新建框
+  mouse('mousedown', overlay, 30, 30);
+  mouse('mouseup', overlay, 30, 30);
+  await flush();
+  window.postMessage({ type: 'config', copyCoordsSpace: true }, '*');
+  await flush();
+  copyBefore = post('copyText').length;
+  mouse('mousedown', overlay, 100, 50);
+  mouse('mousemove', window, 200, 150);
+  mouse('mouseup', window, 200, 150);
+  await flush();
+  assert(post('copyText').length === copyBefore + 1, 'box-select must copy after toggling space on');
+  assert(lastPost('copyText').text === '0.2500, 0.0556, 0.5000, 0.5000',
+    'copyCoordsSpace=true must join coords with ", ", got ' + lastPost('copyText').text);
+  // 清除，避免影响后面的越界 clamp 用例
+  mouse('mousedown', overlay, 30, 30);
+  mouse('mouseup', overlay, 30, 30);
+  await flush();
+  assert(!document.getElementById('selBox').classList.contains('visible'),
+    'the box must disappear after the space-toggle cleanup click');
+
   // 越界框选必须 clamp 到 0..1（放在清除之后，避免复用上一次留下的框）
   mouse('mousedown', overlay, -50, -50);
   mouse('mousemove', window, 900, 900);
   mouse('mouseup', window, 900, 900);
   await flush();
-  assert(lastPost('copyText').text === '0.0000,0.0000,1.0000,1.0000',
+  assert(lastPost('copyText').text === '0.0000, 0.0000, 1.0000, 1.0000',
     'out-of-range selection must clamp to 0..1, got ' + lastPost('copyText').text);
 
   // 误触（极小框）不应产生复制
@@ -275,7 +309,7 @@ function mouse(type, target, x, y, button = 0) {
   await flush();
   assert(carouselBtn.classList.contains('active'),
     'the carousel must still be running after the box-selection completes');
-  assert(lastPost('copyText').text === '0.3000,0.2333,0.8000,0.7000',
+  assert(lastPost('copyText').text === '0.3000, 0.2333, 0.8000, 0.7000',
     'coords taken against a cycling frame must still normalize correctly, got ' + lastPost('copyText').text);
 
   carouselBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));

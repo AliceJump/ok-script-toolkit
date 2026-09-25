@@ -160,7 +160,7 @@ function mouse(type, target, x, y, button = 0) {
 
   const copy = lastPost('copyText');
   assert(copy, 'box-select in coord mode must post a copyText message');
-  assert(copy.text === '0.1250,0.1000,0.6250,0.6000',
+  assert(copy.text === '0.1250, 0.1000, 0.6250, 0.6000',
     'expected normalized x,y,tox,toy, got ' + copy.text);
   // 框留在画布上供继续调整，所以坐标模式不会自动退出
   assert(coordBtn.classList.contains('active'),
@@ -174,7 +174,7 @@ function mouse(type, target, x, y, button = 0) {
   mouse('mouseup', canvas, 350, 260);
   await flush();
   assert(post('copyText').length === before + 1, 'moving the box must copy again');
-  assert(lastPost('copyText').text === '0.1875,0.1667,0.6875,0.6667',
+  assert(lastPost('copyText').text === '0.1875, 0.1667, 0.6875, 0.6667',
     'moved box must copy the updated coords, got ' + lastPost('copyText').text);
 
   /* ---------- 拖动手柄：缩放并重新复制 ---------- */
@@ -186,7 +186,7 @@ function mouse(type, target, x, y, button = 0) {
   await flush();
   assert(post('copyText').length === before + 1, 'resizing the box must copy again');
   // dx=60,dy=30 → 图像 +144,+72 → 宽 1104 高 612
-  assert(lastPost('copyText').text === '0.1875,0.1667,0.7625,0.7333',
+  assert(lastPost('copyText').text === '0.1875, 0.1667, 0.7625, 0.7333',
     'resized box must copy the updated coords, got ' + lastPost('copyText').text);
 
   /* ---------- 点击非交互部分清除坐标框 ---------- */
@@ -203,7 +203,7 @@ function mouse(type, target, x, y, button = 0) {
   mouse('mousemove', canvas, 500, 345);
   mouse('mouseup', canvas, 500, 345);
   await flush();
-  assert(lastPost('copyText').text === '0.1250,0.1000,0.6250,0.6000',
+  assert(lastPost('copyText').text === '0.1250, 0.1000, 0.6250, 0.6000',
     'a fresh box can be created after clearing, got ' + lastPost('copyText').text);
 
   /* ---------- 坐标框不进入标注数据（不落盘） ---------- */
@@ -219,7 +219,7 @@ function mouse(type, target, x, y, button = 0) {
   mouse('mousemove', canvas, 100, 120);
   mouse('mouseup', canvas, 100, 120);
   await flush();
-  assert(lastPost('copyText').text === '0.1250,0.1000,0.6250,0.6000',
+  assert(lastPost('copyText').text === '0.1250, 0.1000, 0.6250, 0.6000',
     'reverse drag must normalize to the same box, got ' + lastPost('copyText').text);
 
   /* ---------- 越界框选必须 clamp ---------- */
@@ -227,7 +227,7 @@ function mouse(type, target, x, y, button = 0) {
   mouse('mousemove', canvas, 5000, 5000);
   mouse('mouseup', canvas, 5000, 5000);
   await flush();
-  assert(lastPost('copyText').text === '0.0000,0.0000,1.0000,1.0000',
+  assert(lastPost('copyText').text === '0.0000, 0.0000, 1.0000, 1.0000',
     'out-of-range selection must clamp to 0..1, got ' + lastPost('copyText').text);
 
   /* ---------- 退出坐标模式应丢弃坐标框 ---------- */
