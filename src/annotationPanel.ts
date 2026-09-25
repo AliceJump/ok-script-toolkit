@@ -35,6 +35,13 @@ class AnnotationController {
   ) {
     this.disposables.push(
       webview.onDidReceiveMessage((msg) => { void this.onMessage(msg); }),
+      // 面板开着时改设置也要热更新（review 意见：不要靠「切一下视图」触发）
+      vscode.workspace.onDidChangeConfiguration((e) => {
+        if (e.affectsConfiguration('okScriptToolkit.copyCoordsSpace') ||
+            e.affectsConfiguration('okScriptToolkit.annotationKeybindings')) {
+          this.sendConfig();
+        }
+      }),
     );
   }
 
