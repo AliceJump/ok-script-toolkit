@@ -37,6 +37,7 @@
   "config.okScriptProjectPath": "작업 실행기에서 사용할 ok-script 프로젝트 루트입니다.",
   "config.okScriptPython": "ok-script 작업 실행에 사용할 Python 인터프리터입니다.",
   "config.captureMethod": "게임 창 캡처 방식입니다. auto는 Windows Graphics Capture를 시도하고 실패하면 BitBlt로 대체합니다. 런처/로그인 화면이 비어 있게 찍힌다면 foreground를 사용하세요. 창을 전면으로 활성화한 뒤 화면을 읽으므로 포커스를 가져갑니다.",
+  "config.copyCoordsSpace": "좌표를 복사할 때 쉼표 뒤에 공백을 추가합니다(x, y, tox, toy). 개인 취향에 해당하며 전역(application 범위) 설정으로만 가능하고 작업 영역별로는 설정할 수 없습니다.",
   "config.characterProjectPath": "캐릭터·스킬 관리자가 사용할 프로젝트 루트입니다.",
   "config.characterMasterFile": "캐릭터 마스터 JSON입니다.",
   "config.characterSkillsDirectory": "캐릭터 스킬 JSON 디렉터리입니다.",

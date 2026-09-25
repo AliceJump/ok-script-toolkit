@@ -58,6 +58,8 @@
   /* ---------- 常量 ---------- */
   const CAROUSEL_INTERVAL_MS = 100;   // 需求：0.1s 轮播
   const COORD_DECIMALS = 4;           // 归一化坐标小数位
+  // 复制坐标时逗号后加空格（个人偏好，application 作用域；由扩展端经 config 消息下发）
+  let copyCoordsSpace = true;
   const MIN_BOX_PX = 3;
   const MAX_ZOOM = 20;
 
@@ -101,7 +103,8 @@
   }
 
   function formatCoords(x1, y1, x2, y2) {
-    return [x1, y1, x2, y2].map((v) => v.toFixed(COORD_DECIMALS)).join(',');
+    return [x1, y1, x2, y2].map((v) => v.toFixed(COORD_DECIMALS))
+      .join(copyCoordsSpace ? ', ' : ',');
   }
 
   function activeFrame() {
@@ -716,6 +719,13 @@
         let idx = temps.findIndex((m) => m.id === prevId);
         if (idx < 0) idx = temps.length - 1;
         showFrame(idx);
+      }
+      return;
+    }
+    if (msg.type === 'config') {
+      // 扩展端配置：复制坐标分隔偏好（个人偏好，application 作用域）
+      if (typeof msg.copyCoordsSpace === 'boolean') {
+        copyCoordsSpace = msg.copyCoordsSpace;
       }
       return;
     }

@@ -85,6 +85,19 @@ class TempScreenshotController {
 
   attachHtml(): void {
     this.webview.html = tempScreenshotHtml(this.webview, this.extensionUri);
+    this.pushCoordFormat();
+  }
+
+  /**
+   * 把「复制坐标逗号后加空格」偏好推给 webview。
+   * application 作用域（个人习惯，不随工作区），读一次默认 true。
+   * attach 与每次 refresh 都推：refresh 覆盖 ready / 视图可见 / 列表变化，
+   * 用户改设置后切一下视图就能生效，不用重开面板。
+   */
+  private pushCoordFormat(): void {
+    const copyCoordsSpace = vscode.workspace.getConfiguration('okScriptToolkit')
+      .get<boolean>('copyCoordsSpace', true);
+    void this.webview.postMessage({ type: 'config', copyCoordsSpace });
   }
 
   /* ---------- 推送列表 ---------- */
@@ -92,6 +105,7 @@ class TempScreenshotController {
   async refresh(): Promise<void> {
     if (this.disposed) return;
     if (!this.isVisible()) return;
+    this.pushCoordFormat();
     const items = this.store.list();
     const metas: TempMeta[] = [];
 

@@ -293,6 +293,12 @@
           "default": "ok_templates",
           "description": "%config.okTemplatesDirectory%"
         },
+        "okScriptToolkit.copyCoordsSpace": {
+          "type": "boolean",
+          "default": true,
+          "scope": "application",
+          "description": "%config.copyCoordsSpace%"
+        },
         "okScriptToolkit.annotationKeybindings": {
           "type": "object",
           "default": {

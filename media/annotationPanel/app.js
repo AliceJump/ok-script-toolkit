@@ -72,6 +72,9 @@
     nextImage: 'ArrowRight'
   };
 
+  // 复制坐标时逗号后加空格（个人偏好，application 作用域；由扩展端经 config 消息下发）
+  let copyCoordsSpace = true;
+
   function parseKeybinding(kb) {
     const parts = kb.toLowerCase().split('+');
     const key = parts.pop();
@@ -643,7 +646,8 @@
   }
 
   function formatNormalizedBox(box) {
-    return [box.x, box.y, box.tox, box.toy].map((v) => v.toFixed(COORD_DECIMALS)).join(',');
+    return [box.x, box.y, box.tox, box.toy].map((v) => v.toFixed(COORD_DECIMALS))
+      .join(copyCoordsSpace ? ', ' : ',');
   }
 
   /** 拖拽过程中在颜色栏实时显示即将复制的坐标。 */
@@ -1011,9 +1015,12 @@
   window.addEventListener('message', (e) => {
     const msg = e.data;
     if (msg.type === 'config') {
-      // 接收快捷键配置
+      // 接收扩展端配置：快捷键 + 坐标分隔偏好
       if (msg.keybindings) {
         Object.assign(keybindings, msg.keybindings);
+      }
+      if (typeof msg.copyCoordsSpace === 'boolean') {
+        copyCoordsSpace = msg.copyCoordsSpace;
       }
       updateButtonTexts();
       return;
