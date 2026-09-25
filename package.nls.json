@@ -37,6 +37,7 @@
   "config.okScriptProjectPath": "ok-script project root containing src/config.py. Used by the task launcher.",
   "config.okScriptPython": "Python interpreter used to run ok-script tasks. Empty uses the target project's .venv on Windows.",
   "config.captureMethod": "Game window capture method. auto tries Windows Graphics Capture and falls back to BitBlt. Use foreground for launcher or login screens that capture blank otherwise: it activates the window and reads the screen, which steals focus.",
+  "config.copyCoordsSpace": "Add a space after each comma when copying box coordinates (x, y, tox, toy). A personal habit — application scope only, cannot be set per workspace.",
   "config.characterProjectPath": "Project root used by the character and skill manager. Empty falls back to okScriptProjectPath and the current workspace.",
   "config.characterMasterFile": "Character master JSON relative to the character project root.",
   "config.characterSkillsDirectory": "Character skill JSON directory relative to the character project root.",

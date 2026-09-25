@@ -37,6 +37,7 @@
   "config.okScriptProjectPath": "Raíz del proyecto ok-script usada por el lanzador de tareas.",
   "config.okScriptPython": "Intérprete de Python usado para ejecutar tareas ok-script.",
   "config.captureMethod": "Método de captura de la ventana del juego. auto prueba Windows Graphics Capture y recurre a BitBlt si falla. Usa foreground si la pantalla de inicio o de acceso sale en blanco: activa la ventana y lee la pantalla, lo que roba el foco.",
+  "config.copyCoordsSpace": "Añade un espacio después de cada coma al copiar coordenadas (x, y, tox, toy). Es una preferencia personal: solo ámbito global (application), no se puede configurar por espacio de trabajo.",
   "config.characterProjectPath": "Raíz del proyecto usada por el gestor de personajes y habilidades.",
   "config.characterMasterFile": "JSON maestro de personajes.",
   "config.characterSkillsDirectory": "Directorio JSON de habilidades de personajes.",

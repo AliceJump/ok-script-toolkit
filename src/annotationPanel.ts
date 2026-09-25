@@ -35,6 +35,13 @@ class AnnotationController {
   ) {
     this.disposables.push(
       webview.onDidReceiveMessage((msg) => { void this.onMessage(msg); }),
+      // 面板开着时改设置也要热更新（review 意见：不要靠「切一下视图」触发）
+      vscode.workspace.onDidChangeConfiguration((e) => {
+        if (e.affectsConfiguration('okScriptToolkit.copyCoordsSpace') ||
+            e.affectsConfiguration('okScriptToolkit.annotationKeybindings')) {
+          this.sendConfig();
+        }
+      }),
     );
   }
 
@@ -42,16 +49,16 @@ class AnnotationController {
 
   attachHtml(): void {
     this.webview.html = annotationHtml(this.webview.cspSource, this.extensionUri, this.webview);
-    this.sendKeybindings();
+    this.sendConfig();
   }
 
-  /** 读取扩展设置并发送快捷键配置到 webview */
-  private sendKeybindings(): void {
+  /** 读取扩展设置并发送面板配置到 webview（快捷键 + 坐标分隔偏好） */
+  private sendConfig(): void {
     const cfg = vscode.workspace.getConfiguration('okScriptToolkit');
     const kb = cfg.get<Record<string, string>>('annotationKeybindings');
-    if (kb) {
-      void this.webview.postMessage({ type: 'config', keybindings: kb });
-    }
+    // 坐标逗号后加空格是个人习惯 → application 作用域，只在用户设置里存在
+    const copyCoordsSpace = cfg.get<boolean>('copyCoordsSpace', true);
+    void this.webview.postMessage({ type: 'config', keybindings: kb, copyCoordsSpace });
   }
 
   open(imagePath: string, imageList: string[]): void {
@@ -128,6 +135,8 @@ class AnnotationController {
   }): Promise<void> {
     switch (msg.type) {
       case 'ready':
+        // ready 重发一次配置：attachHtml 时机太早、webview 脚本可能还没挂监听
+        this.sendConfig();
         if (this._currentImage) {
           await this.loadImage(this._currentImage);
         }
