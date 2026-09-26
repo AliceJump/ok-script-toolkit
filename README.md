@@ -18,6 +18,7 @@ Language key completion · OCR fix hints · Template browsing · Task launching 
 [![Version](https://img.shields.io/badge/version-1.13.0-blue)](package.json)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![VS Code](https://img.shields.io/badge/VS%20Code-%5E1.85.0-007ACC)](package.json)
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/AliceJump/ok-script-toolkit)
 
 [安装](#安装) · [功能](#功能) · [数据来源](#数据来源) · [配置](#配置) · [命令](#命令) · [常见问题](#更新后不生效)
 
