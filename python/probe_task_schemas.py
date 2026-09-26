@@ -23,6 +23,19 @@ sys.stderr.reconfigure(encoding="utf-8")
 
 
 UNSERIALIZABLE = object()
+_ACTIVE_TEMP_DIR = None
+
+
+def _cleanup_probe_temp_dir():
+    """Remove the sandbox before os._exit bypasses Python's normal cleanup."""
+    global _ACTIVE_TEMP_DIR
+    temp_dir = _ACTIVE_TEMP_DIR
+    _ACTIVE_TEMP_DIR = None
+    if temp_dir is not None:
+        try:
+            temp_dir.cleanup()
+        except OSError as exc:
+            sys.stderr.write(f"[probe] 临时配置目录清理失败: {exc}\n")
 
 
 def _po_string(fragment):
@@ -720,6 +733,7 @@ def force_headless(cfg):
 
 
 def main():
+    global _ACTIVE_TEMP_DIR
     if len(sys.argv) < 2:
         print(json.dumps({"ok": False, "error": "缺少 project_dir 参数"}, ensure_ascii=False))
         sys.exit(1)
@@ -732,6 +746,7 @@ def main():
     os.chdir(project_dir)
 
     temp_dir = tempfile.TemporaryDirectory(prefix="ok-script-toolkit-probe-")
+    _ACTIVE_TEMP_DIR = temp_dir
     source_config_folder = detect_config_folder(project_dir)
     temp_config_folder = os.path.join(temp_dir.name, "configs")
     source_config_path = os.path.join(project_dir, source_config_folder)
@@ -762,15 +777,20 @@ def main():
         from config import config
 
     from ok import OK
+    from task_visibility import install_all_registered_tasks
 
     cfg = dict(config)
     force_headless(cfg)
+    # The development UI's selected language controls translated labels and
+    # the app locale in this probe. All registered tasks remain visible below.
+    cfg["locale"] = locale
     cfg["check_mutex"] = False
     cfg["custom_tasks"] = False
     cfg["config_folder"] = temp_config_folder
     cfg["screenshots_folder"] = os.path.join(temp_dir.name, "screenshots")
     # schema 采集不需要 OCR 模型；禁用可避免打开面板时初始化 OpenVINO/NPU。
     cfg.pop("ocr", None)
+    install_all_registered_tasks(locale)
     ok = None
     try:
         ok = OK(cfg)
@@ -868,18 +888,18 @@ def main():
         sys.stdout.flush()
         # ok.quit() 在某些项目（如 SoundContext 线程未退出）会永久阻塞，
         # 导致 120s 超时后被宿主 kill → 报 "Command failed"。
-        # schema 已成功输出，强制退出避免清理阻塞。
+        # schema 已成功输出。先清理临时配置，再强制退出以避开线程阻塞。
+        _cleanup_probe_temp_dir()
         os._exit(0)
     finally:
-        if ok is not None:
-            ok.quit()
-        temp_dir.cleanup()
+        _cleanup_probe_temp_dir()
 
 
 if __name__ == "__main__":
     try:
         main()
     except Exception as e:
+        _cleanup_probe_temp_dir()
         sys.stdout.write(json.dumps({"ok": False, "error": f"{type(e).__name__}: {e}"}, ensure_ascii=False) + "\n")
         sys.stdout.flush()
         os._exit(1)

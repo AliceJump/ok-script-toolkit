@@ -31,6 +31,8 @@ export class FeatureData {
     this.rootDir = typeof root === 'string' ? root : root ? root.uri.fsPath : '';
   }
 
+  setRoot(rootDir: string): void { this.rootDir = rootDir; }
+
   /** 需要扫描的 coco 标注文件列表（运行时模板库） */
   private cocoFiles(): string[] {
     // 取值链：项目约定 `templates.cocoAnnotations` > config.py 的

@@ -108,6 +108,26 @@ with make_tmp_tempdir("ok-executor-startup-patches") as tmp:
     )
 
 # ── 5. 补丁自身抛异常：必须吞掉，不能拖垮执行器 ──────────────────────
+print("\n[5] 需要 config 参数的项目补丁")
+with make_tmp_tempdir("ok-executor-startup-patches") as tmp:
+    pkg = "patchconfigpkg"
+    write(os.path.join(tmp, pkg, "__init__.py"), "")
+    write(os.path.join(tmp, pkg, "patches", "__init__.py"), "")
+    write(
+        os.path.join(tmp, pkg, "patches", "startup_patches.py"),
+        "CALLS = []\n\n\ndef install_startup_patches(config):\n    CALLS.append(config)\n",
+    )
+    runtime_config = {"gui": None, "locale": "zh_CN"}
+    sys.path.insert(0, tmp)
+    try:
+        result = mod.install_project_startup_patches(f"{pkg}.config", runtime_config)
+        imported = sys.modules.get(f"{pkg}.patches.startup_patches")
+    finally:
+        sys.path.remove(tmp)
+    check(result is True, "需要 config 的项目补丁安装成功")
+    check(imported is not None and imported.CALLS == [runtime_config], "传入同一份运行配置")
+
+# ── 6. 补丁自身抛异常：必须吞掉，不能拖垮执行器 ──────────────────────
 print("\n[5] 补丁抛异常时不阻断启动")
 with make_tmp_tempdir("ok-executor-startup-patches") as tmp:
     pkg = "patchfailpkg"

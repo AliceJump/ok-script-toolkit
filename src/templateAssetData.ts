@@ -87,11 +87,19 @@ export class TemplateAssetData {
     this.cocoPath = path.join(this.templateFolder, COCO_JSON);
   }
 
+  setRoot(rootDir: string): void {
+    this.rootDir = rootDir;
+    this.templateFolder = path.join(rootDir, templatesDirectory(rootDir));
+    this.cocoPath = path.join(this.templateFolder, COCO_JSON);
+    this.cocoData = { images: [], annotations: [], categories: [] };
+  }
+
   /** Add an image file to COCO data (static helper for external callers). */
-  static async addImageToCoco(imagePath: string): Promise<void> {
+  static async addImageToCoco(imagePath: string, rootDir?: string): Promise<void> {
     const folder = vscode.workspace.workspaceFolders?.[0];
-    if (!folder) throw new Error(tr('noWorkspaceFolder'));
-    const data = new TemplateAssetData(folder);
+    const target = rootDir || folder?.uri.fsPath;
+    if (!target) throw new Error(tr('noWorkspaceFolder'));
+    const data = new TemplateAssetData(target);
     await data.load();
     data.addImageEntry(imagePath, 0, 0);
     // Read actual dimensions (PNG/JPEG/BMP via header)

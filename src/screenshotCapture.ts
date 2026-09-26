@@ -18,6 +18,8 @@ export interface WindowConfig {
    * 是两个不同的文件。
    */
   cocoFeatureJson?: string;
+  /** Project template tab's enum module path, without a required .py suffix. */
+  labelEnumRelativePath?: string;
 }
 
 /** probe_window_config.py 返回结构 */
@@ -30,6 +32,7 @@ interface ProbeWindowConfigResult {
   hwnd_class?: string;
   top_hwnd_class?: string;
   coco_feature_json?: string | null;
+  label_enum_relative_path?: string | null;
 }
 
 /** 读取 okScriptToolkit 扩展配置中的项目路径和 Python 解释器 */
@@ -76,6 +79,7 @@ export async function probeWindowConfig(projectDir: string, pythonPath: string):
             top_hwnd_class: parsed.top_hwnd_class,
             // 探针解不出来时给的是 `null`（AST 里掺了变量），这里归一成 `undefined`
             cocoFeatureJson: parsed.coco_feature_json ?? undefined,
+            labelEnumRelativePath: parsed.label_enum_relative_path ?? undefined,
           };
         }
         return undefined;

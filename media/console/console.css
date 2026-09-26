@@ -1102,6 +1102,7 @@
 .gpop {
   position: fixed;
   z-index: 9999;
+  box-sizing: border-box;
   width: 250px;
   max-height: min(58vh, 420px);
   overflow-y: auto;

@@ -88,6 +88,7 @@ const fields = [
 const schema = {
   fields,
   kind: 'onetime',
+  showInTaskTab: false,
   groupSelector: 'groupSelector',
   configGroups: {
     A: ['aField'],
@@ -105,6 +106,26 @@ const schema = {
   },
 };
 window.dispatchEvent(new window.MessageEvent('message', { data: { type: 'tasks', tasks: [task], schemas: { 'demo::DemoTask': schema } } }));
+if (!window.document.querySelector('.task-card')) throw new Error('project-hidden task must remain runnable in toolkit');
+
+// 悬浮配置提示应始终在任务卡左侧；窄视口下宁可隐藏，也不能盖在任务条上。
+const hoverCard = window.document.querySelector('.task-card');
+const originalOffsetWidth = Object.getOwnPropertyDescriptor(window.HTMLElement.prototype, 'offsetWidth');
+Object.defineProperty(window.HTMLElement.prototype, 'offsetWidth', {
+  configurable: true,
+  get() { return this.classList.contains('gpop') ? Number.parseFloat(this.style.width) || 0 : 0; },
+});
+hoverCard.getBoundingClientRect = () => ({ left: 170, top: 80, right: 400, bottom: 130, width: 230, height: 50 });
+hoverCard.dispatchEvent(new window.Event('mouseenter'));
+const hoverPop = window.document.querySelector('.gpop');
+if (!hoverPop?.classList.contains('is-visible')) throw new Error('hover summary must show with left space');
+if (Number.parseFloat(hoverPop.style.left) + Number.parseFloat(hoverPop.style.width) > 162) {
+  throw new Error('hover summary must stay left of the task card with an 8px gap');
+}
+hoverCard.getBoundingClientRect = () => ({ left: 100, top: 80, right: 330, bottom: 130, width: 230, height: 50 });
+hoverCard.dispatchEvent(new window.Event('mouseenter'));
+if (hoverPop.classList.contains('is-visible')) throw new Error('hover summary must hide when left space is too narrow');
+if (originalOffsetWidth) Object.defineProperty(window.HTMLElement.prototype, 'offsetWidth', originalOffsetWidth);
 
 const labels = [...window.document.querySelectorAll('.config-group__title')].map(node => node.textContent.trim());
 const fieldRows = key => [...window.document.querySelectorAll(`.config-field[data-key="${key}"]`)];

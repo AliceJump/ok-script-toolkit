@@ -6,7 +6,7 @@ import { AnnotationPanel } from './annotationPanel';
 import { cropTemplateThumbFileAsync, THUMB_HEIGHT } from './pngCrop';
 import { injectWebviewLocalization, tr } from './localization';
 import { TempScreenshotStore } from './tempScreenshotStore';
-import { captureGameWindow } from './screenshotCapture';
+import { captureGameWindow, getProjectConfig, probeWindowConfig } from './screenshotCapture';
 import { takePendingDrag } from './tempDrag';
 import { currentWorkspaceFolderUri, ideSetting, labelEnumClassName, labelEnumPathInputError, labelEnumPathSetting, normalizeLabelEnumPathInput, setIdeSetting, templatesDirectory } from './projectConfig';
 import { labelEnumRenameImpact, labelEnumRenameMessage, referencingFiles, writableClassName } from './labelEnumGuard';
@@ -26,14 +26,13 @@ const liveControllers = new Set<AssetGalleryController>();
  *
  * 返回**全部**命中；文案里只列前几个，但总数照实报。
  */
-async function findLabelEnumReferences(className: string): Promise<string[]> {
-  const folder = vscode.workspace.workspaceFolders?.[0];
-  if (!folder || !className) return [];
+async function findLabelEnumReferences(className: string, projectRoot: string): Promise<string[]> {
+  if (!projectRoot || !className) return [];
   let uris: vscode.Uri[];
   try {
     uris = await vscode.workspace.findFiles(
-      '**/*.py',
-      '**/{node_modules,.venv,venv,.git,__pycache__}/**',
+      new vscode.RelativePattern(projectRoot, '**/*.py'),
+      new vscode.RelativePattern(projectRoot, '**/{node_modules,.venv,venv,.git,__pycache__}/**'),
       LABEL_ENUM_REFERENCE_SCAN_LIMIT,
     );
   } catch {
@@ -43,7 +42,7 @@ async function findLabelEnumReferences(className: string): Promise<string[]> {
   for (const uri of uris) {
     try {
       sources.push({
-        path: path.relative(folder.uri.fsPath, uri.fsPath).split(path.sep).join('/'),
+        path: path.relative(projectRoot, uri.fsPath).split(path.sep).join('/'),
         source: fs.readFileSync(uri.fsPath, 'utf-8'),
       });
     } catch {
@@ -199,7 +198,8 @@ class AssetGalleryController {
       return;
     }
 
-    const outputDir = path.join(folder.uri.fsPath, templatesDirectory(folder.uri.fsPath));
+    const projectRoot = this.data.root || folder.uri.fsPath;
+    const outputDir = path.join(projectRoot, templatesDirectory(projectRoot));
     fs.mkdirSync(outputDir, { recursive: true });
 
     // Generate filename with timestamp
@@ -219,7 +219,7 @@ class AssetGalleryController {
 
     // Add to COCO data
     try {
-      await TemplateAssetData.addImageToCoco(outputPath);
+      await TemplateAssetData.addImageToCoco(outputPath, projectRoot);
       void vscode.window.showInformationMessage(tr('Screenshot saved: {name}', { name: path.basename(outputPath) }));
       await this.update();
     } catch (e) {
@@ -234,9 +234,10 @@ class AssetGalleryController {
       void vscode.window.showWarningMessage(tr('No workspace folder open.'));
       return;
     }
+    const projectRoot = this.data.root || folder.uri.fsPath;
     const targets: SaveTarget[] = [
-      { label: 'assets', description: tr('saveToAssetsStandaloneApp'), folder: path.join(folder.uri.fsPath, 'assets') },
-      { label: 'ok_tasks/assets', description: tr('saveToAssetsCustomScripts'), folder: path.join(folder.uri.fsPath, 'ok_tasks', 'assets') },
+      { label: 'assets', description: tr('saveToAssetsStandaloneApp'), folder: path.join(projectRoot, 'assets') },
+      { label: 'ok_tasks/assets', description: tr('saveToAssetsCustomScripts'), folder: path.join(projectRoot, 'ok_tasks', 'assets') },
     ];
 
     // 枚举路径 / 类名的取值链：**IDE 设置 > 项目约定 > 兜底**。
@@ -263,7 +264,17 @@ class AssetGalleryController {
       labelEnumPathInputError(value)
         ? tr('Enum file path must be relative and stay within the workspace root.')
         : undefined;
-    let enumPath = labelEnumPathSetting(folderUri);
+    let enumPath = labelEnumPathSetting(folderUri, this.data.root);
+    if (!enumPath && this.data.root) {
+      // config.py supplies the same module path used by the project's own
+      // template tab (for example NTE's src/Labels). Keep the personal and
+      // project convention layers above this discovered default.
+      const { pythonPath } = getProjectConfig();
+      const discovered = (await probeWindowConfig(this.data.root, pythonPath))?.labelEnumRelativePath;
+      if (discovered) {
+        try { enumPath = normalizeLabelEnumPathInput(discovered); } catch { /* invalid project path */ }
+      }
+    }
     /** 我**设过**的类名（空 = 没设过）。列表里显示这个而不是解析后的值 —— 见 `saveToAssetsPure` */
     let enumName = ideSetting<string>('labelEnumName', folderUri) ?? '';
 
@@ -306,7 +317,7 @@ class AssetGalleryController {
           prompt: tr('LabelEnum class name (leave empty to follow the project convention)'),
           // 提示里给出**当前生效**的类名（可能是项目约定或文件名推导出来的），
           // 输入框本身留空 = 撤销我的设置。这样"看得到现在的值"与"能清掉覆盖"同时成立。
-          placeHolder: enumPath ? labelEnumClassName(path.join(folder.uri.fsPath, enumPath)) : '',
+          placeHolder: enumPath ? labelEnumClassName(path.join(projectRoot, enumPath)) : '',
           value: enumName,
         });
         if (edited === undefined) continue; // 取消 → 回到列表
@@ -346,8 +357,8 @@ class AssetGalleryController {
 
     const generateEnum = enumPath.length > 0;
     // 将相对路径解析为绝对路径
-    const absEnumPath = generateEnum ? path.join(folder.uri.fsPath, enumPath) : undefined;
-    if (absEnumPath && !isPathInsideRoot(folder.uri.fsPath, absEnumPath)) {
+    const absEnumPath = generateEnum ? path.join(projectRoot, enumPath) : undefined;
+    if (absEnumPath && !isPathInsideRoot(projectRoot, absEnumPath)) {
       void vscode.window.showErrorMessage(tr('Enum file path must be relative and stay within the workspace root.'));
       return;
     }
@@ -413,7 +424,7 @@ class AssetGalleryController {
     const impact = labelEnumRenameImpact({ existingSource, newClassName });
     if (!impact) return true;
 
-    const refs = await findLabelEnumReferences(impact.existingClassName);
+    const refs = await findLabelEnumReferences(impact.existingClassName, this.data.root);
     const overwrite = tr('Overwrite anyway');
     const choice = await vscode.window.showWarningMessage(
       labelEnumRenameMessage(impact, refs, tr),
