@@ -15,7 +15,7 @@ This document is for extension developers and covers the project structure, loca
 ## Project Structure
 
 ```text
-src/                         VS Code extension host TypeScript source (30 modules; entry points and major ones listed)
+src/                         VS Code extension host TypeScript source (32 modules; entry points and major ones listed)
 	projectConfig.ts           Read side of the project convention file ok-script-toolkit.json (locate + cache + personal preference)
 	projectConfigPure.ts       Pure precedence-chain logic (no vscode dependency, unit-testable): parse + precedence + winning layer
 	conventionSources.ts       Data source for the "Project Convention vs My Settings" tracing panel
@@ -25,11 +25,13 @@ src/                         VS Code extension host TypeScript source (30 module
 	langData.ts                Language JSON + gettext PO data source (inlay hints / completion / hover)
 	featureData.ts             Template library (COCO) parsing + reverse lookup of source images by template name
 	effectData.ts              Effect ID mapping (parses effects.py)
+	effectProvider.ts          Effect ID hover provider (registered on JSON / JSONC data files only; the Python side goes through providers)
 	characterData.ts           Character/skill data read-write (incl. synced-skill protection)
 	characterPanel.ts          Character & skill manager panel host side
 	consolePanel.ts            ok-script console host side (unified Tasks + Game view; schema probing, persistent executor, parameter channel)
 	toolboxConnect.ts          Shared game connection + debug overlay host (connect_game.py / overlay_host.py, overlay mutual exclusion)
 	providers.ts               Completion / hover / inlay providers
+	labelEnumGuard.ts           Pre-write class-name guard for enum generation (pure function; keeps a personal override from breaking project imports)
 	templateAssetData.ts       Template asset data (reads/writes <templates dir>/coco_annotations.json)
 	templateAssetPanel.ts      Template asset panel host side (incl. the "save to assets" export flow)
 	saveToAssetsPure.ts        Pure export-flow logic (target list + whether to prompt for the enum path)
@@ -55,10 +57,12 @@ media/                        Per-Webview HTML/CSS/JS (loaded by the host via CS
 	console/                   ok-script console (Tasks + Game)
 	characterManager/          Character skill management
 python/                      Helper scripts shipped with the extension: task discovery, probing & execution (parse_config_tasks.py, probe_task_schemas.py, run_executor.py), plus game window capture & config probing for the template asset panel (capture_game_window.py, probe_window_config.py)
-	python/tests/              Development-time Python regression tests (test_probe_pure_group_labels.py, test_run_executor_sandbox.py); excluded from VSIX / JetBrains JAR per AGENT.md packaging rules
+	python/tests/              Development-time Python regression tests (test_probe_*.py ×5 and test_run_executor_*.py ×4,
+	                           9 in total, all wired into npm test; plus _test_tmp.py, the shared per-suite temp-dir infrastructure);
+	                           excluded from VSIX / JetBrains JAR per AGENT.md packaging rules
 jetbrains/                    The JetBrains plugin's **separate public repository** (git submodule), with its own README / CI / release flow
 schemas/                      JSON Schema for ok-script-toolkit.json (editor completion and validation)
-docs/                         Design documents (config-reads overview, convention-file design, copy-pasteable example config)
+docs/                         Design documents (config-reads overview, convention-file design, global UI design system, copy-pasteable example config)
 scripts/                      Development-time generation & regression test tools, not included in VSIX
 l10n/                         Extension host runtime localization resources
 package.nls*.json             Extension manifest localization resources
@@ -110,6 +114,12 @@ The `jetbrains/` directory contains a standalone Kotlin + IntelliJ Platform plug
   paste/screenshot enqueue, 0.1s carousel, box-select normalized coordinates, thumbnail drag to asset panel import).
   Drag **works here** — the two tool windows share the same JVM and use a custom `DataFlavor` to pass paths;
   note that `JPanel` has no built-in auto-drag-out, requiring manual `exportAsDrag` in `mouseDragged`.
+- Follow-up parity work from main-repo v1.9.0 → v1.13.0 (Swing-side spec at
+  [`jetbrains/docs/design-parity.md`](https://github.com/AliceJump/ok-script-toolkit-jetbrains/blob/main/docs/design-parity.md)):
+  **global config takeover** (probe parses global config groups → parameter snapshots persisted →
+  full snapshot injected via `OK_TOOLKIT_GCONFIG` at executor launch → live push via `gparams` while running),
+  the health bar and the idle-state **run center** (current task / execution queue / trigger polling),
+  and hover-only summaries on task rows and global config groups.
 
 Build and install:
 
@@ -158,7 +168,7 @@ Command Palette → **Tasks: Run Task** offers these four (aligned with CI's `vs
 | `插件·测试（主仓库 VS Code 扩展，等价 npm test）` | `npm test` |
 | `插件·打包 VSIX（主仓库 VS Code 扩展）` | `npm run package` (automatically runs `compile` first) |
 
-> The 5 Python tests inside `npm test` need a real `python` on PATH (CI uses `setup-python` 3.13);
+> The 9 Python tests inside `npm test` need a real `python` on PATH (CI uses `setup-python` 3.13);
 > if your local `python` is the Microsoft Store alias it fails immediately with exit code 9009.
 
 `.vscode/` only shares these three files (`launch.json` / `tasks.json` / `extensions.json`) —

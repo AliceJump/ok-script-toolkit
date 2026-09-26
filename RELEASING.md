@@ -219,7 +219,7 @@ GitHub Secrets support multi-line text; you can paste PEM/CRT full text directly
 
 > **Prefer the one-shot script**: `npm run release -- --minor` (or `sh scripts/release.sh --minor`;
 > Windows can use `scripts/release.ps1`). It performs every step below automatically — syncing the
-> five version locations, verifying, committing/pushing sub-repo then parent, and finally tagging.
+> seven version locations, verifying, committing/pushing sub-repo then parent, and finally tagging.
 > Add `--dry-run` to preview first. The script only runs on the `main` branch
 > (required for both the parent repo and the jetbrains submodule) and refuses
 > otherwise — the release commit lands on whatever branch it runs from (hit on v1.12.0).
