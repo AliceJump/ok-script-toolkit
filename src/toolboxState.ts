@@ -32,14 +32,20 @@ function toolboxFile(): string {
   return path.join(root, '.vscode', 'ok-script-toolkit-toolbox.json');
 }
 
-function readStore(): ToolboxStore {
+function readStore(strict = false): ToolboxStore {
   try {
     const p = toolboxFile();
     if (fs.existsSync(p)) {
       const raw = JSON.parse(fs.readFileSync(p, 'utf-8')) as Partial<ToolboxStore>;
-      if (raw.projects && typeof raw.projects === 'object') return { projects: raw.projects };
+      if (raw.projects && typeof raw.projects === 'object' && !Array.isArray(raw.projects)) {
+        return { projects: raw.projects };
+      }
+      if (strict) throw new Error('Invalid toolbox state file');
     }
-  } catch { /* 忽略损坏的状态文件 */ }
+  } catch (error) {
+    if (strict) throw error;
+    // 普通状态读取沿用空状态兜底；连接/断开写入则不能覆盖损坏的旧文件。
+  }
   return { projects: {} };
 }
 
@@ -49,21 +55,39 @@ export function loadToolboxState(projectDir: string): ToolboxState {
   return readStore().projects[projectDir] || EMPTY_STATE;
 }
 
-/** 合并写入某项目的工具箱状态，并通知所有订阅者（webview 之间借此同步） */
-export function saveToolboxState(projectDir: string, patch: Partial<ToolboxState>): ToolboxState {
+function writeToolboxState(projectDir: string, patch: Partial<ToolboxState>, strict: boolean): ToolboxState {
   if (!projectDir) return EMPTY_STATE;
-  const store = readStore();
+  const store = readStore(strict);
   const next: ToolboxState = { ...store.projects[projectDir], ...patch };
   store.projects[projectDir] = next;
   try {
     const p = toolboxFile();
     fs.mkdirSync(path.dirname(p), { recursive: true });
-    fs.writeFileSync(p, JSON.stringify(store, null, 2), 'utf-8');
-  } catch { /* 写入失败不影响内存态 */ }
+    const temp = `${p}.${process.pid}.${Date.now()}.${Math.random().toString(16).slice(2)}.tmp`;
+    try {
+      fs.writeFileSync(temp, JSON.stringify(store, null, 2), 'utf-8');
+      fs.renameSync(temp, p);
+    } finally {
+      try { fs.unlinkSync(temp); } catch { /* 文件已重命名或清理失败 */ }
+    }
+  } catch (error) {
+    if (strict) throw error;
+    // 兼容现有调用方：普通写入失败仍广播临时状态。
+  }
   for (const listener of listeners) {
     try { listener(next, projectDir); } catch { /* 订阅者异常互不影响 */ }
   }
   return next;
+}
+
+/** 合并写入某项目的工具箱状态，并通知所有订阅者（webview 之间借此同步）。 */
+export function saveToolboxState(projectDir: string, patch: Partial<ToolboxState>): ToolboxState {
+  return writeToolboxState(projectDir, patch, false);
+}
+
+/** 连接操作需要知道状态是否真正落盘；失败时不广播误导性的成功状态。 */
+export function saveToolboxStateChecked(projectDir: string, patch: Partial<ToolboxState>): ToolboxState {
+  return writeToolboxState(projectDir, patch, true);
 }
 
 /** 订阅工具箱状态变化；返回取消订阅的可释放对象 */

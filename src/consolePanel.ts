@@ -388,6 +388,8 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
   // ── 执行器会话 ───────────────────────────────────────────────────────
   /** 常驻执行器子进程；null 表示执行器未启动 */
   private executor: cp.ChildProcess | null = null;
+  /** 执行器启动时绑定的项目；切换面板项目不会改变运行中进程的目标。 */
+  private executorProjectDir = '';
   /** 已发出启动命令、尚未收到 OK_TOOLKIT_EXECUTOR_READY */
   private connecting = false;
   /** 执行器回推的最新状态快照 */
@@ -460,13 +462,13 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
           await this.startExecutor(view);
           break;
         case 'pause':
-          this.writeCommand('pause');
+          if (this.isCurrentProjectExecutor()) this.writeCommand('pause');
           break;
         case 'resume':
-          this.writeCommand('resume');
+          if (this.isCurrentProjectExecutor()) this.writeCommand('resume');
           break;
         case 'stopCurrent':
-          this.writeCommand('task_disable');
+          if (this.isCurrentProjectExecutor()) this.writeCommand('task_disable');
           break;
         case 'stopExecutor':
           this.stopExecutor();
@@ -721,15 +723,21 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
 
   /** 物化全部快照（probe 成功 / schema 缓存加载后调用）并落盘，返回新增键总数 */
   private materializeAllSnapshots(): number {
-    let added = 0;
+    let taskAdded = 0;
     for (const [key, schema] of Object.entries(this.schemas)) {
-      added += this.materializeTaskSnapshot(key, schema);
+      taskAdded += this.materializeTaskSnapshot(key, schema);
     }
+    let globalAdded = 0;
     for (const group of this.globalGroups) {
-      added += this.materializeGlobalSnapshot(group);
+      globalAdded += this.materializeGlobalSnapshot(group);
     }
+    const added = taskAdded + globalAdded;
     if (added > 0) {
-      this.saveStore();
+      if (this.saveStore()) {
+        // 探针可在执行器启动后完成；新增键必须同步给已运行进程。
+        if (taskAdded > 0) this.scheduleParamsPush();
+        if (globalAdded > 0) this.scheduleGParamsPush();
+      }
       // 物化改变了 params/全局组，让前端表单与注入数据保持最新
       this.view?.webview.postMessage({ type: 'taskConfigs', configs: this.taskConfigs, uiState: this.uiState });
       this.pushGlobalGroups();
@@ -768,11 +776,12 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
 
   /** 全局组快照推送防抖（与任务 params 同节奏） */
   private scheduleGParamsPush(): void {
-    if (!this.executor) return;
+    if (!this.isCurrentProjectExecutor()) return;
+    const executor = this.executor;
     if (this.gparamsTimer) clearTimeout(this.gparamsTimer);
     this.gparamsTimer = setTimeout(() => {
       this.gparamsTimer = undefined;
-      if (!this.executor) return;
+      if (this.executor !== executor || !this.isCurrentProjectExecutor()) return;
       if (!Object.keys(this.globalSnapshots).length) return;
       this.writeCommand(`gparams ${JSON.stringify(this.globalSnapshots)}`);
     }, PARAMS_PUSH_DEBOUNCE_MS);
@@ -1163,7 +1172,7 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
     this.saveStore();
     this.pushExecutorState(view);
     // 执行器没起过：只记状态，等显式启动时按集合入列
-    if (!this.executor) return;
+    if (!this.isCurrentProjectExecutor()) return;
     this.writeCommand(enabled ? `trigger_enable ${key}` : `trigger_disable ${key}`);
   }
 
@@ -1181,8 +1190,12 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
 
   /** 确保执行器已启动；返回 false 表示环境不满足（已在 UI 提示） */
   private async ensureExecutor(view: vscode.WebviewView): Promise<boolean> {
-    if (this.executor) return true;
     const { projectDir, pythonPath } = this.getConfig();
+    if (this.executor) {
+      if (projectDir === this.executorProjectDir && projectDir === this.currentProjectDir) return true;
+      void vscode.window.showErrorMessage(tr('Stop the running executor before starting another project.'));
+      return false;
+    }
     if (!projectDir) {
       void vscode.window.showErrorMessage(tr('The ok-script project path is not configured.'));
       return false;
@@ -1249,18 +1262,23 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
       env: childEnv,
     });
     this.executor = child;
+    this.executorProjectDir = projectDir;
     // 浮层互斥：执行器进程自己持有 Win32GdiOverlay，通知浮层宿主停掉独立进程
     notifyExecutorRunning(true, projectDir);
     // 子进程退出瞬间向 stdin 写入会以 error 事件异步报错（EPIPE），
     // 不挂监听会变成扩展宿主未捕获异常
     child.stdin?.on('error', () => { /* 忽略 EPIPE */ });
     child.stdout?.on('data', (d) => {
+      if (this.executor !== child) return;
       const text = d.toString('utf8');
       this.scanControlMarkers(text);
       this.output.append(text);
     });
-    child.stderr?.on('data', (d) => this.output.append(d.toString('utf8')));
+    child.stderr?.on('data', (d) => {
+      if (this.executor === child) this.output.append(d.toString('utf8'));
+    });
     child.on('error', (err) => {
+      if (this.executor !== child) return;
       this.output.appendLine('');
       this.output.appendLine(tr('❌ Failed to start Python process: {error}', { error: err.message }));
       void vscode.window.showErrorMessage(tr('Failed to launch task: {error}', { error: err.message }));
@@ -1268,6 +1286,7 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
       this.setStatus('error', tr('Failed to launch task: {error}', { error: err.message }));
     });
     child.on('close', (code) => {
+      if (this.executor !== child) return;
       const wasStopping = this.forceKillTimer !== undefined;
       this.resetExecutorState();
       this.output.appendLine('');
@@ -1296,13 +1315,20 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
 
   /** 参数覆盖防抖推送：常驻执行器里改参数要即时生效 */
   private scheduleParamsPush(): void {
-    if (!this.executor) return;
+    if (!this.isCurrentProjectExecutor()) return;
+    const executor = this.executor;
     if (this.paramsTimer) clearTimeout(this.paramsTimer);
     this.paramsTimer = setTimeout(() => {
       this.paramsTimer = undefined;
-      if (!this.executor) return;
+      if (this.executor !== executor || !this.isCurrentProjectExecutor()) return;
       this.writeCommand(`params ${JSON.stringify(this.collectOverrides())}`);
     }, PARAMS_PUSH_DEBOUNCE_MS);
+  }
+
+  private isCurrentProjectExecutor(): boolean {
+    return this.executor !== null
+      && this.executorProjectDir === this.currentProjectDir
+      && this.executorProjectDir === this.getConfig().projectDir;
   }
 
   /** 历史配置里的 extraArgs / env 在单进程模型下无法按任务生效，启动时提示一次 */
@@ -1377,14 +1403,20 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
       clearTimeout(this.paramsTimer);
       this.paramsTimer = undefined;
     }
+    if (this.gparamsTimer) {
+      clearTimeout(this.gparamsTimer);
+      this.gparamsTimer = undefined;
+    }
+    const projectDir = this.executorProjectDir;
     this.executor = null;
+    this.executorProjectDir = '';
     this.connecting = false;
     this.snapshot = {};
     this.stdoutRemainder = '';
     this.overlayActive = false;
     // 浮层互斥：执行器退出后把独立浮层宿主交还（error / close 都会走到这里，
     // notifyExecutorRunning 内部会去重）
-    notifyExecutorRunning(false, this.currentProjectDir);
+    notifyExecutorRunning(false, projectDir);
     this.pushExecutorState();
   }
 
@@ -1412,13 +1444,16 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
   private pushExecutorState(view?: vscode.WebviewView): void {
     const target = view ?? this.view;
     if (!target) return;
+    const projectMismatch = this.executor !== null && !this.isCurrentProjectExecutor();
     void target.webview.postMessage({
       type: 'executor',
       status: this.executor ? (this.connecting ? 'connecting' : 'running') : 'idle',
-      paused: this.snapshot.paused === true,
-      current: this.snapshot.current || '',
-      currentIsTrigger: this.snapshot.currentIsTrigger === true,
-      onetimeQueue: this.snapshot.onetimeQueue || [],
+      projectMismatch,
+      projectMismatchText: projectMismatch ? tr('Stop the running executor before starting another project.') : '',
+      paused: !projectMismatch && this.snapshot.paused === true,
+      current: projectMismatch ? '' : (this.snapshot.current || ''),
+      currentIsTrigger: !projectMismatch && this.snapshot.currentIsTrigger === true,
+      onetimeQueue: projectMismatch ? [] : (this.snapshot.onetimeQueue || []),
       enabledTriggers: [...this.enabledTriggers],
     });
   }
@@ -1445,7 +1480,7 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
    * 开关状态由服务直接持久化、下次启动沿用。
    */
   setOverlayEnabled(enabled: boolean): boolean {
-    if (!this.executor) return false;
+    if (!this.isCurrentProjectExecutor()) return false;
     this.output.appendLine(enabled ? tr('▶ Enabling debug overlay…') : tr('⏹ Disabling debug overlay…'));
     return this.writeCommand(enabled ? 'overlay_on' : 'overlay_off');
   }
@@ -1492,6 +1527,9 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
     } catch {
       return;
     }
+    if (this.executorProjectDir !== this.currentProjectDir) {
+      return;
+    }
     this.snapshot = parsed;
     let changed = false;
     for (const item of parsed.triggers || []) {
@@ -1520,8 +1558,8 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
     if (this.overlayActive === active) return;
     this.overlayActive = active;
     this.output.appendLine(active ? tr('▶ Debug overlay: enabled') : tr('⏹ Debug overlay: disabled'));
-    if (this.currentProjectDir) {
-      saveToolboxState(this.currentProjectDir, { overlay: active });
+    if (this.executorProjectDir) {
+      saveToolboxState(this.executorProjectDir, { overlay: active });
     }
   }
 
@@ -1533,6 +1571,7 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
   dispose(): void {
     if (this.forceKillTimer) clearTimeout(this.forceKillTimer);
     if (this.paramsTimer) clearTimeout(this.paramsTimer);
+    if (this.gparamsTimer) clearTimeout(this.gparamsTimer);
     if (this.executor) {
       this.executor.kill();
       this.executor = null;

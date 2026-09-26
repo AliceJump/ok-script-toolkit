@@ -9,6 +9,7 @@ import {
   onExecutorRunningChange,
   onToolboxStateChange,
   saveToolboxState,
+  saveToolboxStateChecked,
   ToolboxState,
 } from './toolboxState';
 
@@ -40,6 +41,10 @@ export class GameConnectService implements vscode.Disposable {
   private stateListener: (() => void) | null = null;
   private busSubscription?: vscode.Disposable;
   private executorSubscription?: vscode.Disposable;
+  /** connect_game.py 会写同一份 devices.json；串行执行才能保证最后一次操作生效。 */
+  private connectionTail: Promise<void> = Promise.resolve();
+  /** 两个 Connect 入口同时点击时共用一次连接；Disconnect 会结束这次合并窗口。 */
+  private pendingConnect?: { projectDir: string; promise: Promise<void> };
 
   constructor(private readonly extensionUri: vscode.Uri) {
     // 订阅必须在构造期完成：浮层互斥不依赖任何视图是否打开过
@@ -75,6 +80,13 @@ export class GameConnectService implements vscode.Disposable {
     this.statusReporter?.(text);
   }
 
+  private queueConnection(work: () => Promise<void>): Promise<void> {
+    const operation = this.connectionTail.then(work);
+    // 单次操作的错误交给调用方；队列本身始终可继续处理后续 Disconnect。
+    this.connectionTail = operation.catch(() => undefined);
+    return operation;
+  }
+
   /** 连接游戏窗口：搜索并写入 devices.json，任务进程启动时原生优先该窗口 */
   async connect(): Promise<void> {
     const { projectDir, pythonPath } = resolveProjectContext();
@@ -82,54 +94,80 @@ export class GameConnectService implements vscode.Disposable {
       this.reportStatus(tr('No ok-script project was found. Configure okScriptToolkit.okScriptProjectPath or open a folder containing src/config.py.'));
       return;
     }
-    this.reportStatus(tr('Connecting to game window…'));
-    try {
-      const result = await runPython(
-        pythonPath,
-        [pythonScript(this.extensionUri, 'connect_game.py'), projectDir],
-        projectDir,
-        // 游戏未运行时会自动启动并等待窗口（脚本侧最长 150s），超时要留足余量
-        200000,
-      );
-      const parsed = parseJsonFromStdout(result.stdout || '');
-      if (!parsed || !parsed.ok) {
-        throw new Error(parsed?.error || tr('Unknown error'));
-      }
-      const game: GameConnection = {
-        hwnd: Number(parsed.hwnd) || 0,
-        pid: Number(parsed.pid) || 0,
-        title: String(parsed.title || ''),
-        exe: String(parsed.exe || ''),
-        connectedAt: Date.now(),
-      };
-      saveToolboxState(projectDir, { game });
-      this.reportStatus('');
-      // 调试浮层开启时拉起常驻宿主：无需启动任务即可 Alt+右键框选取坐标
-      if (loadToolboxState(projectDir).overlay) {
-        this.startOverlayHost(projectDir);
-      }
-    } catch (e) {
-      this.reportStatus(tr('Failed to connect game window: {error}', {
-        error: e instanceof Error ? e.message : String(e),
-      }));
+    if (this.pendingConnect?.projectDir === projectDir) {
+      return this.pendingConnect.promise;
     }
+    const operation = this.queueConnection(async () => {
+      if (this.disposed) return;
+      this.reportStatus(tr('Connecting to game window…'));
+      try {
+        const result = await runPython(
+          pythonPath,
+          [pythonScript(this.extensionUri, 'connect_game.py'), projectDir],
+          projectDir,
+          // 游戏未运行时会自动启动并等待窗口（脚本侧最长 150s），超时要留足余量
+          200000,
+        );
+        const parsed = parseJsonFromStdout(result.stdout || '');
+        if (!parsed || !parsed.ok) {
+          throw new Error(parsed?.error || tr('Unknown error'));
+        }
+        const game: GameConnection = {
+          hwnd: Number(parsed.hwnd) || 0,
+          pid: Number(parsed.pid) || 0,
+          title: String(parsed.title || ''),
+          exe: String(parsed.exe || ''),
+          connectedAt: Date.now(),
+        };
+        saveToolboxStateChecked(projectDir, { game });
+        this.reportStatus('');
+        // 调试浮层开启时拉起常驻宿主：无需启动任务即可 Alt+右键框选取坐标
+        if (loadToolboxState(projectDir).overlay) {
+          this.startOverlayHost(projectDir);
+        }
+      } catch (e) {
+        this.reportStatus(tr('Failed to connect game window: {error}', {
+          error: e instanceof Error ? e.message : String(e),
+        }));
+      }
+    });
+    this.pendingConnect = { projectDir, promise: operation };
+    void operation.then(() => {
+      if (this.pendingConnect?.promise === operation) this.pendingConnect = undefined;
+    }, () => {
+      if (this.pendingConnect?.promise === operation) this.pendingConnect = undefined;
+    });
+    return operation;
   }
 
   /** 断开连接：清除 devices.json 里的窗口选中，任务进程恢复自动探测 */
   async disconnect(): Promise<void> {
     const { projectDir, pythonPath } = resolveProjectContext();
     if (!projectDir) return;
-    try {
-      await runPython(
-        pythonPath,
-        [pythonScript(this.extensionUri, 'connect_game.py'), projectDir, '--disconnect'],
-        projectDir,
-        30000,
-      );
-    } catch { /* devices.json 缺失等场景按已断开处理 */ }
-    saveToolboxState(projectDir, { game: null });
-    this.stopOverlayHost();
-    this.reportStatus('');
+    // 即使后续又点 Connect，也要把新请求排在这次 Disconnect 之后。
+    this.pendingConnect = undefined;
+    return this.queueConnection(async () => {
+      if (this.disposed) return;
+      try {
+        const result = await runPython(
+          pythonPath,
+          [pythonScript(this.extensionUri, 'connect_game.py'), projectDir, '--disconnect'],
+          projectDir,
+          30000,
+        );
+        const parsed = parseJsonFromStdout(result.stdout);
+        if (!parsed?.ok || parsed.disconnected !== true) {
+          throw new Error(parsed?.error || tr('Unknown error'));
+        }
+        if (this.overlayHostProjectDir === projectDir) this.stopOverlayHost();
+        saveToolboxStateChecked(projectDir, { game: null });
+        this.reportStatus('');
+      } catch (e) {
+        this.reportStatus(tr('Failed to disconnect game window: {error}', {
+          error: e instanceof Error ? e.message : String(e),
+        }));
+      }
+    });
   }
 
   /**

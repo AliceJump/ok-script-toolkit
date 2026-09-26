@@ -542,6 +542,7 @@
   /** 单个卡片的执行状态：触发任务看入列/轮询，一次性任务看排队/执行 */
   function cardState(card) {
     const executor = state.executor;
+    if (executor.projectMismatch) return card.dataset.kind === 'trigger' && triggerEnabled(card.dataset.taskKey) ? 'armed' : '';
     const key = card.dataset.taskKey;
     const isTrigger = card.dataset.kind === 'trigger';
     const current = executor.current === key;
@@ -558,7 +559,7 @@
   /** 执行器是否已拉起（含连接中） */
   function executorRunning() {
     const status = state.executor.status;
-    return status === 'running' || status === 'connecting';
+    return !state.executor.projectMismatch && (status === 'running' || status === 'connecting');
   }
 
   function updateRunningState() {
@@ -578,7 +579,7 @@
         if (toggle.checked !== enabled) toggle.checked = enabled;
       }
       const launch = card.querySelector('[data-role="launch"]');
-      if (launch) launch.disabled = status === 'queued' || status === 'running';
+      if (launch) launch.disabled = state.executor.projectMismatch || status === 'queued' || status === 'running';
       // 参数覆盖徽标：全量接管语义——快照值 ≠ 出厂值（或存在孤儿键）时高亮
       const configBtn = card.querySelector('[data-role="config-toggle"]');
       if (configBtn) {
@@ -643,7 +644,10 @@
     const active = executor.status === 'running' || executor.status === 'connecting';
     let text = t('executorIdle');
     let level = 'idle';
-    if (executor.status === 'connecting') {
+    if (executor.projectMismatch) {
+      text = executor.projectMismatchText;
+      level = 'paused';
+    } else if (executor.status === 'connecting') {
       text = t('executorConnecting');
       level = 'connecting';
     } else if (executor.status === 'running') {
@@ -671,10 +675,10 @@
     elements.startExecutor.hidden = active;
     elements.startExecutor.disabled = active;
     elements.startExecutor.textContent = `▶ ${t('startExecutor')}`;
-    elements.pauseToggle.hidden = !active;
-    elements.pauseToggle.disabled = executor.status !== 'running';
+    elements.pauseToggle.hidden = !active || executor.projectMismatch;
+    elements.pauseToggle.disabled = executor.status !== 'running' || executor.projectMismatch;
     elements.pauseToggle.textContent = executor.paused ? `▶ ${t('resume')}` : `⏸ ${t('pause')}`;
-    elements.stopCurrent.hidden = !active;
+    elements.stopCurrent.hidden = !active || executor.projectMismatch;
     elements.stopCurrent.disabled = !executor.current;
     elements.stopCurrent.textContent = `⏹ ${t('stopCurrent')}`;
     elements.stopExecutor.hidden = !active;
