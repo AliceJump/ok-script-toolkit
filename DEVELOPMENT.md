@@ -15,7 +15,7 @@ This document is for extension developers and covers the project structure, loca
 ## 项目结构
 
 ```text
-src/                         VS Code 扩展宿主 TypeScript 源码（30 个模块，下列为入口与主要模块）
+src/                         VS Code 扩展宿主 TypeScript 源码（32 个模块，下列为入口与主要模块）
 	projectConfig.ts           项目约定文件 ok-script-toolkit.json 的读盘侧（定位 + 缓存 + 个人偏好）
 	projectConfigPure.ts       取值链纯逻辑（不依赖 vscode，可单测）：解析 + 优先级 + 来源层
 	conventionSources.ts       「项目约定 vs 我的设置」溯源面板的数据源
@@ -25,11 +25,13 @@ src/                         VS Code 扩展宿主 TypeScript 源码（30 个模�
 	langData.ts                语言 JSON + gettext PO 数据源（幽灵注释/补全/hover）
 	featureData.ts             模板库（COCO）解析 + 按模板名反查原图
 	effectData.ts              效果 ID 映射（解析 effects.py）
+	effectProvider.ts          效果 ID 悬浮提示（只注册到 JSON / JSONC 数据文件，Python 侧走 providers）
 	characterData.ts           角色/技能数据读写（含同步技能保护）
 	characterPanel.ts          角色技能管理面板宿主侧
 	consolePanel.ts            ok-script 控制台宿主侧（任务 + 游戏统一视图；schema 探测、常驻执行器、参数通道）
 	toolboxConnect.ts          游戏连接 + 调试浮层共享宿主（connect_game.py / overlay_host.py、浮层互斥）
 	providers.ts               补全 / hover / inlay 提供器
+	labelEnumGuard.ts          生成枚举文件前的类名变更校验（纯函数，防个人覆盖弄坏项目 import）
 	templateAssetData.ts       模板素材数据（读写 <模板目录>/coco_annotations.json）
 	templateAssetPanel.ts      模板素材面板宿主侧（含「保存到 assets」导出流程）
 	saveToAssetsPure.ts        导出流程的纯逻辑（目标列表 + 枚举路径要不要问）
@@ -55,10 +57,12 @@ media/                        每个外置 Webview 的 HTML/CSS/JS（宿主经 C
 	console/                   ok-script 控制台（任务 + 游戏）
 	characterManager/          角色技能管理
 python/                       随扩展发布的辅助脚本：任务发现、探测与执行（parse_config_tasks.py、probe_task_schemas.py、run_executor.py），以及模板素材面板的游戏窗口截图与配置探测（capture_game_window.py、probe_window_config.py）
-	python/tests/              开发期 Python 回归测试（test_probe_pure_group_labels.py、test_run_executor_sandbox.py）；按 AGENT.md 打包规范不进 VSIX / JetBrains JAR
+	python/tests/              开发期 Python 回归测试（test_probe_*.py ×5、test_run_executor_*.py ×4，
+	                           共 9 个，npm test 全部接入；另有三端共用的测试临时目录基建 _test_tmp.py）；
+	                           按 AGENT.md 打包规范不进 VSIX / JetBrains JAR
 jetbrains/                    JetBrains 插件的**独立公开仓库**（git submodule），有自己的 README / CI / 发版流程
 schemas/                      ok-script-toolkit.json 的 JSON Schema（编辑器补全与校验）
-docs/                         设计文档（配置读取全景、项目约定文件设计、可直接复制的示例配置）
+docs/                         设计文档（配置读取全景、项目约定文件设计、全局 UI 设计规范、可直接复制的示例配置）
 scripts/                      开发期生成与回归测试工具，不打入 VSIX
 l10n/                         扩展宿主运行时本地化资源
 package.nls*.json             扩展清单本地化资源
@@ -109,6 +113,12 @@ out/                          TypeScript 编译产物（由构建生成）
   粘贴/截屏入列、0.1s 轮播、框选复制归一化坐标、缩略图拖到素材面板导入）。
   拖拽在这里**可用**——两个工具窗口同处一个 JVM，用自定义 `DataFlavor` 传路径；
   注意 `JPanel` 没有内置自动拖出，需在 `mouseDragged` 里手动 `exportAsDrag`。
+- 随主仓 v1.9.0 → v1.13.0 的后续对齐（Swing 侧规格见
+  [`jetbrains/docs/design-parity.md`](https://github.com/AliceJump/ok-script-toolkit-jetbrains/blob/main/docs/design-parity.md)）：
+  **全局配置接管**（probe 解析全局配置组 → 参数快照持久化 → 启动执行器时经
+  `OK_TOOLKIT_GCONFIG` 全量注入 → 运行中 `gparams` 即时推送）、健康度条与
+  空闲态**运行中心**（当前任务 / 执行队列 / 触发轮询）、任务卡与全局配置组的
+  悬停只读摘要。
 
 构建与安装：
 
@@ -157,7 +167,7 @@ npx @vscode/vsce package --allow-missing-repository
 | `插件·测试（主仓库 VS Code 扩展，等价 npm test）` | `npm test` |
 | `插件·打包 VSIX（主仓库 VS Code 扩展）` | `npm run package`（内部先自动跑 `compile`） |
 
-> `npm test` 里的 5 个 Python 测试靠 PATH 上的 `python`（CI 用 `setup-python` 3.13）。
+> `npm test` 里的 9 个 Python 测试靠 PATH 上的 `python`（CI 用 `setup-python` 3.13）。
 > 本机 `python` 若是 Microsoft Store 的占位符，会以退出码 9009 直接失败 —— 换个真解释器即可。
 
 `.vscode/` 只共享这三个文件（`launch.json` / `tasks.json` / `extensions.json`）——
