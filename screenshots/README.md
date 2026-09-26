@@ -91,10 +91,11 @@ README 展示，不会被打进扩展安装包**。可以放心放高分辨率�
 
 ### 注意
 
-`jetbrains/screenshots/` 是给子仓库 README 用的独立目录（子仓库是独立 git 仓库，
-无法引用父仓库的 `.vscodeignore` 规则，但因为子仓库整体在 `.vscodeignore` 里被
-`jetbrains/**` 排除，同样不会进 VSIX）。子仓库那个目录里用的是英文文件名：
-`hero.gif`、`code-hints.gif`、`tool-windows.gif`、`character-manager.gif`。
+子仓库 README 目前**尚未启用**任何演示图：JetBrains 版是 Swing 原生 UI，与父仓
+webview 外观完全不同，本目录的 GIF 不可复用，需要从沙箱 IDE 重新录制。
+子仓 README 已按英文文件名（`hero.gif`、`code-hints.gif`、`tool-windows.gif`、
+`character-manager.gif`）预留好**注释占位块**，录好后放到 `jetbrains/screenshots/`
+（该目录尚未创建）并取消注释即可。
 
 ---
 
@@ -190,7 +191,9 @@ and are not included in the extension install package**. High-resolution assets 
 
 ### Note
 
-`jetbrains/screenshots/` is a separate directory for the sub-repo README (the sub-repo is an independent git repo
-and cannot reference the parent's `.vscodeignore` rules, but since the entire sub-repo is excluded in `.vscodeignore`
-via `jetbrains/**`, it also won't enter VSIX). The sub-repo directory uses English filenames:
-`hero.gif`, `code-hints.gif`, `tool-windows.gif`, `character-manager.gif`.
+The sub-repo README currently ships **no** demo GIFs: the JetBrains edition is a native
+Swing UI that looks nothing like the parent repo's webviews, so the GIFs here cannot be
+reused and must be re-recorded from the sandbox IDE. The sub-repo README already has
+**commented-out placeholder blocks** reserved under English filenames (`hero.gif`,
+`code-hints.gif`, `tool-windows.gif`, `character-manager.gif`) — once recorded, drop them
+into `jetbrains/screenshots/` (that directory does not exist yet) and uncomment the blocks.

@@ -18,7 +18,7 @@ Language key completion · OCR fix hints · Template browsing · Task launching 
 [![Version](https://img.shields.io/badge/version-1.13.0-blue)](package.json)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![VS Code](https://img.shields.io/badge/VS%20Code-%5E1.85.0-007ACC)](package.json)
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/AliceJump/ok-script-toolkit)
+[Ask DeepWiki](https://deepwiki.com/AliceJump/ok-script-toolkit)
 
 [安装](#安装) · [功能](#功能) · [数据来源](#数据来源) · [配置](#配置) · [命令](#命令) · [常见问题](#更新后不生效)
 
@@ -125,6 +125,7 @@ self.wait_click_feature(feature=fL.give_gift, time_out=10)
 </p>
 
 - 从目标项目的 `src/config.py` / `config.py` 自动解析所有一次性任务和触发任务，生成完整的参数配置表单。
+- 开发模式保留框架注册的全部任务，包括项目 UI 中隐藏或未声明支持当前语言的任务；运行前将 `displayLocale` 选定的语言注入执行器。
 - 支持布尔、数字、文本、多行文本、下拉、多选、列表、项目级联下拉和结构化条件序列等多种参数类型。
 - 任务名、说明、参数名和选项标签自动读取目标项目 i18n 翻译显示；支持递归可折叠的子任务配置树。
 - **单一常驻执行器**：整个项目只维持一个进程——连接一次游戏后，由 ok-script 框架原生的 `TaskExecutor` 循环轮询全部已启用的触发任务，实现多触发任务串连轮询（旧版逐个启动会让框架把触发任务列表收窄成单个）。
@@ -134,6 +135,8 @@ self.wait_click_feature(feature=fL.give_gift, time_out=10)
 - 每个项目、每个任务独立保存参数覆盖，参数修改后自动保存并即时推送给运行中的执行器；覆盖只作用于执行器进程的内存，不写回目标项目配置文件。
 - **不污染目标项目配置**：执行器运行时，ok 框架对 `configs/` 与截图的读写全部改道到工作区的沙箱目录 `.vscode/ok-script-toolkit/`，**目标项目的配置文件与截图全程保持原样**（`devices.json` 做桥接拷贝以复用游戏连接）。调试时可以放心地改参数试跑，不会弄脏项目。
 - 执行器可随时暂停/恢复（全局挂起轮询与任务），也可以「停止当前任务」而不关闭执行器；运行日志输出到专属输出频道。
+- **全局配置接管**：目标项目的全局配置组（ok 框架 GlobalConfig 的可见分组）由探针一并解析，在控制台「配置」分段以参数快照呈现——修改即保存、可一键恢复默认；改动经 `gparams` 即时推送给运行中的执行器，执行器启动时以 `OK_TOOLKIT_GCONFIG` 注入全量快照。同样只写沙箱、不碰目标项目配置。
+- **控制台视图**：任务启动器与工具箱统一在「ok-script 控制台」的四个分段（任务 / 游戏 / 配置 / 账号）里管理；顶栏健康度条实时反映执行器状态，空闲时详情面板显示运行中心（当前任务 / 执行队列 / 触发轮询），任务卡悬停弹出只读摘要。
 
 ### 角色技能管理
 
@@ -190,10 +193,10 @@ self.wait_click_feature(feature=fL.give_gift, time_out=10)
 | `okScriptToolkit.poDirectory` | `i18n` | gettext PO 目录（相对工作区根），按 `<locale>/LC_MESSAGES/*.po` 扫描 |
 | `okScriptToolkit.enablePoData` | `true` | 是否启用 gettext PO 数据源，与 lang JSON 合并 |
 | `okScriptToolkit.poDomains` | `["ocr"]` | 要加载的 PO domain 白名单（默认只加载 ocr，排除 ok 等 UI 文案） |
-| `okScriptToolkit.displayLocale` | `auto` | 幽灵注释显示的语言；`auto` 跟随 VS Code UI 语言 |
+| `okScriptToolkit.displayLocale` | `auto` | 幽灵注释、任务名称和任务执行器使用的语言；`auto` 跟随 VS Code UI 语言 |
 | `okScriptToolkit.enableInlayHints` | `true` | 是否启用幽灵注释 |
-| `okScriptToolkit.featureAliases` | `["fL", "FeatureList"]` | 模板别名列表；别名会用于模板补全和 hover 识别 |
-| `okScriptToolkit.labelEnumPath` | 空 | 生成 `LabelEnum.py` 的路径（相对工作区根，带不带 `.py` 都可以）；留空则跟随项目约定。对应项目文件的 `labelEnum.path` |
+| `okScriptToolkit.featureAliases` | `["fL", "FeatureList", "Labels"]` | 模板别名列表；别名会用于模板补全和 hover 识别 |
+| `okScriptToolkit.labelEnumPath` | 空 | 生成 `LabelEnum.py` 的路径（相对目标项目根，带不带 `.py` 都可以）；留空则跟随项目约定和 `config.py`。对应项目文件的 `labelEnum.path` |
 | `okScriptToolkit.labelEnumName` | 空 | 生成枚举的类名；留空则由文件名推导。对应项目文件的 `labelEnum.name`。⚠️ 项目代码按这个名字 import，改名会让那些 import 失效 —— 覆盖已有文件前会先请你确认 |
 | `okScriptToolkit.effectsFile` | `src/data/effects.py` | 技能效果 ID 定义文件（`EffectType` 枚举与 `EFFECT_DESCRIPTIONS`），相对工作区根目录 |
 | `okScriptToolkit.okScriptProjectPath` | 空 | 任务启动器使用的 ok-script 项目根目录；为空时尝试使用当前工作区 |

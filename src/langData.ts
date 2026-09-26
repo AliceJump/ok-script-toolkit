@@ -212,9 +212,11 @@ export class LangData {
   private jsonDirty = false;
   private poDirty = false;
 
-  constructor(root: vscode.WorkspaceFolder | undefined) {
-    this.rootDir = root ? root.uri.fsPath : '';
+  constructor(root: vscode.WorkspaceFolder | string | undefined) {
+    this.rootDir = typeof root === 'string' ? root : root ? root.uri.fsPath : '';
   }
+
+  setRoot(rootDir: string): void { this.rootDir = rootDir; }
 
   private langDir(): string {
     // 取值链：IDE 设置 `langDirectory` → 项目约定 `i18n.langDirectory` → `assets/lang`

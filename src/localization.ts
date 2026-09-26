@@ -25,6 +25,12 @@ export function projectLocale(language = vscode.env.language): string {
   return map[locale];
 }
 
+/** UI language mode selected in toolkit settings; auto follows the IDE UI. */
+export function selectedProjectLocale(): string {
+  const configured = vscode.workspace.getConfiguration('okScriptToolkit').get<string>('displayLocale') || 'auto';
+  return configured === 'auto' ? projectLocale() : configured;
+}
+
 export function tr(message: string, args?: Record<string, string | number | boolean>): string {
   return args ? vscode.l10n.t(message, args) : vscode.l10n.t(message);
 }

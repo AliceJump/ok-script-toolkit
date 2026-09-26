@@ -91,9 +91,7 @@
     for (const group of groups) fieldCount += (group.fields || []).length;
     // 已定制任务按数据计数（state.currentTasks + 快照≠出厂），不依赖卡片 DOM——
     // 搜索过滤/分组折叠会改变可见卡片数，DOM 计数会跟着漂移（CodeRabbit review）
-    const listed = (state.currentTasks || [])
-      .filter((task) => state.schemas[taskKey(task)]?.showInTaskTab !== false);
-    const owned = listed
+    const owned = (state.currentTasks || [])
       .filter((task) => globalThis.TaskLauncherTaskCard.snapshotDiffersFromFactory(taskKey(task)))
       .length;
     strip.textContent = '';

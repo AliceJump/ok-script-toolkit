@@ -18,7 +18,7 @@ Language key completion · OCR fix hints · Template browsing · Task launching 
 [![Version](https://img.shields.io/badge/version-1.13.0-blue)](package.json)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![VS Code](https://img.shields.io/badge/VS%20Code-%5E1.85.0-007ACC)](package.json)
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/AliceJump/ok-script-toolkit)
+[Ask DeepWiki](https://deepwiki.com/AliceJump/ok-script-toolkit)
 
 [Install](#installation) · [Features](#features) · [Data Sources](#data-sources) · [Configuration](#configuration) · [Commands](#commands) · [FAQ](#update-not-taking-effect)
 
@@ -134,6 +134,8 @@ Details:
 - Each project and task has independent parameter overrides. Changes are auto-saved and instantly pushed to the running executor; overrides only affect the executor process's memory and are never written back to the target project's config file.
 - **No target-project config pollution**: While the executor runs, all ok-framework reads/writes to `configs/` and screenshots are redirected into the workspace sandbox `.vscode/ok-script-toolkit/`, so **the target project's config files and screenshots stay untouched** (`devices.json` is bridged by copy so the game connection is reused). Tweak parameters freely while debugging without dirtying the project.
 - The executor can be paused/resumed at any time (globally suspending polling and tasks), and you can "stop the current task" without closing the executor. Run logs are output to a dedicated output channel.
+- **Global config takeover**: the target project's global config groups (visible groups of the ok framework's GlobalConfig) are parsed by the probe as well and shown as parameter snapshots in the console's "Config" segment — edits save instantly and can be reset to defaults; changes are pushed live to the running executor via `gparams`, and the full snapshot is injected as `OK_TOOLKIT_GCONFIG` at executor launch. Still sandbox-only — the target project's config is never touched.
+- **Console view**: the task launcher and toolbox live together in the "ok-script console" with four segments (Tasks / Game / Config / Accounts); a health bar in the header reflects executor state in real time, and when idle the detail panel shows the run center (current task / execution queue / trigger polling). Task rows reveal a read-only summary on hover.
 
 ### Character Skill Management
 
@@ -239,7 +241,7 @@ Settings that take part in the precedence chain ↔ the field they map to:
 See [`docs/project-config.md`](docs/project-config.md) for the full field list and design notes,
 and [`docs/ok-script-toolkit.example.json`](docs/ok-script-toolkit.example.json) for a copy-paste example.
 For **what the plugin actually reads at runtime, what each setting does, and the precedence rules**,
-see [`docs/config-reads.md`](config-reads.md) (six read-path types, per-item purpose, the invariants, and a troubleshooting list).
+see [`docs/config-reads.md`](docs/config-reads.md) (six read-path types, per-item purpose, the invariants, and a troubleshooting list).
 
 ### Configuration Example
 

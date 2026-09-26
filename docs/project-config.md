@@ -115,8 +115,8 @@
 
 两端的 IDE 设置**都带非空默认值**：
 
-- VS Code：`package.json` 里 `okScriptToolkit.featureAliases` 的 `default` 是 `["fL","FeatureList"]`
-- JetBrains：`SettingsState.init` 里把 `featureAliases` 填成 `["fL","FeatureList"]`
+- VS Code：`package.json` 里 `okScriptToolkit.featureAliases` 的 `default` 是 `["fL","FeatureList","Labels"]`
+- JetBrains：`SettingsState.init` 里把 `featureAliases` 填成 `["fL","FeatureList","Labels"]`
 
 于是"读一下 IDE 设置"这个动作**永远拿得到值** → ④ 层永远命中 → **③ 项目声明永远不生效**。
 界面上一切正常，只是"项目里配的东西不生效" —— 等于这一层白接了。
@@ -161,10 +161,10 @@
 
 | 分组 | 字段 | config.py 是否声明 | 缺席时 |
 |---|---|---|---|
-| `labelEnum` | `path` | 3/5 有 | IDE 设置 `labelEnumPath` → 空（这次不生成枚举） |
+| `labelEnum` | `path` | 3/5 有 | IDE 设置 `labelEnumPath` → `config.py` 的 `template_tab.label_enum_relative_path` → 空（这次不生成枚举） |
 | | `name` | **0/5** | IDE 设置 `labelEnumName` → `path` 的 basename（今天的行为） |
-| | `aliases` | **0/5** | IDE 设置 `featureAliases` → `["fL","FeatureList"]` |
-| `executor.startupHooks` | `beforeConfigImport` | **无此信息** | 空（整段跳过 —— 现状） |
+| | `aliases` | **0/5** | IDE 设置 `featureAliases` → `["fL","FeatureList","Labels"]` |
+| `executor.startupHooks` | `beforeConfigImport` | **无此信息** | 静态识别 `main.py` 在导入 config 前直接调用的 `patches.*` 钩子 |
 | | `afterConfigImport` | **无此信息** | 按约定试 `src.patches.startup_patches:install_startup_patches` |
 | `templates` | `directory` | 无（插件侧约定） | IDE 设置 → `ok_templates` |
 | | `cocoAnnotations` | **6/6 有** | `config.py` 的 `template_matching.coco_feature_json` → 依次探测两个候选 |

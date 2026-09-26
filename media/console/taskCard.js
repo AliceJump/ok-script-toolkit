@@ -417,18 +417,16 @@
     popEl.classList.remove('is-visible'); // 先归零再测量，避免位置跳变闪烁
     const rect = card.getBoundingClientRect();
     const vh = window.innerHeight;
-    // 恒定左侧展开（用户要求：不回退右侧）。空间不足先收窄宽度（下限 180px），
-    // 连下限都放不下就贴主栏左缘——左界钳在 .lay-main 内 +8px（找不到主栏退回
-    // 视口 8px），弹层不允许盖住侧栏；再不够就允许压住卡片，悬停即走无碍。
+    // 弹层只放在任务卡左侧。主栏本身没有足够空间时可占用侧栏区域，
+    // 但绝不压到任务卡；极窄视口下隐藏悬浮层，参数仍可通过按钮打开。
     const POP_W = 250; // 与 console.css .gpop 的 width 保持一致
-    const main = card.closest('.lay-main');
-    const minLeft = main ? Math.max(8, main.getBoundingClientRect().left + 8) : 8;
-    const availLeft = rect.left - 8 - minLeft; // 卡片间隙 8px：弹层右缘距卡片左缘 8px
-    popEl.style.width = `${Math.round(Math.max(180, Math.min(POP_W, availLeft)))}px`;
+    const gap = 8;
+    const availLeft = Math.floor(rect.left - gap - 8);
+    if (availLeft < 120) { hideHoverPop(true); return; }
+    popEl.style.width = `${Math.min(POP_W, availLeft)}px`;
     const pw = popEl.offsetWidth;
     const ph = popEl.offsetHeight;
-    // 左侧展开：右缘距卡片左缘 8px，垂直顶对齐卡片——向下/向右弹都会盖住别的任务卡
-    const left = Math.max(minLeft, rect.left - pw - 8);
+    const left = rect.left - pw - gap;
     const top = Math.max(8, Math.min(rect.top, Math.max(8, vh - ph - 8)));
     popEl.style.left = `${Math.round(left)}px`;
     popEl.style.top = `${Math.round(top)}px`;
@@ -775,12 +773,11 @@
   function renderTasks(tasks) {
     state.currentTasks = tasks;
     hideHoverPop(true); // 重渲染后旧弹层位置失效，直接收起
-    // show_in_task_tab=False 的任务不进列表（框架原生不消费，插件按隐藏对待）
-    const listed = tasks.filter((task) => state.schemas[taskKey(task)]?.showInTaskTab !== false);
-    const visible = listed.filter(matches);
+    // 开发插件始终列出已注册任务，包括项目要求在游戏 UI 中隐藏的任务。
+    const visible = tasks.filter(matches);
     renderGroup('gTriggers', 'triggerHead', 'triggerCount', 'trigger', visible.filter((task) => taskKind(task) === 'trigger'));
     renderGroupedOnetime('gOnetime', visible.filter((task) => taskKind(task) !== 'trigger'));
-    elements.empty.hidden = listed.length > 0;
+    elements.empty.hidden = tasks.length > 0;
     updateRunningState();
   }
 

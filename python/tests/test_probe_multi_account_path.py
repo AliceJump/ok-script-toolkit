@@ -84,7 +84,7 @@ with tempfile.TemporaryDirectory() as proj:
           f"空白应退回默认值，实际 {probe.resolve_run_dir(proj)!r}")
 
 print("\n[4b] main 在 chdir 前把项目参数绝对化")
-with tempfile.TemporaryDirectory() as proj:
+with tempfile.TemporaryDirectory(dir=os.getcwd()) as proj:
     relative_proj = os.path.relpath(proj)
     captured = []
     saved_argv = sys.argv

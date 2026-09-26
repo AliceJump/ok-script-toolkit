@@ -44,7 +44,7 @@
 
 | IDE 键            | 约定字段                | 这个配置是干什么的                                                                                              | 兜底                     | 归一化                |
 | ---------------- | ------------------- | ------------------------------------------------------------------------------------------------------ | ---------------------- | ------------------ |
-| `featureAliases` | `labelEnum.aliases` | **代码里怎么引用这个枚举**。插件用它拼 `(fL\|FeatureList)\.成员名` 的正则，去识别代码里的 `fL.account_switch` 这类写法，从而提供补全、hover 与幽灵注释 | `["fL","FeatureList"]` | 列表（空数组 = 没声明）      |
+| `featureAliases` | `labelEnum.aliases` | **代码里怎么引用这个枚举**。插件用别名列表识别代码里的 `fL.account_switch` 等写法，提供补全、hover 与幽灵注释 | `["fL","FeatureList","Labels"]` | 列表（空数组 = 没声明）      |
 | `labelEnumPath`  | `labelEnum.path`    | **生成 `LabelEnum.py` 写到哪里**。「保存到 assets」时按它落盘；留空 = 这次不生成                                                | `''`（不生成）              | 相对路径 + **补 `.py`** |
 | `labelEnumName`  | `labelEnum.name`    | **生成枚举的类名**。项目的代码按名字 import（`from src.data.feature_list import FeatureList`），所以这项是**代码契约**             | 文件名 basename           | 纯文本                |
 
@@ -169,191 +169,6 @@
 | `<模板目录>/coco_annotations.json`                   | 素材面板自己的**标注工作文件**  | `templates.directory`（**不受** `cocoAnnotations` 影响） |
 
 ---
-
-
-## 4. 丙型 · ③：只有 `config.py` 这一层（窗口匹配，4 项）
-
-**脚本**：`python/probe_window_config.py`（用 AST 安全解析，**不导入项目代码**）  
-**调用方**：父仓 `src/screenshotCapture.ts` 的 `probeWindowConfig()`、子仓 `core/ScreenshotCapture.kt`，  
-以及 Python 侧 `connect_game.py` / `capture_game_window.py`（它们 import 探针的辅助函数）。  
-子仓那条 `templates.cocoAnnotations` 链是经 `core/OkProjectDataService` 调它的（探针实例方法在  
-`ScreenshotCapture` 上，`detectPythonPath` / `detectProjectDir` 才是服务自己的）。
-
-**为什么窗口匹配与模板匹配共用一个探针**：每次调用都要**拉起一个 Python 进程**（百毫秒级），  
-拆成两个脚本就要付两次启动成本，而它们读的是同一个文件、同一棵 AST。
-
-**查找 `config.py` 的策略**：先解析 `main.py` / `run.py` / `run_task.py` 里的 import 定位实际路径，  
-再回退到 `src/config.py` / `config.py`。
-
-**输出**（最后一行 JSON）：
-
-| 键                      | 这个配置是干什么的                           | 谁消费                                                                                                                                                              |
-| ---------------------- | ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `exe`                  | 游戏进程名（可多个），用于**找游戏窗口**              | 父仓 / 子仓截图；`connect_game.py`                                                                                                                                      |
-| `title`                | 窗口标题**正则**                          | 同上                                                                                                                                                               |
-| `hwnd_class`           | 窗口类名                                | 同上                                                                                                                                                               |
-| `top_hwnd_class`       | **顶层**窗口类名（游戏被嵌在别的窗口里时用）            | ⚠️ 见 §8                                                                                                                                                          |
-| `args`（`windows.args`） | **游戏启动参数**（如 `-start=xxx_launcher`） | **只有 `connect_game.py`** —— 框架 `start_device()` 拼启动命令时只认全局配置 "Launch with DX11"，**没有读 `windows.args` 的入口**；项目以往靠 `main.py` 里的猴子补丁补这一步，而插件不走 `main.py`，所以必须自己读自己传 |
-| `capture_method`       | 项目声明的截图方式                           | ⚠️ 见 §8                                                                                                                                                          |
-| `coco_feature_json`    | **运行时模板库路径**                        | 作为 §3 那条链的**中间层**                                                                                                                                                |
-
-**解析能力的边界**（`_extract_value`）：
-
-- 认 `os.path.join("assets", "coco_annotations.json")`、`pathlib` 的 `Path("a") / "b"`、`re.compile("...")`
-- **掺了变量就返回 `None`**（AST 里无从静态求值）→ 交给调用方走兜底
-- 只认 `func.value.attr == "path"` 的 `join`（否则 `str.join` 也会命中）
-
-**懒探测 + 后台补齐**（可复用的模式）：值来自 Python 子进程（百毫秒级），而消费点却是同步的 ——  
-所以**没探到之前一律按"没声明"返回**（= 引入这项之前的行为），同时后台拉起探测；  
-探到后作废快照 / 重建监听 / 广播。`config.py` 变化时要**先重探 → 再刷新数据 → 再重建监听**  
-（顺序反了会拿着旧路径白读）。
-
----
-
----
-
-
-## 5. 丁型 · ① ④：只属于我这台机器（7 项，任一端 6）
-
-**没有个人偏好 / 项目约定的概念**，读到什么用什么。**刻意不进取值链**，理由见"为什么"列。  
-下表 7 项里，`annotationKeybindings` 只在父仓、`enableTemplateGallery` 只在子仓  
-（见本节末尾的差异表），所以**任一端实际是 6 项**。
-
-| IDE 键                   | 这个配置是干什么的                                                                                                                                  | 为什么不该进链                        | 默认                                   |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------ | ------------------------------------ |
-| `displayLocale`         | **幽灵注释用哪种语言**；`auto` 跟随 IDE 显示语言                                                                                                           | 纯 UI 偏好                        | `auto`                               |
-| `enableInlayHints`      | **要不要显示幽灵注释**（语言值、效果描述的行内提示）                                                                                                               | 纯 UI 偏好                        | `true`                               |
-| `annotationKeybindings` | **标注编辑器的键位**（`drawBbox` / `copyCoords` / `deleteMode` / `undo` / `redo` / `copy` / `paste` / `deleteSelected` / `prevImage` / `nextImage`） | 纯 UI 偏好                        | 见 `package.json`                     |
-| `enableTemplateGallery` | 模板素材面板的**画廊视图开关**                                                                                                                          | 纯 UI 偏好                        | `true`                               |
-| `okScriptProjectPath`   | **ok-script 项目根在哪**（含 `src/config.py` 的那个目录）                                                                                               | **机器相关**：同一份仓库在不同人机器上路径不同      | 空（自动探测）                              |
-| `okScriptPython`        | **用哪个 Python 跑任务 / 脚本**                                                                                                                    | **机器相关**                       | 空（优先目标项目 `.venv/Scripts/python.exe`） |
-| `captureMethod`         | **游戏窗口截图方式**：`auto` / `wgc` / `bitblt` / `foreground`                                                                                      | **机器相关**：WGC 能不能用取决于这台机器的系统与显卡 | `auto`                               |
-
-**两端的差异（都是刻意的）**
-
-| 键                       | 父仓  | 子仓  | 原因                                |
-| ----------------------- | --- | --- | --------------------------------- |
-| `annotationKeybindings` | ✅ 有 | ❌ 无 | 子仓用 IntelliJ **原生 keymap**，不该自造一套 |
-| `enableTemplateGallery` | ❌ 无 | ✅ 有 | 父仓的模板画廊恒开                         |
-
----
-
-
-
----
-
-## 6. 戊型 · 独立探测链：项目根解析（2 条）
-
-### 6.1 主项目根：`resolveProjectDir()`
-
-**唯一实现**（`taskLauncher` / `screenshotCapture` 原先各自复制了一份，现已统一，避免"界面与脚本看的不是同一目录"）：
-
-```
-okScriptProjectPath（去 ~、去尾斜杠）
-  → 自动探测：工作区根目录本身就是 ok-script 项目？（有 src/config.py 或 config.py）
-    → ''（空）
-```
-
-### 6.2 角色数据项目根：`characterPanel` 自己的
-
-**故意不复用上面那条** —— 它解析的是"**角色数据**所在项目"，与主项目可以不是同一个：
-
-```
-characterProjectPath（走取值链）
-  → okScriptProjectPath
-    → 探测含 assets/data/characters.json 或 assets/data/character_skills 的工作区文件夹
-      → 第一个工作区
-```
-
-子仓对应 `core/ProjectDirResolution.kt`（"设置优先 + 校验 config.py"）。
-
----
-
-
-## 7. 读取规则（不变量清单）
-
-改任何一项配置读取前，先过一遍这 8 条。**违反任何一条的后果都是"静默"的**。
-
-1. **个人偏好排最高是刻意的** —— 项目文件 = 团队开箱默认，我改过就用我的。
-2. **必须区分"设过"与"只是默认值"** —— VS Code 用 `inspect()`，子仓用 `overriddenKeys` 记账。  
-   用 `get()` 会让 ① 层永远命中、② 层永远不生效。
-3. **归一化按字段类型选**：相对路径 → 归一化；**绝对路径 / 正则 → 绝不归一化**。  
-   判据是"这个值最终怎么用"：`path.join` / 目录段比较 / 拼 glob ⇒ 归一化；  
-   `new RegExp` / `path.resolve` / `File()` ⇒ 不归一化。
-4. **空值 = 回到上一层**，不是"钉死为空"（空数组、空串、全空白都算没设）。  
-   否则用户无法表达"回到项目约定"。
-5. **来源层由取值链本身产出，UI 不复算** —— `resolveSetting()` 返回 `{ value, layer }`，  
-   `overridden` 由 `layer === PERSONAL` 推出，**不比对值**。  
-   面板上的 `declared`（"项目文件里写了什么"）也是**把个人偏好置空、再跑一遍同一条链**得出的。
-6. **`config.py` 的值不归一化**（可能是 `os.path.join` 拼的、也可能是绝对路径）；  
-   且**首选可用时只用首选**，不带上探测候选。
-7. **懒探测：没探到之前按"没声明"返回**（= 引入这项之前的行为），探到后再作废快照 / 重建监听。
-8. **消费点全部收敛到访问器**，不在消费点手工拼路径 / 手工判类型。  
-   新增一项时，在溯源登记表里补一行（父仓 `conventionSources()`、子仓 `conventionSourceRows()`），  
-   否则那一项**无法溯源、也无法一键恢复**。
-
-**加一项接链设置的完整清单**（漏任何一处都会被守卫测试抓住）：
-
-| 端         | 要改的地方                                                                                                                                                                                                                                                        |
-| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| VS Code   | ① `package.json` 的 `contributes.configuration` ② `package.nls*.json` ×6 文案 ③ `projectConfigPure.ts` 的 `xxxResolved()`（带 `{value, layer}`）④ `projectConfig.ts` 的 `xxxSetting()`（用 `ideSetting()`）⑤ `conventionSources()` 登记表补一行 ⑥ `l10n/bundle.l10n*.json` ×6 |
-| JetBrains | ① `SettingsState` 字段 ② `KEY_*` 常量 ③ `personal(KEY_X)` 消费 ④ `OkScriptToolkitConfigurable` 的 `recordIfChanged` + UI + `reset()` ⑤ `ConventionPersonal` + `conventionSourceRows()` 登记表 ⑥ `OkScriptToolkitBundle*.properties` ×6                                 |
-
-守卫测试：父仓 `scripts/test_convention_sources.js`（对着 `package.json` 核对键名，  
-并反向检查"每个走 `ideSetting` 的键都在登记表里"）、子仓 `OverrideKeyParityTest`  
-（声明集 == 消费集 == 记账集，含键数量断言）。
-
----
-
-## 8. 已知不一致与待定事项
-
-| # | 现象                                                                                                                                      | 性质   | 建议                                                                                                                                                       |
-| - | --------------------------------------------------------------------------------------------------------------------------------------- | ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1 | 探针提取了 `windows.capture_method`，但**两端都没有消费点**                                                                                            | 死提取  | 要么把它接成 `captureMethod` 的一层，要么把提取删掉。**倾向删掉** —— 截图方式确实是机器相关的（见 §3），项目声明的那个值不该压过我这台机器的设置                                                                   |
-| 2 | `player_id` 只出现在探针的 **docstring** 里（既没产出、也没消费）                                                                                          | 陈旧注释 | 改 docstring                                                                                                                                              |
-| 3 | `top_hwnd_class` 被父仓解析进 `WindowConfig`，但 `captureGameWindow` 组装的 `windowConfigJson` **只发 3 个键**（exe / title / hwnd_class），所以这个字段**没人读** | 死字段  | 真正用到 `top_hwnd_class` 的是 `connect_game.py`，而它是**自己重新探一遍** `config.py` 的。要么把它也传下去，要么从 `WindowConfig` 里删掉                                                  |
-| 4 | 读约定文件用哪个根：**模板与角色不一致**                                                                                                                  | 待统一  | `templatesDirectory(projectDir?)` 接可选根（模板数据可能来自另一个仓库）；`characters*Setting()` 一律读当前工作区。两种解释都能自圆其说，见 [`docs/project-config.md`](project-config.md) 的「未决事项」 |
-| 5 | `featureAliases` 有两套历史机制并存（`state` 默认留空 + `featureAliasesTouched`，以及 `overriddenKeys`）                                                  | 历史包袱 | 改它时别混淆                                                                                                                                                   |
-
----
-
-
-## 9. 代码索引（两端对照）
-
-| 职责                 | VS Code                                                              | JetBrains                                                                 |
-| ------------------ | -------------------------------------------------------------------- | ------------------------------------------------------------------------- |
-| 纯对象：解析 + 取值链 + 来源层 | `src/projectConfigPure.ts`                                           | `core/ProjectConvention.kt`                                               |
-| 读盘 + 缓存 + 个人偏好归一   | `src/projectConfig.ts`（`ideSetting()` / `setIdeSetting()`）           | `core/ProjectConventionConfig.kt` + `settings/OkScriptToolkitSettings.kt` |
-| 溯源行构造（纯）           | `src/conventionSources.ts` 的 `conventionSources()`                   | `core/ConventionSources.kt` 的 `conventionSourceRows()`                    |
-| 溯源面板 UI            | 命令 `okScriptToolkit.showConventionSources`（QuickPick）                | `ui/ShowConventionSourcesAction.kt`（DialogWrapper）                        |
-| 撤销个人覆盖             | `clearOverride()`（清三级作用域里有值的）                                        | `clearOverridden(key)`（撤销记账，可逆）                                           |
-| 运行时模板库路径链          | `src/cocoFeaturePath.ts` + `cocoFeaturePathPure.ts`                  | `core/CocoFeaturePath.kt`                                                 |
-| 枚举写入前的类名校验         | `src/labelEnumGuard.ts`                                              | `core/LabelEnumGuard.kt`                                                  |
-| `config.py` AST 探针 | `python/probe_window_config.py`（两端共用）                                | 同左                                                                        |
-| 约定文件字段 → 归一化助手     | `relPathResolved` / `textResolved` / `boolResolved` / `listResolved` | `normalizeRelPath` / `textOrNull` / 类型守卫 / 过滤 `isNotBlank`                |
-
-**两端是对称的两套独立实现**：改一侧必须改另一侧，两边的归一化语义必须一致  
-（同一份 JSON，两端要给出同样的结论）。
-
----
-
-## 10. 排查：我改了配置为什么没生效
-
-按这个顺序查，**每一步都能独立证伪**：
-
-1. **这个值是不是走了取值链？** 对照 §0 的分类。乙类（`okScriptProjectPath` 等）压根不看项目文件。
-2. **看溯源面板。** 它会直接告诉你"当前生效值来自哪一层"。如果来源是「我的设置」，  
-   说明 ① 层压住了 ② 层 —— 点「恢复为项目约定」即可。
-3. **值真的被归一化了吗？** 声明里写 `assets\lang` / `./assets/lang` 时，  
-   如果某一处没走归一化，就会出现"界面看着正常、匹配不上"。
-4. **文件监听有没有触发？** 值会被拼进 glob，目录名没转义 / 没归一化 → watcher 静默失配。  
-   表现是"改了模板或语言文件，界面不刷新"。
-5. **是不是"没声明"被当成"空值"了？** 空数组 / 空串在本仓库的语义是"回到上一层"，  
-   不是"钉死为空"。想表达"这里就是没有"，得换一种方式。
-6. **`config.py` 那层探到了吗？** 探针是懒探测，第一次按"没声明"返回；  
-   如果 `config.py` 里的值是 `os.path.join(变量, ...)` 这种掺了变量的写法，**静态解析不出来** → 走兜底。
-7. **两端都改了吗？** 只改一端时，另一个 IDE 里的行为不会变。
-
 
 ## 4. 丙型 · ③：只有 `config.py` 这一层（窗口匹配，4 项）
 
@@ -516,6 +331,8 @@ characterProjectPath（走取值链）
 
 
 ## 9. 已知不一致与待定事项
+
+以下保留初次审计时的现象。第 4 项已于本轮适配修复：VS Code 和 JetBrains 现在都把 `config.py` 的 `template_tab.label_enum_relative_path` 作为枚举路径的后备来源。
 
 | # | 现象                                                                                                                                                                           | 性质   | 建议                                                                                                                                                                                                                                                                             |
 | - | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |

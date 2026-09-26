@@ -126,6 +126,12 @@ check(not_object.get("coco_feature_json") is None, "template_matching 不是对�
 absent = probe('config = {"windows": {"exe": ["a.exe"]}}\n')
 check(absent.get("coco_feature_json") is None, "整段缺席时输出 null（不抛异常）")
 
+enum_path = probe('config = {"template_tab": {"label_enum_relative_path": "src/Labels"}}\n')
+check(enum_path.get("label_enum_relative_path") == "src/Labels", "项目模板页的枚举模块路径可读取")
+
+enum_variable = probe('name = "src/Labels"\nconfig = {"template_tab": {"label_enum_relative_path": name}}\n')
+check(enum_variable.get("label_enum_relative_path") is None, "无法静态求值的枚举路径不作猜测")
+
 # ── 3. windows 提取没有回归 ─────────────────────────────────────────
 print("\nwindows 提取（回归）")
 

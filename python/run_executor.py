@@ -75,8 +75,10 @@ stdout 标记行（宿主按行扫描）:
 写入只落沙箱，项目侧文件保持原样。
 """
 import argparse
+import ast
 import functools
 import importlib
+import inspect
 import json
 import os
 import shutil
@@ -337,7 +339,40 @@ def project_patch_module_path(config_module_name: str) -> str:
     return f"{package}.{PROJECT_PATCH_MODULE_SUFFIX}" if package else PROJECT_PATCH_MODULE_SUFFIX
 
 
-def install_project_startup_patches(config_module_name: str) -> bool:
+def _invoke_startup_hook(func, config: dict | None = None) -> None:
+    """Call existing zero-argument hooks and hooks requiring the runtime config.
+
+    Inspect the signature instead of retrying after ``TypeError``: a hook may
+    raise ``TypeError`` internally after applying part of its patch.
+    """
+    if config is None:
+        func()
+        return
+    try:
+        parameters = inspect.signature(func).parameters.values()
+    except (TypeError, ValueError):
+        func()
+        return
+    required = [
+        parameter for parameter in parameters
+        if parameter.default is inspect.Parameter.empty
+        and parameter.kind in (
+            inspect.Parameter.POSITIONAL_ONLY,
+            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+            inspect.Parameter.KEYWORD_ONLY,
+        )
+    ]
+    if len(required) == 1:
+        parameter = required[0]
+        if parameter.kind == inspect.Parameter.KEYWORD_ONLY:
+            func(**{parameter.name: config})
+        else:
+            func(config)
+    else:
+        func()
+
+
+def install_project_startup_patches(config_module_name: str, config: dict | None = None) -> bool:
     """安装**目标项目自带**的启动补丁。返回是否装成功。
 
     为什么必须做：插件此前**完全没调用**这个入口，于是同一份项目代码
@@ -373,7 +408,7 @@ def install_project_startup_patches(config_module_name: str) -> bool:
         return False
 
     try:
-        installer()
+        _invoke_startup_hook(installer, config)
     except Exception as e:  # noqa: BLE001 — 同上，补丁装不上就按"没打补丁"继续
         _note(f"项目启动补丁安装失败（继续执行）：{type(e).__name__}: {e}")
         return False
@@ -429,7 +464,43 @@ def startup_hooks(project_config: dict, phase: str) -> list:
     ]
 
 
-def run_startup_hooks(hooks: list, phase_label: str) -> int:
+def discover_pre_config_hooks(project_dir: str) -> list[str]:
+    """Find patch calls that main.py makes before importing its config.
+
+    This mirrors simple top-level startup sequences such as Endfield's two
+    patch calls without importing main.py (which would execute the game).
+    Explicit hooks in the project convention remain authoritative.
+    """
+    main_path = os.path.join(project_dir, "main.py")
+    try:
+        with open(main_path, encoding="utf-8") as stream:
+            nodes = ast.parse(stream.read(), filename=main_path).body
+    except (OSError, SyntaxError):
+        return []
+
+    imported_patches = {}
+    hooks = []
+    for node in nodes:
+        if isinstance(node, ast.ImportFrom):
+            module = node.module or ""
+            if module == "config" or module.endswith(".config"):
+                break
+            if module.startswith("patches.") or ".patches." in module:
+                for alias in node.names:
+                    imported_patches[alias.asname or alias.name] = f"{module}:{alias.name}"
+        elif isinstance(node, ast.Import):
+            if any(alias.name == "config" or alias.name.endswith(".config") for alias in node.names):
+                break
+        elif isinstance(node, ast.Expr) and isinstance(node.value, ast.Call):
+            call = node.value
+            if isinstance(call.func, ast.Name) and not call.args and not call.keywords:
+                spec = imported_patches.get(call.func.id)
+                if spec:
+                    hooks.append(spec)
+    return hooks
+
+
+def run_startup_hooks(hooks: list, phase_label: str, config: dict | None = None) -> int:
     """依次 import 并调用启动钩子，返回成功数。
 
     失败**不阻断**：一个可选钩子跑不起来，不能让整个执行器起不来。
@@ -443,7 +514,7 @@ def run_startup_hooks(hooks: list, phase_label: str) -> int:
             if not callable(func):
                 _note(f"启动钩子 {spec} 不存在，跳过（{module_path} 里没有 {func_name}）")
                 continue
-            func()
+            _invoke_startup_hook(func, config)
             done += 1
         except Exception as e:  # noqa: BLE001 — 见上
             _note(f"启动钩子 {spec} 执行失败（继续执行）：{type(e).__name__}: {e}")
@@ -954,13 +1025,14 @@ def main() -> None:
         _note(f"configs 路径改道失败（自建 store 将直写项目 configs）：{e}")
 
     # 目标项目的约定文件（`ok-script-toolkit.json`，只读）。
-    # 项目 main.py 里的启动准备由它声明 —— config.py 里没有这类信息，
-    # 也没有通用约定可猜，不声明就会被整段跳过。
+    # 项目可在约定文件里声明启动准备；未声明时静态识别 main.py 里
+    # import config 之前直接调用的 patches 钩子。
     project_config = load_project_config(os.getcwd())
     # 与项目 main.py 一致：这一批必须在 import config **之前**跑。
     # 放在最前，是因为它们可能改环境（如 ok-end-field 的 pre_config_patch 设置 PATH）。
+    declared_before = startup_hooks(project_config, "beforeConfigImport")
     run_startup_hooks(
-        startup_hooks(project_config, "beforeConfigImport"),
+        declared_before or discover_pre_config_hooks(os.getcwd()),
         "import config 之前",
     )
 
@@ -975,9 +1047,18 @@ def main() -> None:
     config_module = __import__(args.config_module, fromlist=["config"])
     config = dict(config_module.config)
     config["check_mutex"] = False
+    # Use the language mode selected in the development UI. The task manager
+    # patch below keeps every registered task runnable under that mode.
+    selected_locale = os.environ.get("OK_TOOLKIT_LOCALE")
+    if selected_locale:
+        config["locale"] = selected_locale
     # 调试插件绝不改动目标项目的 configs/：把框架读写整体改道到沙箱。
     # 必须在 OK(config) 之前 —— 任务是在 OK() 内部实例化的。
     apply_config_sandbox(config)
+    # 项目补丁可能依据 UI 模式安装 Qt-only 部分（如 NTE）。先声明执行器的
+    # headless 模式，再把同一份 config 交给补丁，避免安装不会运行的 Qt UI 补丁。
+    config["gui"] = None
+    config["use_gui"] = False
     # 目标项目自带的启动补丁（src/patches/startup_patches.py）。
     # 项目自己的 main.py 会在 OK(config) 之前调用它，执行器过去**漏了这一步** ——
     # 于是同一份代码"项目自己跑没事、用插件跑就崩"（典型：win32_gdi 污染
@@ -987,13 +1068,9 @@ def main() -> None:
     # 没声明才退回按约定探测 —— 保持对老项目的兼容。
     declared_after = startup_hooks(project_config, "afterConfigImport")
     if declared_after:
-        run_startup_hooks(declared_after, "OK(config) 之前")
+        run_startup_hooks(declared_after, "OK(config) 之前", config)
     else:
-        install_project_startup_patches(args.config_module)
-    # ok-script 2.x：config['gui']={'type':'qt'} 会让 OK 创建完整 Qt App 并安装
-    # QtEventDispatcher，headless 下没有事件循环，communicate.window/overlay 信号
-    # 全部排队丢失，浮层收不到窗口更新。置 None 强制 HeadlessApp（同步分发）。
-    config["gui"] = None
+        install_project_startup_patches(args.config_module, config)
     # 浮层开关（宿主经 OK_TOOLKIT_USE_OVERLAY 传入）。注意这一项在 headless 下是
     # **惰性**的，真正生效要等设备连上后由 _apply_startup_overlay() 显式落下去。
     overlay_requested = os.environ.get("OK_TOOLKIT_USE_OVERLAY", "").strip().lower() in ("1", "true", "yes")
@@ -1006,8 +1083,10 @@ def main() -> None:
     ok = None
     try:
         from ok import OK
+        from task_visibility import install_all_registered_tasks
 
         _emit(MARKER_CONNECTING)
+        install_all_registered_tasks(config.get("locale"))
         ok = OK(config)
     except Exception as e:  # noqa: BLE001 — 初始化失败也要让宿主拿到结构化错误
         _emit(f"{MARKER_ERROR}{type(e).__name__}: {e}")

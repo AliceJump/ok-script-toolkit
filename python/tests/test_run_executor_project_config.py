@@ -94,6 +94,26 @@ check(
     f"非法项被丢掉、合法项保留（实际 {kept}）—— 声明文件是手写的，容忍笔误比严格校验有用",
 )
 
+print("\nmain.py 前置补丁发现")
+with make_tmp_tempdir("ok-executor-project-config") as tmp:
+    write(
+        os.path.join(tmp, "main.py"),
+        "from src.patches.pre_config_patch import install_pre_config_patch as setup\n"
+        "from src.patches.qfluent_mute_promo_patch import install_mute_promo_patch\n"
+        "setup()\n"
+        "install_mute_promo_patch()\n"
+        "from src.config import config\n"
+        "from src.patches.startup_patches import install_startup_patches\n"
+        "install_startup_patches()\n",
+    )
+    check(
+        mod.discover_pre_config_hooks(tmp) == [
+            "src.patches.pre_config_patch:install_pre_config_patch",
+            "src.patches.qfluent_mute_promo_patch:install_mute_promo_patch",
+        ],
+        "按 main.py 顺序发现配置导入前的补丁，不把配置后的启动补丁混入",
+    )
+
 # ── 5. run_startup_hooks：按顺序执行 ────────────────────────────────
 print("\nrun_startup_hooks")
 with make_tmp_tempdir("ok-executor-project-config") as tmp:
@@ -115,6 +135,25 @@ with make_tmp_tempdir("ok-executor-project-config") as tmp:
     check(calls == ["first", "second"], "**按声明顺序**依次执行 —— 顺序错会复刻出错误的启动序列")
 
 # ── 6. 单个钩子失败不阻断后续 ──────────────────────────────────────
+print("\n传参钩子")
+with make_tmp_tempdir("ok-executor-project-config") as tmp:
+    pkg = "hookconfigpkg"
+    write(os.path.join(tmp, pkg, "__init__.py"), "")
+    write(
+        os.path.join(tmp, pkg, "hooks.py"),
+        "CALLS = []\n\n\ndef with_config(*, config):\n    CALLS.append(config)\n",
+    )
+    runtime_config = {"gui": None}
+    sys.path.insert(0, tmp)
+    try:
+        done = mod.run_startup_hooks([f"{pkg}.hooks:with_config"], "测试", runtime_config)
+        calls = sys.modules[f"{pkg}.hooks"].CALLS
+    finally:
+        sys.path.remove(tmp)
+    check(done == 1, "需要 config 的钩子执行成功")
+    check(calls == [runtime_config], "关键字参数收到同一份运行配置")
+
+# ── 7. 单个钩子失败不阻断后续 ──────────────────────────────────────
 print("\n失败不阻断")
 with make_tmp_tempdir("ok-executor-project-config") as tmp:
     pkg = "hookfailpkg"

@@ -3,7 +3,6 @@ import {
   LangData,
   LangEntry,
   LOCALE_ORDER,
-  normalizeLocale,
   nodeType,
   nodeValue,
   pickEntry,
@@ -12,7 +11,7 @@ import { FeatureData, FeatureTemplate } from './featureData';
 import { EffectData, EffectEntry } from './effectData';
 import { DEFAULT_FEATURE_ALIASES, ideSetting, labelEnumAliases, loadProjectConfig } from './projectConfig';
 import { cropTemplateToDataUrlCached } from './pngCrop';
-import { tr } from './localization';
+import { selectedProjectLocale, tr } from './localization';
 
 /** 匹配 self.lang.<模块>.<key>（支持 Unicode 标识符，如中文 OCR 文本；负向后视避免匹配 self.langx 之类） */
 const EXPR_RE = /(?<![\w.])self\.lang\.([\p{L}\p{N}_]+)\.([\p{L}\p{N}_]+)/gu;
@@ -29,7 +28,7 @@ export function featureAliases(): string[] {
   // 所以此前只能靠内置的 fL/FeatureList 硬猜；项目把枚举导入成别的名字就完全失效。
   //
   // ⚠️ 这一层必须用 `ideSetting()`（内部走 `inspect()`）而不是 `get()`：
-  // `package.json` 里 `featureAliases` 的 `default` 就是 ['fL','FeatureList']，
+  // `package.json` 里 `featureAliases` 的 `default` 非空，
   // `get()` 在用户从没设置过时也会返回它 → 这层永远命中、项目声明永远被压住
   // （接了等于没接）。细节见 `projectConfig.ideSetting()`。
   return labelEnumAliases(loadProjectConfig(), ideSetting<string[]>('featureAliases'), DEFAULT_FEATURE_ALIASES);
@@ -263,8 +262,7 @@ export function findOcrMatchRefs(line: string): OcrMatchRef[] {
 
 /** 当前显示的 locale（auto 跟随 UI 语言） */
 export function currentLocale(): string {
-  const d = vscode.workspace.getConfiguration('okScriptToolkit').get<string>('displayLocale') || 'auto';
-  return d === 'auto' ? normalizeLocale(vscode.env.language) : d;
+  return selectedProjectLocale();
 }
 
 /** 转义表格单元格内容，避免破坏 Markdown 表格 */

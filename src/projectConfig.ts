@@ -48,7 +48,7 @@ export const DEFAULT_TEMPLATES_DIRECTORY = 'ok_templates';
  * 后者一旦非空（它确实非空），"个人偏好"层就永远命中、项目声明失效。
  * 所以读它必须走 `ideSetting()`（`inspect()`），不能用 `get()`。
  */
-export const DEFAULT_FEATURE_ALIASES = ['fL', 'FeatureList'];
+export const DEFAULT_FEATURE_ALIASES = ['fL', 'FeatureList', 'Labels'];
 
 /**
  * 枚举文件路径的兜底：**空串 = 没指定**（这次不生成枚举）。
@@ -331,8 +331,8 @@ export function effectsFileSetting(): string {
  * 传入 `scope`（工作区文件夹 URI）时，IDE 设置的读取会限定在该文件夹作用域内，
  * 防止 A 项目的值串到 B 项目。
  */
-export function labelEnumPathSetting(scope?: vscode.Uri): string {
-  return labelEnumPath(loadProjectConfig(), ideSetting<string>('labelEnumPath', scope));
+export function labelEnumPathSetting(scope?: vscode.Uri, projectDir?: string): string {
+  return labelEnumPath(loadProjectConfig(projectDir), ideSetting<string>('labelEnumPath', scope));
 }
 
 /**

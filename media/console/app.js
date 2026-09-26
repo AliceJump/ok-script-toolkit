@@ -30,7 +30,7 @@
         // probe 完成回推：multiAccount 更新，但 store 数据由独立的 accountStore 消息维护——
         // 这里必须带上 state.accountStore，否则编辑器会被「无法读取」空态顶掉
         Console.renderMultiAccount(message.multiAccount || state.multiAccount, state.accountStore);
-        renderTasks(state.currentTasks);
+        renderTasks(message.tasks || state.currentTasks);
         Console.refreshDrawer();
         Console.renderHealth();
         break;

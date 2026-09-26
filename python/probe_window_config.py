@@ -33,6 +33,7 @@ WINDOWS_SUB_KEYS = ("exe", "title", "hwnd_class", "top_hwnd_class", "capture_met
 # 实测 5/5 个 ok 系项目都声明了它，写法统一是
 # `os.path.join("assets", "coco_annotations.json")`。
 TEMPLATE_MATCHING_SUB_KEYS = ("coco_feature_json",)
+TEMPLATE_TAB_SUB_KEYS = ("label_enum_relative_path",)
 
 
 def _resolve_config_path_from_main(project_dir):
@@ -146,6 +147,13 @@ def _extract_template_matching_keys(config_path):
     return _extract_sub_dict(_find_config_dict(tree), "template_matching", TEMPLATE_MATCHING_SUB_KEYS)
 
 
+def _extract_template_tab_keys(config_path):
+    """Read the enum module path used by the project's own template tab."""
+    with open(config_path, encoding="utf-8") as f:
+        tree = ast.parse(f.read(), filename=config_path)
+    return _extract_sub_dict(_find_config_dict(tree), "template_tab", TEMPLATE_TAB_SUB_KEYS)
+
+
 def _extract_value(node):
     """递归提取 AST 节点的 Python 值。"""
     if isinstance(node, ast.Constant):
@@ -227,16 +235,19 @@ def main():
 
     window_config = _extract_config_dict_keys(config_path)
     template_matching = _extract_template_matching_keys(config_path)
+    template_tab = _extract_template_tab_keys(config_path)
 
     # 把 <ref:...> 和 <call:...> 标记替换为 None（无法静态解析的值）
     window_config = {k: _clean(v) for k, v in window_config.items()}
     coco_feature_json = _clean(template_matching.get("coco_feature_json"))
+    label_enum_relative_path = _clean(template_tab.get("label_enum_relative_path"))
 
     print(json.dumps({
         "ok": True,
         "config_path": config_path,
         **window_config,
         "coco_feature_json": coco_feature_json,
+        "label_enum_relative_path": label_enum_relative_path,
     }, ensure_ascii=False))
     sys.exit(0)
 

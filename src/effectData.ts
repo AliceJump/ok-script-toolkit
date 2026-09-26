@@ -64,9 +64,11 @@ export class EffectData {
   private mtime = 0;
   private lastScanMs = 0;
 
-  constructor(root: vscode.WorkspaceFolder | undefined) {
-    this.rootDir = root ? root.uri.fsPath : '';
+  constructor(root: vscode.WorkspaceFolder | string | undefined) {
+    this.rootDir = typeof root === 'string' ? root : root ? root.uri.fsPath : '';
   }
+
+  setRoot(rootDir: string): void { this.rootDir = rootDir; }
 
   private effectsFile(): string {
     // 取值链：IDE 设置 `effectsFile` → 项目约定 `effects.file` → `src/data/effects.py`。

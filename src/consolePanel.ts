@@ -2,11 +2,12 @@ import * as cp from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { injectWebviewLocalization, projectLocale, tr } from './localization';
+import { injectWebviewLocalization, selectedProjectLocale, tr } from './localization';
 import { i18nPoDirectorySetting, resolveProjectDir } from './projectConfig';
 import { loadToolboxState, notifyExecutorRunning, onToolboxStateChange, saveToolboxState } from './toolboxState';
 import { GameConnectService } from './toolboxConnect';
 import { applySharedAssets, errorPage, getNonce } from './webviewHtml';
+import { reconcileTaskList } from './taskReconcile';
 
 /** 单个任务的元信息 */
 interface TaskInfo {
@@ -59,7 +60,7 @@ interface TaskSchema {
   groupName?: string;
   /** 组图标名（FluentIcon/Icon 的 enum name） */
   groupIcon?: string;
-  /** 任务侧声明不进任务列表（框架原生不消费，ok-nte patch 语义） */
+  /** 项目游戏 UI 的可见性声明；工具箱保留任务以供开发调试。 */
   showInTaskTab?: boolean;
   /** 项目声明的配置分组/子任务树：组名 -> 字段或子组 key。 */
   configGroups?: Record<string, string[]>;
@@ -971,7 +972,8 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
     try {
       const p = this.dataFile('ok-script-toolkit-schema.json');
       if (fs.existsSync(p)) {
-        const raw = JSON.parse(fs.readFileSync(p, 'utf-8')) as SchemaProbeResult & { projectDir?: string; locale?: string };
+        const raw = JSON.parse(fs.readFileSync(p, 'utf-8')) as SchemaProbeResult & { projectDir?: string; locale?: string; taskMode?: string };
+        if (raw.taskMode !== 'all') return empty;
         const cachedLocale = raw.locale || Object.values(raw.schemas || {})[0]?.locale;
         if (raw.projectDir !== projectDir || cachedLocale !== locale) return empty;
         // 缓存版本化：旧格式缓存没有 enabledTasks（账号编辑器键集）——作废重探，
@@ -1001,7 +1003,7 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
       fs.mkdirSync(path.dirname(p), { recursive: true });
       fs.writeFileSync(
         p,
-        JSON.stringify({ ok: true, projectDir, locale, schemas, globalConfigGroups: globalGroups, multiAccount }, null, 2),
+        JSON.stringify({ ok: true, projectDir, locale, taskMode: 'all', schemas, globalConfigGroups: globalGroups, multiAccount }, null, 2),
         'utf-8',
       );
     } catch { /* 缓存失败不阻塞 */ }
@@ -1018,7 +1020,7 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
     const generation = ++this.refreshGeneration;
     this.knownTasks = [];
     const { projectDir, pythonPath, fromConfig } = this.getConfig();
-    const locale = projectLocale();
+    const locale = selectedProjectLocale();
     if (!projectDir) {
       void view.webview.postMessage({ type: 'tasks', tasks: [], schemas: {} });
       void view.webview.postMessage({
@@ -1058,11 +1060,7 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
       return;
     }
     if (result.configModule) this.configModule = result.configModule;
-    const tasks = (result.tasks || []).map((task) => ({
-      ...task,
-      displayName: this.schemas[this.taskKey(task)]?.displayName || task.displayName,
-      kind: task.kind || this.schemas[this.taskKey(task)]?.kind,
-    }));
+    const tasks = reconcileTaskList(result.tasks || [], this.schemas);
     this.knownTasks = tasks;
     await view.webview.postMessage({
       type: 'tasks',
@@ -1116,6 +1114,7 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
       return;
     }
     this.schemas = probe.schemas;
+    this.knownTasks = reconcileTaskList(this.knownTasks, this.schemas);
     this.globalGroups = [
       ...(probe.globalConfigGroups || []),
       ...(probe.projectGlobalGroups || []),
@@ -1129,6 +1128,7 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
     // 只回推 schema 更新，让 UI 把已展开的任务卡片渲染出参数表单
     void view.webview.postMessage({
       type: 'schemas',
+      tasks: this.knownTasks,
       schemas: this.schemas,
       globalGroups: this.globalGroups,
       globalSnapshots: this.globalSnapshots,
@@ -1228,6 +1228,7 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
       // 配置沙箱：执行器把 ok 框架的配置/截图读写全部改道到这里，绝不碰项目 configs/。
       // 放在 .vscode 下是因为它已被项目 .gitignore 忽略，且插件自身数据也在此处。
       OK_TOOLKIT_RUN_DIR: path.join(projectDir, '.vscode', 'ok-script-toolkit'),
+      OK_TOOLKIT_LOCALE: selectedProjectLocale(),
     };
     // 参数注入通过环境变量传递（避免命令行长度/转义问题）；key 是 module::Class，
     // 执行器按任务各自取自己的覆盖，因此可以整体合并后一次性传入。
