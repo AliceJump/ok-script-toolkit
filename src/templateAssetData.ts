@@ -8,7 +8,7 @@ import {
 } from './assetPack';
 import { tr } from './localization';
 import { labelEnumNameSetting, templatesDirectory } from './projectConfig';
-import { writableClassName } from './labelEnumGuard';
+import { PYTHON_KEYWORDS, writableClassName } from './labelEnumGuard';
 import { isPathInsideRoot } from './saveToAssetsPure';
 
 /* ---------------- COCO 数据类型 ---------------- */
@@ -311,7 +311,7 @@ export class TemplateAssetData {
    * page 渲染（PNG 全图解码 + 全画布 level-6 deflate 编码）在 worker 池中并行
    * 执行，主线程零阻塞；worker 池不可用或中途崩溃时回退到主线程分批渲染
    * （每个重操作之间让出事件循环）。onProgress 汇报已完成 page 数；传入
-   * cancellationToken 可在渲染中途取消（已完成的 page 保留，抛 CancellationError）。
+   * cancellationToken 可在渲染中途取消（临时 page 会清理，抛 CancellationError）。
    */
   async saveToAssets(
     targetFolder: string,
@@ -329,14 +329,6 @@ export class TemplateAssetData {
       throw new Error(tr('Enum file path must be relative and stay within the workspace root.'));
     }
     const targetImagesDir = path.join(targetFolder, 'images');
-
-    // 清空目标目录中的旧图片（重新生成前清理）
-    if (fs.existsSync(targetImagesDir)) {
-      for (const f of fs.readdirSync(targetImagesDir)) {
-        try { fs.unlinkSync(path.join(targetImagesDir, f)); } catch { /* ignore */ }
-      }
-    }
-    if (!fs.existsSync(targetImagesDir)) fs.mkdirSync(targetImagesDir, { recursive: true });
 
     // ── 1. 只处理有标注的图片（无标注的原图不放入 assets） ──
     const annotatedImages = this.cocoData.images.filter(
@@ -438,6 +430,14 @@ export class TemplateAssetData {
       }
     }
 
+    // 图片和 COCO 落在目标目录内；枚举稍后在其目标目录所在卷单独暂存。
+    fs.mkdirSync(targetFolder, { recursive: true });
+    const stagingRoot = fs.mkdtempSync(path.join(targetFolder, '.ok-toolkit-export-'));
+    const stagedImagesDir = path.join(stagingRoot, 'images');
+    let enumStagingRoot: string | undefined;
+    let preserveStaging = false;
+    try {
+    fs.mkdirSync(stagedImagesDir);
     // ── 4. 构建 page 渲染任务（id/file_name 确定性：第 i 个 page → images/{i+1}.png）──
     //    同一原图的全部 bbox 归入同一条 source；bin-packing 保证每张原图只出现在
     //    一个 page，因此整轮渲染每张原图恰好解码一次，无需跨 page 解码缓存。
@@ -452,7 +452,7 @@ export class TemplateAssetData {
       return {
         W: page.W,
         H: page.H,
-        outPath: path.join(targetImagesDir, `${pageIndex + 1}.png`),
+        outPath: path.join(stagedImagesDir, `${pageIndex + 1}.png`),
         sources: [...byImage.values()],
       };
     });
@@ -521,15 +521,73 @@ export class TemplateAssetData {
     const usedCatIds = new Set(newAnnotations.map((a) => a.category_id));
     croppedCoco.categories = croppedCoco.categories.filter((c) => usedCatIds.has(c.id));
 
-    // writeFileSync 直接覆盖旧的 coco_annotations.json；
-    // 不再清扫目录下其他 .json——目标目录（如 assets/）顶层可能放有无关 JSON
+    // COCO 与可选枚举也先写到临时目录；任何生成失败都不触碰旧产物。
     const cocoTarget = path.join(targetFolder, COCO_JSON);
-    fs.writeFileSync(cocoTarget, JSON.stringify(croppedCoco, null, 2), 'utf-8');
+    const stagedCoco = path.join(stagingRoot, COCO_JSON);
+    fs.writeFileSync(stagedCoco, JSON.stringify(croppedCoco, null, 2), 'utf-8');
 
-    // Generate label enum if requested
+    let stagedEnum: string | undefined;
+    const enumInImages = enumFile !== undefined && isPathInsideRoot(targetImagesDir, enumFile);
     if (enumFile) {
       const labels = croppedCoco.categories.map(c => c.name).sort();
-      this.generateLabelEnum(enumFile, labels, folderUri);
+      if (!enumInImages) {
+        // enumFile 可能经挂载点指向另一卷，必须在它自己的父目录暂存与备份。
+        const enumParent = path.dirname(enumFile);
+        fs.mkdirSync(enumParent, { recursive: true });
+        enumStagingRoot = fs.mkdtempSync(path.join(enumParent, '.ok-toolkit-enum-'));
+      }
+      stagedEnum = enumInImages
+        ? path.join(stagedImagesDir, path.relative(targetImagesDir, enumFile))
+        : path.join(enumStagingRoot!, 'new', path.basename(enumFile));
+      this.generateLabelEnum(stagedEnum, labels, folderUri);
+    }
+    if (cancellationToken?.isCancellationRequested) throw new vscode.CancellationError();
+
+    // 逐项保留旧产物，失败时按相反顺序恢复。提交开始后不再响应取消。
+    type ExportMove = { destination: string; staged: string; backup: string; hadOriginal: boolean; installed: boolean };
+    const moves: ExportMove[] = [
+      { destination: targetImagesDir, staged: stagedImagesDir, backup: path.join(stagingRoot, 'old-images'), hadOriginal: false, installed: false },
+      { destination: cocoTarget, staged: stagedCoco, backup: path.join(stagingRoot, 'old-coco.json'), hadOriginal: false, installed: false },
+    ];
+    if (enumFile && stagedEnum && !enumInImages) {
+      moves.push({ destination: enumFile, staged: stagedEnum, backup: path.join(enumStagingRoot!, 'old', path.basename(enumFile)), hadOriginal: false, installed: false });
+    }
+    try {
+      for (const move of moves) {
+        fs.mkdirSync(path.dirname(move.destination), { recursive: true });
+        if (fs.existsSync(move.destination)) {
+          fs.mkdirSync(path.dirname(move.backup), { recursive: true });
+          fs.renameSync(move.destination, move.backup);
+          move.hadOriginal = true;
+        }
+        fs.renameSync(move.staged, move.destination);
+        move.installed = true;
+      }
+    } catch (error) {
+      const rollbackErrors: string[] = [];
+      for (const move of [...moves].reverse()) {
+        try {
+          if (move.installed) fs.renameSync(move.destination, move.staged);
+          if (move.hadOriginal) fs.renameSync(move.backup, move.destination);
+        } catch (rollbackError) {
+          rollbackErrors.push(String(rollbackError));
+        }
+      }
+      if (rollbackErrors.length) {
+        preserveStaging = true;
+        const backupLocations = [stagingRoot, enumStagingRoot].filter(Boolean).join(', ');
+        throw new Error(`Export failed and rollback was incomplete; backups remain at ${backupLocations}: ${rollbackErrors.join('; ')}`);
+      }
+      throw error;
+    }
+    } finally {
+      // 回滚不完整时保留旧产物备份，供人工恢复。
+      if (!preserveStaging) {
+        try { fs.rmSync(stagingRoot, { recursive: true, force: true }); } catch { /* 清理失败不改变提交结果 */ }
+        if (enumStagingRoot) {
+          try { fs.rmSync(enumStagingRoot, { recursive: true, force: true }); } catch { /* 同上 */ }
+        }
+      }
     }
   }
 
@@ -602,10 +660,17 @@ export class TemplateAssetData {
       // 空枚举的类体不能什么都没有 —— 否则是 `IndentationError: expected an indented block`
       content += '    pass\n';
     }
+    const usedMemberNames = new Set<string>();
     for (const label of labels) {
       // 值：单引号包裹，转义反斜杠与单引号（其余控制字符由 pythonLiteral 兜住）
-      content += `    ${memberNameFor(label)} = ${pythonStringLiteral(label)}\n`;
-    }    fs.writeFileSync(filePath, content, 'utf-8');
+      const baseName = memberNameFor(label);
+      let memberName = baseName;
+      let suffix = 2;
+      while (usedMemberNames.has(memberName)) memberName = `${baseName}_${suffix++}`;
+      usedMemberNames.add(memberName);
+      content += `    ${memberName} = ${pythonStringLiteral(label)}\n`;
+    }
+    fs.writeFileSync(filePath, content, 'utf-8');
   }
 
   /* ---------- 导入外部图片文件 ---------- */
@@ -698,13 +763,18 @@ export function pythonStringLiteral(value: string): string {
  * 所以 `LabelEnum.cat_6d17_53f0.value == '洗手台'` 依然成立 —— 规范化不丢信息。
  */
 export function memberNameFor(label: string): string {
-  const ascii = label.replace(/[^A-Za-z0-9_]/g, '_');
-  if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(ascii)) return ascii;
+  // 逐码点替换，避免非 BMP 字符在 JS 与 JVM 上分别变成两个和一个下划线。
+  const ascii = [...label].map((ch) => /^[A-Za-z0-9_]$/.test(ch) ? ch : '_').join('');
+  if (/^[A-Za-z][A-Za-z0-9_]*$/.test(ascii)) {
+    // Enum.mro 是内建方法名，不能用作成员名。
+    return PYTHON_KEYWORDS.has(ascii) || ascii === 'mro' ? `${ascii}_` : ascii;
+  }
 
-  // 剩下两类：以数字开头，或规范化后一个有效字符都没有（全中文 / 全符号）
+  // 数字开头、前导下划线（Enum 的私有/保留名）及全非 ASCII 标签统一编码。
+  // 保留原始值，编码只影响源码中的成员名。
   const codepoints = [...label].map((c) => c.codePointAt(0)!);
   const suffix = codepoints.map((c) => c.toString(16)).join('_');
   const prefix = /^[0-9]/.test(ascii) ? 'n' : 'cat';
   const candidate = suffix ? `${prefix}_${suffix}` : prefix;
-  return /^[A-Za-z_][A-Za-z0-9_]*$/.test(candidate) ? candidate : 'cat';
+  return candidate;
 }

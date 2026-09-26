@@ -236,7 +236,7 @@ console.log('\n破坏性对照');
   //
   // 用正则匹配三元表达式的尾部而不是整行：tsc 会把模块内的常量写成
   // `exports.FALLBACK_ENUM_CLASS_NAME`，把这一串硬编码进测试会在升级 TS 时静默失配。
-  const rawName = source.replace(/\? raw : [^;]*FALLBACK_ENUM_CLASS_NAME;/, '? raw : raw;');
+  const rawName = source.replace(/\?\s*raw\s*:\s*[^;]*FALLBACK_ENUM_CLASS_NAME;/, '? raw : raw;');
   check(rawName !== source, '对照五源码确实被改动了（替换命中）—— 否则对照是假的');
   const rawExports = evalSandbox(rawName);
   check(

@@ -29,8 +29,16 @@
 /** 类名非法时退回的默认名（与子仓同值）。 */
 export const FALLBACK_ENUM_CLASS_NAME = 'LabelEnum';
 
+/** Python 3 的硬关键字；match/case/type 是软关键字，仍可作类名或成员名。 */
+export const PYTHON_KEYWORDS = new Set([
+  'False', 'None', 'True', 'and', 'as', 'assert', 'async', 'await', 'break',
+  'class', 'continue', 'def', 'del', 'elif', 'else', 'except', 'finally',
+  'for', 'from', 'global', 'if', 'import', 'in', 'is', 'lambda', 'nonlocal',
+  'not', 'or', 'pass', 'raise', 'return', 'try', 'while', 'with', 'yield',
+]);
+
 /**
- * **真正会写进源码的类名**：非法标识符退回 [FALLBACK_ENUM_CLASS_NAME]。
+ * **真正会写进源码的类名**：非法标识符或 Python 关键字退回 [FALLBACK_ENUM_CLASS_NAME]。
  *
  * 与 `TemplateAssetData.generateLabelEnum` **共用**这一个函数。各写一遍的后果是
  * 校验拿"用户填的名字"去比、而文件里写的是"兜底名字"，于是警告内容与实际不符 ——
@@ -38,7 +46,9 @@ export const FALLBACK_ENUM_CLASS_NAME = 'LabelEnum';
  * 而实际写进去的还是 `LabelEnum`，什么都没变。**一句不成立的警告比没有警告更糟**。
  */
 export function writableClassName(raw: string): string {
-  return /^[A-Za-z_][A-Za-z0-9_]*$/.test(raw) ? raw : FALLBACK_ENUM_CLASS_NAME;
+  return /^[A-Za-z_][A-Za-z0-9_]*$/.test(raw) && !PYTHON_KEYWORDS.has(raw)
+    ? raw
+    : FALLBACK_ENUM_CLASS_NAME;
 }
 
 /** 覆盖已有枚举文件时的"改名影响面"。 */
