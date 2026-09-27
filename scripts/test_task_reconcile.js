@@ -7,7 +7,8 @@ const ast = [
   { module: 'ok', className: 'DiagnosisTask', displayName: 'Diagnosis', kind: 'onetime' },
   { module: 'src.tasks', className: 'DailyTask', displayName: 'Daily', kind: 'trigger' },
 ];
-assert.strictEqual(reconcileTaskList(ast, {}), ast, 'AST remains the first paint before probing');
+assert.strictEqual(reconcileCachedTaskList(ast, {}), ast, 'AST remains the first paint before probing');
+assert.deepStrictEqual(reconcileTaskList(ast, {}), [], 'a successful empty probe removes cached tasks');
 
 const cached = reconcileCachedTaskList(ast, {
   'ok::DiagnosisTask': { displayName: 'Cached diagnosis' },

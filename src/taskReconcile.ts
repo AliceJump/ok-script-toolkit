@@ -27,12 +27,11 @@ export function reconcileCachedTaskList(
   });
 }
 
-/** Keep the AST list for the first paint, then replace it with runtime tasks. */
+/** A successful runtime probe owns the final task set, including an empty one. */
 export function reconcileTaskList(
   astTasks: ListedTask[],
   schemas: Record<string, ListedSchema>,
 ): ListedTask[] {
-  if (Object.keys(schemas).length === 0) return astTasks;
   const astByKey = new Map(astTasks.map((task) => [`${task.module}::${task.className}`, task]));
   const result: ListedTask[] = [];
   for (const [key, schema] of Object.entries(schemas)) {
