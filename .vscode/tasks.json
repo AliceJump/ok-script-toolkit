@@ -65,6 +65,24 @@
       "presentation": { "reveal": "always", "panel": "dedicated" }
     },
     {
+      // 「附加到沙箱 IDE」（launch.json）的 preLaunchTask，把「起沙箱 → 等就绪 → 附加」
+      // 折成一次 F5：端口未监听时在新窗口 detached 拉起 runIde --debug-jvm 并轮询，
+      // 端口 LISTENING 即结束（preLaunchTask 在任务结束才放行附加，放行时必然就绪）；
+      // 沙箱已在运行则立即通过，重复 F5 不会拉起第二个沙箱。
+      // 脚本实现见 scripts/debug-ensure-sandbox.ps1。
+      "label": "插件·确保调试沙箱就绪（5005，未起则自动拉起）",
+      "type": "process",
+      "command": "powershell.exe",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy", "Bypass",
+        "-File", "${workspaceFolder}/scripts/debug-ensure-sandbox.ps1"
+      ],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": [],
+      "presentation": { "reveal": "always", "panel": "dedicated" }
+    },
+    {
       // 零扩展的调试入口：用 JDK 自带的 jdb 附加到上面那个任务开出的 5005。
       // VS Code 内置调试类型里没有 JDWP，`"type": "java"` 需要装 vscjava.vscode-java-debug ——
       // 这条任务不需要装任何扩展。

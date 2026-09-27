@@ -32,20 +32,27 @@
     // `"type": "java"` 来自扩展 vscjava.vscode-java-debug，没装就会报
     // 「无法识别此调试类型」。
     //
+    // 附加配置**不会启动任何东西**（attach 是纯附加）：沙箱没起、或
+    // `runIde --debug-jvm` 还在编译没到监听那一步就按 F5，只会得到
+    // 「Failed to attach to localhost:5005 (attach timeout 30000)」。
+    // 所以下面这段配了 preLaunchTask「插件·确保调试沙箱就绪」：
+    // F5 一键 = 未起则新窗口拉起 runIde --debug-jvm → 轮询等 5005 LISTENING → 附加。
+    // 附加成功后 IDE 仍挂起（suspend=y），**再按一次继续（F5 / Continue）**它才启动
+    // —— 与下面 jdb 流程里「先输 cont」是同一回事。
+    //
     // 零扩展的做法改用**任务**（tasks.json 不需要任何扩展）：
     //   1. 先跑「插件·调试沙箱 IDE（子仓库 JetBrains 插件，5005 等待附加）」
     //      —— 它会以 suspend=y 起沙箱 IDE，并打印 Listening for transport dt_socket
     //   2. 再跑「插件·附加调试器 jdb（子仓库 JetBrains 插件，5005，无需扩展）」
     //      —— 用 JDK 自带的 jdb 附加（附加后**先输 `cont`**，沙箱 IDE 才会继续启动）
     //
-    // 若装了 vscjava.vscode-java-debug，把下面这段取消注释就能用回图形化调试器：
-    //
     {
       "name": "附加到沙箱 IDE（子仓库 JetBrains 插件，5005）",
       "type": "java",
       "request": "attach",
       "hostName": "localhost",
-      "port": 5005
+      "port": 5005,
+      "preLaunchTask": "插件·确保调试沙箱就绪（5005，未起则自动拉起）"
     }
   ]
 }

@@ -204,19 +204,25 @@ VS Code 的 **Tasks: Run Task** 里同样有这几条（与 CI 的 `jetbrains` j
 |---|---|
 | `插件·运行沙箱 IDE（子仓库 JetBrains 插件）` | `./gradlew runIde` |
 | `插件·调试沙箱 IDE（子仓库 JetBrains 插件，5005 等待附加）` | `./gradlew runIde --debug-jvm` |
+| `插件·确保调试沙箱就绪（5005，未起则自动拉起）` | `scripts/debug-ensure-sandbox.ps1`（launch.json 附加配置的 preLaunchTask） |
 | `插件·附加调试器 jdb（子仓库 JetBrains 插件，5005，无需扩展）` | `scripts/debug-attach-jdb.ps1` |
 | `插件·编译（子仓库 JetBrains 插件）` | `./gradlew classes`（不打包、不跑测试，最快） |
 | `插件·测试（子仓库 JetBrains 插件）` | `./gradlew test` |
 | `插件·编译并打包（子仓库 JetBrains 插件）` | `./gradlew buildPlugin` |
 
-**断点调试走「零扩展」那条路**：先跑「调试沙箱 IDE」并等到终端打印
-`Listening for transport dt_socket`，再跑「附加调试器 jdb」——用 JDK 自带的 `jdb` 附加
-（附加后**先输 `cont`**，沙箱才会继续启动）。
+**断点调试有两条路**：
 
-> 为什么不用 `launch.json` 的附加配置：**VS Code 内置调试类型里没有 JDWP**，
-> `"type": "java"` 来自扩展 `vscjava.vscode-java-debug`，没装会报「无法识别此调试类型」。
-> 因此 `.vscode/launch.json` 里那段 java 附加配置是**注释掉的**；装了该扩展再取消注释，
-> 就能换回图形化调试器。
+1. **图形化（一键 F5，需扩展 `vscjava.vscode-java-debug`）**：直接用 launch.json 里
+   「附加到沙箱 IDE（子仓库 JetBrains 插件，5005）」。它挂了 preLaunchTask
+   「确保调试沙箱就绪」—— 沙箱没起会自动在新窗口拉起 `runIde --debug-jvm` 并等到
+   5005 监听，然后附加；附加后 IDE 仍是挂起态，**再按一次继续（F5 / Continue）**。
+2. **零扩展 jdb**：先跑「调试沙箱 IDE」并等到终端打印
+   `Listening for transport dt_socket`，再跑「附加调试器 jdb」——用 JDK 自带的 `jdb` 附加
+   （附加后**先输 `cont`**，沙箱才会继续启动）。
+
+> 为什么 `type: "java"` 需要扩展：**VS Code 内置调试类型里没有 JDWP**，
+> `"type": "java"` 来自扩展 `vscjava.vscode-java-debug`，没装会报「无法识别此调试类型」
+> —— 此时走零扩展 jdb 那条路。
 
 > 沙箱数据在 `jetbrains/.intellijPlatform/sandbox/`（已 gitignore）。
 > `runIde` 首次会下载目标 IDE（PyCharm 2025.1），之后走本地缓存。

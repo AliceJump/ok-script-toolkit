@@ -205,19 +205,26 @@ VS Code's **Tasks: Run Task** offers the same set (aligned with CI's `jetbrains`
 |---|---|
 | `插件·运行沙箱 IDE（子仓库 JetBrains 插件）` | `./gradlew runIde` |
 | `插件·调试沙箱 IDE（子仓库 JetBrains 插件，5005 等待附加）` | `./gradlew runIde --debug-jvm` |
+| `插件·确保调试沙箱就绪（5005，未起则自动拉起）` | `scripts/debug-ensure-sandbox.ps1` (the `preLaunchTask` of the launch.json attach config) |
 | `插件·附加调试器 jdb（子仓库 JetBrains 插件，5005，无需扩展）` | `scripts/debug-attach-jdb.ps1` |
 | `插件·编译（子仓库 JetBrains 插件）` | `./gradlew classes` (fastest — no packaging, no tests) |
 | `插件·测试（子仓库 JetBrains 插件）` | `./gradlew test` |
 | `插件·编译并打包（子仓库 JetBrains 插件）` | `./gradlew buildPlugin` |
 
-**Breakpoint debugging uses the "zero-extension" path**: run the debug sandbox IDE task and wait for
-`Listening for transport dt_socket`, then run the jdb task — it attaches with the `jdb` bundled with
-the JDK (type `cont` after attaching so the sandbox continues booting).
+**Breakpoint debugging has two paths**:
 
-> Why no `launch.json` attach config: **VS Code has no built-in JDWP debug type**; `"type": "java"`
+1. **Graphical (one-key F5, requires the `vscjava.vscode-java-debug` extension)**: use the
+   `附加到沙箱 IDE（子仓库 JetBrains 插件，5005）` config in launch.json. It chains a `preLaunchTask`
+   (ensure sandbox ready): if the sandbox is not up, it spawns `runIde --debug-jvm` in a new window,
+   polls until port 5005 listens, then attaches. After attaching the IDE is still suspended —
+   **press Continue (F5) once** to let it finish booting.
+2. **Zero-extension jdb**: run the debug sandbox IDE task and wait for
+   `Listening for transport dt_socket`, then run the jdb task — it attaches with the `jdb` bundled with
+   the JDK (type `cont` after attaching so the sandbox continues booting).
+
+> Why `type: "java"` needs an extension: **VS Code has no built-in JDWP debug type**; `"type": "java"`
 > comes from the `vscjava.vscode-java-debug` extension and reports "unrecognized debug type" when it
-> is not installed. That is why the java attach block in `.vscode/launch.json` is commented out —
-> uncomment it once that extension is installed to get the graphical debugger back.
+> is not installed — use the zero-extension jdb path in that case.
 
 > Sandbox data is in `jetbrains/.intellijPlatform/sandbox/` (gitignored).
 > `runIde` downloads the target IDE (PyCharm 2025.1) on first run, then uses local cache.
