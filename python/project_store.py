@@ -15,7 +15,7 @@
         from src.core.global_config_store import ..., get_all_visible_configs
              └──────────────────────────────────────── 这就是 store 模块
 
-两级来源，按可靠性排序；都空才用历史默认名兜底（兼容老项目）：
+两级项目来源，按可靠性排序；最后尝试历史默认名（兼容老项目）：
 
 1. :func:`declared_store_modules` —— 按上面那条链路从项目 config 的 ``custom_tabs``
    静态解析（AST，**不 import**：探针要在 ``OK()`` 之前跑、执行器是 headless，
@@ -36,7 +36,7 @@ STORE_ENUM_ENTRY = "get_all_visible_configs"
 #: store 的取用入口（模块级）—— 另一条凭据
 STORE_GETTER = "get_global_config"
 
-#: 历史默认名。只在项目里什么都没声明、也没导入时兜底，不再作为唯一来源。
+#: 历史默认名。作为最后一个候选兜底，不再作为唯一来源。
 LEGACY_STORE_MODULE = "src.core.global_config_store"
 
 
@@ -174,6 +174,6 @@ def store_modules(config, project_dir):
     for name in imported_store_modules(project_dir):
         if name not in names:
             names.append(name)
-    if not names:
+    if LEGACY_STORE_MODULE not in names:
         names.append(LEGACY_STORE_MODULE)
     return names

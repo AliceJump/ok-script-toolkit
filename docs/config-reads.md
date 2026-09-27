@@ -400,7 +400,7 @@ characterProjectPath（走取值链）
 **自建 store 的模块名不写死**：由 `python/project_store.py` 从项目声明推出 ——
 `custom_tabs` → 页文件 → 该页 `import` 的、提供 `get_all_visible_configs` 的模块。
 判据是**接口**而不是模块名，所以项目把 store 挪包改名都不用改插件。
-推导失败才退回历史默认名 `src.core.global_config_store`（老项目兼容）。
+项目声明与已导入模块优先，历史默认名 `src.core.global_config_store` 始终作为最后一个候选（老项目兼容）；同一个枚举函数若被多个模块重新导出，只采集一次。
 
 > 曾经写死在探针与执行器两处，项目一改路径那批全局配置就整批静默消失。
 > 回归测试：`python python/tests/test_project_store.py`。

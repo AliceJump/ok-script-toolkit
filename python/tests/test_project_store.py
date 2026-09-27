@@ -13,11 +13,15 @@ config 的 custom_tabs 链路推：
 """
 import os
 import sys
+from types import ModuleType, SimpleNamespace
+from unittest.mock import patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.stdout.reconfigure(encoding="utf-8")
 
+import project_store  # noqa: E402
 from _test_tmp import make_tmp_tempdir  # noqa: E402
+from probe_task_schemas import collect_project_store_groups  # noqa: E402
 from project_store import (  # noqa: E402
     LEGACY_STORE_MODULE,
     STORE_ENUM_ENTRY,
@@ -129,6 +133,18 @@ with make_tmp_tempdir("ok-project-store") as root:
     config = {"custom_tabs": [["src.gui.GlobalConfigTab", "GlobalConfigTab"]]}
     names = store_modules(config, root)
     check(names[0] == "src.core.global_config_store", "首选是项目声明出来的模块")
+    check(names.count(LEGACY_STORE_MODULE) == 1, "声明即历史模块时不重复追加")
+
+with make_tmp_tempdir("ok-project-store") as root:
+    write(
+        os.path.join(root, "src", "gui", "GlobalConfigTab.py"),
+        "from src.core.moved_store import get_all_visible_configs\n",
+    )
+    config = {"custom_tabs": [["src.gui.GlobalConfigTab", "GlobalConfigTab"]]}
+    check(
+        store_modules(config, root) == ["src.core.moved_store", LEGACY_STORE_MODULE],
+        "声明模块不可用时仍可尝试历史 store",
+    )
 
 with make_tmp_tempdir("ok-project-store") as root:
     names = store_modules({}, root)
@@ -140,6 +156,37 @@ with make_tmp_tempdir("ok-project-store") as root:
         LEGACY_STORE_MODULE not in declared_store_modules({}, root),
         "但默认名只是兜底，不再由声明推导产出",
     )
+
+print("\n重新导出的枚举入口只采集一次")
+option = SimpleNamespace(default_config={}, config_type={}, config_description={}, description="")
+
+
+def shared_enumerator():
+    return [("Shared Config", {}, option)]
+
+
+def distinct_enumerator():
+    return [("Distinct Config", {}, option)]
+
+
+original = ModuleType("test_project_store_original")
+original.get_all_visible_configs = shared_enumerator
+reexport = ModuleType("test_project_store_reexport")
+reexport.get_all_visible_configs = shared_enumerator
+distinct = ModuleType("test_project_store_distinct")
+distinct.get_all_visible_configs = distinct_enumerator
+module_names = [original.__name__, reexport.__name__, distinct.__name__]
+with (
+    patch.dict(sys.modules, {module.__name__: module for module in (original, reexport, distinct)}),
+    patch.object(project_store, "store_modules", return_value=module_names),
+):
+    broken = []
+    groups = collect_project_store_groups({}, "unused", {}, broken)
+check(
+    [group["name"] for group in groups] == ["Shared Config", "Distinct Config"],
+    "重新导出不重复采集，不同 store 仍保留",
+)
+check(not broken, "枚举入口去重不引入探针错误")
 
 print("\n接口常量")
 check(STORE_ENUM_ENTRY == "get_all_visible_configs", "判定凭据是 store 的枚举入口")

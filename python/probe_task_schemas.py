@@ -493,6 +493,7 @@ def collect_project_store_groups(config, project_dir, catalog, broken, gui_names
     项目把 store 挪包改名都照常工作。无该约定的项目静默跳过，零影响。
     """
     groups = []
+    seen_enumerators = set()
     for module_name in project_store.store_modules(config, project_dir):
         try:
             module = importlib.import_module(module_name)
@@ -501,6 +502,10 @@ def collect_project_store_groups(config, project_dir, catalog, broken, gui_names
         get_all = getattr(module, "get_all_visible_configs", None)
         if not callable(get_all):
             continue
+        # 项目模块可能重新导出同一个 store 的入口；按函数身份避免重复分组。
+        if id(get_all) in seen_enumerators:
+            continue
+        seen_enumerators.add(id(get_all))
         try:
             for gname, gconfig, goption in get_all():
                 gdefault = dict(getattr(goption, "default_config", {}) or {})
