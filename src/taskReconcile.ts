@@ -11,6 +11,22 @@ export interface ListedSchema {
   kind?: 'onetime' | 'trigger';
 }
 
+/** Cache is only a hint for the first paint: the fresh AST list owns membership. */
+export function reconcileCachedTaskList(
+  astTasks: ListedTask[],
+  cachedSchemas: Record<string, ListedSchema>,
+): ListedTask[] {
+  if (Object.keys(cachedSchemas).length === 0) return astTasks;
+  return astTasks.map((task) => {
+    const schema = cachedSchemas[`${task.module}::${task.className}`];
+    return schema ? {
+      ...task,
+      displayName: schema.displayName || task.displayName,
+      kind: schema.kind || task.kind || 'onetime',
+    } : task;
+  });
+}
+
 /** Keep the AST list for the first paint, then replace it with runtime tasks. */
 export function reconcileTaskList(
   astTasks: ListedTask[],

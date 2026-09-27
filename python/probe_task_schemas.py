@@ -19,6 +19,7 @@ import tempfile
 from enum import Enum
 
 import project_store
+from project_runtime import detect_config_folder, load_account_store_module, resolve_run_dir
 
 sys.stdout.reconfigure(encoding="utf-8")
 sys.stderr.reconfigure(encoding="utf-8")
@@ -394,31 +395,6 @@ def find_group_selector(config_type, declared_groups):
     return None, {}
 
 
-def detect_config_folder(project_dir):
-    """在导入项目之前用 AST 读取 config_folder，默认 configs。"""
-    for candidate in (
-        os.path.join(project_dir, "src", "config.py"),
-        os.path.join(project_dir, "config.py"),
-    ):
-        try:
-            with open(candidate, encoding="utf-8") as f:
-                tree = ast.parse(f.read(), filename=candidate)
-        except (OSError, SyntaxError):
-            continue
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.Dict):
-                continue
-            for key, value in zip(node.keys, node.values):
-                if (
-                    isinstance(key, ast.Constant)
-                    and key.value == "config_folder"
-                    and isinstance(value, ast.Constant)
-                    and isinstance(value.value, str)
-                ):
-                    return value.value
-    return "configs"
-
-
 def icon_name(icon):
     """把框架/qfluentwidgets 的图标对象序列化为名称字符串（拿不到返回空串）。"""
     if icon is None:
@@ -560,24 +536,7 @@ def collect_project_store_groups(config, project_dir, catalog, broken, gui_names
 # 其他全局组没有账号覆盖的运行时消费方，列出来只会误导。
 KNOWN_MULTI_ACCOUNT_GLOBAL_GROUPS = {"Game Hotkey Config", "Zip Line Config"}
 
-# 沙箱根目录的**历史默认值**（VS Code 宿主）。JetBrains 宿主经 OK_TOOLKIT_RUN_DIR
-# 传自己的（.idea/ok-script-toolkit）—— 两端沙箱目录不同，不能写死一个。
-LEGACY_RUN_DIR_PARTS = (".vscode", "ok-script-toolkit")
-
-
-def resolve_run_dir(project_dir):
-    """返回宿主的沙箱根目录（绝对路径）。
-
-    与 `run_executor.py` / `account_store.py` 同一约定：宿主经环境变量
-    `OK_TOOLKIT_RUN_DIR` 传入。**不设时退回 VS Code 的历史默认值** ——
-    VS Code 侧当前不给探针设这个变量，退回默认才能保持既有输出逐字不变。
-    """
-    run_dir = os.environ.get("OK_TOOLKIT_RUN_DIR", "").strip()
-    if run_dir:
-        return os.path.abspath(run_dir)
-    return os.path.join(project_dir, *LEGACY_RUN_DIR_PARTS)
-
-
+# 沙箱根目录由 project_runtime.resolve_run_dir 决定；两个宿主都显式传自己的路径。
 def collect_multi_account(project_dir, tasks, broken, global_groups):
     """探测多账户存储，返回只读概要与「打开数据位置」的路径。
 
@@ -595,14 +554,11 @@ def collect_multi_account(project_dir, tasks, broken, global_groups):
     )
     project_path = os.path.join(project_dir, config_folder, "account_scoped_overrides.json")
     # store 模块可 import 性：区分「项目不支持账号编辑」与「读取失败（环境问题）」
-    has_store_module = False
-    for name in ("src.tasks.account.account_scope_store", "src.tasks.account_scope_store"):
-        try:
-            importlib.import_module(name)
-            has_store_module = True
-            break
-        except Exception:  # noqa: BLE001 — 逐候选尝试
-            continue
+    try:
+        load_account_store_module(project_dir)
+        has_store_module = True
+    except RuntimeError:
+        has_store_module = False
     has_data_file = os.path.isfile(sandbox_path) or os.path.isfile(project_path)
     info = {
         "available": has_data_file,

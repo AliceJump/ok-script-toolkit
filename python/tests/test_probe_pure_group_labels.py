@@ -102,14 +102,8 @@ check(pure == set(), f"False/空串/0 都算有值，实际={sorted(pure)}")
 print("\n[6] 无数据文件时的 store 能力探测")
 
 
-def fake_import(name):
-    if name == "src.tasks.account.account_scope_store":
-        return object()
-    raise ImportError(name)
-
-
 with tempfile.TemporaryDirectory() as project_dir:
-    with patch("probe_task_schemas.importlib.import_module", side_effect=fake_import):
+    with patch("probe_task_schemas.load_account_store_module", return_value=object()):
         multi_account = collect_multi_account(project_dir, [], [], [])
     check(multi_account["available"] is False, "无数据文件时 available=false")
     check(multi_account["hasStoreModule"] is True, "无数据文件仍报告 hasStoreModule=true")

@@ -95,6 +95,7 @@ sys.stdout.reconfigure(encoding="utf-8")
 sys.stderr.reconfigure(encoding="utf-8")
 
 import project_store  # noqa: E402 — 必须在 sys.path 调整之后
+from project_runtime import RUN_DIR_ENV  # noqa: E402
 
 MARKER_CONNECTING = "OK_TOOLKIT_EXECUTOR_CONNECTING"
 MARKER_READY = "OK_TOOLKIT_EXECUTOR_READY"
@@ -185,7 +186,7 @@ def apply_config_sandbox(config: dict) -> str:
 
     返回沙箱根目录（未启用时返回空串）。
     """
-    run_dir = os.environ.get("OK_TOOLKIT_RUN_DIR", "").strip()
+    run_dir = os.environ.get(RUN_DIR_ENV, "").strip()
     if not run_dir:
         return ""
     run_dir = os.path.abspath(run_dir)
@@ -262,7 +263,7 @@ def install_config_path_patch() -> None:
     必须在 import 项目 config 之前安装（store 模块在导入期就用该函数固定路径）。
     ok.util.config 在模块导入时复制了函数引用，需要同步替换。
     """
-    run_dir = os.environ.get("OK_TOOLKIT_RUN_DIR", "").strip()
+    run_dir = os.environ.get(RUN_DIR_ENV, "").strip()
     if not run_dir:
         return
     sandbox_configs = os.path.join(os.path.abspath(run_dir), "configs")
