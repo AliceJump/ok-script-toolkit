@@ -11,6 +11,7 @@ import { takePendingDrag } from './tempDrag';
 import { currentWorkspaceFolderUri, ideSetting, labelEnumClassName, labelEnumPathInputError, labelEnumPathSetting, normalizeLabelEnumPathInput, setIdeSetting, templatesDirectory } from './projectConfig';
 import { labelEnumRenameImpact, labelEnumRenameMessage, referencingFiles, writableClassName } from './labelEnumGuard';
 import { derivedEnumPath, isPathInsideRoot, needsEnumPathPrompt, SaveTarget, saveToAssetsItems } from './saveToAssetsPure';
+import { isSameSize, scaleBoxes, SwapBox } from './annotationSwapPure';
 import { applySharedAssets, getNonce } from './webviewHtml';
 
 /* ---------------- 控制器 ---------------- */
@@ -99,6 +100,9 @@ class AssetGalleryController {
         width: entry?.width ?? 0,
         height: entry?.height ?? 0,
         categories: cats,
+        // 交换目标选择器要显示"这张图上有几个框"，而分类名是去重后的
+        // （同一张图上两个同名按钮共用一个分类）⇒ 数量必须单独给。
+        annotations: this.data.getAnnotationsForImage(imgPath).length,
       };
     });
 
@@ -135,6 +139,7 @@ class AssetGalleryController {
     type?: string;
     name?: string;
     imagePath?: string;
+    targetPath?: string;
     command?: string;
     base64Png?: string;
     tempId?: string;
@@ -166,6 +171,12 @@ class AssetGalleryController {
       case 'deleteImage': {
         if (msg.imagePath) {
           await this.handleDeleteImage(msg.imagePath);
+        }
+        break;
+      }
+      case 'swapAnnotations': {
+        if (msg.imagePath && msg.targetPath) {
+          await this.handleSwapAnnotations(msg.imagePath, msg.targetPath);
         }
         break;
       }
@@ -450,6 +461,96 @@ class AssetGalleryController {
     } else {
       void vscode.window.showErrorMessage(tr('Failed to delete: {name}', { name }));
     }
+  }
+
+  /* ---------- 交换两张图的标注 ---------- */
+
+  /**
+   * 把两张图的标注集合**整套互换**（素材面板卡片上的 ⇄ 入口）。
+   *
+   * 尺寸不同时按比例映射（判据与数值都在 `annotationSwapPure`），并且**在确认框里
+   * 把这件事说出来**：缩放会改变框的真实像素尺寸，而模板裁剪是按像素取的，
+   * 用户有权在写盘之前知道"这次不只是搬家"。
+   *
+   * 落盘走 `swapAnnotationsForImages` + 一次 `save()`。这个操作在 VS Code 侧
+   * **不可撤销**（`save()` 直接写 JSON、不经过编辑器，Ctrl+Z 管不到），
+   * 所以必须整体成功或整体不动 —— 半交换的 coco 比不交换更难收拾。
+   */
+  private async handleSwapAnnotations(sourcePath: string, targetPath: string): Promise<void> {
+    if (!sourcePath || !targetPath || sourcePath === targetPath) return;
+
+    const sourceSize = this.data.resolveImageSize(sourcePath);
+    const targetSize = this.data.resolveImageSize(targetPath);
+    if (!sourceSize || !targetSize) {
+      void vscode.window.showErrorMessage(tr('Cannot read image size, so annotations cannot be swapped.'));
+      return;
+    }
+
+    const sourceBoxes = this.boxesOf(sourcePath);
+    const targetBoxes = this.boxesOf(targetPath);
+    // 两边都空 ⇒ 交换是个空操作。这里直接说清楚，而不是弹一个 "0 ⇄ 0" 的确认框。
+    if (sourceBoxes.length === 0 && targetBoxes.length === 0) {
+      void vscode.window.showInformationMessage(tr('Neither image has annotations, nothing to swap.'));
+      return;
+    }
+
+    const first = path.basename(sourcePath);
+    const second = path.basename(targetPath);
+    const scaled = !isSameSize(sourceSize, targetSize);
+    const detail = [
+      scaled
+        ? tr('Sizes differ ({from} → {to}); boxes are scaled proportionally.', {
+            from: `${sourceSize.width}×${sourceSize.height}`,
+            to: `${targetSize.width}×${targetSize.height}`,
+          })
+        : '',
+      tr('{first}: {firstCount} boxes, {second}: {secondCount} boxes', {
+        first,
+        second,
+        firstCount: String(sourceBoxes.length),
+        secondCount: String(targetBoxes.length),
+      }),
+    ].filter((line) => line.length > 0).join('\n');
+
+    const swap = tr('Swap');
+    const choice = await vscode.window.showWarningMessage(
+      tr("Swap annotations between '{first}' and '{second}'?", { first, second }),
+      { modal: true, detail },
+      swap,
+    );
+    if (choice !== swap) return;
+
+    const ok = this.data.swapAnnotationsForImages(
+      sourcePath,
+      targetPath,
+      // 参数顺序是"写到哪张图"：B 的框（按 A 的尺寸映射后）写进 A，反之亦然
+      scaleBoxes(targetBoxes, targetSize, sourceSize),
+      scaleBoxes(sourceBoxes, sourceSize, targetSize),
+    );
+    if (!ok) {
+      void vscode.window.showErrorMessage(tr('Failed to swap annotations.'));
+      return;
+    }
+    this.data.save();
+
+    await this.update();
+    // 标注编辑器是常驻面板且逐操作自动落盘：正显示这两张图之一时必须同步，
+    // 否则它手里的旧框会在下一次编辑时把交换结果整份写回去。
+    AnnotationPanel.current?.controller.reloadIfShowing([sourcePath, targetPath]);
+    void vscode.window.showInformationMessage(
+      tr("Swapped annotations between '{first}' and '{second}'.", { first, second }),
+    );
+  }
+
+  /** 读某张图的标注，转成 `SwapBox` 形状（纯逻辑与数据层共用的入参） */
+  private boxesOf(imagePath: string): SwapBox[] {
+    return this.data.getAnnotationsForImage(imagePath).map((ann) => ({
+      category: ann.categoryName,
+      x: ann.bbox[0],
+      y: ann.bbox[1],
+      w: ann.bbox[2],
+      h: ann.bbox[3],
+    }));
   }
 
   /* ---------- 导入文件 ---------- */

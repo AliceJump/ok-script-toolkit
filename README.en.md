@@ -88,6 +88,7 @@ When editing Python code, the extension automatically detects ok-script-specific
 - **Template code hints**: Type `fL.` or `FeatureList.` to complete template names with size info. Hover shows thumbnail preview, dimensions, and source info.
 - You can also open a larger grid view in the editor area via the command **ok-script Toolkit: Open Template Panel in Editor**.
 - Supports both sidebar (template panel and template asset views) and large editor window browsing modes.
+- **Swap annotations**: in the template assets panel (annotation manager), the **⇄** button at the bottom-right of a thumbnail card swaps that image's whole annotation set with another image in the same list — the fix for "annotated the wrong image / images are in the wrong order". The target is picked from thumbnails (template names are mostly numeric, so names alone are not enough). When the two images differ in size, box coordinates are **scaled proportionally** and the confirmation dialog spells out both sizes. The swap is written in one go and **cannot be undone**, so it always asks before saving.
 
 ```python
 self.wait_click_feature(feature=fL.give_gift, time_out=10)

@@ -20,6 +20,19 @@
   <div id="grid"></div>
   <div id="empty" class="empty" style="display:none"></div>
   <div id="dropHint" class="drop-hint"></div>
+
+  <!-- 交换标注：目标图片选择（列表由 app.js 按当前模板集填充） -->
+  <div class="modal-overlay" id="swapModal">
+    <div class="modal">
+      <h3 id="swapTitle">Swap annotations</h3>
+      <div class="modal-hint" id="swapHint"></div>
+      <div class="swap-list" id="swapList"></div>
+      <div class="actions">
+        <button class="mini-btn" id="swapCancel">Cancel</button>
+      </div>
+    </div>
+  </div>
+
   <div id="assetPanelI18n" hidden>__I18N_JSON__</div>
   <script src="__APP_SCRIPT_URI__"></script>
 </body>

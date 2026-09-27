@@ -194,6 +194,24 @@ export class TemplateAssetData {
     return this.getImageEntryForPath(imagePath)?.id;
   }
 
+  /**
+   * 图片的**真实**尺寸，供标注交换做比例映射。
+   *
+   * 先读文件头再退回 COCO 记录，顺序不能反：COCO 里的 width/height 可能是 0
+   * （老数据、或登记时读不出尺寸），拿 0 当除数会算出 Infinity；而反过来，
+   * 文件头读不出来时 COCO 至少还是个已知值。两者都没有才返回 undefined，
+   * 由调用方决定"拒绝交换"而不是"按 1 倍瞎搬"。
+   */
+  resolveImageSize(imagePath: string): { width: number; height: number } | undefined {
+    const header = readImageHeaderSize(imagePath);
+    if (header && header.width > 0 && header.height > 0) return header;
+    const entry = this.getImageEntryForPath(imagePath);
+    if (entry && entry.width > 0 && entry.height > 0) {
+      return { width: entry.width, height: entry.height };
+    }
+    return undefined;
+  }
+
   addImageEntry(imagePath: string, width: number, height: number): void {
     const filename = path.basename(imagePath);
     if (this.getImageEntryForPath(imagePath)) return;
@@ -251,6 +269,60 @@ export class TemplateAssetData {
     }
     this._cleanupCategories();
     this._dirty = true;
+  }
+
+  /**
+   * 两张图的标注集合**整体互换**。`boxesForA` / `boxesForB` 是调用方算好的**最终**坐标
+   * （已按目标图尺寸映射过，见 `annotationSwapPure.scaleBoxes`），本方法只负责落数据。
+   *
+   * 为什么不能"调两次 setAnnotationsForImage"：
+   * ① 那条路径每次都 `_cleanupCategories()`。先写的那一侧会把"只有自己引用"的分类
+   *    判成无人使用而删掉，紧接着写另一侧时再按名字重建 —— 分类名不变、**id 会漂**。
+   *    中间那一刻的 cocoData 也是自相矛盾的（A 的标注已经搬走、B 的还是旧的）。
+   * ② 两次调用之间任何一处抛错，磁盘上就会留下"换了一半"的状态。
+   * 这里改成：先把两张图的旧标注一起摘掉，再一起写回，最后只清理一次分类。
+   *
+   * 返回 false 只表示"这两张图没法交换"（任一未登记进 COCO，或指向同一张图），
+   * 此时**什么都没改** —— 调用方据此报错，不要报"已交换"。
+   */
+  swapAnnotationsForImages(
+    pathA: string,
+    pathB: string,
+    boxesForA: Array<{ category: string; x: number; y: number; w: number; h: number }>,
+    boxesForB: Array<{ category: string; x: number; y: number; w: number; h: number }>,
+  ): boolean {
+    const idA = this.getImageId(pathA);
+    const idB = this.getImageId(pathB);
+    if (idA === undefined || idB === undefined || idA === idB) return false;
+
+    this.cocoData.annotations = this.cocoData.annotations.filter(
+      (ann) => ann.image_id !== idA && ann.image_id !== idB,
+    );
+
+    let maxAnnId = 0;
+    for (const ann of this.cocoData.annotations) {
+      if (ann.id > maxAnnId) maxAnnId = ann.id;
+    }
+    const append = (imageId: number, boxes: typeof boxesForA): void => {
+      for (const box of boxes) {
+        const catId = this._getOrCreateCategoryId(box.category);
+        maxAnnId++;
+        this.cocoData.annotations.push({
+          id: maxAnnId,
+          image_id: imageId,
+          category_id: catId,
+          bbox: [box.x, box.y, box.w, box.h],
+          area: box.w * box.h,
+          iscrowd: 0,
+        });
+      }
+    };
+    append(idA, boxesForA);
+    append(idB, boxesForB);
+
+    this._cleanupCategories();
+    this._dirty = true;
+    return true;
   }
 
   /* ---------- 分类操作 ---------- */

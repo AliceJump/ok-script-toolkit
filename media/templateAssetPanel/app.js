@@ -6,6 +6,8 @@
   const countEl = document.getElementById('count');
   const emptyEl = document.getElementById('empty');
   const cards = new Map();
+  /** name -> 缩略图 webview URI。交换目标选择器直接复用已加载的缩略图，不再问宿主要一遍。 */
+  const thumbUrls = new Map();
   let metas = [];
 
   document.title = t('templateAssetsTitle');
@@ -48,6 +50,15 @@
 
     const actDiv = document.createElement('div');
     actDiv.className = 'actions';
+    // 交换标注：与「删除」并列，但排在左边 —— 删除是破坏性的，放最右侧不误触
+    const swapBtn = document.createElement('button');
+    swapBtn.textContent = '⇄';
+    swapBtn.title = t('assetSwapTooltip');
+    swapBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openSwapPicker(meta);
+    });
+    actDiv.appendChild(swapBtn);
     const delBtn = document.createElement('button');
     delBtn.textContent = 'X';
     delBtn.title = t('assetDeleteTooltip');
@@ -108,6 +119,8 @@
     const card = cards.get(name);
     if (!card || card.dataset.thumbDone === '1') return;
     card.dataset.thumbDone = '1';
+    // 记下来供交换目标选择器复用：同一张缩略图没必要再让宿主裁剪+推送一次
+    thumbUrls.set(name, url);
     const img = document.createElement('img');
     img.src = url; img.alt = name;
     img.style.display = 'none';
@@ -122,6 +135,87 @@
     });
     card.querySelector('.thumb-box').prepend(img);
   }
+
+  /* ---------- 交换标注：选择目标图片 ----------
+     只负责「选哪张图」，落盘与缩放都在宿主侧（那边才知道真实尺寸与磁盘状态）。
+     选中的是**当前模板集里的另一张图**，不含自己。 */
+  const swapModal = document.getElementById('swapModal');
+  const swapList = document.getElementById('swapList');
+
+  function openSwapPicker(source) {
+    document.getElementById('swapTitle').textContent = t('assetSwapTitle');
+    document.getElementById('swapHint').textContent = t('assetSwapHint');
+    document.getElementById('swapCancel').textContent = t('cancel');
+    swapList.innerHTML = '';
+
+    const others = metas.filter((m) => m.name !== source.name);
+    if (!others.length) {
+      const empty = document.createElement('div');
+      empty.className = 'swap-empty';
+      empty.textContent = t('assetSwapEmpty');
+      swapList.appendChild(empty);
+    } else {
+      for (const other of others) swapList.appendChild(makeSwapItem(source, other));
+    }
+    swapModal.classList.add('visible');
+  }
+
+  function makeSwapItem(source, other) {
+    const item = document.createElement('button');
+    item.type = 'button';
+    item.className = 'swap-item';
+    item.title = other.name;
+
+    const thumb = document.createElement('div');
+    thumb.className = 'swap-thumb';
+    const url = thumbUrls.get(other.name);
+    if (url) {
+      const img = document.createElement('img');
+      img.src = url;
+      img.alt = other.name;
+      thumb.appendChild(img);
+    } else {
+      const ph = document.createElement('span');
+      ph.className = 'placeholder';
+      ph.textContent = '...';
+      thumb.appendChild(ph);
+    }
+
+    const name = document.createElement('div');
+    name.className = 'swap-name';
+    name.textContent = other.name;
+    const metaLine = document.createElement('div');
+    metaLine.className = 'swap-meta';
+    metaLine.textContent = other.width + 'x' + other.height + ' · ' +
+      (other.annotations ? t('assetSwapBoxes', { count: other.annotations }) : t('assetSwapNoBoxes'));
+
+    item.appendChild(thumb);
+    item.appendChild(name);
+    item.appendChild(metaLine);
+    item.addEventListener('click', () => {
+      closeSwapPicker();
+      vscode.postMessage({
+        type: 'swapAnnotations',
+        imagePath: source.imagePath,
+        targetPath: other.imagePath,
+      });
+    });
+    return item;
+  }
+
+  function closeSwapPicker() {
+    swapModal.classList.remove('visible');
+    swapList.innerHTML = '';
+  }
+
+  document.getElementById('swapCancel').addEventListener('click', closeSwapPicker);
+  // 点遮罩关闭：只在按下遮罩本身时关，避免从列表里拖选时误关
+  swapModal.addEventListener('mousedown', (e) => {
+    if (e.target === swapModal) closeSwapPicker();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && swapModal.classList.contains('visible')) closeSwapPicker();
+  });
 
   document.getElementById('importBtn').addEventListener('click', () => {
     vscode.postMessage({ type: 'importFile' });
