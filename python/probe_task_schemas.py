@@ -18,6 +18,8 @@ import sys
 import tempfile
 from enum import Enum
 
+import project_store
+
 sys.stdout.reconfigure(encoding="utf-8")
 sys.stderr.reconfigure(encoding="utf-8")
 
@@ -218,42 +220,38 @@ def _resolve_gui_constant(node, imports):
     return None
 
 
-def load_gui_group_names(project_dir):
-    """读项目 GUI 的 GLOBAL_CONFIG_GROUPS，返回 {config 名: 中文分组名}。
+def gui_group_tab_files(project_dir, config=None):
+    """项目 GUI 全局配置页的候选文件路径：**项目声明优先**，其次历史约定路径。
 
-    无该约定的项目返回 {}，此时回退用 config 名查 po，行为不变。
+    项目在 config.py 的 custom_tabs 里声明自己的 GUI 页（如 src.gui.GlobalConfigTab）——
+    那才是权威位置；GUI_GROUP_TAB_CANDIDATES 只是没有 custom_tabs 时的历史兜底。
     """
+    paths = []
+    for module_name in project_store.declared_tab_modules(config):
+        path = project_store.module_file(project_dir, module_name)
+        if path and path not in paths:
+            paths.append(path)
     for rel in GUI_GROUP_TAB_CANDIDATES:
         path = os.path.join(project_dir, *rel)
+        if path not in paths:
+            paths.append(path)
+    return paths
+
+
+def load_gui_group_names(project_dir, config=None):
+    """读项目 GUI 的 GLOBAL_CONFIG_GROUPS，返回 {config 名: 中文分组名}。
+
+    候选页见 [gui_group_tab_files]；都没有时返回 {}，
+    此时回退用 config 名查 po，行为不变。
+    """
+    for path in gui_group_tab_files(project_dir, config):
         if not os.path.isfile(path):
             continue
-        try:
-            with open(path, encoding="utf-8") as stream:
-                tree = ast.parse(stream.read())
-        except Exception:
+        # 解析 + import 表都走 project_store：相对导入必须按文件所在包解析，
+        # 否则 `from ..core.X import Y` 会被记成顶层 "core.X"（可能撞上同名的无关模块）。
+        tree, imports = project_store.parse_imports(project_dir, path)
+        if tree is None:
             continue
-        # 该文件所在包（如 "src.gui"）。相对导入必须按它解析 —— 只取 `node.module` 会把
-        # `from ..core.BattleConfig import X` 记成顶层 "core.BattleConfig"，随后
-        # `_resolve_gui_constant` 去 import 它：轻则 ImportError（该条映射静默丢失、
-        # 配置分段退回英文 config 名），重则撞上同名的无关顶层模块（取到错值并执行其副作用）。
-        package = ".".join(rel[:-1])
-        imports = {}
-        for node in ast.walk(tree):
-            if isinstance(node, ast.ImportFrom) and (node.module or node.level):
-                module_name = node.module
-                if node.level:
-                    try:
-                        module_name = importlib.util.resolve_name(
-                            "." * node.level + (node.module or ""), package
-                        )
-                    except (ImportError, ValueError):
-                        # 越出顶层包的相对导入（level 超过包层数）—— 丢弃这一条，不影响其余
-                        continue
-                    if module_name.endswith("."):
-                        # `from . import X`（无 module 部分）会解出带尾点的包名
-                        module_name = module_name[:-1]
-                for alias in node.names:
-                    imports[alias.asname or alias.name] = (module_name, alias.name)
         for node in tree.body:
             if not isinstance(node, ast.Assign):
                 continue
@@ -510,19 +508,16 @@ def collect_global_config_groups(ok, catalog, broken, gui_names=None):
     return groups
 
 
-# 项目自建全局配置 store 的约定模块路径（接口与框架 GlobalConfig 同形：
-# get_all_visible_configs() -> [(name, config, option)]）。ok-end-field / OK-AzurPromilia 实例。
-PROJECT_STORE_MODULES = ("src.core.global_config_store",)
+def collect_project_store_groups(config, project_dir, catalog, broken, gui_names=None):
+    """采集项目自建全局配置 store 的组，输出与框架组同构的 payload。
 
-
-def collect_project_store_groups(catalog, broken, gui_names=None):
-    """按约定探测项目自建全局配置 store，输出与框架组同构的 payload。
-
-    这些项目的全局配置不走框架 GlobalConfig（自建 store + 聚合 Tab），probe
-    拿不到；这里按约定 try-import 补齐。无该模块的项目静默跳过，零影响。
+    这些项目的全局配置不走框架 GlobalConfig（自建 store + 聚合 Tab），probe 拿不到。
+    store 模块**按项目自己的声明定位**（见 project_store：custom_tabs 声明的 GUI 页里
+    `from <store> import get_all_visible_configs`），不再硬编码模块路径 ——
+    项目把 store 挪包改名都照常工作。无该约定的项目静默跳过，零影响。
     """
     groups = []
-    for module_name in PROJECT_STORE_MODULES:
+    for module_name in project_store.store_modules(config, project_dir):
         try:
             module = importlib.import_module(module_name)
         except Exception:  # noqa: BLE001 — 项目没有自建 store 是常态
@@ -871,9 +866,9 @@ def main():
         # 项目 GUI 的分组名映射要在 OK(cfg) 构造之后取——此时任务→core 的 import
         # 链已把 src.core.global_config_store 等常量模块带进 sys.modules，
         # GLOBAL_CONFIG_GROUPS 里的常量引用（BATTLE_CONFIG_NAME 等）才能就地求值。
-        gui_names = load_gui_group_names(project_dir)
+        gui_names = load_gui_group_names(project_dir, cfg)
         global_groups = collect_global_config_groups(ok, catalog, broken, gui_names)
-        global_groups.extend(collect_project_store_groups(catalog, broken, gui_names))
+        global_groups.extend(collect_project_store_groups(cfg, project_dir, catalog, broken, gui_names))
         multi_account = collect_multi_account(project_dir, tasks, broken, global_groups)
 
         result = json.dumps({
