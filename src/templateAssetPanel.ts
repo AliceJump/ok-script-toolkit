@@ -113,20 +113,7 @@ class AssetGalleryController {
     const batchSize = 8;
     for (let i = 0; i < metas.length; i += batchSize) {
       if (gen !== this.generation || this.disposed) return;
-      const items: { name: string; url: string }[] = [];
-      for (const meta of metas.slice(i, i + batchSize)) {
-        const entry = this.data.getImageEntryForPath(meta.imagePath);
-        const bbox: [number, number, number, number] = [0, 0, entry?.width ?? 100, entry?.height ?? 100];
-        const file = await cropTemplateThumbFileAsync(meta.imagePath, bbox, this.thumbDir, THUMB_HEIGHT);
-        if (!file) continue;
-        items.push({
-          name: meta.name,
-          url: this.webview.asWebviewUri(vscode.Uri.file(file)).toString(true),
-        });
-      }
-      if (items.length) {
-        await this.webview.postMessage({ type: 'thumbs', items });
-      }
+      await this.pushThumbs(metas.slice(i, i + batchSize).map((meta) => meta.imagePath));
       if (gen !== this.generation || this.disposed) return;
       await new Promise<void>((resolve) => setImmediate(resolve));
     }
@@ -135,11 +122,38 @@ class AssetGalleryController {
     }
   }
 
+  /**
+   * 裁剪并推送一批缩略图。
+   *
+   * 网格的批量推送与「交换标注」目标选择器的**按需补推共用这一条管线**：同一个裁剪函数、
+   * 同一种 `thumbs` 消息、webview 侧同一个 URL 缓存 ⇒ 选择器里的缩略图和网格里的是
+   * **同一张图**（同 bbox、同高度），不会出现两套尺寸、两份生成。
+   *
+   * 为什么需要按需补推这个入口：上面那轮批量推送是**异步分批**的，用户完全可能在推完
+   * 之前就打开了选择器；而裁剪失败的那几张更是整轮都不会再推。
+   */
+  private async pushThumbs(imagePaths: readonly string[]): Promise<number> {
+    const items: { name: string; url: string }[] = [];
+    for (const imagePath of imagePaths) {
+      const entry = this.data.getImageEntryForPath(imagePath);
+      const bbox: [number, number, number, number] = [0, 0, entry?.width ?? 100, entry?.height ?? 100];
+      const file = await cropTemplateThumbFileAsync(imagePath, bbox, this.thumbDir, THUMB_HEIGHT);
+      if (!file) continue;
+      items.push({
+        name: path.basename(imagePath),
+        url: this.webview.asWebviewUri(vscode.Uri.file(file)).toString(true),
+      });
+    }
+    if (items.length) await this.webview.postMessage({ type: 'thumbs', items });
+    return items.length;
+  }
+
   private async onMessage(msg: {
     type?: string;
     name?: string;
     imagePath?: string;
     targetPath?: string;
+    imagePaths?: string[];
     command?: string;
     base64Png?: string;
     tempId?: string;
@@ -177,6 +191,16 @@ class AssetGalleryController {
       case 'swapAnnotations': {
         if (msg.imagePath && msg.targetPath) {
           await this.handleSwapAnnotations(msg.imagePath, msg.targetPath);
+        }
+        break;
+      }
+      case 'requestThumbs': {
+        // 选择器打开时发现有几张还没有缩略图 URL ⇒ 现裁现推。
+        // ⚠️ webview 传来的路径**不能直接拿去读盘**：只认当前模板目录里真实存在的图。
+        const requested = msg.imagePaths ?? [];
+        if (requested.length > 0) {
+          const allowed = new Set(this.data.listImages());
+          await this.pushThumbs(requested.filter((imagePath) => allowed.has(imagePath)));
         }
         break;
       }
