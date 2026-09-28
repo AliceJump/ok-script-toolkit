@@ -171,7 +171,14 @@ try {
                 }
                 $entry = @{ recordedAt = (Get-CrNow).ToString('o'); reason = $freshInfo.state; quotaReplyId = $quota.replyId }
                 Write-Ledger $head $entry
-                $posted = New-CrIssueComment $Repo $PrNumber '@coderabbitai review'
+                try {
+                    $posted = New-CrIssueComment $Repo $PrNumber '@coderabbitai review'
+                } catch {
+                    # A failed send must not block this head forever; if GitHub did accept it,
+                    # the remote trigger comment still stops the next run from sending again.
+                    Remove-Item -LiteralPath (Get-CrLedgerPath $StateDir $Repo $PrNumber $head) -Force -ErrorAction SilentlyContinue
+                    throw
+                }
                 $entry.commentId = $posted.id; $entry.url = $posted.url; $entry.postedAt = (Get-CrNow).ToString('o')
                 Update-Ledger $head $entry
                 Write-Host "[wait] sent the single review trigger for head $($head.Substring(0, 7)): $($posted.url)"

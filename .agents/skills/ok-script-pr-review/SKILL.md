@@ -80,10 +80,12 @@ description: 处理 ok-script-toolkit 主仓及 JetBrains 子仓的 PR 审阅意
 4. **额度倒计时只决定何时重查。** `More reviews will be available in N minutes` 到点后必须重新
    查询，只有新查询之后身份核验为 CodeRabbit 的明确可用回复才算 AVAILABLE；
    `No reviews are available now` 这类否定句先于肯定句判断。
-5. **同一 head 最多主动发送一次 `@coderabbitai review`**，且发送前重新确认：PR 仍 open、非草稿、
-   head 未变、没有覆盖当前 head 的审阅、没有进行中的审阅、此 head 尚未被任何人触发过
-   （远端评论或本机账本）。触发后被限流则停下报告，不再补发。需要全量重审时核实原因后另行
-   发送 `@coderabbitai full review`。
+5. **同一 head 最多主动触发一次**，`@coderabbitai review` 与 `@coderabbitai full review` 共用这一次：
+   两者都算触发，远端评论与本机账本检查对两者相同，任何一种已发过就不再发另一种。发送前重新
+   确认：PR 仍 open、非草稿、head 未变、没有覆盖当前 head 的审阅、没有进行中的审阅、此 head 尚未
+   被任何人触发过。触发后被限流或审阅未到达时停下报告，是否再发由用户决定。脚本只发
+   `@coderabbitai review`；全量重审只在该 head 尚未触发过、且核实原因后手动发送。
+   账本先于发送写入以挡住并发；发送失败会删除账本，远端若其实已收到，评论检查仍会阻止重发。
 
 脚本（两仓同一份文件；公开发言与触发前须已获用户授权处理该 PR review）：
 

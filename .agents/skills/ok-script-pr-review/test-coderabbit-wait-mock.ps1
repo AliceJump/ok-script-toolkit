@@ -23,7 +23,7 @@ function New-World {
         head = $Head; state = 'open'; draft = $false; nextId = 1000
         statuses = @{}; reviews = New-Object System.Collections.ArrayList; comments = New-Object System.Collections.ArrayList
         posts = New-Object System.Collections.ArrayList; events = New-Object System.Collections.ArrayList
-        onPost = $null; arrival = @{}
+        onPost = $null; arrival = @{}; failPost = $null
     }
     $global:W.arrival[$Head] = $t0
 }
@@ -80,6 +80,11 @@ function global:gh {
     $w = $global:W
     if ($a -contains 'POST') {
         $body = (($a | Where-Object { $_ -like 'body=*' }) -replace '^body=', '')
+        if ($w.failPost -eq $body) {
+            $w.failPost = $null
+            $global:LASTEXITCODE = 1
+            return 'HTTP 502: Bad Gateway'
+        }
         $w.posts.Add([pscustomobject]@{ body = $body; head = $w.head; at = (Get-Now) }) | Out-Null
         $item = Add-Comment $body 'alice' 'User'
         if ($w.onPost) { & $w.onPost $body }
@@ -263,6 +268,22 @@ Test-Case 'the local ledger blocks a second trigger across runs' {
         $second = Invoke-Wait @{ StateDir = $stateDir; ReviewWaitSeconds = 60 }
         Assert-True ((Posts '@coderabbitai review').Count -eq 1) 'ledger must prevent a second trigger'
         Assert-True ($first.result.state -eq 'TRIGGER_EXHAUSTED' -and $second.result.state -eq 'TRIGGER_EXHAUSTED') "got $($first.result.state)/$($second.result.state)"
+    } finally { Remove-Item -Recurse -Force $stateDir -ErrorAction SilentlyContinue }
+}
+
+Test-Case 'a failed trigger send releases the ledger so a later run can retry' {
+    New-World
+    Add-Status $headA 'success' 'Review skipped: manual review required for this OSS repository'
+    Reply-OnProbe @('Reviews are available now.', 'Reviews are available now.')
+    $global:W.failPost = '@coderabbitai review'
+    $stateDir = Join-Path ([IO.Path]::GetTempPath()) ("cr-ledger-" + [guid]::NewGuid().ToString('N'))
+    try {
+        $first = Invoke-Wait @{ StateDir = $stateDir }
+        Assert-True ($first.exit -eq 2 -and $first.result.state -eq 'ERROR') "got $($first.result.state)"
+        Assert-True (-not (Get-ChildItem $stateDir -ErrorAction SilentlyContinue)) 'the ledger entry must be removed'
+        $second = Invoke-Wait @{ StateDir = $stateDir; ReviewWaitSeconds = 60 }
+        Assert-True ((Posts '@coderabbitai review').Count -eq 1) 'exactly one successful trigger'
+        Assert-True ($second.result.state -eq 'TRIGGER_EXHAUSTED') "got $($second.result.state)"
     } finally { Remove-Item -Recurse -Force $stateDir -ErrorAction SilentlyContinue }
 }
 
