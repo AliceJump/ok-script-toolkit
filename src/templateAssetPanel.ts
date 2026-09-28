@@ -560,6 +560,11 @@ class AssetGalleryController {
 
     // The modal yields to the editor: another edit can replace either snapshot before we save.
     this.data.load();
+    const currentImages = new Set(this.data.listImages());
+    if (!currentImages.has(sourcePath) || !currentImages.has(targetPath)) {
+      void vscode.window.showWarningMessage(tr('Annotations changed while confirming. Retry the swap.'));
+      return;
+    }
     const currentSourceSize = this.data.resolveImageSize(sourcePath);
     const currentTargetSize = this.data.resolveImageSize(targetPath);
     if (this.data.getSwapImageEntry(sourcePath)?.id !== sourceEntry.id

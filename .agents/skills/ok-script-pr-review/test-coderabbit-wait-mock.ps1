@@ -110,6 +110,12 @@ function global:gh {
     throw "Unexpected gh call: $joined"
 }
 
+$resolved = Get-Command gh
+if ($resolved.CommandType -ne 'Function') {
+    Write-Output "setup failed: gh resolves to $($resolved.CommandType) $($resolved.Source); refusing to call real GitHub"
+    exit 2
+}
+
 $script:failures = 0
 $script:passed = 0
 function Invoke-Wait([hashtable]$Extra = @{}) {
@@ -368,6 +374,15 @@ Test-Case 'trigger answered by a rate limit stops instead of re-triggering' {
     $r = Invoke-Wait
     Assert-True ($r.exit -eq 7 -and $r.result.state -eq 'TRIGGER_RATE_LIMITED') "got $($r.result.state)"
     Assert-True ((Posts '@coderabbitai review').Count -eq 1) 'single trigger only'
+}
+
+Test-Case 'a quota query error is reported as ERROR, not as a rate limit' {
+    New-World
+    Add-Status $headA 'success' 'Review rate limited'
+    $global:W.failPost = @{ body = '@coderabbitai rate limit'; message = 'HTTP 500: Internal Server Error'; created = $false }
+    $r = Invoke-Wait
+    Assert-True ($r.exit -eq 2 -and $r.result.state -eq 'ERROR' -and $r.result.error -match 'HTTP 500') "got $($r.result.state) $($r.result.error)"
+    Assert-True ((Posts '@coderabbitai review').Count -eq 0) 'no trigger after a quota error'
 }
 
 Test-Case 'draft and closed PRs stop without writes' {

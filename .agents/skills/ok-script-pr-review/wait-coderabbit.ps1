@@ -174,6 +174,7 @@ try {
                     continue
                 }
                 if ($quota.state -in @('CLOSED', 'DRAFT')) { Complete-Wait $quota.state $head -Extra @{ quota = $quota } }
+                if ($quota.state -eq 'ERROR') { Complete-Wait 'ERROR' $head $info -Extra @{ error = $quota.error; quota = $quota } }
                 if ($quota.state -ne 'AVAILABLE' -or $quotaExit -ne 0) { Complete-Wait 'RATE_LIMITED' $head $info -Extra @{ quota = $quota } }
 
                 # Re-check everything the quota wait may have outdated before the single trigger.
