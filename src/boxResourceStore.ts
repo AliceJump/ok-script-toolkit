@@ -40,11 +40,16 @@ function sameImage(a: string, b: string): boolean {
   return imageFileName(a).toLowerCase() === imageFileName(b).toLowerCase();
 }
 
-function readText(file: string): string | undefined {
+function readText(file: string): { text?: string; missing?: boolean; error?: boolean } {
   try {
-    return fs.readFileSync(file, 'utf8');
+    if (!fs.existsSync(file)) return { missing: true };
   } catch {
-    return undefined;
+    return { error: true };
+  }
+  try {
+    return { text: fs.readFileSync(file, 'utf8') };
+  } catch {
+    return { error: true };
   }
 }
 
@@ -66,19 +71,26 @@ export function readAuthoringFile(rootDir: string, templatesDirectory: string): 
 
 function readAuthoringResult(rootDir: string, templatesDirectory: string): { file: AuthoringFile; errors: string[] } {
   const file = authoringFile(rootDir, templatesDirectory);
-  const text = readText(file);
-  if (text === undefined) return { file: emptyAuthoringFile(), errors: [] };
-  return parseAuthoring(text);
+  const read = readText(file);
+  if (read.missing) return { file: emptyAuthoringFile(), errors: [] };
+  if (read.error || read.text === undefined) return { file: emptyAuthoringFile(), errors: ['read'] };
+  return parseAuthoring(read.text);
 }
 
 export function readRuntimeFile(rootDir: string, declared?: string, fromConfigPy?: string): RuntimeFile {
+  return readRuntimeResult(rootDir, declared, fromConfigPy).file;
+}
+
+function readRuntimeResult(rootDir: string, declared?: string, fromConfigPy?: string): { file: RuntimeFile; errors: string[] } {
   const plan = resolveBoxRuntimePlan(rootDir, declared, fromConfigPy);
   const file = effectiveBoxRuntimeFile(plan, (candidate) => {
     try { return fs.existsSync(candidate); } catch { return false; }
   });
-  if (!file) return emptyRuntimeFile();
-  const text = readText(file);
-  return text ? parseRuntime(text).file : emptyRuntimeFile();
+  if (!file) return { file: emptyRuntimeFile(), errors: [] };
+  const read = readText(file);
+  if (read.missing) return { file: emptyRuntimeFile(), errors: [] };
+  if (read.error || read.text === undefined) return { file: emptyRuntimeFile(), errors: ['read'] };
+  return parseRuntime(read.text);
 }
 
 export function boxesForImage(file: AuthoringFile, fileName: string): AuthoringBox[] {
@@ -133,6 +145,8 @@ export function addBox(rootDir: string, templatesDirectory: string, boxPath: str
 export function publishRuntime(rootDir: string, templatesDirectory: string, declared?: string, fromConfigPy?: string): boolean {
   const parsed = readAuthoringResult(rootDir, templatesDirectory);
   if (parsed.errors.length) return false;
+  const runtime = readRuntimeResult(rootDir, declared, fromConfigPy);
+  if (runtime.errors.length) return false;
   const authoring = parsed.file;
   const text = serializeRuntime(publishBoxes(authoring));
   const target = runtimeWriteTarget(resolveBoxRuntimePlan(rootDir, declared, fromConfigPy));

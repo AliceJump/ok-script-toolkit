@@ -91,7 +91,11 @@ export class BoxAssetViewProvider implements vscode.WebviewViewProvider {
         );
         if (answer !== 'Publish') return;
       }
-      publishRuntime(root, templates, args.declared, args.fromConfig);
+      const published = publishRuntime(root, templates, args.declared, args.fromConfig);
+      if (!published) {
+        void vscode.window.showErrorMessage(tr('Could not save the box resource.'));
+        return;
+      }
       void this.onMessage({ type: 'refresh' });
     }
   }
