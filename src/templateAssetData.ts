@@ -71,6 +71,14 @@ function readImageHeaderSize(src: string): { width: number; height: number } | u
   }
 }
 
+function sameFile(a: string, b: string): boolean {
+  try {
+    return fs.realpathSync.native(a) === fs.realpathSync.native(b);
+  } catch {
+    return false;
+  }
+}
+
 export class TemplateAssetData {
   private rootDir: string;
   private cocoData: CocoData = { images: [], annotations: [], categories: [] };
@@ -214,7 +222,10 @@ export class TemplateAssetData {
     const exact = this.cocoData.images.find((img) => img.file_name === fileName);
     if (exact) return exact;
     const caseInsensitive = this.cocoData.images.filter((img) => img.file_name.toLowerCase() === fileName.toLowerCase());
-    return caseInsensitive.length === 1 ? caseInsensitive[0] : undefined;
+    if (caseInsensitive.length !== 1) return undefined;
+    // On case-sensitive disks `foo.png` and `Foo.png` are different files; accept the fallback only for the same file.
+    const candidatePath = path.join(path.dirname(imagePath), caseInsensitive[0].file_name);
+    return sameFile(imagePath, candidatePath) ? caseInsensitive[0] : undefined;
   }
 
   getImageId(imagePath: string): number | undefined {
@@ -232,7 +243,7 @@ export class TemplateAssetData {
   resolveImageSize(imagePath: string): { width: number; height: number } | undefined {
     const header = readImageHeaderSize(imagePath);
     if (header && header.width > 0 && header.height > 0) return header;
-    const entry = this.getImageEntryForPath(imagePath);
+    const entry = this.getSwapImageEntry(imagePath);
     if (entry && entry.width > 0 && entry.height > 0) {
       return { width: entry.width, height: entry.height };
     }

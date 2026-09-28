@@ -715,6 +715,43 @@ async function test_annotationSwapUsesExactFileName() {
   }
 }
 
+/* ========== 测试 12：大小写回退只接受同一真实文件，尺寸回退也按所选文件取 ========== */
+
+async function test_annotationSwapFallbackRequiresSameFile() {
+  setup();
+  const cocoPath = path.join(templateDir, 'coco_annotations.json');
+  try {
+    fs.writeFileSync(cocoPath, JSON.stringify({
+      images: [
+        { id: 1, file_name: 'shot.png', width: 40, height: 30 },
+        { id: 2, file_name: 'ghost.png', width: 40, height: 30 },
+        { id: 3, file_name: 'size.png', width: 10, height: 10 },
+        { id: 4, file_name: 'size.jpg', width: 50, height: 40 },
+      ],
+      annotations: [],
+      categories: [],
+    }));
+    const shot = path.join(templateDir, 'Shot.png');
+    fs.writeFileSync(shot, 'not an image');
+    fs.writeFileSync(path.join(templateDir, 'size.jpg'), 'not an image');
+    const data = new TemplateAssetData(tmpDir);
+    data.load();
+
+    // Only a case-insensitive disk makes `shot.png` the same file as `Shot.png`.
+    const caseInsensitiveDisk = fs.existsSync(path.join(templateDir, 'shot.png'));
+    assert((data.getSwapImageEntry(shot)?.id === 1) === caseInsensitiveDisk,
+      'case fallback must follow whether both names resolve to the same file');
+    assert(data.getSwapImageEntry(path.join(templateDir, 'Ghost.png')) === undefined,
+      'case fallback must reject a COCO entry without the selected file behind it');
+    const size = data.resolveImageSize(path.join(templateDir, 'size.jpg'));
+    assert(size?.width === 50 && size?.height === 40,
+      `size fallback must use the selected file's COCO entry, got ${JSON.stringify(size)}`);
+    console.log('[PASS] test_annotationSwapFallbackRequiresSameFile');
+  } finally {
+    teardown();
+  }
+}
+
 /* ========== 运行所有测试 ========== */
 
 const tests = [
@@ -729,6 +766,7 @@ const tests = [
   test_enumPathOutsideWorkspaceRejectedBeforeWriting,
   test_annotationSwapPersistsOrRollsBack,
   test_annotationSwapUsesExactFileName,
+  test_annotationSwapFallbackRequiresSameFile,
 ];
 
 let passed = 0;

@@ -102,7 +102,7 @@ class AssetGalleryController {
         categories: cats,
         // 交换目标选择器要显示"这张图上有几个框"，而分类名是去重后的
         // （同一张图上两个同名按钮共用一个分类）⇒ 数量必须单独给。
-        annotations: this.data.getAnnotationsForImage(imgPath).length,
+        annotations: this.data.getAnnotationsForImage(imgPath, true).length,
       };
     });
 
@@ -559,6 +559,7 @@ class AssetGalleryController {
     if (choice !== swap) return;
 
     // The modal yields to the editor: another edit can replace either snapshot before we save.
+    this.data.load();
     const currentSourceSize = this.data.resolveImageSize(sourcePath);
     const currentTargetSize = this.data.resolveImageSize(targetPath);
     if (this.data.getSwapImageEntry(sourcePath)?.id !== sourceEntry.id
