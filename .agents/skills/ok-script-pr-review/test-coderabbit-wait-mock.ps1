@@ -80,10 +80,13 @@ function global:gh {
     $w = $global:W
     if ($a -contains 'POST') {
         $body = (($a | Where-Object { $_ -like 'body=*' }) -replace '^body=', '')
-        if ($w.failPost -eq $body) {
+        if ($w.failPost -and $w.failPost.body -eq $body) {
+            $failure = $w.failPost
             $w.failPost = $null
+            # A lost response can still leave the comment created on GitHub.
+            if ($failure.created) { Add-Comment $body 'alice' 'User' | Out-Null; $w.posts.Add([pscustomobject]@{ body = $body; head = $w.head; at = (Get-Now) }) | Out-Null }
             $global:LASTEXITCODE = 1
-            return 'HTTP 502: Bad Gateway'
+            return $failure.message
         }
         $w.posts.Add([pscustomobject]@{ body = $body; head = $w.head; at = (Get-Now) }) | Out-Null
         $item = Add-Comment $body 'alice' 'User'
@@ -271,20 +274,37 @@ Test-Case 'the local ledger blocks a second trigger across runs' {
     } finally { Remove-Item -Recurse -Force $stateDir -ErrorAction SilentlyContinue }
 }
 
-Test-Case 'a failed trigger send releases the ledger so a later run can retry' {
+function Invoke-FailedSend([hashtable]$Failure) {
     New-World
     Add-Status $headA 'success' 'Review skipped: manual review required for this OSS repository'
     Reply-OnProbe @('Reviews are available now.', 'Reviews are available now.')
-    $global:W.failPost = '@coderabbitai review'
+    $Failure.body = '@coderabbitai review'
+    $global:W.failPost = $Failure
     $stateDir = Join-Path ([IO.Path]::GetTempPath()) ("cr-ledger-" + [guid]::NewGuid().ToString('N'))
     try {
-        $first = Invoke-Wait @{ StateDir = $stateDir }
-        Assert-True ($first.exit -eq 2 -and $first.result.state -eq 'ERROR') "got $($first.result.state)"
-        Assert-True (-not (Get-ChildItem $stateDir -ErrorAction SilentlyContinue)) 'the ledger entry must be removed'
+        $first = Invoke-Wait @{ StateDir = $stateDir; ReviewWaitSeconds = 60 }
+        $ledger = @(Get-ChildItem $stateDir -ErrorAction SilentlyContinue)
         $second = Invoke-Wait @{ StateDir = $stateDir; ReviewWaitSeconds = 60 }
-        Assert-True ((Posts '@coderabbitai review').Count -eq 1) 'exactly one successful trigger'
-        Assert-True ($second.result.state -eq 'TRIGGER_EXHAUSTED') "got $($second.result.state)"
+        return [pscustomobject]@{ first = $first; second = $second; ledger = $ledger; triggers = (Posts '@coderabbitai review') }
     } finally { Remove-Item -Recurse -Force $stateDir -ErrorAction SilentlyContinue }
+}
+
+Test-Case 'an explicit 4xx send failure releases the ledger for a later retry' {
+    $r = Invoke-FailedSend @{ message = 'HTTP 422: Validation Failed'; created = $false }
+    Assert-True ($r.first.exit -eq 2 -and $r.ledger.Count -eq 0) "got $($r.first.result.state), ledger $($r.ledger.Count)"
+    Assert-True ($r.triggers.Count -eq 1 -and $r.second.result.state -eq 'TRIGGER_EXHAUSTED') "second run: $($r.second.result.state), triggers $($r.triggers.Count)"
+}
+
+Test-Case 'an uncertain send failure that did create the comment continues as triggered' {
+    $r = Invoke-FailedSend @{ message = 'HTTP 502: Bad Gateway'; created = $true }
+    Assert-True ($r.first.result.state -eq 'TRIGGER_EXHAUSTED' -and $r.ledger.Count -eq 1) "got $($r.first.result.state), ledger $($r.ledger.Count)"
+    Assert-True ($r.triggers.Count -eq 1) "no second trigger, got $($r.triggers.Count)"
+}
+
+Test-Case 'an uncertain send failure without a visible comment keeps blocking the head' {
+    $r = Invoke-FailedSend @{ message = 'connection reset by peer'; created = $false }
+    Assert-True ($r.first.exit -eq 2 -and $r.ledger.Count -eq 1) "got $($r.first.result.state), ledger $($r.ledger.Count)"
+    Assert-True ($r.triggers.Count -eq 0 -and $r.second.result.state -eq 'TRIGGER_EXHAUSTED') "second run: $($r.second.result.state), triggers $($r.triggers.Count)"
 }
 
 Test-Case 'a review landing during the quota wait cancels the trigger' {

@@ -174,10 +174,27 @@ try {
                 try {
                     $posted = New-CrIssueComment $Repo $PrNumber '@coderabbitai review'
                 } catch {
-                    # A failed send must not block this head forever; if GitHub did accept it,
-                    # the remote trigger comment still stops the next run from sending again.
-                    Remove-Item -LiteralPath (Get-CrLedgerPath $StateDir $Repo $PrNumber $head) -Force -ErrorAction SilentlyContinue
-                    throw
+                    $message = $_.Exception.Message
+                    $ledgerPath = Get-CrLedgerPath $StateDir $Repo $PrNumber $head
+                    # Only an explicit 4xx rejection proves nothing was created; then this head may retry later.
+                    if ($message -match 'HTTP 4\d\d') {
+                        Remove-Item -LiteralPath $ledgerPath -Force -ErrorAction SilentlyContinue
+                        throw
+                    }
+                    # 5xx, timeouts and network errors may still have created the comment: keep the ledger.
+                    $entry.status = 'uncertain'; $entry.error = $message
+                    Update-Ledger $head $entry
+                    $posted = $null
+                    for ($attempt = 0; $attempt -lt 3 -and -not $posted; $attempt++) {
+                        Wait-CrSeconds $PollSeconds
+                        $posted = @(Get-CrIssueComments $Repo $PrNumber | Where-Object {
+                            -not (Test-CodeRabbitAuthor $_.login $_.type) -and (Test-CodeRabbitReviewCommand $_.body) -and $_.created -ge $arrival
+                        } | Sort-Object created) | Select-Object -Last 1
+                    }
+                    if (-not $posted) {
+                        throw "Trigger send failed with an uncertain result ($message). The ledger $ledgerPath still blocks this head; check the PR for the comment before removing it."
+                    }
+                    $entry.status = 'confirmed-after-error'
                 }
                 $entry.commentId = $posted.id; $entry.url = $posted.url; $entry.postedAt = (Get-CrNow).ToString('o')
                 Update-Ledger $head $entry
