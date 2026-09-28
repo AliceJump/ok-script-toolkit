@@ -47,6 +47,19 @@ class AnnotationController {
 
   get currentImage(): string | undefined { return this._currentImage; }
 
+  /**
+   * 外部改动了某张图的标注（素材面板的「交换标注」）后，若面板正显示它则重新拉取。
+   *
+   * 必须做：本面板是常驻 webview 且**逐操作自动落盘**，它内存里的 `annotations`
+   * 是打开那一刻的快照。交换后不同步的话，用户下一次拖框/删除会把整份旧数据写回去
+   * —— 交换的结果被静默覆盖，看起来像"交换根本没生效"。
+   */
+  reloadIfShowing(imagePaths: readonly string[]): void {
+    if (this.disposed || !this._currentImage) return;
+    if (!imagePaths.includes(this._currentImage)) return;
+    void this.loadImage(this._currentImage);
+  }
+
   attachHtml(): void {
     this.webview.html = annotationHtml(this.webview.cspSource, this.extensionUri, this.webview);
     this.sendConfig();

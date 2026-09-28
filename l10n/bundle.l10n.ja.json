@@ -207,5 +207,13 @@
   "Overwrite anyway": "それでも上書き",
   "Not set — ask on save": "未設定 — 保存時に確認",
   "Derived from the file name": "ファイル名から導出",
-  "Account store update failed: {error}": "アカウントストアの更新に失敗: {error}"
+  "Account store update failed: {error}": "アカウントストアの更新に失敗: {error}",
+  "Swap": "交換",
+  "Swap annotations between '{first}' and '{second}'?": "{first} と {second} のアノテーションを交換しますか？",
+  "Sizes differ ({from} → {to}); boxes are scaled proportionally.": "画像サイズが異なります（{from} → {to}）。アノテーションは比率に合わせて拡縮されます。",
+  "{first}: {firstCount} boxes, {second}: {secondCount} boxes": "{first}：{firstCount} 件、{second}：{secondCount} 件",
+  "Swapped annotations between '{first}' and '{second}'.": "{first} と {second} のアノテーションを交換しました。",
+  "Failed to swap annotations.": "アノテーションの交換に失敗しました。",
+  "Cannot read image size, so annotations cannot be swapped.": "画像サイズを読み取れないため、アノテーションを交換できません。",
+  "Neither image has annotations, nothing to swap.": "どちらの画像にもアノテーションがないため、交換するものはありません。"
 }

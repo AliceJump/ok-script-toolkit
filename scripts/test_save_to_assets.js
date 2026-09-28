@@ -567,6 +567,74 @@ async function test_enumPathOutsideWorkspaceRejectedBeforeWriting() {
   }
 }
 
+/* ========== 测试 10：标注交换一次保存，写入失败时完整回滚 ========== */
+
+async function test_annotationSwapPersistsOrRollsBack() {
+  setup();
+  const cocoPath = path.join(templateDir, 'coco_annotations.json');
+  const imageA = path.join(templateDir, 'a.png');
+  const imageB = path.join(templateDir, 'b.png');
+  const originalRename = fs.renameSync;
+  try {
+    const initial = {
+      images: [
+        { id: 1, file_name: 'a.png', width: 100, height: 100 },
+        { id: 2, file_name: 'b.png', width: 200, height: 100 },
+      ],
+      annotations: [
+        { id: 1, image_id: 1, category_id: 1, bbox: [1, 2, 3, 4], area: 12, iscrowd: 0 },
+        { id: 2, image_id: 2, category_id: 2, bbox: [5, 6, 7, 8], area: 56, iscrowd: 0 },
+      ],
+      categories: [
+        { id: 1, name: 'first', supercategory: '' },
+        { id: 2, name: 'second', supercategory: '' },
+      ],
+    };
+    fs.writeFileSync(cocoPath, JSON.stringify(initial));
+    const data = new TemplateAssetData(tmpDir);
+    data.load();
+
+    const swapped = data.swapAnnotationsForImages(
+      imageA, imageB,
+      [{ category: 'second', x: 10, y: 12, w: 14, h: 16 }],
+      [{ category: 'first', x: 2, y: 4, w: 6, h: 8 }],
+    );
+    assert(swapped, 'registered images should swap');
+    const persisted = JSON.parse(fs.readFileSync(cocoPath, 'utf-8'));
+    assert(persisted.annotations.length === 2, 'both annotations should be saved together');
+    assert(persisted.annotations.find((a) => a.image_id === 1).category_id === 2,
+      'A should receive B\'s category with its original ID');
+    assert(persisted.annotations.find((a) => a.image_id === 2).category_id === 1,
+      'B should receive A\'s category with its original ID');
+    assert(JSON.stringify(persisted) === JSON.stringify(data.data), 'memory should match disk');
+
+    const beforeFailure = fs.readFileSync(cocoPath, 'utf-8');
+    const inMemoryBeforeFailure = data.data;
+    fs.renameSync = () => { throw new Error('simulated rename failure'); };
+    let failed = false;
+    try {
+      data.swapAnnotationsForImages(
+        imageA, imageB,
+        [{ category: 'new-category', x: 1, y: 1, w: 1, h: 1 }],
+        [],
+      );
+    } catch (error) {
+      failed = String(error).includes('simulated rename failure');
+    }
+    assert(failed, 'save failure should reach the caller');
+    assert(fs.readFileSync(cocoPath, 'utf-8') === beforeFailure, 'failed save must preserve disk data');
+    assert(data.data === inMemoryBeforeFailure, 'failed save must restore the in-memory data');
+    assert(!fs.readdirSync(templateDir).some((name) => name.endsWith('.tmp')),
+      'failed save should remove its temporary file');
+    assert(data.swapAnnotationsForImages(imageA, imageA, [], []) === false,
+      'same-image swap should be rejected without writing');
+    console.log('[PASS] test_annotationSwapPersistsOrRollsBack');
+  } finally {
+    fs.renameSync = originalRename;
+    teardown();
+  }
+}
+
 /* ========== 运行所有测试 ========== */
 
 const tests = [
@@ -579,6 +647,7 @@ const tests = [
   test_multipleImagesNonOverlappingPackedTogether,
   test_sameImageOverlappingBboxesStayTogether,
   test_enumPathOutsideWorkspaceRejectedBeforeWriting,
+  test_annotationSwapPersistsOrRollsBack,
 ];
 
 let passed = 0;
