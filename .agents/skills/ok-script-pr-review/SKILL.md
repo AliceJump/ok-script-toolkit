@@ -51,6 +51,11 @@ description: 处理 ok-script-toolkit 主仓及 JetBrains 子仓的 PR 审阅意
 - 行内意见回复到对应线程：`POST /repos/<owner>/<repo>/pulls/<n>/comments/<顶层评论ID>/replies`。
   若目标是回复，先沿 `in_reply_to_id` 找顶层评论。不要把行内意见的处置汇总发到 PR 主评论。
 - Review 正文中的 **outside diff** 意见没有行内线程，应在 PR 主评论逐条说明处置与提交。
+- 处置回复应在正文开头 `@` 原意见的目标账号：人工 reviewer 使用该条意见的
+  `user.login`（不是显示名）；CodeRabbit API 作者虽是 `coderabbitai[bot]`，GitHub
+  命令和提及使用 `@coderabbitai`。若回复针对线程中较新的追问，提及那条追问的作者。
+  不要猜测不可提及或已删除账号；同一处置只回复并提及一次。普通处置文字不要写成
+  `@coderabbitai review` 等独立命令。diff 外意见也按原 review 作者提及。
 - 回复后查询 GraphQL `reviewThreads` 的 `isResolved`。仅在当前代码和验证表明问题已修复
   或已失效时解析线程；机器人自动解析后无需再操作。暂缓或仍有风险的线程保持开放。
   `reviewThreads` 与每条线程的 `comments` 都要分别翻页，不能假设首 100 条已覆盖全部。
@@ -58,13 +63,36 @@ description: 处理 ok-script-toolkit 主仓及 JetBrains 子仓的 PR 审阅意
 
 ## CodeRabbit 的等待与限流
 
-本仓的 PR 可能处于草稿状态。`CodeRabbit` 检查显示 `success` 但说明为
-`Review skipped: draft pull request` 时，**不代表当前 head 已完成审阅**；应检查 review
-的 `commit_id` 是否覆盖当前 head。草稿被跳过时，继续处理已有意见和 CI，不为催审擅自
-改成非草稿，也不无期限等待。不要照搬 ok-end-field 的等待脚本，它默认该仓的自动增量
-评审行为，且默认仓库名不同。
+本仓的 PR 可能处于草稿状态，或显示 `Review skipped: manual review required for this
+OSS repository`、`Review rate limited`。CodeRabbit 检查为 `success` 且说明是 `Review skipped`
+或 `Review rate limited` 时，**不代表当前
+head 已完成审阅**；应检查 review 的 `commit_id` 与状态说明。草稿被跳过时，不为催审擅自
+改成非草稿。不要照搬 ok-end-field 的等待脚本，它默认该仓的自动增量评审行为。
 
-自动评审正常时，推送后先观察状态，不重复发送触发评论。确需补跑且已获相应授权时，
-CodeRabbit 的命令正文只能是单独的 `@coderabbitai review`；强制全量重审用单独的
-`@coderabbitai full review`。遇到限流，从机器人评论的最新 `updated_at` 与明确倒计时
-判断可重试时间；没有明确时间就报告现状，不猜测或连续重发。
+推送后先记录当前 40 位 head SHA，检查自动评审是否已开始或完成。若明确显示手动评审
+必需或已限流，且用户已授权处理该 PR review，可运行本技能的脚本（两仓使用相同文件）：
+
+```powershell
+.\.agents\skills\ok-script-pr-review\request-coderabbit-review.ps1 `
+  -Repo AliceJump/ok-script-toolkit -PrNumber <n> -ExpectedHead <40位head SHA>
+# 子仓独立运行时改用 -Repo AliceJump/ok-script-toolkit-jetbrains
+```
+
+脚本先等待当前 head 的自动评审信号；仅在 CodeRabbit 明确报告“手动评审必需”或
+“评审限流”时，
+发送单独的 `@coderabbitai rate limit` 查询。此命令按 CodeRabbit 文档不消耗 review
+额度。脚本只接受**本次查询后新增的、身份核验为 CodeRabbit 的明确可用额度回复**；
+若无回复或格式无法识别，停止而不发 review。额度不足时在限定时间内再次查询，不把
+旧评论中的倒计时到点当成额度恢复的证明。确认额度可用后再次核对 PR 状态、head、
+review 与已有触发命令，最后只发送一次单独的 `@coderabbitai review`。`-NoTrigger`
+只禁用最后的 review 命令，**仍会公开发送额度查询评论**。出现 API 错误、草稿、head
+变化、评审状态不明或已存在同一提交后的触发命令时停止；脚本不自动改发全量审查。
+若需全量重审，核实原因后另行使用独立的 `@coderabbitai full review` 命令。
+两个当前 PR 的额度查询曾分别收到 `More reviews will be available in N minutes` 和
+`Reviews are available now.`；手动触发的机器人回复为 `Review finished.`，最新状态为
+`Review completed`。判断同一 head 是否审完时，以**最新 CodeRabbit 状态**优先：此前的
+同 head review 记录不能覆盖后来的 `Review rate limited` 或 `Review skipped`。
+
+参考：<https://docs.coderabbit.ai/reference/review-commands>。跨仓分别指定 `-Repo`，
+不得复用另一仓的 PR 号或 head。运行后再核对 CodeRabbit 回复与 CI，不能只凭命令
+发送成功就认定评审完成。
