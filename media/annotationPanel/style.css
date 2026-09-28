@@ -80,6 +80,15 @@ body {
   font-weight: var(--weight-medium);
 }
 
+.annotation-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
 canvas {
   display: block;
   width: 100%;

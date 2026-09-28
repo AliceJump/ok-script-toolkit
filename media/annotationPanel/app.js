@@ -257,23 +257,47 @@
       return;
     }
     annotations.forEach((ann, index) => {
-      const label = document.createElement('label');
-      label.className = 'annotation-row' + (index === selectedIdx ? ' is-selected' : '');
+      const row = document.createElement('div');
+      row.className = 'annotation-row' + (index === selectedIdx ? ' is-selected' : '');
       const input = document.createElement('input');
       input.type = 'checkbox';
       input.checked = !hidden.has(ann.category);
+      input.addEventListener('click', (event) => event.stopPropagation());
       input.addEventListener('change', () => {
-        selectedIdx = index;
         if (input.checked) hidden.delete(ann.category);
         else hidden.add(ann.category);
         listSignature = '';
         paint();
       });
       const text = document.createElement('span');
+      text.className = 'annotation-name';
       text.textContent = ann.category;
-      label.append(input, text);
-      rows.append(label);
+      text.addEventListener('click', () => {
+        selectedIdx = index;
+        listSignature = '';
+        paint();
+      });
+      row.append(input, text);
+      rows.append(row);
     });
+  }
+  function nudgeSelected(dx, dy) {
+    const ann = annotations[selectedIdx];
+    if (!ann || !isShown(ann)) return false;
+    let nx = ann.x + dx;
+    let ny = ann.y + dy;
+    if (img) {
+      nx = Math.max(0, Math.min(nx, img.width - ann.w));
+      ny = Math.max(0, Math.min(ny, img.height - ann.h));
+    }
+    if (nx === ann.x && ny === ann.y) return true;
+    pushUndo();
+    ann.x = nx;
+    ann.y = ny;
+    saveAnnotations();
+    paint();
+    updateUndoRedoButtons();
+    return true;
   }
   function showAllAnnotations() {
     hiddenSet().clear();
@@ -1075,12 +1099,18 @@
     } else if (matchKeybinding(e, keybindings.deleteSelected) && selectedIdx >= 0 && mode === 'none') {
       // 删除选中
       deleteSelected();
-    } else if (matchKeybinding(e, keybindings.prevImage)) {
-      // 上一张
-      navigate(-1);
-    } else if (matchKeybinding(e, keybindings.nextImage)) {
-      // 下一张
-      navigate(1);
+    } else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+      if (selectedIdx >= 0 && mode === 'none' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        const step = e.shiftKey ? 10 : 1;
+        const dx = e.key === 'ArrowLeft' ? -step : e.key === 'ArrowRight' ? step : 0;
+        const dy = e.key === 'ArrowUp' ? -step : e.key === 'ArrowDown' ? step : 0;
+        if (nudgeSelected(dx, dy)) {
+          e.preventDefault();
+          return;
+        }
+      }
+      if (matchKeybinding(e, keybindings.prevImage)) navigate(-1);
+      else if (matchKeybinding(e, keybindings.nextImage)) navigate(1);
     }
   });
 
