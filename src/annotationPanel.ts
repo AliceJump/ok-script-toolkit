@@ -177,7 +177,13 @@ class AnnotationController {
           void this.webview.postMessage({ type: 'generateBoxResult', ok: false, error: 'path' });
           break;
         }
-        const size = readImageSize(fs.readFileSync(this._currentImage));
+        let size: { width: number; height: number } | undefined;
+        try {
+          size = readImageSize(fs.readFileSync(this._currentImage));
+        } catch {
+          void this.webview.postMessage({ type: 'generateBoxResult', ok: false, error: 'image' });
+          break;
+        }
         const rect = size ? rectFromPixels(msg.boxes, size.width, size.height) : undefined;
         const root = getProjectConfig().projectDir;
         const error = rect && root

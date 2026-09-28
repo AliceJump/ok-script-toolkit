@@ -61,9 +61,14 @@ function writeText(file: string, text: string): boolean {
 }
 
 export function readAuthoringFile(rootDir: string, templatesDirectory: string): AuthoringFile {
+  return readAuthoringResult(rootDir, templatesDirectory).file;
+}
+
+function readAuthoringResult(rootDir: string, templatesDirectory: string): { file: AuthoringFile; errors: string[] } {
   const file = authoringFile(rootDir, templatesDirectory);
   const text = readText(file);
-  return text ? parseAuthoring(text).file : emptyAuthoringFile();
+  if (text === undefined) return { file: emptyAuthoringFile(), errors: [] };
+  return parseAuthoring(text);
 }
 
 export function readRuntimeFile(rootDir: string, declared?: string, fromConfigPy?: string): RuntimeFile {
@@ -90,7 +95,9 @@ export function replaceImageBoxes(
 ): string | undefined {
   const image = imageFileName(fileName);
   if (!image || width <= 0 || height <= 0) return 'image';
-  const current = readAuthoringFile(rootDir, templatesDirectory);
+  const parsed = readAuthoringResult(rootDir, templatesDirectory);
+  if (parsed.errors.length) return 'parse';
+  const current = parsed.file;
   const kept = current.boxes.filter((box) => !sameImage(box.image, image));
   const taken = new Set(kept.map((box) => box.path));
   const next: AuthoringBox[] = [];
@@ -112,7 +119,9 @@ export function addBox(rootDir: string, templatesDirectory: string, boxPath: str
   if (pathError) return pathError;
   const fileName = imageFileName(image);
   if (!fileName) return 'image';
-  const current = readAuthoringFile(rootDir, templatesDirectory);
+  const parsed = readAuthoringResult(rootDir, templatesDirectory);
+  if (parsed.errors.length) return 'parse';
+  const current = parsed.file;
   if (current.boxes.some((box) => box.path === boxPath)) return 'duplicate';
   const text = serializeAuthoring({
     version: 1,
@@ -122,7 +131,9 @@ export function addBox(rootDir: string, templatesDirectory: string, boxPath: str
 }
 
 export function publishRuntime(rootDir: string, templatesDirectory: string, declared?: string, fromConfigPy?: string): boolean {
-  const authoring = readAuthoringFile(rootDir, templatesDirectory);
+  const parsed = readAuthoringResult(rootDir, templatesDirectory);
+  if (parsed.errors.length) return false;
+  const authoring = parsed.file;
   const text = serializeRuntime(publishBoxes(authoring));
   const target = runtimeWriteTarget(resolveBoxRuntimePlan(rootDir, declared, fromConfigPy));
   return writeText(target, text);

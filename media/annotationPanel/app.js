@@ -282,7 +282,8 @@
         listSignature = '';
         paint();
       });
-      const text = document.createElement('span');
+      const text = document.createElement('button');
+      text.type = 'button';
       text.className = 'annotation-name';
       text.textContent = ann.category;
       text.addEventListener('click', () => {
@@ -1238,6 +1239,7 @@
         img = null; imgData = null;
         canvas.style.display = 'none';
         emptyMsg.style.display = 'flex';
+        syncAnnotationList();
       }
 
       // 更新导航

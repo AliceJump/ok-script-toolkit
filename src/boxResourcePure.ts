@@ -223,7 +223,23 @@ export function publishStatus(authoring: AuthoringFile, runtime: RuntimeFile): A
 }
 
 function sameRect(a: BoxRect, b: BoxRect): boolean {
-  return a.length === b.length && a.every((value, index) => value === b[index]);
+  return a.length === b.length && a.every((value, index) => formatRectNumber(value) === formatRectNumber(b[index]));
+}
+
+function quantizeRect(rect: BoxRect): BoxRect {
+  let left = Number(formatRectNumber(rect[0]));
+  let top = Number(formatRectNumber(rect[1]));
+  let right = Number(formatRectNumber(rect[2]));
+  let bottom = Number(formatRectNumber(rect[3]));
+  if (left >= right) {
+    if (right < 1) right = Math.min(1, left + 0.000001);
+    if (left >= right) left = Math.max(0, right - 0.000001);
+  }
+  if (top >= bottom) {
+    if (bottom < 1) bottom = Math.min(1, top + 0.000001);
+    if (top >= bottom) top = Math.max(0, bottom - 0.000001);
+  }
+  return [left, top, right, bottom];
 }
 
 export function applyVisibility(
@@ -270,7 +286,7 @@ export function serializeAuthoring(file: AuthoringFile): string {
       '    {',
       `      "path": ${JSON.stringify(box.path)},`,
       `      "image": ${JSON.stringify(box.image)},`,
-      `      "rect": [${box.rect.map(formatRectNumber).join(', ')}]`,
+      `      "rect": [${quantizeRect(box.rect).map(formatRectNumber).join(', ')}]`,
       '    }',
     ].join('\n'),
   ).join(',\n');
@@ -283,7 +299,7 @@ export function serializeRuntime(file: RuntimeFile): string {
     [
       '    {',
       `      "path": ${JSON.stringify(box.path)},`,
-      `      "rect": [${box.rect.map(formatRectNumber).join(', ')}]`,
+      `      "rect": [${quantizeRect(box.rect).map(formatRectNumber).join(', ')}]`,
       '    }',
     ].join('\n'),
   ).join(',\n');

@@ -21,8 +21,15 @@
       button.type = 'button';
       button.className = 'box-row';
       button.textContent = row.label;
-      button.onclick = () => vscode.postMessage({ type: 'activate', id: row.id, clicks: 1 });
-      button.ondblclick = () => vscode.postMessage({ type: 'activate', id: row.id, clicks: 2 });
+      let clickTimer = 0;
+      button.onclick = () => {
+        window.clearTimeout(clickTimer);
+        clickTimer = window.setTimeout(() => vscode.postMessage({ type: 'activate', id: row.id, clicks: 1 }), 250);
+      };
+      button.ondblclick = () => {
+        window.clearTimeout(clickTimer);
+        vscode.postMessage({ type: 'activate', id: row.id, clicks: 2 });
+      };
       rows.append(button);
     });
     if (!(msg.rows || []).length) {

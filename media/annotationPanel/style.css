@@ -35,8 +35,9 @@ body {
 }
 
 .annotation-list {
-  width: 220px;
-  flex-shrink: 0;
+  width: 168px;
+  flex: 0 1 168px;
+  max-width: 40%;
   display: flex;
   flex-direction: column;
   gap: var(--space-sm);
@@ -80,6 +81,18 @@ body {
   font-weight: var(--weight-medium);
 }
 
+@media (max-width: 640px) {
+  .editor-body { flex-direction: column; }
+  .annotation-list {
+    width: auto;
+    max-width: none;
+    flex: 0 0 auto;
+    max-height: 180px;
+    border-left: none;
+    border-top: var(--border-width) solid var(--border);
+  }
+}
+
 .annotation-name {
   flex: 1;
   min-width: 0;
@@ -87,6 +100,12 @@ body {
   text-overflow: ellipsis;
   white-space: nowrap;
   cursor: pointer;
+  background: none;
+  border: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  padding: 0;
 }
 
 canvas {

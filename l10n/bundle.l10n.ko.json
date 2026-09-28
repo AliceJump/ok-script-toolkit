@@ -216,5 +216,6 @@
   "Failed to swap annotations.": "어노테이션 교환에 실패했습니다.",
   "Annotations changed while confirming. Retry the swap.": "확인하는 동안 어노테이션이 변경되었습니다. 교환을 다시 시도하세요.",
   "Cannot read image size, so annotations cannot be swapped.": "이미지 크기를 읽을 수 없어 어노테이션을 교환할 수 없습니다.",
-  "Neither image has annotations, nothing to swap.": "두 이미지 모두 어노테이션이 없어 교환할 것이 없습니다."
+  "Neither image has annotations, nothing to swap.": "두 이미지 모두 어노테이션이 없어 교환할 것이 없습니다.",
+  "Could not save the box resource.": "박스 리소스를 저장하지 못했습니다."
 }

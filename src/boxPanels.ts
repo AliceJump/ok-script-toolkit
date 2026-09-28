@@ -13,7 +13,7 @@ import {
 } from './boxResourceStore';
 import { BoxRect, rectToPixel } from './boxResourcePure';
 import { probedBoxesJson } from './cocoFeaturePath';
-import { injectWebviewLocalization } from './localization';
+import { injectWebviewLocalization, tr } from './localization';
 import { boxesRuntimeSetting, templatesDirectory } from './projectConfig';
 import { readImageSize } from './pngCrop';
 import { getProjectConfig } from './screenshotCapture';
@@ -140,7 +140,11 @@ class BoxEditor {
   private images: string[] = [];
   private originals = new Map<number, BoxRect>();
 
-  constructor(private readonly panel: vscode.WebviewPanel) {
+  constructor(
+    private readonly panel: vscode.WebviewPanel,
+    private readonly rootDir: string,
+    private readonly templatesDir: string,
+  ) {
     panel.webview.onDidReceiveMessage((msg) => { void this.onMessage(msg); });
   }
 
@@ -150,13 +154,11 @@ class BoxEditor {
     void this.load();
   }
 
-  private root(): string { return getProjectConfig().projectDir; }
-
   private async load(): Promise<void> {
-    const root = this.root();
+    const root = this.rootDir;
     const buf = fs.readFileSync(this.image);
     const size = readImageSize(buf);
-    const authoring = readAuthoringFile(root, templatesDirectory(root));
+    const authoring = readAuthoringFile(root, this.templatesDir);
     this.originals.clear();
     const annotations = boxesForImage(authoring, path.basename(this.image)).map((box, index) => {
       const pixel = size ? rectToPixel(box.rect, size.width, size.height) : undefined;
@@ -201,8 +203,13 @@ class BoxEditor {
       return;
     }
     if (msg.type !== 'save' || !msg.annotations) return;
-    const root = this.root();
-    const size = readImageSize(fs.readFileSync(this.image));
+    let size: { width: number; height: number } | undefined;
+    try {
+      size = readImageSize(fs.readFileSync(this.image));
+    } catch {
+      void vscode.window.showErrorMessage(tr('Could not save the box resource.'));
+      return;
+    }
     if (!size) return;
     const edited: EditedBox[] = msg.annotations.map((ann) => ({
       path: ann.category,
@@ -212,14 +219,23 @@ class BoxEditor {
       h: ann.h,
       original: this.originals.get(ann.id),
     }));
-    replaceImageBoxes(root, templatesDirectory(root), path.basename(this.image), size.width, size.height, edited);
+    const error = replaceImageBoxes(this.rootDir, this.templatesDir, path.basename(this.image), size.width, size.height, edited);
+    if (error) void vscode.window.showErrorMessage(tr('Could not save the box resource.'));
   }
 }
 
-const editors = new Map<string, BoxEditor>();
+let boxEditorPanel: vscode.WebviewPanel | undefined;
+let boxEditor: BoxEditor | undefined;
 
 export function openBoxEditor(extensionUri: vscode.Uri, data: TemplateAssetData, imagePath: string): void {
   const images = data.listImages();
+  const root = getProjectConfig().projectDir;
+  const templatesDir = templatesDirectory(root);
+  if (boxEditorPanel && boxEditor) {
+    boxEditorPanel.reveal();
+    boxEditor.open(imagePath, images);
+    return;
+  }
   const panel = vscode.window.createWebviewPanel(
     'okScriptToolkitBoxAnnotation',
     path.basename(imagePath),
@@ -227,10 +243,13 @@ export function openBoxEditor(extensionUri: vscode.Uri, data: TemplateAssetData,
     { enableScripts: true, retainContextWhenHidden: true, localResourceRoots: [extensionUri, vscode.Uri.file(data.templatesDir)] },
   );
   panel.webview.html = annotationHtml(panel.webview.cspSource, extensionUri, panel.webview);
-  const editor = new BoxEditor(panel);
-  editor.open(imagePath, images);
-  editors.set(imagePath, editor);
-  panel.onDidDispose(() => editors.delete(imagePath));
+  boxEditor = new BoxEditor(panel, root, templatesDir);
+  boxEditorPanel = panel;
+  boxEditor.open(imagePath, images);
+  panel.onDidDispose(() => {
+    boxEditorPanel = undefined;
+    boxEditor = undefined;
+  });
 }
 
 export function previewRectForPath(root: string, boxPath: string): { imagePath: string; bbox: [number, number, number, number] } | undefined {

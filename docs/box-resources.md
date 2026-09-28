@@ -1,6 +1,6 @@
 # 框资源设计
 
-框管理对标现有模板管理，分成两份资源。标注工作副本只给插件编辑；运行时副本才是游戏和代码补全读取的那份。图片、画布和显隐不另起一套。
+框管理对标现有模板管理，分成两份资源。标注工作副本只给插件编辑。运行时副本是发布后的位置表：插件的框管理和 `self.pos` 补全读它。游戏进程要等业务项目的 `ScreenPosition` 加载这份文件之后才会用到它；ok 框架现在的模板匹配仍然只读 `template_matching.coco_feature_json`。图片、画布和显隐不另起一套。
 
 本文是实现依据。ok-neverness-to-everness（下称 ok-nte）里的真实调用是 `self.pos.screen.main_viewport.to_box()`，不是 `self.pos.main_viewport`，也没有 `screen_pos`。
 

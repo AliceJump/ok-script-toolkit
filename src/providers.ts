@@ -19,13 +19,13 @@ import { posPaths, previewRectForPath } from './boxPanels';
 const EXPR_RE = /(?<![\w.])self\.lang\.([\p{L}\p{N}_]+)\.([\p{L}\p{N}_]+)/gu;
 
 /** 转义正则特殊字符（别名可能含 . 等） */
-const POS_RE = /(?<![\w.])self\.pos\.((?:[A-Za-z_][A-Za-z0-9_]*\.)*[A-Za-z_][A-Za-z0-9_]*)(?:\.to_box\(\))?/g;
+const POS_RE = /(?<![\w.])self\.pos\.((?:[A-Za-z_][A-Za-z0-9_]*\.)*[A-Za-z_][A-Za-z0-9_]*)\.to_box\(\)|(?<![\w.])self\.pos\.((?:[A-Za-z_][A-Za-z0-9_]*\.)*[A-Za-z_][A-Za-z0-9_]*)(?![\w.(])/g;
 
 function findPosMatch(line: string, character: number): { path: string } | undefined {
   POS_RE.lastIndex = 0;
   let match: RegExpExecArray | null;
   while ((match = POS_RE.exec(line))) {
-    if (character >= match.index && character <= match.index + match[0].length) return { path: match[1] };
+    if (character >= match.index && character <= match.index + match[0].length) return { path: match[1] || match[2] };
   }
   return undefined;
 }
@@ -510,7 +510,7 @@ export class LangCompletionProvider implements vscode.CompletionItemProvider {
       });
     }
 
-    const posMatch = /(?<![\w.])self\.pos\.((?:[A-Za-z_][A-Za-z0-9_]*\.)*)([A-Za-z_][A-Za-z0-9_]*)$/.exec(before);
+    const posMatch = /(?<![\w.])self\.pos\.((?:[A-Za-z_][A-Za-z0-9_]*\.)*)([A-Za-z_][A-Za-z0-9_]*)?$/.exec(before);
     if (posMatch) {
       const parent = posMatch[1].replace(/\.$/, '');
       const prefix = parent ? `${parent}.` : '';
