@@ -962,7 +962,8 @@
 
   /* ---------- 删除 ---------- */
   function deleteSelected() {
-    if (selectedIdx < 0) return;
+    const ann = annotations[selectedIdx];
+    if (!ann || !isShown(ann)) return;
     pushUndo();
     annotations.splice(selectedIdx, 1);
     selectedIdx = -1;

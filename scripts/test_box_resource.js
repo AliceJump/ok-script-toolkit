@@ -47,6 +47,9 @@ check(
   pure.runtimeWriteTarget(preferred) === path.join(ROOT, 'custom', 'boxes.json'),
   '已声明时发布目标是首选，即使文件还没创建',
 );
+const authoringPath = path.join(ROOT, 'ok_templates', 'boxes.json');
+check(pure.sameBoxFile(authoringPath, path.join(ROOT, 'ok_templates', '.', 'boxes.json')), '规范化后同一路径视为同一文件');
+check(!pure.sameBoxFile(authoringPath, PROBE), '标注文件和运行时探测位置不是同一个文件');
 
 check(pure.boxPathError('screen.main_viewport') === undefined, 'screen.main_viewport 合法');
 check(pure.boxPathError('main_viewport') === 'shallow', '少一层 group 不合法');
@@ -135,6 +138,23 @@ check(pure.isAnnotationVisible('b', toggled), '不在隐藏集合里的条目可
 
 const statuses = pure.publishStatus(parsed.file, pure.parseRuntime(runtimeText).file);
 check(statuses.every((item) => item.status === 'same'), '刚发布的运行时与标注几何一致');
+
+const batchRect = [0, 0, 0.5, 0.5];
+const batchPixel = pure.rectToPixel(batchRect, 100, 100);
+const edit = (fileName, boxPath) => ({
+  fileName,
+  width: 100,
+  height: 100,
+  boxes: [{ path: boxPath, x: batchPixel.x, y: batchPixel.y, w: batchPixel.w, h: batchPixel.h, original: batchRect }],
+});
+const existing = [
+  { path: 'screen.a', image: '1.png', rect: batchRect },
+  { path: 'screen.b', image: '2.png', rect: batchRect },
+];
+const conflict = pure.replaceAuthoringImages(existing, [edit('1.png', 'screen.a'), edit('2.png', 'screen.a')]);
+check(conflict.error === 'duplicate', '后一张图路径冲突时整批替换失败');
+const applied = pure.replaceAuthoringImages(existing, [edit('1.png', 'screen.a'), edit('2.png', 'screen.b')]);
+check(!applied.error && applied.boxes.map((box) => box.path).sort().join() === 'screen.a,screen.b', '两张图都合法时一起替换');
 
 const declared = config.boxesRuntimeOf({ boxes: { runtime: 'src/scene/boxes.json' } });
 check(declared === 'src/scene/boxes.json', '约定文件的 boxes.runtime 归一化后可读');

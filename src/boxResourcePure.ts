@@ -121,6 +121,13 @@ export function runtimeWriteTarget(plan: BoxRuntimePlan): string {
   return plan.preferred ?? plan.probeCandidates[0];
 }
 
+/** 规范化后是否指向同一路径。Windows 上大小写不计。符号链接由读盘侧再比一次真实路径。 */
+export function sameBoxFile(a: string, b: string): boolean {
+  const left = path.resolve(a);
+  const right = path.resolve(b);
+  return process.platform === 'win32' ? left.toLowerCase() === right.toLowerCase() : left === right;
+}
+
 export function boxRuntimeRelPaths(plan: BoxRuntimePlan, rootDir: string): string[] {
   const all = plan.preferred ? [plan.preferred, ...plan.probeCandidates] : plan.probeCandidates;
   return [...new Set(all)]
@@ -179,6 +186,58 @@ export function rectForSave(
     if (quantized && samePixel(quantized, pixel)) return original;
   }
   return pixelToRect(pixel, width, height);
+}
+
+export interface AuthoringEditBox {
+  path: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  original?: BoxRect;
+  unchanged?: boolean;
+}
+
+export interface AuthoringImageEdit {
+  fileName: string;
+  width: number;
+  height: number;
+  boxes: readonly AuthoringEditBox[];
+}
+
+/**
+ * 在内存里依次替换多张图的框。任一图不合法就整批失败，调用方此时还不能写盘。
+ * 这样一次确认里的多张图要么一起留下，要么保持原文件。
+ */
+export function replaceAuthoringImages(
+  existing: readonly AuthoringBox[],
+  edits: readonly AuthoringImageEdit[],
+): { boxes: AuthoringBox[]; error?: string } {
+  let current = existing.slice();
+  for (const edit of edits) {
+    const image = imageFileName(edit.fileName);
+    if (!image || edit.width <= 0 || edit.height <= 0) return { boxes: existing.slice(), error: 'image' };
+    const kept = current.filter((box) => !sameImage(box.image, image));
+    const taken = new Set(kept.map((box) => box.path));
+    const next: AuthoringBox[] = [];
+    for (const box of edit.boxes) {
+      const pathError = boxPathError(box.path);
+      if (pathError) return { boxes: existing.slice(), error: pathError };
+      if (taken.has(box.path)) return { boxes: existing.slice(), error: 'duplicate' };
+      taken.add(box.path);
+      const rect = box.unchanged && box.original
+        ? box.original
+        : rectForSave(box.original, { x: box.x, y: box.y, w: box.w, h: box.h }, edit.width, edit.height);
+      if (!rect) return { boxes: existing.slice(), error: 'rect' };
+      next.push({ path: box.path, image, rect });
+    }
+    current = [...kept, ...next];
+  }
+  return { boxes: current };
+}
+
+function sameImage(a: string, b: string): boolean {
+  return imageFileName(a).toLowerCase() === imageFileName(b).toLowerCase();
 }
 
 /** 同一张原图上的像素框取最小包围矩形，再归一化。空列表返回 `undefined`。 */

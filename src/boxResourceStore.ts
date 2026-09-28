@@ -17,7 +17,6 @@ import {
   parseRuntime,
   pixelToRect,
   publishBoxes,
-  rectForSave,
   resolveBoxRuntimePlan,
   runtimeWriteTarget,
   serializeAuthoring,
@@ -25,6 +24,8 @@ import {
   unionOnImage,
   boxPathError,
   effectiveBoxRuntimeFile,
+  replaceAuthoringImages,
+  sameBoxFile,
 } from './boxResourcePure';
 
 export interface EditedBox {
@@ -38,6 +39,16 @@ export interface EditedBox {
 
 function sameImage(a: string, b: string): boolean {
   return imageFileName(a).toLowerCase() === imageFileName(b).toLowerCase();
+}
+
+/** 发布目标和标注文件是否是同一个文件。已存在的符号链接按真实路径比较。 */
+function sameStoredFile(a: string, b: string): boolean {
+  try {
+    if (fs.existsSync(a) && fs.existsSync(b)) return sameBoxFile(fs.realpathSync(a), fs.realpathSync(b));
+  } catch {
+    // 读真实路径失败时退回规范化路径，避免把标注文件当成可写的运行时目标。
+  }
+  return sameBoxFile(a, b);
 }
 
 function readText(file: string): { text?: string; missing?: boolean; error?: boolean } {
@@ -109,20 +120,9 @@ export function replaceImageBoxes(
   if (!image || width <= 0 || height <= 0) return 'image';
   const parsed = readAuthoringResult(rootDir, templatesDirectory);
   if (parsed.errors.length) return 'parse';
-  const current = parsed.file;
-  const kept = current.boxes.filter((box) => !sameImage(box.image, image));
-  const taken = new Set(kept.map((box) => box.path));
-  const next: AuthoringBox[] = [];
-  for (const box of boxes) {
-    const pathError = boxPathError(box.path);
-    if (pathError) return pathError;
-    if (taken.has(box.path)) return 'duplicate';
-    taken.add(box.path);
-    const rect = rectForSave(box.original, { x: box.x, y: box.y, w: box.w, h: box.h }, width, height);
-    if (!rect) return 'rect';
-    next.push({ path: box.path, image, rect });
-  }
-  const text = serializeAuthoring({ version: 1, boxes: [...kept, ...next] });
+  const merged = replaceAuthoringImages(parsed.file.boxes, [{ fileName, width, height, boxes }]);
+  if (merged.error) return merged.error;
+  const text = serializeAuthoring({ version: 1, boxes: merged.boxes });
   return writeText(authoringFile(rootDir, templatesDirectory), text) ? undefined : 'write';
 }
 
@@ -147,9 +147,10 @@ export function publishRuntime(rootDir: string, templatesDirectory: string, decl
   if (parsed.errors.length) return false;
   const runtime = readRuntimeResult(rootDir, declared, fromConfigPy);
   if (runtime.errors.length) return false;
-  const authoring = parsed.file;
-  const text = serializeRuntime(publishBoxes(authoring));
+  const authoringPath = authoringFile(rootDir, templatesDirectory);
   const target = runtimeWriteTarget(resolveBoxRuntimePlan(rootDir, declared, fromConfigPy));
+  if (sameStoredFile(authoringPath, target)) return false;
+  const text = serializeRuntime(publishBoxes(parsed.file));
   return writeText(target, text);
 }
 
