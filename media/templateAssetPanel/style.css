@@ -154,7 +154,7 @@ body.drop-active .drop-hint { display: flex; }
 }
 .modal h3 { margin-bottom: var(--space-xs); font-size: var(--font-lg); font-weight: var(--weight-bold); }
 .modal .modal-hint { color: var(--text-muted); font-size: var(--font-xs); margin-bottom: var(--space-sm); }
-.modal .actions { display: flex; justify-content: flex-end; gap: var(--space-sm); margin-top: var(--space-lg); }
+.swap-dialog-actions { display: flex; justify-content: flex-end; gap: var(--space-sm); margin-top: var(--space-lg); }
 
 .swap-list {
   display: grid;

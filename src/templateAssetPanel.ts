@@ -113,7 +113,7 @@ class AssetGalleryController {
     const batchSize = 8;
     for (let i = 0; i < metas.length; i += batchSize) {
       if (gen !== this.generation || this.disposed) return;
-      await this.pushThumbs(metas.slice(i, i + batchSize).map((meta) => meta.imagePath));
+      await this.pushThumbs(metas.slice(i, i + batchSize).map((meta) => meta.imagePath), gen);
       if (gen !== this.generation || this.disposed) return;
       await new Promise<void>((resolve) => setImmediate(resolve));
     }
@@ -132,12 +132,14 @@ class AssetGalleryController {
    * 为什么需要按需补推这个入口：上面那轮批量推送是**异步分批**的，用户完全可能在推完
    * 之前就打开了选择器；而裁剪失败的那几张更是整轮都不会再推。
    */
-  private async pushThumbs(imagePaths: readonly string[]): Promise<number> {
+  private async pushThumbs(imagePaths: readonly string[], generation = this.generation): Promise<number> {
     const items: { name: string; url: string }[] = [];
     for (const imagePath of imagePaths) {
+      if (generation !== this.generation || this.disposed) return 0;
       const entry = this.data.getImageEntryForPath(imagePath);
       const bbox: [number, number, number, number] = [0, 0, entry?.width ?? 100, entry?.height ?? 100];
       const file = await cropTemplateThumbFileAsync(imagePath, bbox, this.thumbDir, THUMB_HEIGHT);
+      if (generation !== this.generation || this.disposed) return 0;
       if (!file) continue;
       items.push({
         name: path.basename(imagePath),
@@ -197,10 +199,10 @@ class AssetGalleryController {
       case 'requestThumbs': {
         // 选择器打开时发现有几张还没有缩略图 URL ⇒ 现裁现推。
         // ⚠️ webview 传来的路径**不能直接拿去读盘**：只认当前模板目录里真实存在的图。
-        const requested = msg.imagePaths ?? [];
+        const requested = Array.isArray(msg.imagePaths) ? msg.imagePaths : [];
         if (requested.length > 0) {
           const allowed = new Set(this.data.listImages());
-          await this.pushThumbs(requested.filter((imagePath) => allowed.has(imagePath)));
+          await this.pushThumbs(requested.filter((imagePath) => typeof imagePath === 'string' && allowed.has(imagePath)));
         }
         break;
       }
@@ -496,12 +498,18 @@ class AssetGalleryController {
    * 把这件事说出来**：缩放会改变框的真实像素尺寸，而模板裁剪是按像素取的，
    * 用户有权在写盘之前知道"这次不只是搬家"。
    *
-   * 落盘走 `swapAnnotationsForImages` + 一次 `save()`。这个操作在 VS Code 侧
-   * **不可撤销**（`save()` 直接写 JSON、不经过编辑器，Ctrl+Z 管不到），
+   * 落盘由 `swapAnnotationsForImages` 一次完成。这个操作在 VS Code 侧
+   * **不可撤销**（直接保存 JSON、不经过编辑器，Ctrl+Z 管不到），
    * 所以必须整体成功或整体不动 —— 半交换的 coco 比不交换更难收拾。
    */
   private async handleSwapAnnotations(sourcePath: string, targetPath: string): Promise<void> {
     if (!sourcePath || !targetPath || sourcePath === targetPath) return;
+    // Webview 消息携带的路径须来自当前模板集，再读取图片或 COCO 数据。
+    const allowed = new Set(this.data.listImages());
+    if (!allowed.has(sourcePath) || !allowed.has(targetPath)) {
+      void vscode.window.showErrorMessage(tr('Failed to swap annotations.'));
+      return;
+    }
 
     const sourceSize = this.data.resolveImageSize(sourcePath);
     const targetSize = this.data.resolveImageSize(targetPath);
@@ -544,19 +552,23 @@ class AssetGalleryController {
     );
     if (choice !== swap) return;
 
-    const ok = this.data.swapAnnotationsForImages(
-      sourcePath,
-      targetPath,
-      // 参数顺序是"写到哪张图"：B 的框（按 A 的尺寸映射后）写进 A，反之亦然
-      scaleBoxes(targetBoxes, targetSize, sourceSize),
-      scaleBoxes(sourceBoxes, sourceSize, targetSize),
-    );
+    let ok: boolean;
+    try {
+      ok = this.data.swapAnnotationsForImages(
+        sourcePath,
+        targetPath,
+        // 参数顺序是"写到哪张图"：B 的框（按 A 的尺寸映射后）写进 A，反之亦然
+        scaleBoxes(targetBoxes, targetSize, sourceSize),
+        scaleBoxes(sourceBoxes, sourceSize, targetSize),
+      );
+    } catch {
+      void vscode.window.showErrorMessage(tr('Failed to swap annotations.'));
+      return;
+    }
     if (!ok) {
       void vscode.window.showErrorMessage(tr('Failed to swap annotations.'));
       return;
     }
-    this.data.save();
-
     await this.update();
     // 标注编辑器是常驻面板且逐操作自动落盘：正显示这两张图之一时必须同步，
     // 否则它手里的旧框会在下一次编辑时把交换结果整份写回去。

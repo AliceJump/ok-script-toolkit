@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { randomUUID } from 'crypto';
 import * as vscode from 'vscode';
 import { decodeRgba, encodePngRgb, readImageSize } from './pngCrop';
 import {
@@ -148,7 +149,14 @@ export class TemplateAssetData {
 
   save(): void {
     this.ensureTemplateFolder();
-    fs.writeFileSync(this.cocoPath, JSON.stringify(this.cocoData, null, 2), 'utf-8');
+    // Write beside the destination so a failed write cannot truncate the current COCO file.
+    const temporaryPath = path.join(this.templateFolder, `.${COCO_JSON}.${randomUUID()}.tmp`);
+    try {
+      fs.writeFileSync(temporaryPath, JSON.stringify(this.cocoData, null, 2), 'utf-8');
+      fs.renameSync(temporaryPath, this.cocoPath);
+    } finally {
+      try { fs.rmSync(temporaryPath, { force: true }); } catch { /* preserve the write error */ }
+    }
     this._dirty = false;
   }
 
@@ -279,8 +287,9 @@ export class TemplateAssetData {
    * ① 那条路径每次都 `_cleanupCategories()`。先写的那一侧会把"只有自己引用"的分类
    *    判成无人使用而删掉，紧接着写另一侧时再按名字重建 —— 分类名不变、**id 会漂**。
    *    中间那一刻的 cocoData 也是自相矛盾的（A 的标注已经搬走、B 的还是旧的）。
-   * ② 两次调用之间任何一处抛错，磁盘上就会留下"换了一半"的状态。
-   * 这里改成：先把两张图的旧标注一起摘掉，再一起写回，最后只清理一次分类。
+   * ② 两次调用之间任何一处抛错，会留下"换了一半"的内存状态。
+   * 在副本上先摘掉旧标注、写回两边、清理分类，再一次性保存。
+   * 保存失败时恢复原内存数据，磁盘文件也不会被截断。
    *
    * 返回 false 只表示"这两张图没法交换"（任一未登记进 COCO，或指向同一张图），
    * 此时**什么都没改** —— 调用方据此报错，不要报"已交换"。
@@ -295,34 +304,48 @@ export class TemplateAssetData {
     const idB = this.getImageId(pathB);
     if (idA === undefined || idB === undefined || idA === idB) return false;
 
-    this.cocoData.annotations = this.cocoData.annotations.filter(
-      (ann) => ann.image_id !== idA && ann.image_id !== idB,
-    );
-
-    let maxAnnId = 0;
-    for (const ann of this.cocoData.annotations) {
-      if (ann.id > maxAnnId) maxAnnId = ann.id;
-    }
-    const append = (imageId: number, boxes: typeof boxesForA): void => {
-      for (const box of boxes) {
-        const catId = this._getOrCreateCategoryId(box.category);
-        maxAnnId++;
-        this.cocoData.annotations.push({
-          id: maxAnnId,
-          image_id: imageId,
-          category_id: catId,
-          bbox: [box.x, box.y, box.w, box.h],
-          area: box.w * box.h,
-          iscrowd: 0,
-        });
-      }
+    const previousData = this.cocoData;
+    const previousDirty = this._dirty;
+    this.cocoData = {
+      images: [...previousData.images],
+      annotations: [...previousData.annotations],
+      categories: [...previousData.categories],
     };
-    append(idA, boxesForA);
-    append(idB, boxesForB);
+    try {
+      this.cocoData.annotations = this.cocoData.annotations.filter(
+        (ann) => ann.image_id !== idA && ann.image_id !== idB,
+      );
 
-    this._cleanupCategories();
-    this._dirty = true;
-    return true;
+      let maxAnnId = 0;
+      for (const ann of this.cocoData.annotations) {
+        if (ann.id > maxAnnId) maxAnnId = ann.id;
+      }
+      const append = (imageId: number, boxes: typeof boxesForA): void => {
+        for (const box of boxes) {
+          const catId = this._getOrCreateCategoryId(box.category);
+          maxAnnId++;
+          this.cocoData.annotations.push({
+            id: maxAnnId,
+            image_id: imageId,
+            category_id: catId,
+            bbox: [box.x, box.y, box.w, box.h],
+            area: box.w * box.h,
+            iscrowd: 0,
+          });
+        }
+      };
+      append(idA, boxesForA);
+      append(idB, boxesForB);
+
+      this._cleanupCategories();
+      this._dirty = true;
+      this.save();
+      return true;
+    } catch (error) {
+      this.cocoData = previousData;
+      this._dirty = previousDirty;
+      throw error;
+    }
   }
 
   /* ---------- 分类操作 ---------- */

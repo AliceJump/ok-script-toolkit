@@ -23,12 +23,12 @@
 
   <!-- 交换标注：目标图片选择（列表由 app.js 按当前模板集填充） -->
   <div class="modal-overlay" id="swapModal">
-    <div class="modal">
-      <h3 id="swapTitle">Swap annotations</h3>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="swapTitle">
+      <h3 id="swapTitle"></h3>
       <div class="modal-hint" id="swapHint"></div>
       <div class="swap-list" id="swapList"></div>
-      <div class="actions">
-        <button class="mini-btn" id="swapCancel">Cancel</button>
+      <div class="swap-dialog-actions">
+        <button class="mini-btn" id="swapCancel"></button>
       </div>
     </div>
   </div>
