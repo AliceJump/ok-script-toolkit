@@ -208,6 +208,15 @@ export class TemplateAssetData {
     return this.cocoData.images.find((img) => filenameKey(img.file_name) === key);
   }
 
+  /** Swaps must use the selected file, not the legacy same-stem fallback used by other callers. */
+  getSwapImageEntry(imagePath: string): CocoImage | undefined {
+    const fileName = path.basename(imagePath);
+    const exact = this.cocoData.images.find((img) => img.file_name === fileName);
+    if (exact) return exact;
+    const caseInsensitive = this.cocoData.images.filter((img) => img.file_name.toLowerCase() === fileName.toLowerCase());
+    return caseInsensitive.length === 1 ? caseInsensitive[0] : undefined;
+  }
+
   getImageId(imagePath: string): number | undefined {
     return this.getImageEntryForPath(imagePath)?.id;
   }
@@ -252,8 +261,8 @@ export class TemplateAssetData {
 
   /* ---------- COCO 标注操作 ---------- */
 
-  getAnnotationsForImage(imagePath: string): Array<CocoAnnotation & { categoryName: string }> {
-    const imageId = this.getImageId(imagePath);
+  getAnnotationsForImage(imagePath: string, exactFileName = false): Array<CocoAnnotation & { categoryName: string }> {
+    const imageId = exactFileName ? this.getSwapImageEntry(imagePath)?.id : this.getImageId(imagePath);
     if (imageId === undefined) return [];
     return this.cocoData.annotations
       .filter((ann) => ann.image_id === imageId)
@@ -310,8 +319,8 @@ export class TemplateAssetData {
     boxesForA: Array<{ category: string; x: number; y: number; w: number; h: number }>,
     boxesForB: Array<{ category: string; x: number; y: number; w: number; h: number }>,
   ): boolean {
-    const idA = this.getImageId(pathA);
-    const idB = this.getImageId(pathB);
+    const idA = this.getSwapImageEntry(pathA)?.id;
+    const idB = this.getSwapImageEntry(pathB)?.id;
     if (idA === undefined || idB === undefined || idA === idB) return false;
 
     const previousData = this.cocoData;

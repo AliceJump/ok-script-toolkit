@@ -214,6 +214,7 @@
   "{first}: {firstCount} boxes, {second}: {secondCount} boxes": "{first}: {firstCount} cajas, {second}: {secondCount} cajas",
   "Swapped annotations between '{first}' and '{second}'.": "Se intercambiaron las anotaciones de {first} y {second}.",
   "Failed to swap annotations.": "No se pudieron intercambiar las anotaciones.",
+  "Annotations changed while confirming. Retry the swap.": "Las anotaciones cambiaron durante la confirmación. Vuelve a intentar el intercambio.",
   "Cannot read image size, so annotations cannot be swapped.": "No se pudo leer el tamaño de la imagen, así que no se pueden intercambiar las anotaciones.",
   "Neither image has annotations, nothing to swap.": "Ninguna de las dos imágenes tiene anotaciones, no hay nada que intercambiar."
 }

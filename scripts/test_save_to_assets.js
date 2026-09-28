@@ -670,6 +670,51 @@ async function test_annotationSwapPersistsOrRollsBack() {
   }
 }
 
+/* ========== 测试 11：同名不同扩展名不能把另一张图的标注当作交换输入 ========== */
+
+async function test_annotationSwapUsesExactFileName() {
+  setup();
+  const cocoPath = path.join(templateDir, 'coco_annotations.json');
+  try {
+    const initial = {
+      images: [
+        { id: 1, file_name: 'same.png', width: 100, height: 100 },
+        { id: 2, file_name: 'same.jpg', width: 100, height: 100 },
+        { id: 3, file_name: 'other.png', width: 100, height: 100 },
+      ],
+      annotations: [
+        { id: 1, image_id: 1, category_id: 1, bbox: [1, 1, 10, 10], area: 100, iscrowd: 0 },
+        { id: 2, image_id: 2, category_id: 2, bbox: [2, 2, 10, 10], area: 100, iscrowd: 0 },
+      ],
+      categories: [
+        { id: 1, name: 'png-mark', supercategory: '' },
+        { id: 2, name: 'jpg-mark', supercategory: '' },
+      ],
+    };
+    fs.writeFileSync(cocoPath, JSON.stringify(initial));
+    const data = new TemplateAssetData(tmpDir);
+    data.load();
+    const jpg = path.join(templateDir, 'same.jpg');
+    const png = path.join(templateDir, 'same.png');
+    const other = path.join(templateDir, 'other.png');
+    assert(data.getSwapImageEntry(jpg)?.id === 2, 'swap lookup must select the JPG entry');
+    assert(data.getAnnotationsForImage(jpg, true)[0]?.categoryName === 'jpg-mark',
+      'swap boxes must come from the selected JPG');
+    assert(data.swapAnnotationsForImages(jpg, other,
+      [{ category: 'new-mark', x: 3, y: 3, w: 3, h: 3 }], []), 'exactly registered images should swap');
+    const saved = JSON.parse(fs.readFileSync(cocoPath, 'utf-8'));
+    assert(saved.annotations.some((ann) => ann.image_id === 1 && ann.category_id === 1),
+      'PNG annotations must remain unchanged');
+    assert(!data.getSwapImageEntry(path.join(templateDir, 'same.bmp')),
+      'an unregistered same-stem file must not resolve to another image');
+    assert(data.swapAnnotationsForImages(path.join(templateDir, 'same.bmp'), png, [], []) === false,
+      'an unregistered same-stem file must not write annotations');
+    console.log('[PASS] test_annotationSwapUsesExactFileName');
+  } finally {
+    teardown();
+  }
+}
+
 /* ========== 运行所有测试 ========== */
 
 const tests = [
@@ -683,6 +728,7 @@ const tests = [
   test_sameImageOverlappingBboxesStayTogether,
   test_enumPathOutsideWorkspaceRejectedBeforeWriting,
   test_annotationSwapPersistsOrRollsBack,
+  test_annotationSwapUsesExactFileName,
 ];
 
 let passed = 0;

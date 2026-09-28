@@ -510,6 +510,12 @@ class AssetGalleryController {
       void vscode.window.showErrorMessage(tr('Failed to swap annotations.'));
       return;
     }
+    const sourceEntry = this.data.getSwapImageEntry(sourcePath);
+    const targetEntry = this.data.getSwapImageEntry(targetPath);
+    if (!sourceEntry || !targetEntry || sourceEntry.id === targetEntry.id) {
+      void vscode.window.showErrorMessage(tr('Failed to swap annotations.'));
+      return;
+    }
 
     const sourceSize = this.data.resolveImageSize(sourcePath);
     const targetSize = this.data.resolveImageSize(targetPath);
@@ -552,6 +558,19 @@ class AssetGalleryController {
     );
     if (choice !== swap) return;
 
+    // The modal yields to the editor: another edit can replace either snapshot before we save.
+    const currentSourceSize = this.data.resolveImageSize(sourcePath);
+    const currentTargetSize = this.data.resolveImageSize(targetPath);
+    if (this.data.getSwapImageEntry(sourcePath)?.id !== sourceEntry.id
+      || this.data.getSwapImageEntry(targetPath)?.id !== targetEntry.id
+      || !currentSourceSize || !currentTargetSize
+      || !isSameSize(currentSourceSize, sourceSize) || !isSameSize(currentTargetSize, targetSize)
+      || JSON.stringify(this.boxesOf(sourcePath)) !== JSON.stringify(sourceBoxes)
+      || JSON.stringify(this.boxesOf(targetPath)) !== JSON.stringify(targetBoxes)) {
+      void vscode.window.showWarningMessage(tr('Annotations changed while confirming. Retry the swap.'));
+      return;
+    }
+
     let ok: boolean;
     try {
       ok = this.data.swapAnnotationsForImages(
@@ -580,7 +599,7 @@ class AssetGalleryController {
 
   /** 读某张图的标注，转成 `SwapBox` 形状（纯逻辑与数据层共用的入参） */
   private boxesOf(imagePath: string): SwapBox[] {
-    return this.data.getAnnotationsForImage(imagePath).map((ann) => ({
+    return this.data.getAnnotationsForImage(imagePath, true).map((ann) => ({
       category: ann.categoryName,
       x: ann.bbox[0],
       y: ann.bbox[1],

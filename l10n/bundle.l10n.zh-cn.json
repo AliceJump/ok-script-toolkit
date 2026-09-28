@@ -214,6 +214,7 @@
   "{first}: {firstCount} boxes, {second}: {secondCount} boxes": "{first}：{firstCount} 个标注，{second}：{secondCount} 个标注",
   "Swapped annotations between '{first}' and '{second}'.": "已交换 {first} 与 {second} 的标注。",
   "Failed to swap annotations.": "交换标注失败。",
+  "Annotations changed while confirming. Retry the swap.": "确认期间标注已更改，请重新交换。",
   "Cannot read image size, so annotations cannot be swapped.": "读不出图片尺寸，无法交换标注。",
   "Neither image has annotations, nothing to swap.": "两张图都没有标注，无需交换。"
 }

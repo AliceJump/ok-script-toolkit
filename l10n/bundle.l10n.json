@@ -214,6 +214,7 @@
   "{first}: {firstCount} boxes, {second}: {secondCount} boxes": "{first}: {firstCount} boxes, {second}: {secondCount} boxes",
   "Swapped annotations between '{first}' and '{second}'.": "Swapped annotations between '{first}' and '{second}'.",
   "Failed to swap annotations.": "Failed to swap annotations.",
+  "Annotations changed while confirming. Retry the swap.": "Annotations changed while confirming. Retry the swap.",
   "Cannot read image size, so annotations cannot be swapped.": "Cannot read image size, so annotations cannot be swapped.",
   "Neither image has annotations, nothing to swap.": "Neither image has annotations, nothing to swap."
 }

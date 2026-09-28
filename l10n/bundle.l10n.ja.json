@@ -214,6 +214,7 @@
   "{first}: {firstCount} boxes, {second}: {secondCount} boxes": "{first}：{firstCount} 件、{second}：{secondCount} 件",
   "Swapped annotations between '{first}' and '{second}'.": "{first} と {second} のアノテーションを交換しました。",
   "Failed to swap annotations.": "アノテーションの交換に失敗しました。",
+  "Annotations changed while confirming. Retry the swap.": "確認中にアノテーションが変更されました。交換をやり直してください。",
   "Cannot read image size, so annotations cannot be swapped.": "画像サイズを読み取れないため、アノテーションを交換できません。",
   "Neither image has annotations, nothing to swap.": "どちらの画像にもアノテーションがないため、交換するものはありません。"
 }
