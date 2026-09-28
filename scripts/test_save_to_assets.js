@@ -608,9 +608,28 @@ async function test_annotationSwapPersistsOrRollsBack() {
       'B should receive A\'s category with its original ID');
     assert(JSON.stringify(persisted) === JSON.stringify(data.data), 'memory should match disk');
 
+    let attempts = 0;
+    fs.renameSync = (...args) => {
+      attempts++;
+      if (attempts < 3) {
+        const error = new Error('temporary lock');
+        error.code = 'EPERM';
+        throw error;
+      }
+      return originalRename(...args);
+    };
+    assert(data.swapAnnotationsForImages(imageA, imageB, [], []), 'transient lock should be retried');
+    assert(attempts === 3, `transient lock should take 3 attempts, got ${attempts}`);
+
     const beforeFailure = fs.readFileSync(cocoPath, 'utf-8');
     const inMemoryBeforeFailure = data.data;
-    fs.renameSync = () => { throw new Error('simulated rename failure'); };
+    attempts = 0;
+    fs.renameSync = () => {
+      attempts++;
+      const error = new Error('persistent lock');
+      error.code = 'EBUSY';
+      throw error;
+    };
     let failed = false;
     try {
       data.swapAnnotationsForImages(
@@ -619,13 +638,29 @@ async function test_annotationSwapPersistsOrRollsBack() {
         [],
       );
     } catch (error) {
-      failed = String(error).includes('simulated rename failure');
+      failed = String(error).includes('persistent lock');
     }
     assert(failed, 'save failure should reach the caller');
+    assert(attempts === 4, `persistent lock should stop after 4 attempts, got ${attempts}`);
     assert(fs.readFileSync(cocoPath, 'utf-8') === beforeFailure, 'failed save must preserve disk data');
     assert(data.data === inMemoryBeforeFailure, 'failed save must restore the in-memory data');
     assert(!fs.readdirSync(templateDir).some((name) => name.endsWith('.tmp')),
       'failed save should remove its temporary file');
+
+    attempts = 0;
+    fs.renameSync = () => {
+      attempts++;
+      const error = new Error('non-transient failure');
+      error.code = 'EIO';
+      throw error;
+    };
+    let nonTransientFailure;
+    try { data.swapAnnotationsForImages(imageA, imageB, [], []); }
+    catch (error) { nonTransientFailure = error; }
+    assert(String(nonTransientFailure).includes('non-transient failure'),
+      'non-transient error should propagate');
+    assert(attempts === 1, `non-transient error should not be retried, got ${attempts}`);
+    assert(data.data === inMemoryBeforeFailure, 'non-transient failure must restore memory');
     assert(data.swapAnnotationsForImages(imageA, imageA, [], []) === false,
       'same-image swap should be rejected without writing');
     console.log('[PASS] test_annotationSwapPersistsOrRollsBack');

@@ -153,7 +153,17 @@ export class TemplateAssetData {
     const temporaryPath = path.join(this.templateFolder, `.${COCO_JSON}.${randomUUID()}.tmp`);
     try {
       fs.writeFileSync(temporaryPath, JSON.stringify(this.cocoData, null, 2), 'utf-8');
-      fs.renameSync(temporaryPath, this.cocoPath);
+      // Windows readers can briefly deny replacement; retry only transient lock errors.
+      for (let attempt = 0; ; attempt++) {
+        try {
+          fs.renameSync(temporaryPath, this.cocoPath);
+          break;
+        } catch (error) {
+          const code = (error as NodeJS.ErrnoException).code;
+          if (attempt >= 3 || !['EPERM', 'EACCES', 'EBUSY'].includes(code ?? '')) throw error;
+          Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25);
+        }
+      }
     } finally {
       try { fs.rmSync(temporaryPath, { force: true }); } catch { /* preserve the write error */ }
     }
