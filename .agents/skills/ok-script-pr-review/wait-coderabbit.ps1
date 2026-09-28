@@ -85,6 +85,27 @@ function Get-Snapshot {
     }
 }
 
+function Wait-WithinDeadline {
+    param([double]$Seconds)
+    $remaining = ($globalDeadline - (Get-CrNow)).TotalSeconds
+    Wait-CrSeconds ([Math]::Max(0, [Math]::Min($Seconds, $remaining)))
+}
+
+# After an uncertain send: look for the trigger comment, re-reading the head before each look.
+function Find-SentTrigger {
+    param([string]$Head, [object]$Arrival)
+    for ($attempt = 0; $attempt -lt 3 -and (Get-CrNow) -lt $globalDeadline; $attempt++) {
+        Wait-WithinDeadline $PollSeconds
+        $pr = Get-CrPr $Repo $PrNumber
+        if ($pr.head -ne $Head) { return [pscustomobject]@{ comment = $null; head = $pr.head } }
+        $found = @(Get-CrIssueComments $Repo $PrNumber | Where-Object {
+            -not (Test-CodeRabbitAuthor $_.login $_.type) -and (Test-CodeRabbitReviewCommand $_.body) -and $_.created -ge $Arrival
+        } | Sort-Object created) | Select-Object -Last 1
+        if ($found) { return [pscustomobject]@{ comment = $found; head = $Head } }
+    }
+    return [pscustomobject]@{ comment = $null; head = $Head }
+}
+
 function Write-Transition {
     param([string]$Head, [object]$Info)
     $key = "$Head|$($Info.state)|$($Info.evidence)"
@@ -184,16 +205,18 @@ try {
                     # 5xx, timeouts and network errors may still have created the comment: keep the ledger.
                     $entry.status = 'uncertain'; $entry.error = $message
                     Update-Ledger $head $entry
-                    $posted = $null
-                    for ($attempt = 0; $attempt -lt 3 -and -not $posted; $attempt++) {
-                        Wait-CrSeconds $PollSeconds
-                        $posted = @(Get-CrIssueComments $Repo $PrNumber | Where-Object {
-                            -not (Test-CodeRabbitAuthor $_.login $_.type) -and (Test-CodeRabbitReviewCommand $_.body) -and $_.created -ge $arrival
-                        } | Sort-Object created) | Select-Object -Last 1
+                    $check = Find-SentTrigger $head $arrival
+                    if ($check.head -ne $head) {
+                        if ($StopOnHeadChange) { Complete-Wait 'HEAD_CHANGED' $check.head -Extra @{ previousHead = $head } }
+                        Write-Host '[wait] HEAD_CHANGED while confirming an uncertain trigger; old session discarded'
+                        $head = $check.head
+                        $restart = $true
+                        continue
                     }
-                    if (-not $posted) {
+                    if (-not $check.comment) {
                         throw "Trigger send failed with an uncertain result ($message). The ledger $ledgerPath still blocks this head; check the PR for the comment before removing it."
                     }
+                    $posted = $check.comment
                     $entry.status = 'confirmed-after-error'
                 }
                 $entry.commentId = $posted.id; $entry.url = $posted.url; $entry.postedAt = (Get-CrNow).ToString('o')
@@ -201,7 +224,7 @@ try {
                 Write-Host "[wait] sent the single review trigger for head $($head.Substring(0, 7)): $($posted.url)"
                 continue
             }
-            Wait-CrSeconds $PollSeconds
+            Wait-WithinDeadline $PollSeconds
         }
     }
 } catch {

@@ -60,6 +60,9 @@ try {
         Write-Host "[rate-limit] query $probeCount/$MaxProbes for $Repo#$PrNumber at $($ExpectedHead.Substring(0, 7))"
         $probe = New-CrIssueComment $Repo $PrNumber '@coderabbitai rate limit'
         $replyDeadline = (Get-CrNow).AddSeconds($ReplyTimeoutSeconds)
+        $floor = (Get-CrNow).AddSeconds($PollSeconds)
+        $cap = if ($deadline -gt $floor) { $deadline } else { $floor }
+        if ($replyDeadline -gt $cap) { $replyDeadline = $cap }
         $reply = $null
         $sawUnknown = $null
         while ($true) {

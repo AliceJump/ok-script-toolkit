@@ -307,6 +307,38 @@ Test-Case 'an uncertain send failure without a visible comment keeps blocking th
     Assert-True ($r.triggers.Count -eq 0 -and $r.second.result.state -eq 'TRIGGER_EXHAUSTED') "second run: $($r.second.result.state), triggers $($r.triggers.Count)"
 }
 
+Test-Case 'confirming an uncertain send respects the overall deadline' {
+    New-World
+    Add-Status $headA 'success' 'Review skipped: manual review required for this OSS repository'
+    Reply-OnProbe @('Reviews are available now.')
+    $global:W.failPost = @{ body = '@coderabbitai review'; message = 'HTTP 504: Gateway Timeout'; created = $false }
+    $start = Get-Now
+    $r = Invoke-Wait @{ TimeoutSeconds = 60; PollSeconds = 300 }
+    $elapsed = ((Get-Now) - $start).TotalSeconds
+    Assert-True ($r.exit -eq 2 -and $elapsed -le 60) "got $($r.result.state) after $elapsed s"
+}
+
+Test-Case 'a head change while confirming an uncertain send starts a new session' {
+    New-World
+    Add-Status $headA 'success' 'Review skipped: manual review required for this OSS repository'
+    Reply-OnProbe @('Reviews are available now.', 'Reviews are available now.')
+    $global:W.failPost = @{ body = '@coderabbitai review'; message = 'HTTP 502: Bad Gateway'; created = $false }
+    $global:W.onPost = {
+        param($body)
+        if ($body -eq '@coderabbitai rate limit' -and $global:CrReplyQueue.Count -gt 0) {
+            Add-Comment "$planText $($global:CrReplyQueue.Dequeue())" | Out-Null
+            if ($global:W.head -eq $headA) {
+                $global:W.events.Add(@{ at = (Get-Now).AddSeconds(5); done = $false; action = {
+                    Set-Head $headB; Add-Status $headB 'success' 'Review skipped: manual review required for this OSS repository' } }) | Out-Null
+            }
+        }
+    }
+    $r = Invoke-Wait @{ ReviewWaitSeconds = 60 }
+    $triggers = Posts '@coderabbitai review'
+    Assert-True ($r.result.head -eq $headB -and $r.result.state -eq 'TRIGGER_EXHAUSTED') "got $($r.result.state) on $($r.result.head)"
+    Assert-True ($triggers.Count -eq 1 -and $triggers[0].head -eq $headB) 'only the new head gets a confirmed trigger'
+}
+
 Test-Case 'a review landing during the quota wait cancels the trigger' {
     New-World
     Add-Status $headA 'success' 'Review skipped: manual review required for this OSS repository'
