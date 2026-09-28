@@ -15,6 +15,7 @@ import {
   imageFileName,
   parseAuthoring,
   parseRuntime,
+  isStorableRect,
   pixelToRect,
   publishBoxes,
   resolveBoxRuntimePlan,
@@ -127,6 +128,7 @@ export function replaceImageBoxes(
 }
 
 export function addBox(rootDir: string, templatesDirectory: string, boxPath: string, image: string, rect: BoxRect): string | undefined {
+  if (!isStorableRect(rect)) return 'rect';
   const pathError = boxPathError(boxPath);
   if (pathError) return pathError;
   const fileName = imageFileName(image);

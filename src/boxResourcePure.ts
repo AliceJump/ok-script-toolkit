@@ -228,7 +228,7 @@ export function replaceAuthoringImages(
       const rect = box.unchanged && box.original
         ? box.original
         : rectForSave(box.original, { x: box.x, y: box.y, w: box.w, h: box.h }, edit.width, edit.height);
-      if (!rect) return { boxes: existing.slice(), error: 'rect' };
+      if (!rect || !isStorableRect(rect)) return { boxes: existing.slice(), error: 'rect' };
       next.push({ path: box.path, image, rect });
     }
     current = [...kept, ...next];
@@ -410,6 +410,13 @@ function parseBoxEntry(entry: unknown, requireImage: boolean): { box?: Authoring
   const rect = parseRect(record.rect);
   if (!rect) return { error: 'rect' };
   return { box: { path: record.path.trim(), image, rect } };
+}
+
+/** 与解析时的矩形约束一致。写盘前拒绝，避免下次读取把整个文件判为损坏。 */
+export function isStorableRect(rect: readonly number[]): boolean {
+  if (rect.length !== 4 || !rect.every((item) => Number.isFinite(item))) return false;
+  const [left, top, right, bottom] = rect;
+  return left >= 0 && top >= 0 && right <= 1 && bottom <= 1 && left < right && top < bottom;
 }
 
 function parseRect(value: unknown): BoxRect | undefined {

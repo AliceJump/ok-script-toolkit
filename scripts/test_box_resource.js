@@ -151,6 +151,17 @@ const existing = [
   { path: 'screen.a', image: '1.png', rect: batchRect },
   { path: 'screen.b', image: '2.png', rect: batchRect },
 ];
+check(pure.isStorableRect([0, 0, 1, 1]), '贴边矩形可以保存');
+check(!pure.isStorableRect([-0.1, 0, 0.5, 0.5]), '越出左边界的矩形拒绝写入');
+check(!pure.isStorableRect([0, 0, 1.1, 0.5]), '越出右边界的矩形拒绝写入');
+const outside = pure.replaceAuthoringImages(existing, [{
+  fileName: '1.png',
+  width: 100,
+  height: 100,
+  boxes: [{ path: 'screen.a', x: -10, y: 0, w: 20, h: 20 }],
+}]);
+check(outside.error === 'rect', '越界像素框整批替换失败，原文件不会被写坏');
+
 const conflict = pure.replaceAuthoringImages(existing, [edit('1.png', 'screen.a'), edit('2.png', 'screen.a')]);
 check(conflict.error === 'duplicate', '后一张图路径冲突时整批替换失败');
 const applied = pure.replaceAuthoringImages(existing, [edit('1.png', 'screen.a'), edit('2.png', 'screen.b')]);
