@@ -26,6 +26,16 @@
   document.getElementById('showAllBtn').textContent = t('showAllAnnotations');
   document.getElementById('hideAllBtn').textContent = t('hideAllAnnotations');
   document.getElementById('onlyCurrentBtn').textContent = t('showOnlyCurrent');
+  const generateBoxBtn = document.getElementById('generateBoxBtn');
+  if (generateBoxBtn) generateBoxBtn.textContent = t('generateBox');
+  const generateTitle = document.getElementById('generateTitle');
+  if (generateTitle) generateTitle.textContent = t('generateBoxTitle');
+  const generatePathLabel = document.getElementById('generatePathLabel');
+  if (generatePathLabel) generatePathLabel.textContent = t('generatePath');
+  const generateCancel = document.getElementById('generateCancel');
+  if (generateCancel) generateCancel.textContent = t('cancel');
+  const generateOk = document.getElementById('generateOk');
+  if (generateOk) generateOk.textContent = t('ok');
 
   // 归一化坐标（x,y,tox,toy）保留的小数位
   const COORD_DECIMALS = 4;
@@ -33,6 +43,7 @@
 
   // 状态
   let imageData = null;   // { imagePath, imageBase64, annotations, allCategories, filename }
+  let boxMode = false;
   let img = null;         // HTMLImageElement
   let scale = 1.0;
   let fitScale = 1.0;
@@ -147,6 +158,8 @@
     if (showAllBtn) showAllBtn.textContent = t('showAllAnnotations');
     if (hideAllBtn) hideAllBtn.textContent = t('hideAllAnnotations');
     if (onlyCurrentBtn) onlyCurrentBtn.textContent = t('showOnlyCurrent');
+    const generateBoxBtn = document.getElementById('generateBoxBtn');
+    if (generateBoxBtn) generateBoxBtn.textContent = t('generateBox');
     updateUndoRedoButtons();
   }
 
@@ -298,6 +311,30 @@
     paint();
     updateUndoRedoButtons();
     return true;
+  }
+  function openGenerateBox() {
+    const choices = document.getElementById('generateChoices');
+    const error = document.getElementById('generateError');
+    const pathInput = document.getElementById('generatePath');
+    if (!choices || !pathInput) return;
+    while (choices.firstChild) choices.removeChild(choices.firstChild);
+    if (error) error.textContent = '';
+    const selected = annotations[selectedIdx];
+    annotations.forEach((ann, index) => {
+      const label = document.createElement('label');
+      label.className = 'annotation-row';
+      const input = document.createElement('input');
+      input.type = 'checkbox';
+      input.checked = !selected || index === selectedIdx;
+      input.dataset.index = String(index);
+      const text = document.createElement('span');
+      text.textContent = ann.category;
+      label.append(input, text);
+      choices.append(label);
+    });
+    const seed = selected ? selected.category : (annotations[0] ? annotations[0].category : 'region');
+    pathInput.value = 'screen.' + String(seed).replace(/[^A-Za-z0-9_]/g, '_');
+    document.getElementById('generateModal').classList.add('visible');
   }
   function showAllAnnotations() {
     hiddenSet().clear();
@@ -1132,6 +1169,26 @@
   document.getElementById('redoBtn').onclick = () => { redo(); updateUndoRedoButtons(); };
   document.getElementById('prevBtn').onclick = () => navigate(-1);
   document.getElementById('nextBtn').onclick = () => navigate(1);
+  document.getElementById('generateBoxBtn').onclick = () => openGenerateBox();
+  document.getElementById('generateCancel').onclick = () => {
+    document.getElementById('generateModal').classList.remove('visible');
+  };
+  document.getElementById('generateOk').onclick = () => {
+    const chosen = [];
+    document.querySelectorAll('#generateChoices input').forEach((input) => {
+      if (input.checked) chosen.push(annotations[Number(input.dataset.index)]);
+    });
+    const error = document.getElementById('generateError');
+    if (!chosen.length) {
+      if (error) error.textContent = t('generateNeedSelection');
+      return;
+    }
+    vscode.postMessage({
+      type: 'generateBox',
+      path: document.getElementById('generatePath').value.trim(),
+      boxes: chosen.map((ann) => ({ x: ann.x, y: ann.y, w: ann.w, h: ann.h })),
+    });
+  };
   document.getElementById('showAllBtn').onclick = () => showAllAnnotations();
   document.getElementById('hideAllBtn').onclick = () => hideAllAnnotations();
   document.getElementById('onlyCurrentBtn').onclick = () => showOnlyCurrent();
@@ -1147,7 +1204,16 @@
       if (typeof msg.copyCoordsSpace === 'boolean') {
         copyCoordsSpace = msg.copyCoordsSpace;
       }
+      boxMode = msg.boxMode === true;
+      const generateBoxBtn = document.getElementById('generateBoxBtn');
+      if (generateBoxBtn) generateBoxBtn.style.display = boxMode ? 'none' : '';
       updateButtonTexts();
+      return;
+    }
+    if (msg.type === 'generateBoxResult') {
+      const error = document.getElementById('generateError');
+      if (msg.ok) document.getElementById('generateModal').classList.remove('visible');
+      else if (error) error.textContent = msg.error || t('generateNeedSelection');
       return;
     }
     if (msg.type === 'load') {

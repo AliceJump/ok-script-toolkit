@@ -2,6 +2,10 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { TemplateAssetData } from './templateAssetData';
+import { addBox, rectFromPixels } from './boxResourceStore';
+import { templatesDirectory } from './projectConfig';
+import { getProjectConfig } from './screenshotCapture';
+import { readImageSize } from './pngCrop';
 import { injectWebviewLocalization, tr } from './localization';
 import { applySharedAssets, getNonce } from './webviewHtml';
 
@@ -145,6 +149,10 @@ class AnnotationController {
     y?: number;
     w?: number;
     h?: number;
+    path?: string;
+    boxes?: Array<{ x: number; y: number; w: number; h: number }>;
+    ok?: boolean;
+    error?: string;
   }): Promise<void> {
     switch (msg.type) {
       case 'ready':
@@ -162,6 +170,20 @@ class AnnotationController {
         );
         this.data.save();
         this.onSaved(this._currentImage);
+        break;
+      }
+      case 'generateBox': {
+        if (!this._currentImage || !msg.path || !msg.boxes?.length) {
+          void this.webview.postMessage({ type: 'generateBoxResult', ok: false, error: 'path' });
+          break;
+        }
+        const size = readImageSize(fs.readFileSync(this._currentImage));
+        const rect = size ? rectFromPixels(msg.boxes, size.width, size.height) : undefined;
+        const root = getProjectConfig().projectDir;
+        const error = rect && root
+          ? addBox(root, templatesDirectory(root), msg.path, path.basename(this._currentImage), rect)
+          : 'image';
+        void this.webview.postMessage({ type: 'generateBoxResult', ok: !error, error: error || '' });
         break;
       }
       case 'navigate': {
@@ -268,7 +290,7 @@ export class AnnotationPanel {
 
 /* ---------------- HTML ---------------- */
 
-function annotationHtml(cspSource: string, extensionUri: vscode.Uri, webview: vscode.Webview): string {
+export function annotationHtml(cspSource: string, extensionUri: vscode.Uri, webview: vscode.Webview): string {
   const file = path.join(extensionUri.fsPath, 'media', 'annotationPanel', 'index.html');
   const nonce = getNonce();
   const resource = (name: string) => webview.asWebviewUri(

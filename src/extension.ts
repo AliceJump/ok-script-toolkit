@@ -32,6 +32,7 @@ import {
 } from './templateAssetPanel';
 import { TempScreenshotStore } from './tempScreenshotStore';
 import { TempScreenshotViewProvider } from './tempScreenshotPanel';
+import { BoxAssetViewProvider, BoxGalleryViewProvider } from './boxPanels';
 
 /** 缩略图缓存 key 版本：内容 hash 化后旧命名（t_/a_）需要清理一次 */
 const THUMB_KEY_VERSION = 'content-hash-v2';
@@ -193,7 +194,7 @@ export function activate(context: vscode.ExtensionContext): void {
     // 末尾的 `config.py`：它决定运行时模板库放在哪，改了要重探 + 重建监听。
     // 放在 `**/{...}` 里等价于 `**/config.py`（任意深度的同名文件都会派发进来，
     // `getAffectedSources` 再按路径筛一次）。
-    return `**/{${langGlob}/*.json,${poGlob}/**/*.po,${cocoGlobs},assets/images/*.png,ok_tasks/assets/images/*.png,${tplGlob}/*.png,${effectsFile},config.py}`;
+    return `**/{${langGlob}/*.json,${poGlob}/**/*.po,${cocoGlobs},${tplGlob}/boxes.json,src/scene/boxes.json,assets/images/*.png,ok_tasks/assets/images/*.png,${tplGlob}/*.png,${effectsFile},config.py}`;
   };
 
   /**
@@ -393,6 +394,14 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.window.registerWebviewViewProvider(
       TemplateAssetViewProvider.viewType,
       new TemplateAssetViewProvider(templateAssetData, thumbDir, context.extensionUri, tempScreenshotStore),
+    ),
+    vscode.window.registerWebviewViewProvider(
+      BoxAssetViewProvider.viewType,
+      new BoxAssetViewProvider(templateAssetData, context.extensionUri),
+    ),
+    vscode.window.registerWebviewViewProvider(
+      BoxGalleryViewProvider.viewType,
+      new BoxGalleryViewProvider(context.extensionUri),
     ),
     vscode.window.registerWebviewViewProvider(
       TempScreenshotViewProvider.viewType,

@@ -387,6 +387,15 @@ const ZH_CN: WebviewStrings = {
   hideAllAnnotations: '隐藏全部',
   showOnlyCurrent: '只显示当前',
   annotationListEmpty: '没有标注',
+  generateBox: '生成框',
+  generateBoxTitle: '生成框',
+  generatePath: '路径',
+  generateNeedSelection: '至少选择一个标注',
+  publish: '发布',
+  assetsHint: '双击原图编辑框。发布后才会进入运行时。',
+  galleryHint: '单击插入 to_box()。双击复制属性路径。',
+  assetsEmpty: '没有模板原图。请先在标注管理里添加。',
+  galleryEmpty: '还没有运行时框。请先在框资源管理里发布。',
 };
 
 const EN: WebviewStrings = {
@@ -509,6 +518,15 @@ const EN: WebviewStrings = {
   hideAllAnnotations: 'Hide all',
   showOnlyCurrent: 'Only current',
   annotationListEmpty: 'No annotations',
+  generateBox: 'Create box',
+  generateBoxTitle: 'Create box',
+  generatePath: 'Path',
+  generateNeedSelection: 'Select at least one annotation',
+  publish: 'Publish',
+  assetsHint: 'Double-click an image to edit boxes. Publish writes the runtime file.',
+  galleryHint: 'Click inserts to_box(). Double-click copies the attribute path.',
+  assetsEmpty: 'No template images yet. Add them in Template Assets.',
+  galleryEmpty: 'No runtime boxes yet. Publish them from Box Assets.',
 };
 
 const ZH_TW: WebviewStrings = {
@@ -601,6 +619,15 @@ const ZH_TW: WebviewStrings = {
   hideAllAnnotations: '隱藏全部',
   showOnlyCurrent: '只顯示目前',
   annotationListEmpty: '沒有標註',
+  generateBox: '產生框',
+  generateBoxTitle: '產生框',
+  generatePath: '路徑',
+  generateNeedSelection: '至少選擇一個標註',
+  publish: '發布',
+  assetsHint: '雙擊原圖編輯框。發布後才會進入執行時。',
+  galleryHint: '單擊插入 to_box()。雙擊複製屬性路徑。',
+  assetsEmpty: '沒有模板原圖。請先在標註管理裡新增。',
+  galleryEmpty: '還沒有執行時框。請先在框資源管理裡發布。',
   refresh: '重新整理', open: '開啟', add: '新增', modify: '修改', delete: '刪除', cancel: '取消', save: '儲存', copy: '複製', close: '關閉', search: '搜尋', loading: '載入中…', none: '無', current: '目前', enabled: '開啟', disabled: '關閉', error: '錯誤', warning: '警告', info: '資訊',
   charactersTitle: '角色技能管理', charactersTab: '角色與技能', effectsTab: '效果索引', localesTab: '名稱本地化', issuesTab: '資料診斷', searchCharacters: '搜尋角色、技能、效果、描述…', allStars: '全部星級', allElements: '全部元素', allProfessions: '全部職業', allSkillTypes: '全部技能類型', enhancementOnly: '僅顯示含強化組的角色', issueOnly: '僅顯示存在診斷的角色', characterCount: '{shown} / {total} 個角色', skillsEnhancements: '技能 / 強化', noCharacters: '沒有符合的角色', selectCharacter: '從左側選擇角色', openCharacterJson: '開啟角色 JSON', skillsAndEnhancements: '技能與強化效果', addSkill: '新增技能', modifySkill: '修改技能', addEnhancement: '新增強化組', modifyEnhancement: '修改強化組', baseEffects: '基礎效果', triggerEffects: '觸發依賴效果', outputEffects: '強化產出效果', visiblePulse: '可見脈衝', searchEffects: '搜尋效果 ID、描述、角色或技能…', allCategories: '全部分類', allEffects: '全部效果', usedOnly: '僅已引用', unusedOnly: '僅未引用', unknownOnly: '僅未知', addEffectCategory: '新增分類', addEffect: '新增效果', localizationMatrix: '角色名稱多語言矩陣', localizationHint: '空白儲存格表示缺失，可點擊角色開啟語言來源檔案。', missing: '缺失', searchIssues: '搜尋診斷資訊…', allSeverities: '全部級別', openSource: '開啟來源檔案', readingCharacterData: '正在讀取角色、技能、效果與多語言資料…', unknownCurrentEffect: '目前資料中的未知效果', inferredFromTriggerText: '由觸發文字推斷', clickCopySkillId: '點擊複製技能 ID', clickCopyEffectId: '點擊複製效果 ID', openCharacterLocaleFile: '開啟角色名稱語言檔案', loadFailed: '載入失敗', saveFailed: '儲存失敗', charactersMetric: '角色', skillsMetric: '技能', enhancementsMetric: '強化組', effectReferencesMetric: '效果引用', effectDefinitionsMetric: '效果定義', valueLabel: '值', taskTitle: 'ok-script 任務啟動', noTasks: '找不到任務。\n請先在設定中配置專案路徑。', parameters: '參數', launch: '啟動', stop: '停止', pause: '暫停', resume: '恢復', running: '執行中…', toolboxOpenCharacterManager: '開啟角色技能管理面板', templatesSearch: '搜尋模板名稱…', templatesTitle: '模板面板', noTemplates: '找不到任何模板。', noTemplatesWithHint: '找不到任何模板。\n請確認工作區存在 assets/coco_annotations.json\n（或 ok_tasks/assets/coco_annotations.json）。', thumbnailStats: '已載入 {loaded} 個縮圖', thumbnailStatsWithFailures: '已載入 {loaded} 個縮圖 / {failed} 個失敗', thumbnailLoadFailed: '縮圖載入失敗', templateSize: '尺寸：{width}×{height}', templateSource: '來源：{path}',
   unknownStar: '星級未定', unknownElement: '元素未定', unknownProfession: '職業未定', unknownWeapon: '武器未定', skillsCount: '{count} 個技能', enhancementsCount: '{count} 個強化組', syncedSkillLocked: '同步技能 · ID/名稱/類型/元素/描述已鎖定', enhancedState: '強化態', multiplier: '倍率', stagger: '失衡', cooldown: '冷卻', spiritCost: '技力', noSkills: '此角色尚無技能資料', effectsCount: '{shown} / {total} 個效果', noEffects: '沒有符合的效果', undefinedEffect: '未定義效果', openDefinition: '開啟定義', moreUsages: '另有 {count} 處引用', characterIdColumn: '角色 / ID', issuesCount: '{shown} / {total} 條診斷', noIssuesMatch: '沒有符合的診斷', noIssues: '未發現資料問題', skillId: '技能 ID', skillName: '技能名稱', skillType: '技能類型', element: '元素', damageMultiplier: '傷害倍率', staggerValue: '失衡值', cooldownField: '冷卻', spiritCostField: '技力消耗', skillDescription: '技能描述', baseEffectsMulti: '基礎效果（可多選）', enhancementName: '強化組名稱', visibleMarker: '顯示標記', triggerText: '觸發條件文字', enhancementDescription: '強化效果說明', triggerEffectsMulti: '觸發依賴效果（可多選）', outputEffectsMulti: '強化產出效果（可多選）', effectCategory: '效果分類', effectId: '效果 ID（大寫底線）', effectDescription: '效果描述', categoryName: '分類名稱', effectMultiHint: '按住 Ctrl / Cmd 可多選；選項來自 effects.py，並依效果分類分組。', selectedTriggerEffects: '已選擇 {count} 個觸發依賴效果', noTriggerEffects: '未選擇觸發依賴效果', noSelectedEffects: '未選擇效果', unknownEffect: '未知效果', confirmDelete: '確定要刪除「{name}」嗎？\n儲存前會自動建立 .bak 備份。', copied: '已複製：{text}', collapseParameters: '收合參數', oneTimeTask: '一次性', triggerTask: '觸發任務', enableTrigger: '啟用', triggerDisabled: '未啟用', triggerArmed: '已啟用', triggerEnqueued: '已入列', triggerPolling: '輪詢中', taskQueued: '排隊中', taskRunning: '執行中', executorIdle: '執行器未啟動', executorConnecting: '執行器啟動中…', executorRunning: '執行器執行中 · {count} 個觸發任務已入列', executorPaused: '已暫停（輪詢與任務皆暫停）', startExecutor: '啟動執行器', stopExecutor: '關閉執行器', stopCurrent: '停止目前任務', configGroup: '設定分組', commonParameters: '通用參數', groupParameters: '分組參數', childTaskConfig: '子任務設定', otherParameters: '其他參數', launchSettings: '啟動設定', saved: '已自動儲存', reset: '重設', noConfigParameters: '目前沒有可設定參數（schema 尚未就緒或任務沒有 default_config）。', schemaFailed: '此任務 schema 收集失敗，無法自動產生表單：{error}', holdCtrlMulti: '按住 Ctrl 多選', currentValue: '{value}（目前）', selectedOptionsHint: '可選值：{values}', structuredJsonHint: 'JSON 陣列；支援條件物件與動作序列。', debugOverlay: '除錯浮層', debugOverlayHint: '任務啟動時自動沿用；任務執行中可即時開關。開啟後 draw_boxes 的識別框會繪製到遊戲視窗上（GDI 浮層）。', toolboxGameSection: '遊戲連線', toolboxConnectGame: '連線遊戲', toolboxDisconnect: '中斷', toolboxGameConnected: '已連線：{title}（PID {pid}）', toolboxGameNotConnected: '未連線遊戲。連線後任務啟動將優先複用該視窗；遊戲未執行時會自動啟動。', availableOptions: '可用選項', clickOptionToAdd: '點擊選項新增。', selectedOptions: '已選清單', searchOptions: '搜尋選項…', moveUp: '上移', moveDown: '下移', removeItem: '移除', confirm: '確認', addValue: '新增值', taskPaused: '任務已暫停，點擊恢復繼續執行', taskResumed: '任務已恢復執行', stopping: '正在停止任務…', taskStopped: '任務已停止，詳見輸出面板', taskCompleted: '任務完成，詳見輸出面板', taskFailed: '任務異常結束，詳見輸出面板', templatesHint: '單擊=插入 · 雙擊=複製 · 將游標移到縮圖並點擊 👁 檢視原圖', templatesCount: '{shown}/{total} 個模板', noTemplateMatch: '沒有符合「{query}」的模板。', viewOriginal: '檢視原圖（標示位置）',

@@ -1,0 +1,13 @@
+.toolbar { border-bottom: var(--border-width) solid var(--border); }
+.info { color: var(--text-muted); font-size: var(--font-xs); }
+#rows { display: flex; flex-direction: column; gap: var(--space-xs); padding: var(--space-sm); }
+.box-row {
+  text-align: left;
+  background: var(--bg-row);
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  padding: var(--space-sm);
+  cursor: pointer;
+}
+.box-row:hover { background: var(--bg-row-hover); }

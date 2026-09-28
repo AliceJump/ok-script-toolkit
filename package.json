@@ -139,6 +139,18 @@
           "webviewOptions": {
             "retainContextWhenHidden": true
           }
+        },
+        {
+          "type": "webview",
+          "id": "okScriptToolkit.boxAssets",
+          "name": "%view.boxAssets%",
+          "title": "%view.boxAssets.title%"
+        },
+        {
+          "type": "webview",
+          "id": "okScriptToolkit.boxGallery",
+          "name": "%view.boxGallery%",
+          "title": "%view.boxGallery.title%"
         }
       ],
       "okTempShots": [
