@@ -5,10 +5,11 @@
 原子写都在 store 里，这里按 CLI 转调，保证写入格式与项目 GUI / 任务运行时零漂移。
 必须在项目目录、用项目 Python 运行（store 依赖 ok 包与项目源码）。
 
-存储位置与执行器一致：传 --run-dir 时 get_relative_path("configs") 改道沙箱
+存储位置与执行器一致：宿主传 OK_TOOLKIT_RUN_DIR 时 get_relative_path("configs") 改道沙箱
 （与 run_executor 的 install_config_path_patch 同手法，store 在导入期固定路径，
 patch 必须先于 store import）。沙箱文件缺失时，先从项目声明的 config_folder
-复制一次账号文件；后续编辑均以沙箱为准。不传 --run-dir 则读写项目文件（仅诊断用途）。
+复制一次账号文件；后续编辑均以沙箱为准。--run-dir 仍兼容旧调用方；两者都不传
+时读写项目文件（仅诊断用途）。
 
 用法：
   python account_store.py <project_dir> get --run-dir <run_dir>
@@ -19,49 +20,18 @@ patch 必须先于 store import）。沙箱文件缺失时，先从项目声明�
 输出（最后一行 JSON）：{"ok": true, ...} / {"ok": false, "error": "..."}
 """
 import argparse
-import ast
-import importlib
 import json
 import os
 import shutil
 import sys
 import tempfile
 
+from project_runtime import RUN_DIR_ENV, detect_config_folder, load_account_store_module
+
 sys.stdout.reconfigure(encoding="utf-8")
 sys.stderr.reconfigure(encoding="utf-8")
 
-# 约定模块路径候选（ok-end-field / ok-gf2 实例；AP 若同构会被第一个候选或后续条目命中）
-STORE_MODULES = (
-    "src.tasks.account.account_scope_store",
-    "src.tasks.account_scope_store",
-)
-
 ACCOUNT_FILE = "account_scoped_overrides.json"
-
-
-def detect_config_folder(project_dir: str) -> str:
-    """导入项目之前读取常量 config_folder；与 probe_task_schemas 的规则一致。"""
-    for candidate in (
-        os.path.join(project_dir, "src", "config.py"),
-        os.path.join(project_dir, "config.py"),
-    ):
-        try:
-            with open(candidate, encoding="utf-8") as stream:
-                tree = ast.parse(stream.read(), filename=candidate)
-        except (OSError, SyntaxError):
-            continue
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.Dict):
-                continue
-            for key, value in zip(node.keys, node.values):
-                if (
-                    isinstance(key, ast.Constant)
-                    and key.value == "config_folder"
-                    and isinstance(value, ast.Constant)
-                    and isinstance(value.value, str)
-                ):
-                    return value.value
-    return "configs"
 
 
 def initialize_sandbox_account_file(project_dir: str, run_dir: str) -> None:
@@ -128,22 +98,6 @@ def apply_sandbox_redirect(run_dir: str) -> None:
         pass
 
 
-def load_store_module(project_dir: str):
-    """逐候选 import 项目的 account_scope_store；全部失败时把每个候选的错误带出来。"""
-    sys.path.insert(0, project_dir)
-    os.chdir(project_dir)
-    errors = []
-    for name in STORE_MODULES:
-        try:
-            return importlib.import_module(name)
-        except Exception as e:  # noqa: BLE001 — 逐候选尝试，错误留痕
-            errors.append(f"{name}: {type(e).__name__}: {e}")
-    raise RuntimeError(
-        "account store module not found（项目需有 src/**/account_scope_store.py，且运行 Python "
-        "能 import ok 包与项目源码）→ " + " | ".join(errors)
-    )
-
-
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("project_dir")
@@ -156,10 +110,12 @@ def main() -> None:
         # patch 先于 store import：store 在模块导入期就用 get_relative_path 固定路径
         project_dir = os.path.abspath(args.project_dir)
         sys.path.insert(0, project_dir)
-        if kwargs.get("run-dir"):
-            initialize_sandbox_account_file(project_dir, kwargs["run-dir"])
-            apply_sandbox_redirect(kwargs["run-dir"])
-        store = load_store_module(project_dir)
+        run_dir = kwargs.get("run-dir") or os.environ.get(RUN_DIR_ENV, "").strip()
+        if run_dir:
+            initialize_sandbox_account_file(project_dir, run_dir)
+            apply_sandbox_redirect(run_dir)
+        os.chdir(project_dir)
+        store = load_account_store_module(project_dir)
         if args.command == "get":
             data = store.load_overrides()
             payload = {

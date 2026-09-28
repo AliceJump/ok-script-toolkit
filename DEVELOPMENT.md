@@ -8,6 +8,8 @@
 
 本文档面向扩展开发者，包含项目结构、本地构建安装和发布流程。
 
+两端共同维护的运行脚本、协议和宿主边界见 [共用核心](docs/shared-core.md)。
+
 This document is for extension developers and covers the project structure, local build/installation, and release workflow.
 
 ---

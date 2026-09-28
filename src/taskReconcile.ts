@@ -11,12 +11,27 @@ export interface ListedSchema {
   kind?: 'onetime' | 'trigger';
 }
 
-/** Keep the AST list for the first paint, then replace it with runtime tasks. */
+/** Cache is only a hint for the first paint: the fresh AST list owns membership. */
+export function reconcileCachedTaskList(
+  astTasks: ListedTask[],
+  cachedSchemas: Record<string, ListedSchema>,
+): ListedTask[] {
+  if (Object.keys(cachedSchemas).length === 0) return astTasks;
+  return astTasks.map((task) => {
+    const schema = cachedSchemas[`${task.module}::${task.className}`];
+    return schema ? {
+      ...task,
+      displayName: schema.displayName || task.displayName,
+      kind: schema.kind || task.kind || 'onetime',
+    } : task;
+  });
+}
+
+/** A successful runtime probe owns the final task set, including an empty one. */
 export function reconcileTaskList(
   astTasks: ListedTask[],
   schemas: Record<string, ListedSchema>,
 ): ListedTask[] {
-  if (Object.keys(schemas).length === 0) return astTasks;
   const astByKey = new Map(astTasks.map((task) => [`${task.module}::${task.className}`, task]));
   const result: ListedTask[] = [];
   for (const [key, schema] of Object.entries(schemas)) {

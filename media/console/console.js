@@ -203,11 +203,61 @@
 
   /** 账号选择（模块级保持，重渲染不丢） */
   let accountSelection = { account: '', target: '' };
+  let accountListDraft = null;
+  let selectedMapAccount = '';
+  let accountStorePath = '';
+  const mapDrafts = new Map();
+
+  function recordMapDraft(store, username, text) {
+    const id = resolveAccId(store, username);
+    if (!id) return;
+    const persisted = (store?.mapContents || {})[id] || '';
+    if (text === persisted) mapDrafts.delete(id);
+    else mapDrafts.set(id, text);
+  }
+
+  function mapTextFor(store, username) {
+    const id = resolveAccId(store, username);
+    if (!id) return '';
+    const persisted = (store?.mapContents || {})[id] || '';
+    const draft = mapDrafts.get(id);
+    if (draft === undefined) return persisted;
+    if (draft === persisted) {
+      mapDrafts.delete(id);
+      return persisted;
+    }
+    return draft;
+  }
+
+  function captureAccountDrafts(host, store) {
+    if (!store) return;
+    const list = host.querySelector('textarea[data-account-list-editor]');
+    if (list) {
+      const persisted = store.accountListText || '';
+      accountListDraft = list.value === persisted ? null : list.value;
+    }
+    const select = host.querySelector('select[data-account-map-select]');
+    const map = host.querySelector('textarea[data-account-map-editor]');
+    if (select && map) {
+      selectedMapAccount = select.value;
+      recordMapDraft(store, select.value, map.value);
+    }
+  }
 
   function renderMultiAccount(info, store, storeError) {
+    const host = $('accountList');
+    const nextStorePath = info?.storePath || '';
+    if (accountStorePath && nextStorePath && accountStorePath !== nextStorePath) {
+      accountListDraft = null;
+      selectedMapAccount = '';
+      mapDrafts.clear();
+      if (store === state.accountStore) store = null;
+    } else if (host) {
+      captureAccountDrafts(host, state.accountStore);
+    }
+    if (nextStorePath) accountStorePath = nextStorePath;
     state.multiAccount = info || { available: false };
     state.accountStore = store || null;
-    const host = $('accountList');
     if (!host) return;
     host.replaceChildren();
     if (!info || (info.available !== true && info.hasStoreModule !== true)) {
@@ -263,7 +313,10 @@
     save.textContent = t('saveBtn');
     const textarea = document.createElement('textarea');
     textarea.rows = Math.min(6, Math.max(2, (store?.accountListText || '').split('\n').length));
-    textarea.value = store?.accountListText || '';
+    textarea.dataset.accountListEditor = '';
+    const persisted = store?.accountListText || '';
+    if (accountListDraft === persisted) accountListDraft = null;
+    textarea.value = accountListDraft === null ? persisted : accountListDraft;
     textarea.style.width = '100%';
     save.addEventListener('click', () => {
       post({ type: 'saveAccountList', text: textarea.value });
@@ -813,10 +866,16 @@
       accountSelect.appendChild(opt);
     }
     const textarea = document.createElement('textarea');
+    textarea.dataset.accountMapEditor = '';
     textarea.rows = 6;
+    accountSelect.dataset.accountMapSelect = '';
+    if (accounts.includes(selectedMapAccount)) accountSelect.value = selectedMapAccount;
+    let displayedAccount = '';
     const loadContent = () => {
-      const accId = resolveAccId(store, accountSelect.value);
-      textarea.value = accId ? (store.mapContents || {})[accId] || '' : '';
+      if (displayedAccount) recordMapDraft(store, displayedAccount, textarea.value);
+      displayedAccount = accountSelect.value;
+      selectedMapAccount = displayedAccount;
+      textarea.value = mapTextFor(store, displayedAccount);
     };
     loadContent();
     accountSelect.addEventListener('change', loadContent);

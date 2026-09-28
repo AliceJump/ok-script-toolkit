@@ -383,3 +383,28 @@ characterProjectPath（走取值链）
 6. **`config.py` 那层探到了吗？** 探针是懒探测，第一次按"没声明"返回；  
    如果 `config.py` 里的值是 `os.path.join(变量, ...)` 这种掺了变量的写法，**静态解析不出来** → 走兜底。
 7. **两端都改了吗？** 只改一端时，另一个 IDE 里的行为不会变。
+
+---
+
+## 12. 全局配置组的两个来源（探针）
+
+探针要采集的「全局配置组」有**两条独立的链**，走哪条由**项目自己声明**，插件不假设路径：
+
+| 来源 | 项目在哪声明 | 探针怎么读 |
+|---|---|---|
+| **框架组**（`source: framework`） | `config.py` 的 `"global_configs": [option, ...]` 注册进框架 GlobalConfig 注册表 | `ok.task_executor.global_config.get_all_visible_configs()` |
+| **项目自建组**（`source: project_store`） | `config.py` 的 `custom_tabs` 里声明的项目 GUI 页（如 `src.gui.GlobalConfigTab`），该页 `from <store> import get_all_visible_configs` | 按该声明静态解析出 store 模块 → import → `get_all_visible_configs()` |
+
+两条链的组都并进探针输出的 **`globalConfigGroups`**（同一个数组），用 `source` 区分。
+
+**自建 store 的模块名不写死**：由 `python/project_store.py` 从项目声明推出 ——
+`custom_tabs` → 页文件 → 该页 `import` 的、提供 `get_all_visible_configs` 的模块。
+判据是**接口**而不是模块名，所以项目把 store 挪包改名都不用改插件。
+项目声明与已导入模块优先，历史默认名 `src.core.global_config_store` 始终作为最后一个候选（老项目兼容）；同一个枚举函数若被多个模块重新导出，只采集一次。
+
+> 曾经写死在探针与执行器两处，项目一改路径那批全局配置就整批静默消失。
+> 回归测试：`python python/tests/test_project_store.py`。
+
+**执行器侧同一条规则**：`run_executor.py` 的 `resolve_group_config()` 也用
+`project_store.store_modules(config, cwd)` 得到的候选去 `get_global_config(name)`，
+保证宿主推 `gparams` 时执行器认得出同一批组。

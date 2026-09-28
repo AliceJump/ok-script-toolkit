@@ -151,6 +151,36 @@ mapAccountSelect.value = '1111';
 mapAccountSelect.dispatchEvent(new window.Event('change', { bubbles: true }));
 assert(ta.value === 'some content', '切回账号后恢复对应 content');
 
+console.log('4a. 未保存的账号列表和地图草稿跨账号切换、存储刷新保留');
+const listEditor = document.querySelector('#accountList .gconfig-card textarea[data-account-list-editor]');
+listEditor.value = '1111\n2222\nunsaved';
+ta.value = 'draft map 1';
+mapAccountSelect.value = '2222';
+mapAccountSelect.dispatchEvent(new window.Event('change', { bubbles: true }));
+ta.value = 'draft map 2';
+mapAccountSelect.value = '1111';
+mapAccountSelect.dispatchEvent(new window.Event('change', { bubbles: true }));
+assert(ta.value === 'draft map 1', '切回账号后恢复其未保存的地图草稿');
+send({ type: 'accountStore', data: store });
+const refreshedList = document.querySelector('#accountList textarea[data-account-list-editor]');
+const refreshedMap = document.querySelector('#accountList textarea[data-account-map-editor]');
+const refreshedMapSelect = document.querySelector('#accountList select[data-account-map-select]');
+assert(refreshedList.value === '1111\n2222\nunsaved', '存储刷新保留未保存的账号列表');
+assert(refreshedMapSelect.value === '1111' && refreshedMap.value === 'draft map 1',
+  '存储刷新保留地图账号选择与草稿');
+refreshedMapSelect.value = '2222';
+refreshedMapSelect.dispatchEvent(new window.Event('change', { bubbles: true }));
+assert(refreshedMap.value === 'draft map 2', '第二个账号的地图草稿独立保留');
+send({
+  type: 'accountStore',
+  data: { ...store, accountListText: '1111\n2222\nunsaved',
+    mapContents: { acc_1: 'draft map 1', acc_2: 'draft map 2' } },
+});
+assert(document.querySelector('#accountList textarea[data-account-list-editor]').value === '1111\n2222\nunsaved',
+  '保存回读接受账号列表的新存储值');
+assert(document.querySelector('#accountList textarea[data-account-map-editor]').value === 'draft map 2',
+  '保存回读接受地图的新存储值');
+
 console.log('5. 「启动设置」区不可折叠（折叠已移除，标题是普通标题）');
 const overridePanel = document.querySelector('#accountList .account-override-form .config-panel');
 const titleEl = overridePanel.querySelector(':scope > .config-section-title');
@@ -223,5 +253,12 @@ assert(/\.group-head\s*\{[^}]*background:\s*var\(--bg-row\)/.test(css),
   'kind 级任务组头用行级浅底色');
 assert(!/\.group-head\s*\{[^}]*border:\s*var\(--border-width/.test(css), '行级组头不再有描边（避免方块墙）');
 assert(!/\.subgroup-head\s*\{[^}]*border:\s*var\(--border-width/.test(css), '业务分组头不再有描边');
+
+console.log('11. 项目存储路径变化时清除上一项目的草稿');
+document.querySelector('#accountList textarea[data-account-list-editor]').value = 'previous project draft';
+send({ type: 'multiAccount', info: { ...multiAccount, storePath: 'other-project-store' } });
+send({ type: 'accountStore', data: store });
+assert(document.querySelector('#accountList textarea[data-account-list-editor]').value === store.accountListText,
+  '新项目不继承上一项目的账号列表草稿');
 
 console.log('\n全部通过');
