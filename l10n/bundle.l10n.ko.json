@@ -207,5 +207,14 @@
   "Overwrite anyway": "그래도 덮어쓰기",
   "Not set — ask on save": "설정 안 됨 — 저장할 때 묻기",
   "Derived from the file name": "파일 이름에서 유도",
-  "Account store update failed: {error}": "계정 스토어 업데이트 실패: {error}"
+  "Account store update failed: {error}": "계정 스토어 업데이트 실패: {error}",
+  "Swap": "교환",
+  "Swap annotations between '{first}' and '{second}'?": "{first} 와(과) {second} 의 어노테이션을 교환할까요?",
+  "Sizes differ ({from} → {to}); boxes are scaled proportionally.": "이미지 크기가 다릅니다({from} → {to}). 어노테이션은 비율에 맞춰 조정됩니다.",
+  "{first}: {firstCount} boxes, {second}: {secondCount} boxes": "{first}: {firstCount}개, {second}: {secondCount}개",
+  "Swapped annotations between '{first}' and '{second}'.": "{first} 와(과) {second} 의 어노테이션을 교환했습니다.",
+  "Failed to swap annotations.": "어노테이션 교환에 실패했습니다.",
+  "Annotations changed while confirming. Retry the swap.": "확인하는 동안 어노테이션이 변경되었습니다. 교환을 다시 시도하세요.",
+  "Cannot read image size, so annotations cannot be swapped.": "이미지 크기를 읽을 수 없어 어노테이션을 교환할 수 없습니다.",
+  "Neither image has annotations, nothing to swap.": "두 이미지 모두 어노테이션이 없어 교환할 것이 없습니다."
 }

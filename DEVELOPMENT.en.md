@@ -17,7 +17,7 @@ The shared runtime scripts, protocol, and host boundaries are documented in [Sha
 ## Project Structure
 
 ```text
-src/                         VS Code extension host TypeScript source (32 modules; entry points and major ones listed)
+src/                         VS Code extension host TypeScript source (33 modules; entry points and major ones listed)
 	projectConfig.ts           Read side of the project convention file ok-script-toolkit.json (locate + cache + personal preference)
 	projectConfigPure.ts       Pure precedence-chain logic (no vscode dependency, unit-testable): parse + precedence + winning layer
 	conventionSources.ts       Data source for the "Project Convention vs My Settings" tracing panel
@@ -39,6 +39,7 @@ src/                         VS Code extension host TypeScript source (32 module
 	saveToAssetsPure.ts        Pure export-flow logic (target list + whether to prompt for the enum path)
 	templatePanel.ts           Template gallery panel
 	annotationPanel.ts         Annotation editor panel (draw/delete annotations + box-select normalized coords)
+	annotationSwapPure.ts      Proportional remap for annotation swapping (pure: scale + clamp; one copy per host)
 	tempScreenshotStore.ts     Temp screenshot store (up to 10, isolated per workspace on disk)
 	tempScreenshotPanel.ts     Temp screenshot sidebar view (paste/screenshot, 0.1s carousel, box-select coords)
 	tempDrag.ts                Cross-Webview drag relay (temp shots -> annotation manager; ineffective on VS Code side, see below)

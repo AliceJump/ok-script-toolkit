@@ -567,6 +567,191 @@ async function test_enumPathOutsideWorkspaceRejectedBeforeWriting() {
   }
 }
 
+/* ========== 测试 10：标注交换一次保存，写入失败时完整回滚 ========== */
+
+async function test_annotationSwapPersistsOrRollsBack() {
+  setup();
+  const cocoPath = path.join(templateDir, 'coco_annotations.json');
+  const imageA = path.join(templateDir, 'a.png');
+  const imageB = path.join(templateDir, 'b.png');
+  const originalRename = fs.renameSync;
+  try {
+    const initial = {
+      images: [
+        { id: 1, file_name: 'a.png', width: 100, height: 100 },
+        { id: 2, file_name: 'b.png', width: 200, height: 100 },
+      ],
+      annotations: [
+        { id: 1, image_id: 1, category_id: 1, bbox: [1, 2, 3, 4], area: 12, iscrowd: 0 },
+        { id: 2, image_id: 2, category_id: 2, bbox: [5, 6, 7, 8], area: 56, iscrowd: 0 },
+      ],
+      categories: [
+        { id: 1, name: 'first', supercategory: '' },
+        { id: 2, name: 'second', supercategory: '' },
+      ],
+    };
+    fs.writeFileSync(cocoPath, JSON.stringify(initial));
+    const data = new TemplateAssetData(tmpDir);
+    data.load();
+
+    const swapped = data.swapAnnotationsForImages(
+      imageA, imageB,
+      [{ category: 'second', x: 10, y: 12, w: 14, h: 16 }],
+      [{ category: 'first', x: 2, y: 4, w: 6, h: 8 }],
+    );
+    assert(swapped, 'registered images should swap');
+    const persisted = JSON.parse(fs.readFileSync(cocoPath, 'utf-8'));
+    assert(persisted.annotations.length === 2, 'both annotations should be saved together');
+    assert(persisted.annotations.find((a) => a.image_id === 1).category_id === 2,
+      'A should receive B\'s category with its original ID');
+    assert(persisted.annotations.find((a) => a.image_id === 2).category_id === 1,
+      'B should receive A\'s category with its original ID');
+    assert(JSON.stringify(persisted) === JSON.stringify(data.data), 'memory should match disk');
+
+    let attempts = 0;
+    fs.renameSync = (...args) => {
+      attempts++;
+      if (attempts < 3) {
+        const error = new Error('temporary lock');
+        error.code = 'EPERM';
+        throw error;
+      }
+      return originalRename(...args);
+    };
+    assert(data.swapAnnotationsForImages(imageA, imageB, [], []), 'transient lock should be retried');
+    assert(attempts === 3, `transient lock should take 3 attempts, got ${attempts}`);
+
+    const beforeFailure = fs.readFileSync(cocoPath, 'utf-8');
+    const inMemoryBeforeFailure = data.data;
+    attempts = 0;
+    fs.renameSync = () => {
+      attempts++;
+      const error = new Error('persistent lock');
+      error.code = 'EBUSY';
+      throw error;
+    };
+    let failed = false;
+    try {
+      data.swapAnnotationsForImages(
+        imageA, imageB,
+        [{ category: 'new-category', x: 1, y: 1, w: 1, h: 1 }],
+        [],
+      );
+    } catch (error) {
+      failed = String(error).includes('persistent lock');
+    }
+    assert(failed, 'save failure should reach the caller');
+    assert(attempts === 4, `persistent lock should stop after 4 attempts, got ${attempts}`);
+    assert(fs.readFileSync(cocoPath, 'utf-8') === beforeFailure, 'failed save must preserve disk data');
+    assert(data.data === inMemoryBeforeFailure, 'failed save must restore the in-memory data');
+    assert(!fs.readdirSync(templateDir).some((name) => name.endsWith('.tmp')),
+      'failed save should remove its temporary file');
+
+    attempts = 0;
+    fs.renameSync = () => {
+      attempts++;
+      const error = new Error('non-transient failure');
+      error.code = 'EIO';
+      throw error;
+    };
+    let nonTransientFailure;
+    try { data.swapAnnotationsForImages(imageA, imageB, [], []); }
+    catch (error) { nonTransientFailure = error; }
+    assert(String(nonTransientFailure).includes('non-transient failure'),
+      'non-transient error should propagate');
+    assert(attempts === 1, `non-transient error should not be retried, got ${attempts}`);
+    assert(data.data === inMemoryBeforeFailure, 'non-transient failure must restore memory');
+    assert(data.swapAnnotationsForImages(imageA, imageA, [], []) === false,
+      'same-image swap should be rejected without writing');
+    console.log('[PASS] test_annotationSwapPersistsOrRollsBack');
+  } finally {
+    fs.renameSync = originalRename;
+    teardown();
+  }
+}
+
+/* ========== 测试 11：同名不同扩展名不能把另一张图的标注当作交换输入 ========== */
+
+async function test_annotationSwapUsesExactFileName() {
+  setup();
+  const cocoPath = path.join(templateDir, 'coco_annotations.json');
+  try {
+    const initial = {
+      images: [
+        { id: 1, file_name: 'same.png', width: 100, height: 100 },
+        { id: 2, file_name: 'same.jpg', width: 100, height: 100 },
+        { id: 3, file_name: 'other.png', width: 100, height: 100 },
+      ],
+      annotations: [
+        { id: 1, image_id: 1, category_id: 1, bbox: [1, 1, 10, 10], area: 100, iscrowd: 0 },
+        { id: 2, image_id: 2, category_id: 2, bbox: [2, 2, 10, 10], area: 100, iscrowd: 0 },
+      ],
+      categories: [
+        { id: 1, name: 'png-mark', supercategory: '' },
+        { id: 2, name: 'jpg-mark', supercategory: '' },
+      ],
+    };
+    fs.writeFileSync(cocoPath, JSON.stringify(initial));
+    const data = new TemplateAssetData(tmpDir);
+    data.load();
+    const jpg = path.join(templateDir, 'same.jpg');
+    const png = path.join(templateDir, 'same.png');
+    const other = path.join(templateDir, 'other.png');
+    assert(data.getSwapImageEntry(jpg)?.id === 2, 'swap lookup must select the JPG entry');
+    assert(data.getAnnotationsForImage(jpg, true)[0]?.categoryName === 'jpg-mark',
+      'swap boxes must come from the selected JPG');
+    assert(data.swapAnnotationsForImages(jpg, other,
+      [{ category: 'new-mark', x: 3, y: 3, w: 3, h: 3 }], []), 'exactly registered images should swap');
+    const saved = JSON.parse(fs.readFileSync(cocoPath, 'utf-8'));
+    assert(saved.annotations.some((ann) => ann.image_id === 1 && ann.category_id === 1),
+      'PNG annotations must remain unchanged');
+    assert(!data.getSwapImageEntry(path.join(templateDir, 'same.bmp')),
+      'an unregistered same-stem file must not resolve to another image');
+    assert(data.swapAnnotationsForImages(path.join(templateDir, 'same.bmp'), png, [], []) === false,
+      'an unregistered same-stem file must not write annotations');
+    console.log('[PASS] test_annotationSwapUsesExactFileName');
+  } finally {
+    teardown();
+  }
+}
+
+/* ========== 测试 12：大小写回退只接受同一真实文件，尺寸回退也按所选文件取 ========== */
+
+async function test_annotationSwapFallbackRequiresSameFile() {
+  setup();
+  const cocoPath = path.join(templateDir, 'coco_annotations.json');
+  try {
+    fs.writeFileSync(cocoPath, JSON.stringify({
+      images: [
+        { id: 1, file_name: 'shot.png', width: 40, height: 30 },
+        { id: 2, file_name: 'ghost.png', width: 40, height: 30 },
+        { id: 3, file_name: 'size.png', width: 10, height: 10 },
+        { id: 4, file_name: 'size.jpg', width: 50, height: 40 },
+      ],
+      annotations: [],
+      categories: [],
+    }));
+    const shot = path.join(templateDir, 'Shot.png');
+    fs.writeFileSync(shot, 'not an image');
+    fs.writeFileSync(path.join(templateDir, 'size.jpg'), 'not an image');
+    const data = new TemplateAssetData(tmpDir);
+    data.load();
+
+    // Only a case-insensitive disk makes `shot.png` the same file as `Shot.png`.
+    const caseInsensitiveDisk = fs.existsSync(path.join(templateDir, 'shot.png'));
+    assert((data.getSwapImageEntry(shot)?.id === 1) === caseInsensitiveDisk,
+      'case fallback must follow whether both names resolve to the same file');
+    assert(data.getSwapImageEntry(path.join(templateDir, 'Ghost.png')) === undefined,
+      'case fallback must reject a COCO entry without the selected file behind it');
+    const size = data.resolveImageSize(path.join(templateDir, 'size.jpg'));
+    assert(size?.width === 50 && size?.height === 40,
+      `size fallback must use the selected file's COCO entry, got ${JSON.stringify(size)}`);
+    console.log('[PASS] test_annotationSwapFallbackRequiresSameFile');
+  } finally {
+    teardown();
+  }
+}
+
 /* ========== 运行所有测试 ========== */
 
 const tests = [
@@ -579,6 +764,9 @@ const tests = [
   test_multipleImagesNonOverlappingPackedTogether,
   test_sameImageOverlappingBboxesStayTogether,
   test_enumPathOutsideWorkspaceRejectedBeforeWriting,
+  test_annotationSwapPersistsOrRollsBack,
+  test_annotationSwapUsesExactFileName,
+  test_annotationSwapFallbackRequiresSameFile,
 ];
 
 let passed = 0;

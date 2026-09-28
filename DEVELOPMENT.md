@@ -17,7 +17,7 @@ This document is for extension developers and covers the project structure, loca
 ## 项目结构
 
 ```text
-src/                         VS Code 扩展宿主 TypeScript 源码（32 个模块，下列为入口与主要模块）
+src/                         VS Code 扩展宿主 TypeScript 源码（33 个模块，下列为入口与主要模块）
 	projectConfig.ts           项目约定文件 ok-script-toolkit.json 的读盘侧（定位 + 缓存 + 个人偏好）
 	projectConfigPure.ts       取值链纯逻辑（不依赖 vscode，可单测）：解析 + 优先级 + 来源层
 	conventionSources.ts       「项目约定 vs 我的设置」溯源面板的数据源
@@ -39,6 +39,7 @@ src/                         VS Code 扩展宿主 TypeScript 源码（32 个模�
 	saveToAssetsPure.ts        导出流程的纯逻辑（目标列表 + 枚举路径要不要问）
 	templatePanel.ts           模板画廊面板
 	annotationPanel.ts         标注编辑器面板（画框标注 + 框选复制归一化坐标）
+	annotationSwapPure.ts      标注交换的比例映射（纯逻辑：按比例缩放 + 越界钳制；两端各一份）
 	tempScreenshotStore.ts     临时截图存储（最多 10 张，按工作区隔离落盘）
 	tempScreenshotPanel.ts     临时截图侧边栏视图（粘贴/截屏、0.1s 轮播、框选坐标）
 	tempDrag.ts                跨 Webview 拖拽中介（临时截图 → 标注管理；VS Code 端实测无效，见下）

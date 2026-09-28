@@ -207,5 +207,14 @@
   "Overwrite anyway": "仍然覆盖",
   "Not set — ask on save": "未设置 —— 保存时询问",
   "Derived from the file name": "由文件名推导",
-  "Account store update failed: {error}": "账号存储更新失败：{error}"
+  "Account store update failed: {error}": "账号存储更新失败：{error}",
+  "Swap": "交换",
+  "Swap annotations between '{first}' and '{second}'?": "在 {first} 与 {second} 之间交换标注？",
+  "Sizes differ ({from} → {to}); boxes are scaled proportionally.": "两张图尺寸不同（{from} → {to}），标注框会按比例缩放。",
+  "{first}: {firstCount} boxes, {second}: {secondCount} boxes": "{first}：{firstCount} 个标注，{second}：{secondCount} 个标注",
+  "Swapped annotations between '{first}' and '{second}'.": "已交换 {first} 与 {second} 的标注。",
+  "Failed to swap annotations.": "交换标注失败。",
+  "Annotations changed while confirming. Retry the swap.": "确认期间标注已更改，请重新交换。",
+  "Cannot read image size, so annotations cannot be swapped.": "读不出图片尺寸，无法交换标注。",
+  "Neither image has annotations, nothing to swap.": "两张图都没有标注，无需交换。"
 }

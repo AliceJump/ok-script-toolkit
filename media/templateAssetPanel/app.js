@@ -6,6 +6,8 @@
   const countEl = document.getElementById('count');
   const emptyEl = document.getElementById('empty');
   const cards = new Map();
+  /** name -> 缩略图 webview URI。交换目标选择器直接复用已加载的缩略图，不再问宿主要一遍。 */
+  const thumbUrls = new Map();
   let metas = [];
 
   document.title = t('templateAssetsTitle');
@@ -48,6 +50,15 @@
 
     const actDiv = document.createElement('div');
     actDiv.className = 'actions';
+    // 交换标注：与「删除」并列，但排在左边 —— 删除是破坏性的，放最右侧不误触
+    const swapBtn = document.createElement('button');
+    swapBtn.textContent = '⇄';
+    swapBtn.title = t('assetSwapTooltip');
+    swapBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openSwapPicker(meta);
+    });
+    actDiv.appendChild(swapBtn);
     const delBtn = document.createElement('button');
     delBtn.textContent = 'X';
     delBtn.title = t('assetDeleteTooltip');
@@ -104,24 +115,132 @@
 
   search.addEventListener('input', () => applyFilter());
 
-  function attachThumb(name, url) {
+  /**
+   * 一张缩略图的**唯一落地口**：写缓存 + 落到网格卡片 + 落到打开中的交换选择器。
+   *
+   * 三处共用同一份 `thumbUrls` ⇒ 选择器里的缩略图就是网格里那一张，不必自己再要一遍。
+   * 宿主是**分批异步**推缩略图的，所以这里也必须能处理"推过来时选择器已经开着"的情形：
+   * 选择器的列表只在打开那一刻渲染一次，不补的话缺的那几张会永远停在占位符上。
+   */
+  function applyThumb(name, url) {
+    thumbUrls.set(name, url);
     const card = cards.get(name);
-    if (!card || card.dataset.thumbDone === '1') return;
-    card.dataset.thumbDone = '1';
+    if (card && card.dataset.thumbDone !== '1') {
+      card.dataset.thumbDone = '1';
+      fillThumbBox(card.querySelector('.thumb-box'), url, name, t('loadFailed'));
+    }
+    for (const thumb of swapList.querySelectorAll('.swap-thumb')) {
+      if (thumb.dataset.name === name) fillThumbBox(thumb, url, name, '');
+    }
+  }
+
+  /** 把占位符换成真实缩略图（幂等：已经有 img 就不再插一张）。 */
+  function fillThumbBox(box, url, name, failureText) {
+    if (!box || box.querySelector('img')) return;
+    const ph = box.querySelector('.placeholder');
     const img = document.createElement('img');
-    img.src = url; img.alt = name;
+    img.alt = name;
     img.style.display = 'none';
     img.addEventListener('load', () => {
-      const ph = card.querySelector('.placeholder');
       if (ph) ph.remove();
       img.style.display = 'block';
     });
     img.addEventListener('error', () => {
-      const ph = card.querySelector('.placeholder');
-      if (ph) { ph.textContent = t('loadFailed'); ph.style.opacity = '.8'; }
+      img.remove();
+      if (ph && failureText) { ph.textContent = failureText; ph.style.opacity = '.8'; }
     });
-    card.querySelector('.thumb-box').prepend(img);
+    box.prepend(img);
+    img.src = url;
   }
+
+  /* ---------- 交换标注：选择目标图片 ----------
+     只负责「选哪张图」，落盘与缩放都在宿主侧（那边才知道真实尺寸与磁盘状态）。
+     选中的是**当前模板集里的另一张图**，不含自己。 */
+  const swapModal = document.getElementById('swapModal');
+  const swapList = document.getElementById('swapList');
+
+  function openSwapPicker(source) {
+    document.getElementById('swapTitle').textContent = t('assetSwapTitle');
+    document.getElementById('swapHint').textContent = t('assetSwapHint');
+    document.getElementById('swapCancel').textContent = t('cancel');
+    swapList.innerHTML = '';
+
+    const others = metas.filter((m) => m.name !== source.name);
+    if (!others.length) {
+      const empty = document.createElement('div');
+      empty.className = 'swap-empty';
+      empty.textContent = t('assetSwapEmpty');
+      swapList.appendChild(empty);
+    } else {
+      for (const other of others) swapList.appendChild(makeSwapItem(source, other));
+      requestMissingThumbs(others);
+    }
+    swapModal.classList.add('visible');
+  }
+
+  /**
+   * 让宿主**现裁现推**还没有 URL 的那几张缩略图（走的是网格同一条管线）。
+   *
+   * 不主动要的话，缺的那几张会一直停在占位符上：网格的缩略图是分批异步推的，
+   * 用户完全可能在推完之前就打开了选择器，而列表只在打开那一刻渲染一次。
+   */
+  function requestMissingThumbs(items) {
+    const missing = items.filter((m) => !thumbUrls.has(m.name)).map((m) => m.imagePath);
+    if (missing.length) vscode.postMessage({ type: 'requestThumbs', imagePaths: missing });
+  }
+
+  function makeSwapItem(source, other) {
+    const item = document.createElement('button');
+    item.type = 'button';
+    item.className = 'swap-item';
+    item.title = other.name;
+
+    const thumb = document.createElement('div');
+    thumb.className = 'swap-thumb';
+    // dataset.name 是宿主后补缩略图时的挂载点（applyThumb 按名字回填）
+    thumb.dataset.name = other.name;
+    const ph = document.createElement('span');
+    ph.className = 'placeholder';
+    ph.textContent = '...';
+    thumb.appendChild(ph);
+    const url = thumbUrls.get(other.name);
+    if (url) fillThumbBox(thumb, url, other.name, '');
+
+    const name = document.createElement('div');
+    name.className = 'swap-name';
+    name.textContent = other.name;
+    const metaLine = document.createElement('div');
+    metaLine.className = 'swap-meta';
+    metaLine.textContent = other.width + 'x' + other.height + ' · ' +
+      (other.annotations ? t('assetSwapBoxes', { count: other.annotations }) : t('assetSwapNoBoxes'));
+
+    item.appendChild(thumb);
+    item.appendChild(name);
+    item.appendChild(metaLine);
+    item.addEventListener('click', () => {
+      closeSwapPicker();
+      vscode.postMessage({
+        type: 'swapAnnotations',
+        imagePath: source.imagePath,
+        targetPath: other.imagePath,
+      });
+    });
+    return item;
+  }
+
+  function closeSwapPicker() {
+    swapModal.classList.remove('visible');
+    swapList.innerHTML = '';
+  }
+
+  document.getElementById('swapCancel').addEventListener('click', closeSwapPicker);
+  // 点遮罩关闭：只在按下遮罩本身时关，避免从列表里拖选时误关
+  swapModal.addEventListener('mousedown', (e) => {
+    if (e.target === swapModal) closeSwapPicker();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && swapModal.classList.contains('visible')) closeSwapPicker();
+  });
 
   document.getElementById('importBtn').addEventListener('click', () => {
     vscode.postMessage({ type: 'importFile' });
@@ -139,6 +258,10 @@
       case 'templates': {
         grid.innerHTML = ''; cards.clear();
         metas = msg.templates || [];
+        // 图片集合可能已变化 ⇒ 缩略图 URL 缓存整份作废。
+        // ⚠️ 不能只按名字删：模板名就是数字序号、**删除后会被复用**（nextImageName 取第一个空号），
+        // 留着的旧 URL 会让选择器显示上一张同名图的缩略图 —— 看错图就会选错交换目标。
+        thumbUrls.clear();
         for (const meta of metas) {
           const card = makeCard(meta);
           cards.set(meta.name, card);
@@ -148,7 +271,7 @@
         break;
       }
       case 'thumbs': {
-        for (const it of (msg.items || [])) attachThumb(it.name, it.url);
+        for (const it of (msg.items || [])) applyThumb(it.name, it.url);
         break;
       }
     }

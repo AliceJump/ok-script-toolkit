@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { randomUUID } from 'crypto';
 import * as vscode from 'vscode';
 import { decodeRgba, encodePngRgb, readImageSize } from './pngCrop';
 import {
@@ -67,6 +68,14 @@ function readImageHeaderSize(src: string): { width: number; height: number } | u
     if (fd !== undefined) {
       try { fs.closeSync(fd); } catch { /* ignore */ }
     }
+  }
+}
+
+function sameFile(a: string, b: string): boolean {
+  try {
+    return fs.realpathSync.native(a) === fs.realpathSync.native(b);
+  } catch {
+    return false;
   }
 }
 
@@ -148,7 +157,24 @@ export class TemplateAssetData {
 
   save(): void {
     this.ensureTemplateFolder();
-    fs.writeFileSync(this.cocoPath, JSON.stringify(this.cocoData, null, 2), 'utf-8');
+    // Write beside the destination so a failed write cannot truncate the current COCO file.
+    const temporaryPath = path.join(this.templateFolder, `.${COCO_JSON}.${randomUUID()}.tmp`);
+    try {
+      fs.writeFileSync(temporaryPath, JSON.stringify(this.cocoData, null, 2), 'utf-8');
+      // Windows readers can briefly deny replacement; retry only transient lock errors.
+      for (let attempt = 0; ; attempt++) {
+        try {
+          fs.renameSync(temporaryPath, this.cocoPath);
+          break;
+        } catch (error) {
+          const code = (error as NodeJS.ErrnoException).code;
+          if (attempt >= 3 || !['EPERM', 'EACCES', 'EBUSY'].includes(code ?? '')) throw error;
+          Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25);
+        }
+      }
+    } finally {
+      try { fs.rmSync(temporaryPath, { force: true }); } catch { /* preserve the write error */ }
+    }
     this._dirty = false;
   }
 
@@ -190,8 +216,38 @@ export class TemplateAssetData {
     return this.cocoData.images.find((img) => filenameKey(img.file_name) === key);
   }
 
+  /** Swaps must use the selected file, not the legacy same-stem fallback used by other callers. */
+  getSwapImageEntry(imagePath: string): CocoImage | undefined {
+    const fileName = path.basename(imagePath);
+    const exact = this.cocoData.images.find((img) => img.file_name === fileName);
+    if (exact) return exact;
+    const caseInsensitive = this.cocoData.images.filter((img) => img.file_name.toLowerCase() === fileName.toLowerCase());
+    if (caseInsensitive.length !== 1) return undefined;
+    // On case-sensitive disks `foo.png` and `Foo.png` are different files; accept the fallback only for the same file.
+    const candidatePath = path.join(path.dirname(imagePath), caseInsensitive[0].file_name);
+    return sameFile(imagePath, candidatePath) ? caseInsensitive[0] : undefined;
+  }
+
   getImageId(imagePath: string): number | undefined {
     return this.getImageEntryForPath(imagePath)?.id;
+  }
+
+  /**
+   * 图片的**真实**尺寸，供标注交换做比例映射。
+   *
+   * 先读文件头再退回 COCO 记录，顺序不能反：COCO 里的 width/height 可能是 0
+   * （老数据、或登记时读不出尺寸），拿 0 当除数会算出 Infinity；而反过来，
+   * 文件头读不出来时 COCO 至少还是个已知值。两者都没有才返回 undefined，
+   * 由调用方决定"拒绝交换"而不是"按 1 倍瞎搬"。
+   */
+  resolveImageSize(imagePath: string): { width: number; height: number } | undefined {
+    const header = readImageHeaderSize(imagePath);
+    if (header && header.width > 0 && header.height > 0) return header;
+    const entry = this.getSwapImageEntry(imagePath);
+    if (entry && entry.width > 0 && entry.height > 0) {
+      return { width: entry.width, height: entry.height };
+    }
+    return undefined;
   }
 
   addImageEntry(imagePath: string, width: number, height: number): void {
@@ -216,8 +272,8 @@ export class TemplateAssetData {
 
   /* ---------- COCO 标注操作 ---------- */
 
-  getAnnotationsForImage(imagePath: string): Array<CocoAnnotation & { categoryName: string }> {
-    const imageId = this.getImageId(imagePath);
+  getAnnotationsForImage(imagePath: string, exactFileName = false): Array<CocoAnnotation & { categoryName: string }> {
+    const imageId = exactFileName ? this.getSwapImageEntry(imagePath)?.id : this.getImageId(imagePath);
     if (imageId === undefined) return [];
     return this.cocoData.annotations
       .filter((ann) => ann.image_id === imageId)
@@ -251,6 +307,75 @@ export class TemplateAssetData {
     }
     this._cleanupCategories();
     this._dirty = true;
+  }
+
+  /**
+   * 两张图的标注集合**整体互换**。`boxesForA` / `boxesForB` 是调用方算好的**最终**坐标
+   * （已按目标图尺寸映射过，见 `annotationSwapPure.scaleBoxes`），本方法只负责落数据。
+   *
+   * 为什么不能"调两次 setAnnotationsForImage"：
+   * ① 那条路径每次都 `_cleanupCategories()`。先写的那一侧会把"只有自己引用"的分类
+   *    判成无人使用而删掉，紧接着写另一侧时再按名字重建 —— 分类名不变、**id 会漂**。
+   *    中间那一刻的 cocoData 也是自相矛盾的（A 的标注已经搬走、B 的还是旧的）。
+   * ② 两次调用之间任何一处抛错，会留下"换了一半"的内存状态。
+   * 在副本上先摘掉旧标注、写回两边、清理分类，再一次性保存。
+   * 保存失败时恢复原内存数据，磁盘文件也不会被截断。
+   *
+   * 返回 false 只表示"这两张图没法交换"（任一未登记进 COCO，或指向同一张图），
+   * 此时**什么都没改** —— 调用方据此报错，不要报"已交换"。
+   */
+  swapAnnotationsForImages(
+    pathA: string,
+    pathB: string,
+    boxesForA: Array<{ category: string; x: number; y: number; w: number; h: number }>,
+    boxesForB: Array<{ category: string; x: number; y: number; w: number; h: number }>,
+  ): boolean {
+    const idA = this.getSwapImageEntry(pathA)?.id;
+    const idB = this.getSwapImageEntry(pathB)?.id;
+    if (idA === undefined || idB === undefined || idA === idB) return false;
+
+    const previousData = this.cocoData;
+    const previousDirty = this._dirty;
+    this.cocoData = {
+      images: [...previousData.images],
+      annotations: [...previousData.annotations],
+      categories: [...previousData.categories],
+    };
+    try {
+      this.cocoData.annotations = this.cocoData.annotations.filter(
+        (ann) => ann.image_id !== idA && ann.image_id !== idB,
+      );
+
+      let maxAnnId = 0;
+      for (const ann of this.cocoData.annotations) {
+        if (ann.id > maxAnnId) maxAnnId = ann.id;
+      }
+      const append = (imageId: number, boxes: typeof boxesForA): void => {
+        for (const box of boxes) {
+          const catId = this._getOrCreateCategoryId(box.category);
+          maxAnnId++;
+          this.cocoData.annotations.push({
+            id: maxAnnId,
+            image_id: imageId,
+            category_id: catId,
+            bbox: [box.x, box.y, box.w, box.h],
+            area: box.w * box.h,
+            iscrowd: 0,
+          });
+        }
+      };
+      append(idA, boxesForA);
+      append(idB, boxesForB);
+
+      this._cleanupCategories();
+      this._dirty = true;
+      this.save();
+      return true;
+    } catch (error) {
+      this.cocoData = previousData;
+      this._dirty = previousDirty;
+      throw error;
+    }
   }
 
   /* ---------- 分类操作 ---------- */

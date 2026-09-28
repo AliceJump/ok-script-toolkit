@@ -207,5 +207,14 @@
   "Overwrite anyway": "Sobrescribir igualmente",
   "Not set — ask on save": "Sin definir — preguntar al guardar",
   "Derived from the file name": "Derivado del nombre del archivo",
-  "Account store update failed: {error}": "Error al actualizar el almacén de cuentas: {error}"
+  "Account store update failed: {error}": "Error al actualizar el almacén de cuentas: {error}",
+  "Swap": "Intercambiar",
+  "Swap annotations between '{first}' and '{second}'?": "¿Intercambiar las anotaciones de {first} y {second}?",
+  "Sizes differ ({from} → {to}); boxes are scaled proportionally.": "Los tamaños difieren ({from} → {to}); las cajas se escalan proporcionalmente.",
+  "{first}: {firstCount} boxes, {second}: {secondCount} boxes": "{first}: {firstCount} cajas, {second}: {secondCount} cajas",
+  "Swapped annotations between '{first}' and '{second}'.": "Se intercambiaron las anotaciones de {first} y {second}.",
+  "Failed to swap annotations.": "No se pudieron intercambiar las anotaciones.",
+  "Annotations changed while confirming. Retry the swap.": "Las anotaciones cambiaron durante la confirmación. Vuelve a intentar el intercambio.",
+  "Cannot read image size, so annotations cannot be swapped.": "No se pudo leer el tamaño de la imagen, así que no se pueden intercambiar las anotaciones.",
+  "Neither image has annotations, nothing to swap.": "Ninguna de las dos imágenes tiene anotaciones, no hay nada que intercambiar."
 }
