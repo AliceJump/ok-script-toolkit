@@ -19,9 +19,20 @@
     <button class="icon-btn" id="prevBtn" title="Previous image">◀</button>
     <button class="icon-btn" id="nextBtn" title="Next image">▶</button>
   </div>
-  <div class="canvas-wrap">
-    <canvas id="canvas"></canvas>
-    <div class="empty" id="emptyMsg"></div>
+  <div class="editor-body">
+    <div class="canvas-wrap">
+      <canvas id="canvas"></canvas>
+      <div class="empty" id="emptyMsg"></div>
+    </div>
+    <aside class="annotation-list">
+      <div class="annotation-list-title" id="annotationListTitle"></div>
+      <div class="annotation-list-actions">
+        <button class="mini-btn" id="showAllBtn" type="button"></button>
+        <button class="mini-btn" id="hideAllBtn" type="button"></button>
+        <button class="mini-btn" id="onlyCurrentBtn" type="button"></button>
+      </div>
+      <div class="annotation-list-rows" id="annotationRows"></div>
+    </aside>
   </div>
   <div class="color-bar">
     <div class="color-swatch" id="swatch"></div>

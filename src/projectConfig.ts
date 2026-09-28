@@ -30,6 +30,7 @@ import {
   labelEnumPathInputError,
   labelEnumPathResolved,
   normalizeLabelEnumFile,
+  boxesRuntimeOf,
   normalizeRelPath,
   parseProjectConfig,
   templatesDirectoryOf,
@@ -389,4 +390,14 @@ export function labelEnumClassName(filePath: string, projectDir?: string, scope?
  */
 export function templatesCocoAnnotationsSetting(projectDir?: string): string | undefined {
   return normalizeRelPath(templatesOf(loadProjectConfig(projectDir)).cocoAnnotations);
+}
+
+/**
+ * 运行时框文件的项目约定（`boxes.runtime`），已归一化。没声明返回 `undefined`。
+ *
+ * 它指向业务项目加载的那份位置表（`config.py` 的 `boxes_json`，缺省 `src/scene/boxes.json`），
+ * **不是**框资源管理自己的 `<模板目录>/boxes.json`。见 `docs/box-resources.md`。
+ */
+export function boxesRuntimeSetting(projectDir?: string): string | undefined {
+  return boxesRuntimeOf(loadProjectConfig(projectDir));
 }

@@ -22,6 +22,10 @@
   document.getElementById('prevBtn').title = t('prevImage');
   document.getElementById('nextBtn').title = t('nextImage');
   document.getElementById('emptyMsg').textContent = t('noImageLoaded');
+  document.getElementById('annotationListTitle').textContent = t('annotationListTitle');
+  document.getElementById('showAllBtn').textContent = t('showAllAnnotations');
+  document.getElementById('hideAllBtn').textContent = t('hideAllAnnotations');
+  document.getElementById('onlyCurrentBtn').textContent = t('showOnlyCurrent');
 
   // 归一化坐标（x,y,tox,toy）保留的小数位
   const COORD_DECIMALS = 4;
@@ -36,6 +40,9 @@
 
   // 标注
   let annotations = [];
+  /** 按图片文件名记住隐藏的分类。不进保存消息，撤销也不恢复。 */
+  const hiddenByFile = new Map();
+  let listSignature = '';
   let nextId = 1;
   let selectedIdx = -1;
   let hoveredIdx = -1;
@@ -132,6 +139,14 @@
     if (drawBtn) { drawBtn.textContent = t('drawBbox'); drawBtn.title = t('drawBboxTooltip'); }
     if (coordBtn) { coordBtn.textContent = t('copyCoords'); coordBtn.title = t('copyCoordsTooltip') + ' (' + keybindings.copyCoords + ')'; }
     if (deleteBtn) { deleteBtn.textContent = t('deleteMode'); deleteBtn.title = t('deleteBboxTooltip'); }
+    const listTitle = document.getElementById('annotationListTitle');
+    const showAllBtn = document.getElementById('showAllBtn');
+    const hideAllBtn = document.getElementById('hideAllBtn');
+    const onlyCurrentBtn = document.getElementById('onlyCurrentBtn');
+    if (listTitle) listTitle.textContent = t('annotationListTitle');
+    if (showAllBtn) showAllBtn.textContent = t('showAllAnnotations');
+    if (hideAllBtn) hideAllBtn.textContent = t('hideAllAnnotations');
+    if (onlyCurrentBtn) onlyCurrentBtn.textContent = t('showOnlyCurrent');
     updateUndoRedoButtons();
   }
 
@@ -198,8 +213,18 @@
   }
 
   /* ---------- 查找标注 ---------- */
+  function hiddenSet() {
+    const key = imageData && imageData.filename;
+    if (!key) return new Set();
+    if (!hiddenByFile.has(key)) hiddenByFile.set(key, new Set());
+    return hiddenByFile.get(key);
+  }
+  function isShown(ann) {
+    return !hiddenSet().has(ann.category);
+  }
   function findAnnAt(px, py) {
     for (let i = annotations.length - 1; i >= 0; i--) {
+      if (!isShown(annotations[i])) continue;
       const r = annWidgetRect(annotations[i]);
       if (rectContains(r, px, py)) return i;
     }
@@ -207,11 +232,70 @@
   }
   function findHandleAt(px, py) {
     for (let i = annotations.length - 1; i >= 0; i--) {
+      if (!isShown(annotations[i])) continue;
       const r = annWidgetRect(annotations[i]);
       const h = detectHandle(px, py, r);
       if (h) return { idx: i, handle: h };
     }
     return { idx: -1, handle: null };
+  }
+  function syncAnnotationList() {
+    const rows = document.getElementById('annotationRows');
+    const onlyCurrentBtn = document.getElementById('onlyCurrentBtn');
+    if (!rows) return;
+    const hidden = hiddenSet();
+    const sig = annotations.map((ann) => ann.id + '\t' + ann.category + '\t' + (hidden.has(ann.category) ? '0' : '1')).join('\n') + '#' + selectedIdx;
+    if (onlyCurrentBtn) onlyCurrentBtn.disabled = selectedIdx < 0;
+    if (sig === listSignature) return;
+    listSignature = sig;
+    while (rows.firstChild) rows.removeChild(rows.firstChild);
+    if (!annotations.length) {
+      const empty = document.createElement('div');
+      empty.className = 'panel-hint';
+      empty.textContent = t('annotationListEmpty');
+      rows.append(empty);
+      return;
+    }
+    annotations.forEach((ann, index) => {
+      const label = document.createElement('label');
+      label.className = 'annotation-row' + (index === selectedIdx ? ' is-selected' : '');
+      const input = document.createElement('input');
+      input.type = 'checkbox';
+      input.checked = !hidden.has(ann.category);
+      input.addEventListener('change', () => {
+        selectedIdx = index;
+        if (input.checked) hidden.delete(ann.category);
+        else hidden.add(ann.category);
+        listSignature = '';
+        paint();
+      });
+      const text = document.createElement('span');
+      text.textContent = ann.category;
+      label.append(input, text);
+      rows.append(label);
+    });
+  }
+  function showAllAnnotations() {
+    hiddenSet().clear();
+    listSignature = '';
+    paint();
+  }
+  function hideAllAnnotations() {
+    const hidden = hiddenSet();
+    hidden.clear();
+    annotations.forEach((ann) => hidden.add(ann.category));
+    listSignature = '';
+    paint();
+  }
+  function showOnlyCurrent() {
+    const hidden = hiddenSet();
+    const current = annotations[selectedIdx];
+    hidden.clear();
+    annotations.forEach((ann) => {
+      if (!current || ann.category !== current.category) hidden.add(ann.category);
+    });
+    listSignature = '';
+    paint();
   }
 
   /* ---------- 绘制 ---------- */
@@ -227,8 +311,11 @@
       ctx.drawImage(img, offsetX, offsetY, img.width * scale, img.height * scale);
     }
 
+    syncAnnotationList();
+
     // 画标注
     annotations.forEach((ann, i) => {
+      if (!isShown(ann)) return;
       const isSel = i === selectedIdx;
       const isHov = i === hoveredIdx;
       const r = annWidgetRect(ann);
@@ -893,7 +980,12 @@
     showBBoxDialog(ann.category, ann.x, ann.y, ann.w, ann.h, (cat, x, y, w, h) => {
       if (cat) {
         pushUndo();
+        const previous = ann.category;
         ann.category = cat; ann.x = x; ann.y = y; ann.w = w; ann.h = h;
+        if (previous !== cat && hiddenSet().has(previous)) {
+          hiddenSet().delete(previous);
+          hiddenSet().add(cat);
+        }
         saveAnnotations(); paint();
         updateUndoRedoButtons();
       }
@@ -1010,6 +1102,9 @@
   document.getElementById('redoBtn').onclick = () => { redo(); updateUndoRedoButtons(); };
   document.getElementById('prevBtn').onclick = () => navigate(-1);
   document.getElementById('nextBtn').onclick = () => navigate(1);
+  document.getElementById('showAllBtn').onclick = () => showAllAnnotations();
+  document.getElementById('hideAllBtn').onclick = () => hideAllAnnotations();
+  document.getElementById('onlyCurrentBtn').onclick = () => showOnlyCurrent();
 
   /* ---------- 接收消息 ---------- */
   window.addEventListener('message', (e) => {
@@ -1030,6 +1125,7 @@
       annotations = msg.annotations || [];
       nextId = annotations.length ? Math.max(...annotations.map(a => a.id)) + 1 : 1;
       selectedIdx = -1; hoveredIdx = -1;
+      listSignature = '';
       undoStack = []; redoStack = [];
 
       if (msg.imageBase64) {
