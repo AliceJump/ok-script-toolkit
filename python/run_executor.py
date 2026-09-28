@@ -87,8 +87,15 @@ import tempfile
 import threading
 import time
 
+# 同目录的共享模块（project_store）要能 import：脚本按文件位置加载时（测试、
+# 以及宿主从任意 cwd 拉起）脚本目录不在 sys.path 上。
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 sys.stdout.reconfigure(encoding="utf-8")
 sys.stderr.reconfigure(encoding="utf-8")
+
+import project_store  # noqa: E402 — 必须在 sys.path 调整之后
+from project_runtime import RUN_DIR_ENV  # noqa: E402
 
 MARKER_CONNECTING = "OK_TOOLKIT_EXECUTOR_CONNECTING"
 MARKER_READY = "OK_TOOLKIT_EXECUTOR_READY"
@@ -179,7 +186,7 @@ def apply_config_sandbox(config: dict) -> str:
 
     返回沙箱根目录（未启用时返回空串）。
     """
-    run_dir = os.environ.get("OK_TOOLKIT_RUN_DIR", "").strip()
+    run_dir = os.environ.get(RUN_DIR_ENV, "").strip()
     if not run_dir:
         return ""
     run_dir = os.path.abspath(run_dir)
@@ -256,7 +263,7 @@ def install_config_path_patch() -> None:
     必须在 import 项目 config 之前安装（store 模块在导入期就用该函数固定路径）。
     ok.util.config 在模块导入时复制了函数引用，需要同步替换。
     """
-    run_dir = os.environ.get("OK_TOOLKIT_RUN_DIR", "").strip()
+    run_dir = os.environ.get(RUN_DIR_ENV, "").strip()
     if not run_dir:
         return
     sandbox_configs = os.path.join(os.path.abspath(run_dir), "configs")
@@ -824,18 +831,23 @@ def _apply_startup_overlay(enabled: bool) -> None:
         _note(f"调试浮层启用失败：{type(e).__name__}: {e}")
 
 
+#: 项目自建全局配置 store 的模块名候选 —— main() 里按项目声明发现后填充；
+#: 尚未填充（如单测直接调）时退回历史默认名。见 project_store 模块。
+_PROJECT_STORE_MODULES = [project_store.LEGACY_STORE_MODULE]
+
+
 def resolve_group_config(executor, group_name: str):
-    """全局配置组解析：先框架 GlobalConfig，失败再按约定探测项目自建 store。
+    """全局配置组解析：先框架 GlobalConfig，失败再探测项目自建 store。
 
     ok-end-field / OK-AzurPromilia 的自定义全局配置（战斗/键位/滑索）由项目自建
-    store 管理（src.core.global_config_store.get_global_config，接口与框架同形），
-    不在框架 GlobalConfig 注册表里 —— 这里按约定 try-import 兜底。
+    store 管理（模块级 get_global_config，接口与框架同形），不在框架 GlobalConfig
+    注册表里 —— store 模块**按项目自己的声明定位**（见 project_store），不硬编码路径。
     """
     try:
         return executor.global_config.get_config(group_name)
     except Exception:  # noqa: BLE001 — 转入项目 store 探测
         pass
-    for module_name in ("src.core.global_config_store",):
+    for module_name in _PROJECT_STORE_MODULES:
         try:
             module = importlib.import_module(module_name)
         except Exception:  # noqa: BLE001 — 项目没有自建 store 是常态
@@ -1047,6 +1059,13 @@ def main() -> None:
     config_module = __import__(args.config_module, fromlist=["config"])
     config = dict(config_module.config)
     config["check_mutex"] = False
+    # 项目自建全局配置 store 的模块名：按项目 config 的 custom_tabs 声明推导
+    # （不硬编码路径 —— 项目把 store 挪包改名都不该让那批全局配置静默消失）。
+    global _PROJECT_STORE_MODULES
+    try:
+        _PROJECT_STORE_MODULES = project_store.store_modules(config, os.getcwd())
+    except Exception as e:  # noqa: BLE001 — 推导失败退回历史默认名，不影响启动
+        _note(f"全局配置 store 定位失败（退回默认模块名）：{e}")
     # Use the language mode selected in the development UI. The task manager
     # patch below keeps every registered task runnable under that mode.
     selected_locale = os.environ.get("OK_TOOLKIT_LOCALE")

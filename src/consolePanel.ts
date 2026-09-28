@@ -7,7 +7,7 @@ import { i18nPoDirectorySetting, resolveProjectDir } from './projectConfig';
 import { loadToolboxState, notifyExecutorRunning, onToolboxStateChange, saveToolboxState } from './toolboxState';
 import { GameConnectService } from './toolboxConnect';
 import { applySharedAssets, errorPage, getNonce } from './webviewHtml';
-import { reconcileTaskList } from './taskReconcile';
+import { reconcileCachedTaskList, reconcileTaskList } from './taskReconcile';
 
 /** 单个任务的元信息 */
 interface TaskInfo {
@@ -121,8 +121,6 @@ interface SchemaProbeResult {
   total?: number;
   /** 全局配置组（框架 GlobalConfig 可见组） */
   globalConfigGroups?: GlobalConfigGroup[];
-  /** 项目自建全局配置 store 的组（约定接口：global_config_store.get_all_visible_configs） */
-  projectGlobalGroups?: GlobalConfigGroup[];
   /** 多账户存储只读概要（configs/account_scoped_overrides.json） */
   multiAccount?: MultiAccountInfo;
 }
@@ -169,6 +167,11 @@ export function pythonScript(extensionUri: vscode.Uri, name: string): string {
   return path.join(extensionUri.fsPath, 'python', name);
 }
 
+/** All three Python entry points use the same VS Code sandbox for one project. */
+function runDirForProject(projectDir: string): string {
+  return path.join(projectDir, '.vscode', 'ok-script-toolkit');
+}
+
 /** 解析 Python 子进程 stdout 中最后一个 JSON 行（前面的输出可能是日志） */
 export function parseJsonFromStdout(stdout: string): any {
   const lines = stdout.split('\n').filter(Boolean);
@@ -211,8 +214,9 @@ export function runPython(
   args: string[],
   projectDir: string,
   timeout: number,
+  extraEnv: NodeJS.ProcessEnv = {},
 ): Promise<PythonResult> {
-  const env = { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' };
+  const env = { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1', ...extraEnv };
   return new Promise((resolve, reject) => {
     cp.execFile(pythonPath, args, {
       cwd: projectDir,
@@ -302,6 +306,7 @@ async function probeTaskSchemas(
       [pythonScript(extensionUri, 'probe_task_schemas.py'), projectDir, locale, poDirectory],
       projectDir,
       120000,
+      { OK_TOOLKIT_RUN_DIR: runDirForProject(projectDir) },
     );
     const parsed = parseJsonFromStdout(result.stdout || '');
     if (!parsed || !parsed.ok) {
@@ -312,7 +317,6 @@ async function probeTaskSchemas(
       schemas: parsed.schemas,
       total: parsed.total,
       globalConfigGroups: parsed.globalConfigGroups || [],
-      projectGlobalGroups: parsed.projectGlobalGroups || [],
       multiAccount: parsed.multiAccount || { available: false },
     };
   } catch (e) {
@@ -797,12 +801,12 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
   private runAccountStore(command: string[]): void {
     const { projectDir, pythonPath } = this.getConfig();
     if (!projectDir) return;
-    // 存储位置与执行器一致：--run-dir 让 account_store.py 把 configs 改道沙箱
-    const runDir = path.join(projectDir, '.vscode', 'ok-script-toolkit');
+    // 存储位置与执行器一致：OK_TOOLKIT_RUN_DIR 让 account_store.py 把 configs 改道沙箱
+    const runDir = runDirForProject(projectDir);
     const child = cp.spawn(
       pythonPath,
-      [pythonScript(this.extensionUri, 'account_store.py'), projectDir, ...command, '--run-dir', runDir],
-      { cwd: projectDir, windowsHide: true, env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' } },
+      [pythonScript(this.extensionUri, 'account_store.py'), projectDir, ...command],
+      { cwd: projectDir, windowsHide: true, env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1', OK_TOOLKIT_RUN_DIR: runDir } },
     );
     let stdout = '';
     let launchFailed = false;
@@ -1051,16 +1055,25 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
     const result = await parseConfigTasks(this.extensionUri, projectDir, pythonPath);
     if (generation !== this.refreshGeneration) return;
     if (!result.ok) {
-      void view.webview.postMessage({ type: 'tasks', tasks: [], schemas: {} });
+      // 与 JetBrains 的快速首屏一致：AST 失败时保留同项目、同语言的缓存。
+      // 全量探针仍会尝试刷新，避免把旧缓存误当作最终扫描结果。
+      this.knownTasks = reconcileTaskList([], this.schemas);
+      void view.webview.postMessage({
+        type: 'tasks', tasks: this.knownTasks, schemas: this.schemas,
+        globalGroups: this.globalGroups, globalSnapshots: this.globalSnapshots,
+        multiAccount: this.multiAccount,
+      });
+      this.pushGlobalGroups();
       void view.webview.postMessage({
         type: 'status',
-        level: 'error',
+        level: this.knownTasks.length ? 'warn' : 'error',
         text: tr('Failed to load task list: {error}', { error: result.error || tr('Unknown error') }),
       });
+      void this.probeSchemasInBackground(view, projectDir, pythonPath, locale, generation);
       return;
     }
     if (result.configModule) this.configModule = result.configModule;
-    const tasks = reconcileTaskList(result.tasks || [], this.schemas);
+    const tasks = reconcileCachedTaskList(result.tasks || [], this.schemas);
     this.knownTasks = tasks;
     await view.webview.postMessage({
       type: 'tasks',
@@ -1115,10 +1128,7 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
     }
     this.schemas = probe.schemas;
     this.knownTasks = reconcileTaskList(this.knownTasks, this.schemas);
-    this.globalGroups = [
-      ...(probe.globalConfigGroups || []),
-      ...(probe.projectGlobalGroups || []),
-    ];
+    this.globalGroups = probe.globalConfigGroups || [];
     this.multiAccount = probe.multiAccount || { available: false };
     if (this.multiAccount.hasStoreModule === true) this.runAccountStore(['get']);
     this.saveSchemaCache(projectDir, locale, probe.schemas, this.globalGroups, this.multiAccount);
@@ -1227,7 +1237,7 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
       OK_TOOLKIT_TRIGGERS: JSON.stringify([...this.enabledTriggers]),
       // 配置沙箱：执行器把 ok 框架的配置/截图读写全部改道到这里，绝不碰项目 configs/。
       // 放在 .vscode 下是因为它已被项目 .gitignore 忽略，且插件自身数据也在此处。
-      OK_TOOLKIT_RUN_DIR: path.join(projectDir, '.vscode', 'ok-script-toolkit'),
+      OK_TOOLKIT_RUN_DIR: runDirForProject(projectDir),
       OK_TOOLKIT_LOCALE: selectedProjectLocale(),
     };
     // 参数注入通过环境变量传递（避免命令行长度/转义问题）；key 是 module::Class，

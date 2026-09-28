@@ -10,6 +10,8 @@
 
 This document is for extension developers and covers the project structure, local build/installation, and release workflow.
 
+The shared runtime scripts, protocol, and host boundaries are documented in [Shared core](docs/shared-core.md).
+
 ---
 
 ## Project Structure
