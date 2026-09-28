@@ -97,6 +97,9 @@ jobs:
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
+        with:
+          # 配置缓存里可能含凭据，Action 只有拿到这把密钥才会保存和恢复它。
+          cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
 
       # 发版才跑 `verifyPlugin`（Plugin Verifier：真的下载 IDE 去查废弃 / 实验性 / internal API）。
       # 它慢且要联网，所以**刻意只放在这里**，不进每次推送的 ci.yml。
