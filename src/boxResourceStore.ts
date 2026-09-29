@@ -81,6 +81,15 @@ export function readAuthoringFile(rootDir: string, templatesDirectory: string): 
   return readAuthoringResult(rootDir, templatesDirectory).file;
 }
 
+/** 缺文件不是错误。读失败或解析失败时返回错误码，调用方不能把结果当成空目录。 */
+export function authoringReadErrors(rootDir: string, templatesDirectory: string): string[] {
+  return readAuthoringResult(rootDir, templatesDirectory).errors;
+}
+
+export function runtimeReadErrors(rootDir: string, declared?: string, fromConfigPy?: string): string[] {
+  return readRuntimeResult(rootDir, declared, fromConfigPy).errors;
+}
+
 function readAuthoringResult(rootDir: string, templatesDirectory: string): { file: AuthoringFile; errors: string[] } {
   const file = authoringFile(rootDir, templatesDirectory);
   const read = readText(file);

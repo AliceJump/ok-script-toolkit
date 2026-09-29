@@ -4,7 +4,7 @@ import * as vscode from 'vscode';
 import { TemplateAssetData } from './templateAssetData';
 import { AnnotationPanel } from './annotationPanel';
 import { openBoxEditor } from './boxPanels';
-import { boxesForImage, publishRuntime, readAuthoringFile, readRuntimeFile, runtimeOnlyPaths, swapImageBoxes } from './boxResourceStore';
+import { authoringReadErrors, boxesForImage, publishRuntime, readAuthoringFile, readRuntimeFile, runtimeOnlyPaths, runtimeReadErrors, swapImageBoxes } from './boxResourceStore';
 import { probedBoxesJson } from './cocoFeaturePath';
 import { cropTemplateThumbFileAsync, THUMB_HEIGHT } from './pngCrop';
 import { injectWebviewLocalization, tr } from './localization';
@@ -95,8 +95,12 @@ class AssetGalleryController {
     const imageFiles = this.data.listImages();
 
     // 构建元数据
-    const authoring = this.boxes
-      ? readAuthoringFile(this.data.root, templatesDirectory(this.data.root))
+    const templates = templatesDirectory(this.data.root);
+    if (this.boxes && authoringReadErrors(this.data.root, templates).length) {
+      void vscode.window.showErrorMessage(tr('Could not save the box resource.'));
+    }
+    const authoring = this.boxes && !authoringReadErrors(this.data.root, templates).length
+      ? readAuthoringFile(this.data.root, templates)
       : undefined;
     const metas = imageFiles.map((imgPath) => {
       const size = this.imagePixelSize(imgPath);
@@ -631,6 +635,10 @@ class AssetGalleryController {
     const root = this.data.root;
     if (!root) return;
     const templates = templatesDirectory(root);
+    if (authoringReadErrors(root, templates).length || runtimeReadErrors(root, boxesRuntimeSetting(root), probedBoxesJson(root)).length) {
+      void vscode.window.showErrorMessage(tr('Could not save the box resource.'));
+      return;
+    }
     const declared = boxesRuntimeSetting(root);
     const fromConfig = probedBoxesJson(root);
     const authoring = readAuthoringFile(root, templates);
@@ -657,6 +665,10 @@ class AssetGalleryController {
     }
     const root = this.data.root;
     const templates = templatesDirectory(root);
+    if (authoringReadErrors(root, templates).length) {
+      void vscode.window.showErrorMessage(tr('Could not save the box resource.'));
+      return;
+    }
     const authoring = readAuthoringFile(root, templates);
     const sourceBoxes = boxesForImage(authoring, path.basename(sourcePath));
     const targetBoxes = boxesForImage(authoring, path.basename(targetPath));
