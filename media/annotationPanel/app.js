@@ -49,11 +49,14 @@
    */
   let boxPathRule = null;
 
-  // 全局重复：path 已被哪张图占用（宿主随 load 下发 boxPaths）。own 值允许保持不变。
-  function boxPathOccupied(value, own) {
+  // 全局重复：path 已被哪张图占用（宿主随 load 下发 boxPaths：path → 图片文件名）。
+  // originalPath 是本条编辑前的旧 path：保持不变时放行，换成别的占用 path 才算重复。
+  // 注意不要拿"占用表的值（图片名）"来当排除参数 —— 排除的判据是原始 path 本身。
+  function boxPathOccupied(value, originalPath) {
     const occupied = imageData?.boxPaths || {};
-    const owner = occupied[String(value || '').trim()];
-    if (owner && owner.toLowerCase() !== String(own || '').toLowerCase()) return { code: 'duplicate' };
+    const trimmed = String(value || '').trim();
+    if (originalPath != null && trimmed === String(originalPath).trim()) return undefined;
+    if (occupied[trimmed]) return { code: 'duplicate' };
     return undefined;
   }
 

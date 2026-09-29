@@ -220,8 +220,6 @@
   "Neither image has annotations, nothing to swap.": "どちらの画像にもアノテーションがないため、交換するものはありません。",
   "Could not save the box resource.": "ボックス資源を保存できませんでした。",
   "Could not save annotations.": "注釈を保存できませんでした。",
-  "Publish": "公開"
-,
-  "Boxes without an image size were not published: {paths}.": "画像サイズが判らないため公開されなかったボックス: {paths}",
-  "Some legacy boxes were dropped during migration: their image size is unknown.": "一部の旧形式ボックスは移行時に破棄されました: 画像サイズが判りません。"
+  "Publish": "公開",
+  "Boxes without an image size were not published: {paths}.": "画像サイズが判らないため公開されなかったボックス: {paths}"
 }

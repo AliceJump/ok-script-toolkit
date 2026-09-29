@@ -10,8 +10,7 @@
  *
  * Authoring 与模板标注共用同一套 Pixel 模型（图片 width/height + 像素 bbox，见
  * `templateAssetData.ts` 的 `CocoImage`）；归一化只发生在 Publish（`publishBoxes`）。
- * 旧 version 1（normalized rect）只能经 `parseLegacyAuthoring` + `migrateAuthoringV1`
- * 转成 Pixel —— 那是唯一的兼容入口，不进编辑 / 保存 / 读取主流程。
+ * 旧 version 1（normalized rect）不受支持：解析直接报 `version` 错误，不做迁移。
  *
  * 设计见 `docs/box-resources.md`。本模块不读盘、不 import `vscode`。
  */
@@ -432,8 +431,7 @@ export function parseAuthoring(text: string): BoxParseResult<AuthoringFile> {
     return { file: emptyAuthoringFile(), errors: ['root'] };
   }
   const record = raw as { version?: unknown };
-  // 旧版（normalized rect）是迁移入口，不是主流程格式：读盘侧据此走 migrateAuthoringV1。
-  if (record.version === 1) return { file: emptyAuthoringFile(), errors: ['legacy'] };
+  // version 1（旧 normalized rect）不支持，也不迁移：authoring 只有 Pixel 一种模型。
   if (record.version !== AUTHORING_VERSION) {
     return { file: emptyAuthoringFile(), errors: ['version'] };
   }
@@ -535,84 +533,6 @@ function uniqueAuthoring(boxes: readonly AuthoringBox[]): AuthoringBox[] {
       return true;
     })
     .sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
-}
-
-/* ────────────────────────────────────────────────────────────────
- * 旧格式迁移入口：version 1（normalized rect）→ Pixel authoring。
- * 只允许"读盘 → 转换 → 写回"这一条路，不进编辑 / 保存主流程。
- * ──────────────────────────────────────────────────────────────── */
-
-export interface LegacyAuthoringBox {
-  path: string;
-  image: string;
-  rect: NormalizedRect;
-}
-
-/** 旧版结构：`{ version: 1, boxes: [{ path, image, rect: [l,t,r,b] }] }`。 */
-export function parseLegacyAuthoring(text: string): { boxes: LegacyAuthoringBox[]; errors: string[] } {
-  let raw: unknown;
-  try {
-    raw = JSON.parse(text);
-  } catch {
-    return { boxes: [], errors: ['json'] };
-  }
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { boxes: [], errors: ['root'] };
-  const record = raw as { version?: unknown; boxes?: unknown };
-  if (record.version !== 1 || !Array.isArray(record.boxes)) return { boxes: [], errors: ['version'] };
-  const boxes: LegacyAuthoringBox[] = [];
-  const errors: string[] = [];
-  record.boxes.forEach((entry, index) => {
-    const item = entry as { path?: unknown; image?: unknown; rect?: unknown };
-    if (typeof item?.path !== 'string' || boxPathError(item.path)) {
-      errors.push(`${index}:path`);
-      return;
-    }
-    const image = typeof item?.image === 'string' ? imageFileName(item.image) : '';
-    const rect = Array.isArray(item.rect) && (item.rect as unknown[]).length === 4
-      && (item.rect as unknown[]).every((value) => typeof value === 'number' && Number.isFinite(value))
-      ? (item.rect as unknown as NormalizedRect)
-      : undefined;
-    if (!image || !rect || !isStorableRuntimeRect(rect)) {
-      errors.push(`${index}:rect`);
-      return;
-    }
-    boxes.push({ path: item.path, image, rect });
-  });
-  return { boxes, errors };
-}
-
-/**
- * 把旧 normalized 框按图片尺寸转成 Pixel。尺寸由调用方解析（COCO 记录 → 图片头），
- * 纯模块不读盘。读不出尺寸的框**丢弃并记错**——没有尺寸的 normalized 值在 Pixel
- * 模型里无法落地，硬编一个尺寸才是真正的数据损坏。
- */
-export function migrateAuthoringV1(
-  legacy: readonly LegacyAuthoringBox[],
-  sizeOf: (image: string) => { width: number; height: number } | undefined,
-): { file: AuthoringFile; errors: string[] } {
-  const images = new Map<string, AuthoringImage>();
-  const boxes: AuthoringBox[] = [];
-  const errors: string[] = [];
-  for (const box of legacy) {
-    const size = sizeOf(box.image);
-    if (!size || !(size.width > 0) || !(size.height > 0)) {
-      errors.push(`migrate:${box.image}`);
-      continue;
-    }
-    const [left, top, right, bottom] = box.rect;
-    const bbox = roundPixelBbox([
-      left * size.width,
-      top * size.height,
-      (right - left) * size.width,
-      (bottom - top) * size.height,
-    ]);
-    const name = imageFileName(box.image);
-    const key = name.toLowerCase();
-    if (!images.has(key)) images.set(key, { file: name, width: size.width, height: size.height });
-    boxes.push({ path: box.path, image: name, bbox: clampPixelBbox(bbox, size) });
-  }
-  boxes.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
-  return { file: { version: AUTHORING_VERSION, images: [...images.values()], boxes }, errors };
 }
 
 /* ────────────────────────────────────────────────────────────────

@@ -98,7 +98,7 @@ class AssetGalleryController {
     const templates = templatesDirectory(this.data.root);
     const authoringErrors = this.boxes ? authoringReadErrors(this.data.root, templates) : [];
     if (authoringErrors.length) {
-      void vscode.window.showErrorMessage(this.boxErrorMessage(authoringErrors));
+      void vscode.window.showErrorMessage(tr('Could not save the box resource.'));
     }
     const authoring = this.boxes && !authoringErrors.length
       ? readAuthoringFile(this.data.root, templates)
@@ -642,7 +642,7 @@ class AssetGalleryController {
     const templates = templatesDirectory(root);
     const authoringErrors = authoringReadErrors(root, templates);
     if (authoringErrors.length || runtimeReadErrors(root, boxesRuntimeSetting(root), probedBoxesJson(root)).length) {
-      void vscode.window.showErrorMessage(this.boxErrorMessage(authoringErrors));
+      void vscode.window.showErrorMessage(tr('Could not save the box resource.'));
       return;
     }
     const declared = boxesRuntimeSetting(root);
@@ -672,14 +672,6 @@ class AssetGalleryController {
     await this.update();
   }
 
-  /** 框资源的读盘失败统一走这里：旧格式迁移丢框要有自己的说法，不能全塞进一句"保存失败"。 */
-  private boxErrorMessage(errors: string[]): string {
-    if (errors.some((item) => item.startsWith('migrate:') || item.startsWith('legacy:'))) {
-      return tr('Some legacy boxes were dropped during migration: their image size is unknown.');
-    }
-    return tr('Could not save the box resource.');
-  }
-
   /**
    * 框的图片交换。Pixel authoring 下坐标语义依赖图片尺寸：同尺寸只换所属图片，
    * 尺寸不同时按比例映射（复用模板交换的 `scaleBox`，映射与钳制在纯层完成），
@@ -696,7 +688,7 @@ class AssetGalleryController {
     const templates = templatesDirectory(root);
     const authoringErrors = authoringReadErrors(root, templates);
     if (authoringErrors.length) {
-      void vscode.window.showErrorMessage(this.boxErrorMessage(authoringErrors));
+      void vscode.window.showErrorMessage(tr('Could not save the box resource.'));
       return;
     }
     const authoring = readAuthoringFile(root, templates);

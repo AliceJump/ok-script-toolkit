@@ -152,20 +152,14 @@ check(status[0].status === 'same', '发布状态一致');
 check(pure.publishStatus(fileV2, { version: 1, boxes: [{ path: 'gone.only', rect }] })
   .some((item) => item.status === 'runtimeOnly'), '运行时独有的 path 单独标记');
 
-// ── 旧格式迁移入口 ──────────────────────────────────────────────────
+// ── 旧 normalized（version 1）不受支持，也不迁移 ────────────────────
 const legacyText = JSON.stringify({
   version: 1,
   boxes: [{ path: 'screen.main_viewport', image: '12.png', rect: [0.1, 0.2, 0.9, 0.8] }],
 });
-check(pure.parseAuthoring(legacyText).errors.includes('legacy'), 'v1 被识别为迁移入口而不是空目录');
-const legacyParsed = pure.parseLegacyAuthoring(legacyText);
-check(legacyParsed.boxes.length === 1 && !legacyParsed.errors.length, 'v1 结构能解析');
-const migrated = pure.migrateAuthoringV1(legacyParsed.boxes, () => ({ width: 1920, height: 1080 }));
-check(!migrated.errors.length, '有尺寸时迁移成功');
-check(migrated.file.boxes[0].bbox.join() === '192,216,1536,648', 'normalized → Pixel 用图片尺寸换算');
-check(migrated.file.images[0].width === 1920, '迁移同时登记图片尺寸');
-const orphan = pure.migrateAuthoringV1(legacyParsed.boxes, () => undefined);
-check(orphan.errors.length === 1 && orphan.errors[0] === 'migrate:12.png' && orphan.file.boxes.length === 0, '读不出尺寸的框丢弃并记错');
+const legacyParsed = pure.parseAuthoring(legacyText);
+check(legacyParsed.file.boxes.length === 0 && legacyParsed.errors.includes('version'), 'v1 authoring 直接报 version 错误');
+check(typeof pure.parseLegacyAuthoring === 'undefined' && typeof pure.migrateAuthoringV1 === 'undefined', '迁移函数已从纯模块删除');
 
 // ── 读盘侧：自动创建、登记、迁移写回 ────────────────────────────────
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ok-boxes-pixel-'));
@@ -203,33 +197,25 @@ try {
   check(!runtimeRead.errors.length && runtimeRead.file.boxes[0].path === 'screen.main_viewport', '运行时内容可读');
   check(fs.readFileSync(runtimeFile, 'utf8').includes('0.104167'), '发布坐标是 normalized 6 位小数');
 
-  // 迁移：旧 normalized + COCO 尺寸 → 读一次就变成 v2
+  // version 1 读盘：报 version 错误，不做迁移，文件保持原样
   const legacyFile = path.join(templatesAbs, 'boxes.json');
   fs.writeFileSync(legacyFile, JSON.stringify({
     version: 1,
     boxes: [{ path: 'screen.legacy', image: '12.png', rect: [0.25, 0.25, 0.75, 0.75] }],
   }));
-  const migratedFile = store.readAuthoringFile(tmp, templates);
-  const legacyBox = migratedFile.boxes.find((box) => box.path === 'screen.legacy');
-  check(!!legacyBox && legacyBox.bbox.join() === '480,270,960,540', '旧框读盘时迁移成 Pixel');
-  const onDisk = JSON.parse(fs.readFileSync(legacyFile, 'utf8'));
-  check(onDisk.version === 2 && onDisk.images.length > 0, '迁移后写回新格式');
+  const legacyErrors = store.authoringReadErrors(tmp, templates);
+  check(legacyErrors.includes('version'), 'v1 读盘报 version 错误（不支持，不迁移）');
+  const legacyRead = store.readAuthoringFile(tmp, templates);
+  check(legacyRead.boxes.length === 0 && legacyRead.images.length === 0, 'v1 不产出任何框');
+  check(JSON.parse(fs.readFileSync(legacyFile, 'utf8')).version === 1, '不做迁移写回，文件保持原样');
 
-  // 删除图片：框与尺寸登记一起消失，失败时快照恢复
+  // 删除图片：框与尺寸登记一起消失，失败时快照恢复（先把干净的 v2 写回去）
+  fs.writeFileSync(legacyFile, pure.serializeAuthoring(authoring2));
   const snapshot = store.captureAuthoring(tmp, templates);
   check(store.removeImageBoxes(tmp, templates, '12.png'), '先去掉这张图的框');
   const afterRemove = JSON.parse(fs.readFileSync(legacyFile, 'utf8'));
   check(!afterRemove.images.some((item) => item.file === '12.png'), '尺寸登记也清掉');
   check(store.restoreAuthoring(tmp, templates, snapshot), '图片还在时写回原文件');
-
-  // 读不出尺寸的框：丢弃并报错，文件保持旧格式不写回（避免半迁移）
-  fs.writeFileSync(legacyFile, JSON.stringify({
-    version: 1,
-    boxes: [{ path: 'screen.orphan', image: 'ghost.png', rect: [0.25, 0.25, 0.75, 0.75] }],
-  }));
-  const orphanErrors = store.authoringReadErrors(tmp, templates);
-  check(orphanErrors.some((item) => item.startsWith('migrate:')), '缺尺寸的迁移丢框并报错');
-  check(JSON.parse(fs.readFileSync(legacyFile, 'utf8')).version === 1, '半迁移不写回');
 
   // 交换（读盘侧）
   writeImage('big.png', 1920, 1080);
@@ -257,7 +243,26 @@ check(/ok\.disabled\s*=\s*!!problem/.test(appSource), '路径不合法时禁用�
 check(/if \(refreshGeneratePathState\(\)\) return;/.test(appSource), '保存前再校验一次，不合法直接拦住');
 check(/boxPathOccupied/.test(appSource), 'webview 做全局占用查重');
 check(annotationSource.includes('BOX_PATH_SEGMENT_SOURCE') && /boxPaths/.test(annotationSource), '标注编辑器下发规则与 path 占用');
-check(boxPanelsSource.includes('BOX_PATH_SEGMENT_SOURCE') && boxPanelsSource.includes('boxPathOccupancy'), '框编辑器下发同一份规则与占用表');
+check(boxPanelsSource.includes('BOX_PATH_SEGMENT_SOURCE') && /boxPaths:\s*boxPathOccupancy\(authoring\)/.test(boxPanelsSource), '框编辑器下发规则，占用表字段名是 boxPaths');
+check(!/allCategories:\s*boxPathOccupancy/.test(boxPanelsSource), '框编辑器不再把占用表塞进 allCategories');
+
+// ── 占用查重的真实行为（把 webview 的函数抽出来在 Node 里跑）──────────
+// BoxEditor 的占用字段曾经接错（下发 allCategories、webview 读 boxPaths），
+// 查重静默失效；这里的抽取执行保证字段名与语义都被钉住。
+const occupiedStart = appSource.indexOf('function boxPathOccupied(');
+const occupiedEnd = appSource.indexOf('\n  }', occupiedStart) + '\n  }'.length;
+assert(occupiedStart > 0, 'app.js 里找得到 boxPathOccupied');
+const occupiedFn = new Function('imageData', `
+  const imageDataRef = imageData;
+  ${appSource.slice(occupiedStart, occupiedEnd).replace(/^  /gm, '').replace('imageData?.boxPaths', 'imageDataRef?.boxPaths')}
+  return boxPathOccupied;
+`);
+const occupied = occupiedFn({ boxPaths: { 'screen.main_viewport': '1.png', 'screen.other': '2.png' } });
+check(occupied('screen.main_viewport', 'screen.main_viewport') === undefined, '原 path 保持不变：不报重复');
+check(occupied('screen.main_viewport', null) === undefined ? false : occupied('screen.main_viewport', null)?.code === 'duplicate', '生成新框时命中占用即重复');
+check(occupied('screen.brand_new', 'screen.main_viewport') === undefined, '换成没人占用的 path：放行');
+check(occupied('screen.other', 'screen.main_viewport')?.code === 'duplicate', '改成其他图占用的 path：报重复');
+check(occupied('  screen.other  ', 'screen.main_viewport')?.code === 'duplicate', '占用比对先做 trim');
 
 if (failures.length) {
   console.error(`\n${failures.length} failed`);

@@ -220,8 +220,6 @@
   "Neither image has annotations, nothing to swap.": "Ninguna de las dos imágenes tiene anotaciones, no hay nada que intercambiar.",
   "Could not save the box resource.": "No se pudo guardar el recurso de cuadros.",
   "Could not save annotations.": "No se pudieron guardar las anotaciones.",
-  "Publish": "Publicar"
-,
-  "Boxes without an image size were not published: {paths}.": "Cajas sin tamaño de imagen no publicadas: {paths}",
-  "Some legacy boxes were dropped during migration: their image size is unknown.": "Algunas cajas heredadas se descartaron al migrar: se desconoce el tamaño de su imagen."
+  "Publish": "Publicar",
+  "Boxes without an image size were not published: {paths}.": "Cajas sin tamaño de imagen no publicadas: {paths}"
 }

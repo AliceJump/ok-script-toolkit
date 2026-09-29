@@ -220,8 +220,6 @@
   "Neither image has annotations, nothing to swap.": "两张图都没有标注，无需交换。",
   "Could not save the box resource.": "无法保存框资源。",
   "Could not save annotations.": "无法保存标注。",
-  "Publish": "发布"
-,
-  "Boxes without an image size were not published: {paths}.": "这些框缺少图片尺寸，未发布：{paths}。",
-  "Some legacy boxes were dropped during migration: their image size is unknown.": "部分旧格式框迁移时被丢弃：读不出原图尺寸。"
+  "Publish": "发布",
+  "Boxes without an image size were not published: {paths}.": "这些框缺少图片尺寸，未发布：{paths}。"
 }

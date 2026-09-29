@@ -2,8 +2,8 @@
  * 框资源的读盘侧。纯规则在 `boxResourcePure.ts`。
  *
  * Authoring 是 Pixel bbox + 图片尺寸（version 2），与模板标注同一模型；
- * normalized 只存在于 Runtime / Publish。旧 normalized `boxes.json`（version 1）
- * 在这里走唯一的迁移入口：读取 → 按图片尺寸转 Pixel → 写回新格式。
+ * normalized 只存在于 Runtime / Publish。version 1（旧 normalized）不受支持，
+ * 读盘直接报 `version` 错误，不做迁移。
  */
 import { randomUUID } from 'crypto';
 import * as fs from 'fs';
@@ -20,9 +20,7 @@ import {
   emptyAuthoringFile,
   emptyRuntimeFile,
   imageFileName,
-  migrateAuthoringV1,
   parseAuthoring,
-  parseLegacyAuthoring,
   parseRuntime,
   pixelBboxError,
   publishBoxes,
@@ -109,61 +107,20 @@ function imageHeaderSize(file: string): { width: number; height: number } | unde
   }
 }
 
-/**
- * 迁移尺寸解析的第一优先级：模板 COCO 里登记过的 `file_name → width/height`。
- * 只收正数记录；宽松解析 —— COCO 坏了不该把迁移一起弄死，还有图片头兜底。
- */
-function cocoImageSizes(templatesDirAbs: string): Map<string, { width: number; height: number }> {
-  const sizes = new Map<string, { width: number; height: number }>();
-  try {
-    const raw = JSON.parse(fs.readFileSync(path.join(templatesDirAbs, 'coco_annotations.json'), 'utf8'));
-    for (const image of (raw?.images ?? []) as Array<{ file_name?: unknown; width?: unknown; height?: unknown }>) {
-      const name = typeof image?.file_name === 'string' ? imageFileName(image.file_name).toLowerCase() : '';
-      const width = typeof image?.width === 'number' ? image.width : 0;
-      const height = typeof image?.height === 'number' ? image.height : 0;
-      if (name && width > 0 && height > 0) sizes.set(name, { width, height });
-    }
-  } catch {
-    // 没登记就交给图片头
-  }
-  return sizes;
-}
-
-/**
- * 读标注资源。旧 normalized（version 1）在这里完成**唯一**的迁移：
- * 解析 → 用 COCO 记录 / 图片头解析尺寸 → `migrateAuthoringV1` 转 Pixel →
- * 全部成功时立即写回新格式（迁移入口的"写成新 authoring 格式"）。
- * 读不出尺寸的框被丢弃并记入 errors（`migrate:<image>`），由界面报告。
- */
+/** 读标注资源。version 1（旧 normalized）不受支持：解析直接报 `version` 错误，不做迁移。 */
 function readAuthoringResult(rootDir: string, templatesDirectory: string): { file: AuthoringFile; errors: string[] } {
   const file = authoringFile(rootDir, templatesDirectory);
   const read = readText(file);
   if (read.missing) return { file: emptyAuthoringFile(), errors: [] };
   if (read.error || read.text === undefined) return { file: emptyAuthoringFile(), errors: ['read'] };
-  const parsed = parseAuthoring(read.text);
-  if (!parsed.errors.includes('legacy')) return parsed;
-
-  const templatesDirAbs = path.join(rootDir, templatesDirectory);
-  const legacy = parseLegacyAuthoring(read.text);
-  const coco = cocoImageSizes(templatesDirAbs);
-  const sizeOf = (image: string) => {
-    const name = imageFileName(image).toLowerCase();
-    return coco.get(name) ?? imageHeaderSize(path.join(templatesDirAbs, imageFileName(image)));
-  };
-  const migrated = migrateAuthoringV1(legacy.boxes, sizeOf);
-  const errors = [...legacy.errors.map((item) => `legacy:${item}`), ...migrated.errors];
-  if (errors.length === 0) {
-    // 迁移完整才写回：半迁移的文件比旧文件更难解释。
-    writeText(file, serializeAuthoring(migrated.file));
-  }
-  return { file: migrated.file, errors };
+  return parseAuthoring(read.text);
 }
 
 export function readAuthoringFile(rootDir: string, templatesDirectory: string): AuthoringFile {
   return readAuthoringResult(rootDir, templatesDirectory).file;
 }
 
-/** 缺文件不是错误。读失败 / 解析失败 / 迁移丢弃时返回错误码，调用方不能把结果当成空目录。 */
+/** 缺文件不是错误。读失败 / 解析失败时返回错误码，调用方不能把结果当成空目录。 */
 export function authoringReadErrors(rootDir: string, templatesDirectory: string): string[] {
   return readAuthoringResult(rootDir, templatesDirectory).errors;
 }

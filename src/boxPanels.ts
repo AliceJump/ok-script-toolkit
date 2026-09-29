@@ -193,9 +193,9 @@ class BoxEditor {
       imagePath: this.image,
       imageBase64,
       annotations,
-      // 跨图片 path 占用：path → 所属图片。bbox 对话框的查重吃这张表，
+      // 跨图片 path 占用：path → 所属图片。bbox 对话框的重复校验吃这张表，
       // 不再传空的 allCategories: {}。
-      allCategories: boxPathOccupancy(authoring),
+      boxPaths: boxPathOccupancy(authoring),
       currentIndex: Math.max(0, this.images.indexOf(this.image)),
       totalImages: this.images.length,
       filename: path.basename(this.image),
