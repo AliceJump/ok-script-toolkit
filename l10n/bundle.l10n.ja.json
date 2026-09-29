@@ -159,6 +159,7 @@
   "Enter game window title pattern (regex), or leave empty for all windows": "ゲームウィンドウのタイトル正規表現を入力（空欄ですべてのウィンドウ）",
   "Failed to add to template assets: {error}": "テンプレートアセットへの追加に失敗: {error}",
   "Failed to delete: {name}": "削除に失敗: {name}",
+  "Deleted the record for {name}, but the temporary file is still at {path}.": "{name} の記録は削除しましたが、一時ファイルが {path} に残っています。",
   "Failed to save screenshot.": "スクリーンショットの保存に失敗しました。",
   "Import images to {dir}": "{dir} に画像を読み込む",
   "Imported {count} image(s)": "{count} 件の画像を読み込みました",
@@ -216,5 +217,8 @@
   "Failed to swap annotations.": "アノテーションの交換に失敗しました。",
   "Annotations changed while confirming. Retry the swap.": "確認中にアノテーションが変更されました。交換をやり直してください。",
   "Cannot read image size, so annotations cannot be swapped.": "画像サイズを読み取れないため、アノテーションを交換できません。",
-  "Neither image has annotations, nothing to swap.": "どちらの画像にもアノテーションがないため、交換するものはありません。"
+  "Neither image has annotations, nothing to swap.": "どちらの画像にもアノテーションがないため、交換するものはありません。",
+  "Could not save the box resource.": "ボックス資源を保存できませんでした。",
+  "Could not save annotations.": "注釈を保存できませんでした。",
+  "Publish": "公開"
 }

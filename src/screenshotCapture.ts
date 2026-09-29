@@ -18,6 +18,11 @@ export interface WindowConfig {
    * 是两个不同的文件。
    */
   cocoFeatureJson?: string;
+  /**
+   * `config.py` 顶层 `boxes_json` —— 运行时框文件。
+   * 和 `<模板目录>/boxes.json` 不是同一个文件。见 `docs/box-resources.md`。
+   */
+  boxesJson?: string;
   /** Project template tab's enum module path, without a required .py suffix. */
   labelEnumRelativePath?: string;
 }
@@ -33,6 +38,7 @@ interface ProbeWindowConfigResult {
   top_hwnd_class?: string;
   coco_feature_json?: string | null;
   label_enum_relative_path?: string | null;
+  boxes_json?: string | null;
 }
 
 /** 读取 okScriptToolkit 扩展配置中的项目路径和 Python 解释器 */
@@ -80,6 +86,7 @@ export async function probeWindowConfig(projectDir: string, pythonPath: string):
             // 探针解不出来时给的是 `null`（AST 里掺了变量），这里归一成 `undefined`
             cocoFeatureJson: parsed.coco_feature_json ?? undefined,
             labelEnumRelativePath: parsed.label_enum_relative_path ?? undefined,
+            boxesJson: parsed.boxes_json ?? undefined,
           };
         }
         return undefined;

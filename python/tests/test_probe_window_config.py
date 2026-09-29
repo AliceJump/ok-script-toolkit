@@ -154,7 +154,22 @@ check(nested.get("title") == "nested", "config 写在分支里时的 ast.walk �
 no_config = probe('config = {"windows": {}}\n', at="nothing/here.py")
 check(no_config.get("ok") is False, "找不到 config.py 时 ok=false（插件据此走兜底，不报错）")
 
-# ── 4. 找不到 config.py 时的路径解析 ────────────────────────────────
+# ── 4. 运行时框文件是顶层 boxes_json，不进 template_matching ────────
+print("\nboxes_json")
+
+boxes = probe(
+    'import os\n'
+    'config = {\n'
+    '    "boxes_json": os.path.join("src", "scene", "boxes.json"),\n'
+    '    "template_matching": {"coco_feature_json": "assets/coco_annotations.json"},\n'
+    '}\n'
+)
+check(boxes.get("boxes_json") == "src/scene/boxes.json", "顶层 boxes_json 用 os.path.join 能静态求值")
+check(boxes.get("coco_feature_json") == "assets/coco_annotations.json", "读框路径时模板库路径仍在")
+absent_boxes = probe('config = {"template_matching": {"coco_feature_json": "assets/c.json"}}\n')
+check(absent_boxes.get("boxes_json") is None, "没写 boxes_json 时输出 null，插件退回 src/scene/boxes.json")
+
+# ── 5. 找不到 config.py 时的路径解析 ────────────────────────────────
 print("\n找不到 config.py")
 
 empty_dir = make_tmp_dir("ok-probe-empty")

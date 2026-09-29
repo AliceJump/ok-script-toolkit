@@ -168,12 +168,14 @@
 | | `afterConfigImport` | **无此信息** | 按约定试 `src.patches.startup_patches:install_startup_patches` |
 | `templates` | `directory` | 无（插件侧约定） | IDE 设置 → `ok_templates` |
 | | `cocoAnnotations` | **6/6 有** | `config.py` 的 `template_matching.coco_feature_json` → 依次探测两个候选 |
+| `boxes` | `runtime` | 新字段，现有项目还没有 | `config.py` 顶层 `boxes_json` → `src/scene/boxes.json` |
 | `i18n` | `enabled` / `langDirectory` / `poDirectory` / `poDomains` | 无 | IDE 设置 → 内置默认 |
 | `characters` | `projectPath` / `masterFile` / `skillsDirectory` / `localeFile` / `avatarTemplateRegex` | 无 | IDE 设置 → 内置默认 |
 | `effects` | `file` | 无 | IDE 设置 → `src/data/effects.py` |
 
 **接线状态**：全部字段已接线（`templates.directory` / `templates.cocoAnnotations` /
-`labelEnum.*` / `i18n` / `characters` / `effects`）。
+`boxes.runtime` / `labelEnum.*` / `i18n` / `characters` / `effects`）。
+`boxes.runtime` 的后半段（读 `config.py`、定位文件）已接上；框管理界面仍按 `docs/box-resources.md` 继续。
 
 **⚠️ 两个同名的 `coco_annotations.json` 不是一回事** —— 接错会静默指向错的文件：
 
@@ -181,10 +183,11 @@
 |---|---|---|---|
 | `assets/coco_annotations.json`（或 config.py 指的别处） | ok 框架加载的**运行时模板库** | `featureData` / `OkProjectDataService` 读，文件监听盯它 | `templates.cocoAnnotations` → config.py → 两个惯例位置 |
 | `<模板目录>/coco_annotations.json` | 素材面板自己的**标注工作文件** | `templateAssetData` / `TemplateAssetDataService` 读写 | `templates.directory`（**不受** `cocoAnnotations` 影响） |
+| `src/scene/boxes.json`（或 `boxes_json` 指的别处） | 业务项目加载的**运行时框** | 路径已能解析；框管理 / 补全尚未读取。加载器在业务项目的 `ScreenPosition` | `boxes.runtime` → config.py → 探测位置 |
+| `<模板目录>/boxes.json` | 框资源管理的**标注工作文件** | 契约已定，面板尚未接上 | `templates.directory`（**不受** `boxes.runtime` 影响） |
 
-`cocoAnnotations` 是**唯一**一层"`config.py` 已声明的事实"真正落地的字段 ——
-其余字段 `config.py` 要么不声明，要么（`labelEnum.path`）插件至今没读。
-它也是唯一**没有 IDE 设置**的链（没有"个人偏好"层），所以不进溯源面板。
+`cocoAnnotations` 与 `boxes.runtime` 是"`config.py` 已声明的事实"落地的两条链，
+都**没有 IDE 设置**（没有"个人偏好"层）。`boxes_json` 在现有项目里还没有，缺席时探测 `src/scene/boxes.json`。
 
 **按字段类型选归一化方式**（做错是**静默**的，所以这里写死）：
 

@@ -21,10 +21,91 @@ body {
 .toolbar .spacer { flex: 1; }
 .toolbar .info { color: var(--text-muted); font-size: var(--font-xs); white-space: nowrap; }
 
+.editor-body {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
 .canvas-wrap {
   flex: 1;
   position: relative;
   overflow: hidden;
+  min-width: 0;
+}
+
+.annotation-list {
+  width: 168px;
+  flex: 0 1 168px;
+  max-width: 40%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  padding: var(--space-sm);
+  border-left: var(--border-width) solid var(--border);
+  background: var(--bg-container);
+  min-height: 0;
+}
+
+.annotation-list-title {
+  font-size: var(--font-sm);
+  font-weight: var(--weight-medium);
+}
+
+.annotation-list-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.annotation-list-rows {
+  flex: 1;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.annotation-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  min-height: var(--control-h-sm);
+  padding: 0 var(--space-xs);
+  background: var(--bg-row);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-sm);
+}
+
+.annotation-row.is-selected {
+  font-weight: var(--weight-medium);
+}
+
+@media (max-width: 640px) {
+  .editor-body { flex-direction: column; }
+  .annotation-list {
+    width: auto;
+    max-width: none;
+    flex: 0 0 auto;
+    max-height: 180px;
+    border-left: none;
+    border-top: var(--border-width) solid var(--border);
+  }
+}
+
+.annotation-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+  background: none;
+  border: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  padding: 0;
 }
 
 canvas {

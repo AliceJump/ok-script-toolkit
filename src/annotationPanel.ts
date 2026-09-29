@@ -2,6 +2,10 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { TemplateAssetData } from './templateAssetData';
+import { addBox, rectFromPixels } from './boxResourceStore';
+import { templatesDirectory } from './projectConfig';
+import { getProjectConfig } from './screenshotCapture';
+import { readImageSize } from './pngCrop';
 import { injectWebviewLocalization, tr } from './localization';
 import { applySharedAssets, getNonce } from './webviewHtml';
 
@@ -100,7 +104,7 @@ class AnnotationController {
     }
 
     // 读取标注数据
-    const annotations = this.data.getAnnotationsForImage(imagePath);
+    const annotations = this.data.getAnnotationsForImage(imagePath, true);
 
     // 获取所有分类名（用于验证唯一性）
     const allCategories: Record<string, string> = {};
@@ -145,6 +149,10 @@ class AnnotationController {
     y?: number;
     w?: number;
     h?: number;
+    path?: string;
+    boxes?: Array<{ x: number; y: number; w: number; h: number }>;
+    ok?: boolean;
+    error?: string;
   }): Promise<void> {
     switch (msg.type) {
       case 'ready':
@@ -156,12 +164,30 @@ class AnnotationController {
         break;
       case 'save': {
         if (!this._currentImage || !msg.annotations) break;
-        this.data.setAnnotationsForImage(
-          this._currentImage,
-          msg.annotations.map((a) => ({ category: a.category, x: a.x, y: a.y, w: a.w, h: a.h })),
-        );
-        this.data.save();
+        if (!this.persistAnnotations(this._currentImage, msg.annotations.map((a) => ({
+          category: a.category, x: a.x, y: a.y, w: a.w, h: a.h,
+        })))) break;
         this.onSaved(this._currentImage);
+        break;
+      }
+      case 'generateBox': {
+        if (!this._currentImage || !msg.path || !msg.boxes?.length) {
+          void this.webview.postMessage({ type: 'generateBoxResult', ok: false, error: 'path' });
+          break;
+        }
+        let size: { width: number; height: number } | undefined;
+        try {
+          size = readImageSize(fs.readFileSync(this._currentImage));
+        } catch {
+          void this.webview.postMessage({ type: 'generateBoxResult', ok: false, error: 'image' });
+          break;
+        }
+        const rect = size ? rectFromPixels(msg.boxes, size.width, size.height) : undefined;
+        const root = getProjectConfig().projectDir;
+        const error = rect && root
+          ? addBox(root, templatesDirectory(root), msg.path, path.basename(this._currentImage), rect)
+          : 'image';
+        void this.webview.postMessage({ type: 'generateBoxResult', ok: !error, error: error || '' });
         break;
       }
       case 'navigate': {
@@ -171,14 +197,13 @@ class AnnotationController {
       }
       case 'deleteAnnotation': {
         if (!this._currentImage || !msg.annotation) break;
-        const annotations = this.data.getAnnotationsForImage(this._currentImage);
+        const annotations = this.data.getAnnotationsForImage(this._currentImage, true);
         const annId = (msg.annotation as unknown as { id: number }).id;
         const filtered = annotations.filter((a) => a.id !== annId);
-        this.data.setAnnotationsForImage(
+        if (!this.persistAnnotations(
           this._currentImage,
           filtered.map((a) => ({ category: a.categoryName, x: a.bbox[0], y: a.bbox[1], w: a.bbox[2], h: a.bbox[3] })),
-        );
-        this.data.save();
+        )) break;
         this.onSaved(this._currentImage);
         // 重新加载
         await this.loadImage(this._currentImage);
@@ -199,6 +224,23 @@ class AnnotationController {
         }
         break;
       }
+    }
+  }
+
+  private persistAnnotations(
+    imagePath: string,
+    annotations: Array<{ category: string; x: number; y: number; w: number; h: number }>,
+  ): boolean {
+    try {
+      if (!this.data.setAnnotationsForImage(imagePath, annotations)) {
+        void vscode.window.showErrorMessage(tr('Could not save annotations.'));
+        return false;
+      }
+      this.data.save();
+      return true;
+    } catch {
+      void vscode.window.showErrorMessage(tr('Could not save annotations.'));
+      return false;
     }
   }
 
@@ -268,7 +310,7 @@ export class AnnotationPanel {
 
 /* ---------------- HTML ---------------- */
 
-function annotationHtml(cspSource: string, extensionUri: vscode.Uri, webview: vscode.Webview): string {
+export function annotationHtml(cspSource: string, extensionUri: vscode.Uri, webview: vscode.Webview): string {
   const file = path.join(extensionUri.fsPath, 'media', 'annotationPanel', 'index.html');
   const nonce = getNonce();
   const resource = (name: string) => webview.asWebviewUri(

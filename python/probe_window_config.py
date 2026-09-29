@@ -34,6 +34,8 @@ WINDOWS_SUB_KEYS = ("exe", "title", "hwnd_class", "top_hwnd_class", "capture_met
 # `os.path.join("assets", "coco_annotations.json")`。
 TEMPLATE_MATCHING_SUB_KEYS = ("coco_feature_json",)
 TEMPLATE_TAB_SUB_KEYS = ("label_enum_relative_path",)
+# config 顶层的运行时框文件。现有项目还没有这项，缺席时插件探测 src/scene/boxes.json。
+ROOT_BOXES_KEY = "boxes_json"
 
 
 def _resolve_config_path_from_main(project_dir):
@@ -147,6 +149,19 @@ def _extract_template_matching_keys(config_path):
     return _extract_sub_dict(_find_config_dict(tree), "template_matching", TEMPLATE_MATCHING_SUB_KEYS)
 
 
+def _extract_root_key(config_path, name):
+    """从顶层 config dict 取出一个键。框文件不放进 template_matching。"""
+    with open(config_path, encoding="utf-8") as f:
+        tree = ast.parse(f.read(), filename=config_path)
+    config_dict = _find_config_dict(tree)
+    if not config_dict:
+        return None
+    for key, value in zip(config_dict.keys, config_dict.values):
+        if isinstance(key, ast.Constant) and key.value == name:
+            return _extract_value(value)
+    return None
+
+
 def _extract_template_tab_keys(config_path):
     """Read the enum module path used by the project's own template tab."""
     with open(config_path, encoding="utf-8") as f:
@@ -241,6 +256,7 @@ def main():
     window_config = {k: _clean(v) for k, v in window_config.items()}
     coco_feature_json = _clean(template_matching.get("coco_feature_json"))
     label_enum_relative_path = _clean(template_tab.get("label_enum_relative_path"))
+    boxes_json = _clean(_extract_root_key(config_path, ROOT_BOXES_KEY))
 
     print(json.dumps({
         "ok": True,
@@ -248,6 +264,7 @@ def main():
         **window_config,
         "coco_feature_json": coco_feature_json,
         "label_enum_relative_path": label_enum_relative_path,
+        "boxes_json": boxes_json,
     }, ensure_ascii=False))
     sys.exit(0)
 

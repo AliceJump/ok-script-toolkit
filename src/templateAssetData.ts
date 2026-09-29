@@ -11,6 +11,7 @@ import { tr } from './localization';
 import { labelEnumNameSetting, templatesDirectory } from './projectConfig';
 import { PYTHON_KEYWORDS, writableClassName } from './labelEnumGuard';
 import { isPathInsideRoot } from './saveToAssetsPure';
+import { captureAuthoring, removeImageBoxes, restoreAuthoring } from './boxResourceStore';
 
 /* ---------------- COCO 数据类型 ---------------- */
 
@@ -250,9 +251,29 @@ export class TemplateAssetData {
     return undefined;
   }
 
+  /**
+   * 交换落盘前补一条图片记录。已有精确记录就用它。
+   * 同名不同扩展名不能借别人的记录，必须按这次的文件名新建。
+   */
+  private ensureSwapImage(filePath: string, size?: { width: number; height: number }): number | undefined {
+    const existing = this.getSwapImageEntry(filePath);
+    if (existing) return existing.id;
+    if (!size || size.width <= 0 || size.height <= 0) return undefined;
+    const fileName = path.basename(filePath);
+    const located = path.resolve(this.templateFolder, fileName);
+    if (path.resolve(filePath) !== located && !sameFile(filePath, located)) return undefined;
+    let maxId = 0;
+    for (const img of this.cocoData.images) {
+      if (img.id > maxId) maxId = img.id;
+    }
+    const id = maxId + 1;
+    this.cocoData.images.push({ id, file_name: fileName, width: size.width, height: size.height });
+    return id;
+  }
+
   addImageEntry(imagePath: string, width: number, height: number): void {
     const filename = path.basename(imagePath);
-    if (this.getImageEntryForPath(imagePath)) return;
+    if (this.getSwapImageEntry(imagePath)) return;
     let maxId = 0;
     for (const img of this.cocoData.images) {
       if (img.id > maxId) maxId = img.id;
@@ -262,7 +283,7 @@ export class TemplateAssetData {
   }
 
   removeImageEntry(imagePath: string): void {
-    const imageId = this.getImageId(imagePath);
+    const imageId = this.getSwapImageEntry(imagePath)?.id;
     if (imageId === undefined) return;
     this.cocoData.images = this.cocoData.images.filter((img) => img.id !== imageId);
     this.cocoData.annotations = this.cocoData.annotations.filter((ann) => ann.image_id !== imageId);
@@ -283,9 +304,12 @@ export class TemplateAssetData {
       }));
   }
 
-  setAnnotationsForImage(imagePath: string, annotations: Array<{ category: string; x: number; y: number; w: number; h: number }>): void {
-    const imageId = this.getImageId(imagePath);
-    if (imageId === undefined) return;
+  setAnnotationsForImage(imagePath: string, annotations: Array<{ category: string; x: number; y: number; w: number; h: number }>): boolean {
+    let imageId = this.getSwapImageEntry(imagePath)?.id;
+    if (imageId === undefined) {
+      imageId = this.ensureSwapImage(imagePath, this.resolveImageSize(imagePath));
+    }
+    if (imageId === undefined) return false;
     // 移除旧标注
     this.cocoData.annotations = this.cocoData.annotations.filter((ann) => ann.image_id !== imageId);
     // 添加新标注
@@ -307,6 +331,7 @@ export class TemplateAssetData {
     }
     this._cleanupCategories();
     this._dirty = true;
+    return true;
   }
 
   /**
@@ -321,19 +346,18 @@ export class TemplateAssetData {
    * 在副本上先摘掉旧标注、写回两边、清理分类，再一次性保存。
    * 保存失败时恢复原内存数据，磁盘文件也不会被截断。
    *
-   * 返回 false 只表示"这两张图没法交换"（任一未登记进 COCO，或指向同一张图），
-   * 此时**什么都没改** —— 调用方据此报错，不要报"已交换"。
+   * 返回 false 只表示这两张图没法交换（读不出尺寸，或指向同一张图）。
+   * 磁盘上有、但还没写进标注文件的图会在这次保存里补登记；它原来没有框，
+   * 交换后拿到的就是对方的框，对方则变成没有框。失败时什么都不改。
    */
   swapAnnotationsForImages(
     pathA: string,
     pathB: string,
     boxesForA: Array<{ category: string; x: number; y: number; w: number; h: number }>,
     boxesForB: Array<{ category: string; x: number; y: number; w: number; h: number }>,
+    sizeA?: { width: number; height: number },
+    sizeB?: { width: number; height: number },
   ): boolean {
-    const idA = this.getSwapImageEntry(pathA)?.id;
-    const idB = this.getSwapImageEntry(pathB)?.id;
-    if (idA === undefined || idB === undefined || idA === idB) return false;
-
     const previousData = this.cocoData;
     const previousDirty = this._dirty;
     this.cocoData = {
@@ -341,6 +365,13 @@ export class TemplateAssetData {
       annotations: [...previousData.annotations],
       categories: [...previousData.categories],
     };
+    const idA = this.ensureSwapImage(pathA, sizeA);
+    const idB = this.ensureSwapImage(pathB, sizeB);
+    if (idA === undefined || idB === undefined || idA === idB) {
+      this.cocoData = previousData;
+      this._dirty = previousDirty;
+      return false;
+    }
     try {
       this.cocoData.annotations = this.cocoData.annotations.filter(
         (ann) => ann.image_id !== idA && ann.image_id !== idB,
@@ -404,7 +435,7 @@ export class TemplateAssetData {
   /* ---------- 获取图片关联的分类名 ---------- */
 
   getCategoriesForImage(imagePath: string): string[] {
-    const imageId = this.getImageId(imagePath);
+    const imageId = this.getSwapImageEntry(imagePath)?.id;
     if (imageId === undefined) return [];
     const catIds = new Set(
       this.cocoData.annotations
@@ -418,14 +449,52 @@ export class TemplateAssetData {
 
   /* ---------- 删除图片文件和COCO数据 ---------- */
 
-  deleteImage(imagePath: string): boolean {
+  deleteImage(imagePath: string): true | false | string {
+    const templates = templatesDirectory(this.rootDir);
+    const snapshot = captureAuthoring(this.rootDir, templates);
+    if (!snapshot) return false;
+    const staged = `${imagePath}.${process.pid}.ok-delete`;
+    let moved = false;
+    let committed = false;
     try {
-      if (fs.existsSync(imagePath)) fs.unlinkSync(imagePath);
-      this.removeImageEntry(imagePath);
-      this.save();
+      if (!removeImageBoxes(this.rootDir, templates, path.basename(imagePath))) return false;
+      // 挪走文件后，大小写不同的记录不能再靠 realpath 对上，所以先记下 id。
+      const imageId = this.getSwapImageEntry(imagePath)?.id;
+      if (fs.existsSync(imagePath)) {
+        fs.renameSync(imagePath, staged);
+        moved = true;
+      }
+      if (imageId !== undefined) {
+        this.cocoData.images = this.cocoData.images.filter((img) => img.id !== imageId);
+        this.cocoData.annotations = this.cocoData.annotations.filter((ann) => ann.image_id !== imageId);
+        this._cleanupCategories();
+        this._dirty = true;
+      }
+      if (imageId !== undefined || fs.existsSync(this.cocoPath)) this.save();
+      committed = true;
+      if (moved && !this.removeStagedImage(staged)) return staged;
       return true;
     } catch {
+      if (committed) return moved && fs.existsSync(staged) ? staged : false;
+      if (moved && fs.existsSync(staged) && !fs.existsSync(imagePath)) {
+        try { fs.renameSync(staged, imagePath); } catch { /* 原路径占着时留给下面的框恢复判断 */ }
+      }
+      if (fs.existsSync(imagePath)) restoreAuthoring(this.rootDir, templates, snapshot);
+      try { this.load(); } catch { /* 标注写盘没成功时，内存仍可能是删过的那份 */ }
       return false;
+    }
+  }
+
+  private removeStagedImage(staged: string): boolean {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        fs.unlinkSync(staged);
+        return true;
+      } catch (error) {
+        const code = (error as NodeJS.ErrnoException).code;
+        if (attempt >= 3 || !['EPERM', 'EACCES', 'EBUSY'].includes(code ?? '')) return false;
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25);
+      }
     }
   }
 

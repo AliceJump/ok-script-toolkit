@@ -25,6 +25,14 @@ export interface ProjectTemplates {
   cocoAnnotations?: string;
 }
 
+export interface ProjectBoxes {
+  /**
+   * 运行时框文件，相对项目根。
+   * 不是 `<模板目录>/boxes.json`（那份由 templates.directory 派生）。
+   */
+  runtime?: string;
+}
+
 export interface ProjectConfig {
   labelEnum?: ProjectLabelEnum;
   executor?: {
@@ -34,6 +42,7 @@ export interface ProjectConfig {
     };
   };
   templates?: ProjectTemplates;
+  boxes?: ProjectBoxes;
   i18n?: ProjectI18n;
   characters?: ProjectCharacters;
   effects?: ProjectEffects;
@@ -149,6 +158,20 @@ export function labelEnumOf(config: ProjectConfig): ProjectLabelEnum {
 export function templatesOf(config: ProjectConfig): ProjectTemplates {
   const value = config.templates;
   return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+}
+
+/** `boxes` 一组（保证是对象）。 */
+export function boxesOf(config: ProjectConfig): ProjectBoxes {
+  const value = config.boxes;
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+}
+
+/**
+ * 运行时框文件的项目约定（`boxes.runtime`），已归一化。没声明或类型不对返回 `undefined`。
+ * 没有个人偏好层。链的后半段在 `boxResourcePure.resolveBoxRuntimePlan`。
+ */
+export function boxesRuntimeOf(config: ProjectConfig): string | undefined {
+  return normalizeRelPath(boxesOf(config).runtime);
 }
 
 /** `i18n` 一组（保证是对象）。 */

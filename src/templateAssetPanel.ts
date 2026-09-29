@@ -3,12 +3,15 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { TemplateAssetData } from './templateAssetData';
 import { AnnotationPanel } from './annotationPanel';
+import { openBoxEditor } from './boxPanels';
+import { authoringReadErrors, boxesForImage, publishRuntime, readAuthoringFile, readRuntimeFile, runtimeOnlyPaths, runtimeReadErrors, swapImageBoxes } from './boxResourceStore';
+import { probedBoxesJson } from './cocoFeaturePath';
 import { cropTemplateThumbFileAsync, THUMB_HEIGHT } from './pngCrop';
 import { injectWebviewLocalization, tr } from './localization';
 import { TempScreenshotStore } from './tempScreenshotStore';
 import { captureGameWindow, getProjectConfig, probeWindowConfig } from './screenshotCapture';
 import { takePendingDrag } from './tempDrag';
-import { currentWorkspaceFolderUri, ideSetting, labelEnumClassName, labelEnumPathInputError, labelEnumPathSetting, normalizeLabelEnumPathInput, setIdeSetting, templatesDirectory } from './projectConfig';
+import { boxesRuntimeSetting, currentWorkspaceFolderUri, ideSetting, labelEnumClassName, labelEnumPathInputError, labelEnumPathSetting, normalizeLabelEnumPathInput, setIdeSetting, templatesDirectory } from './projectConfig';
 import { labelEnumRenameImpact, labelEnumRenameMessage, referencingFiles, writableClassName } from './labelEnumGuard';
 import { derivedEnumPath, isPathInsideRoot, needsEnumPathPrompt, SaveTarget, saveToAssetsItems } from './saveToAssetsPure';
 import { isSameSize, scaleBoxes, SwapBox } from './annotationSwapPure';
@@ -72,6 +75,7 @@ class AssetGalleryController {
     private readonly isVisible: () => boolean,
     private readonly extensionUri: vscode.Uri,
     private readonly tempStore?: TempScreenshotStore,
+    private readonly boxes = false,
   ) {
     liveControllers.add(this);
     this.disposables.push(
@@ -80,7 +84,7 @@ class AssetGalleryController {
   }
 
   attachHtml(): void {
-    this.webview.html = assetGalleryHtml(this.webview, this.extensionUri);
+    this.webview.html = assetGalleryHtml(this.webview, this.extensionUri, this.boxes ? 'boxes' : 'annotations');
   }
 
   async update(): Promise<void> {
@@ -91,18 +95,26 @@ class AssetGalleryController {
     const imageFiles = this.data.listImages();
 
     // 构建元数据
+    const templates = templatesDirectory(this.data.root);
+    if (this.boxes && authoringReadErrors(this.data.root, templates).length) {
+      void vscode.window.showErrorMessage(tr('Could not save the box resource.'));
+    }
+    const authoring = this.boxes && !authoringReadErrors(this.data.root, templates).length
+      ? readAuthoringFile(this.data.root, templates)
+      : undefined;
     const metas = imageFiles.map((imgPath) => {
-      const cats = this.data.getCategoriesForImage(imgPath);
-      const entry = this.data.getImageEntryForPath(imgPath);
+      const size = this.imagePixelSize(imgPath);
+      const boxPaths = authoring ? boxesForImage(authoring, path.basename(imgPath)).map((box) => box.path) : [];
+      const cats = this.boxes ? boxPaths : this.data.getCategoriesForImage(imgPath);
       return {
         name: path.basename(imgPath),
         imagePath: imgPath,
-        width: entry?.width ?? 0,
-        height: entry?.height ?? 0,
+        width: size.width,
+        height: size.height,
         categories: cats,
         // 交换目标选择器要显示"这张图上有几个框"，而分类名是去重后的
         // （同一张图上两个同名按钮共用一个分类）⇒ 数量必须单独给。
-        annotations: this.data.getAnnotationsForImage(imgPath, true).length,
+        annotations: this.boxes ? boxPaths.length : this.data.getAnnotationsForImage(imgPath, true).length,
       };
     });
 
@@ -132,12 +144,17 @@ class AssetGalleryController {
    * 为什么需要按需补推这个入口：上面那轮批量推送是**异步分批**的，用户完全可能在推完
    * 之前就打开了选择器；而裁剪失败的那几张更是整轮都不会再推。
    */
+  /** 用这张文件自己的尺寸。不能拿同名不同后缀的标注记录来顶。 */
+  private imagePixelSize(imagePath: string): { width: number; height: number } {
+    return this.data.resolveImageSize(imagePath) ?? { width: 0, height: 0 };
+  }
+
   private async pushThumbs(imagePaths: readonly string[], generation = this.generation): Promise<number> {
     const items: { name: string; url: string }[] = [];
     for (const imagePath of imagePaths) {
       if (generation !== this.generation || this.disposed) return 0;
-      const entry = this.data.getImageEntryForPath(imagePath);
-      const bbox: [number, number, number, number] = [0, 0, entry?.width ?? 100, entry?.height ?? 100];
+      const size = this.imagePixelSize(imagePath);
+      const bbox: [number, number, number, number] = [0, 0, size.width > 0 ? size.width : 100, size.height > 0 ? size.height : 100];
       const file = await cropTemplateThumbFileAsync(imagePath, bbox, this.thumbDir, THUMB_HEIGHT);
       if (generation !== this.generation || this.disposed) return 0;
       if (!file) continue;
@@ -169,9 +186,13 @@ class AssetGalleryController {
       case 'openAnnotation': {
         if (msg.imagePath) {
           const imageList = this.data.listImages();
-          AnnotationPanel.show(this.extensionUri, this.data, this.thumbDir, msg.imagePath, imageList, () => {
-            void this.update();
-          });
+          if (this.boxes) {
+            openBoxEditor(this.extensionUri, this.data, msg.imagePath);
+          } else {
+            AnnotationPanel.show(this.extensionUri, this.data, this.thumbDir, msg.imagePath, imageList, () => {
+              void this.update();
+            });
+          }
         }
         break;
       }
@@ -181,7 +202,8 @@ class AssetGalleryController {
         break;
       }
       case 'saveToAssets': {
-        await this.handleSaveToAssets();
+        if (this.boxes) await this.publishBoxes();
+        else await this.handleSaveToAssets();
         break;
       }
       case 'deleteImage': {
@@ -481,8 +503,12 @@ class AssetGalleryController {
     );
     if (confirm !== tr('Delete')) return;
 
-    if (this.data.deleteImage(imagePath)) {
+    const deleted = this.data.deleteImage(imagePath);
+    if (deleted === true) {
       void vscode.window.showInformationMessage(tr('Deleted: {name}', { name }));
+      await this.update();
+    } else if (typeof deleted === 'string') {
+      void vscode.window.showErrorMessage(tr('Deleted the record for {name}, but the temporary file is still at {path}.', { name, path: deleted }));
       await this.update();
     } else {
       void vscode.window.showErrorMessage(tr('Failed to delete: {name}', { name }));
@@ -503,6 +529,10 @@ class AssetGalleryController {
    * 所以必须整体成功或整体不动 —— 半交换的 coco 比不交换更难收拾。
    */
   private async handleSwapAnnotations(sourcePath: string, targetPath: string): Promise<void> {
+    if (this.boxes) {
+      await this.handleSwapBoxes(sourcePath, targetPath);
+      return;
+    }
     if (!sourcePath || !targetPath || sourcePath === targetPath) return;
     // Webview 消息携带的路径须来自当前模板集，再读取图片或 COCO 数据。
     const allowed = new Set(this.data.listImages());
@@ -512,7 +542,7 @@ class AssetGalleryController {
     }
     const sourceEntry = this.data.getSwapImageEntry(sourcePath);
     const targetEntry = this.data.getSwapImageEntry(targetPath);
-    if (!sourceEntry || !targetEntry || sourceEntry.id === targetEntry.id) {
+    if (sourceEntry && targetEntry && sourceEntry.id === targetEntry.id) {
       void vscode.window.showErrorMessage(tr('Failed to swap annotations.'));
       return;
     }
@@ -567,8 +597,8 @@ class AssetGalleryController {
     }
     const currentSourceSize = this.data.resolveImageSize(sourcePath);
     const currentTargetSize = this.data.resolveImageSize(targetPath);
-    if (this.data.getSwapImageEntry(sourcePath)?.id !== sourceEntry.id
-      || this.data.getSwapImageEntry(targetPath)?.id !== targetEntry.id
+    if (this.data.getSwapImageEntry(sourcePath)?.id !== sourceEntry?.id
+      || this.data.getSwapImageEntry(targetPath)?.id !== targetEntry?.id
       || !currentSourceSize || !currentTargetSize
       || !isSameSize(currentSourceSize, sourceSize) || !isSameSize(currentTargetSize, targetSize)
       || JSON.stringify(this.boxesOf(sourcePath)) !== JSON.stringify(sourceBoxes)
@@ -585,6 +615,8 @@ class AssetGalleryController {
         // 参数顺序是"写到哪张图"：B 的框（按 A 的尺寸映射后）写进 A，反之亦然
         scaleBoxes(targetBoxes, targetSize, sourceSize),
         scaleBoxes(sourceBoxes, sourceSize, targetSize),
+        sourceSize,
+        targetSize,
       );
     } catch {
       void vscode.window.showErrorMessage(tr('Failed to swap annotations.'));
@@ -598,6 +630,73 @@ class AssetGalleryController {
     // 标注编辑器是常驻面板且逐操作自动落盘：正显示这两张图之一时必须同步，
     // 否则它手里的旧框会在下一次编辑时把交换结果整份写回去。
     AnnotationPanel.current?.controller.reloadIfShowing([sourcePath, targetPath]);
+    void vscode.window.showInformationMessage(
+      tr("Swapped annotations between '{first}' and '{second}'.", { first, second }),
+    );
+  }
+
+  private async publishBoxes(): Promise<void> {
+    const root = this.data.root;
+    if (!root) return;
+    const templates = templatesDirectory(root);
+    if (authoringReadErrors(root, templates).length || runtimeReadErrors(root, boxesRuntimeSetting(root), probedBoxesJson(root)).length) {
+      void vscode.window.showErrorMessage(tr('Could not save the box resource.'));
+      return;
+    }
+    const declared = boxesRuntimeSetting(root);
+    const fromConfig = probedBoxesJson(root);
+    const authoring = readAuthoringFile(root, templates);
+    const runtime = readRuntimeFile(root, declared, fromConfig);
+    const dropped = runtimeOnlyPaths(authoring, runtime);
+    if (dropped.length) {
+      const answer = await vscode.window.showWarningMessage(dropped.join('\n'), { modal: true }, tr('Publish'));
+      if (answer !== tr('Publish')) return;
+    }
+    if (!publishRuntime(root, templates, declared, fromConfig)) {
+      void vscode.window.showErrorMessage(tr('Could not save the box resource.'));
+      return;
+    }
+    await this.update();
+  }
+
+  /** 框坐标相对整张原图，交换只改所属图片，不按像素再缩放。缺 boxes.json 且两边都没有框时不创建文件。 */
+  private async handleSwapBoxes(sourcePath: string, targetPath: string): Promise<void> {
+    if (!sourcePath || !targetPath || sourcePath === targetPath) return;
+    const allowed = new Set(this.data.listImages());
+    if (!allowed.has(sourcePath) || !allowed.has(targetPath)) {
+      void vscode.window.showErrorMessage(tr('Failed to swap annotations.'));
+      return;
+    }
+    const root = this.data.root;
+    const templates = templatesDirectory(root);
+    if (authoringReadErrors(root, templates).length) {
+      void vscode.window.showErrorMessage(tr('Could not save the box resource.'));
+      return;
+    }
+    const authoring = readAuthoringFile(root, templates);
+    const sourceBoxes = boxesForImage(authoring, path.basename(sourcePath));
+    const targetBoxes = boxesForImage(authoring, path.basename(targetPath));
+    if (sourceBoxes.length === 0 && targetBoxes.length === 0) {
+      void vscode.window.showInformationMessage(tr('Neither image has annotations, nothing to swap.'));
+      return;
+    }
+    const first = path.basename(sourcePath);
+    const second = path.basename(targetPath);
+    const detail = tr('{first}: {firstCount} boxes, {second}: {secondCount} boxes', {
+      first, second, firstCount: String(sourceBoxes.length), secondCount: String(targetBoxes.length),
+    });
+    const swap = tr('Swap');
+    const choice = await vscode.window.showWarningMessage(
+      tr("Swap annotations between '{first}' and '{second}'?", { first, second }),
+      { modal: true, detail },
+      swap,
+    );
+    if (choice !== swap) return;
+    if (!swapImageBoxes(root, templates, first, second)) {
+      void vscode.window.showErrorMessage(tr('Failed to swap annotations.'));
+      return;
+    }
+    await this.update();
     void vscode.window.showInformationMessage(
       tr("Swapped annotations between '{first}' and '{second}'.", { first, second }),
     );
@@ -667,6 +766,36 @@ class AssetGalleryController {
 }
 
 /* ---------------- 侧边栏视图 ---------------- */
+
+export class BoxAssetViewProvider implements vscode.WebviewViewProvider {
+  public static readonly viewType = 'okScriptToolkit.boxAssets';
+
+  constructor(
+    private readonly data: TemplateAssetData,
+    private readonly thumbDir: string,
+    private readonly extensionUri: vscode.Uri,
+    private readonly tempStore?: TempScreenshotStore,
+  ) { }
+
+  resolveWebviewView(view: vscode.WebviewView): void {
+    view.webview.options = {
+      enableScripts: true,
+      localResourceRoots: [vscode.Uri.file(this.thumbDir), this.extensionUri],
+    };
+    const controller = new AssetGalleryController(
+      view.webview,
+      this.data,
+      this.thumbDir,
+      () => view.visible,
+      this.extensionUri,
+      this.tempStore,
+      true,
+    );
+    controller.attachHtml();
+    view.onDidChangeVisibility(() => { if (view.visible) void controller.update(); });
+    view.onDidDispose(() => controller.dispose());
+  }
+}
 
 export class TemplateAssetViewProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'okScriptToolkit.templateAssets';
@@ -760,7 +889,7 @@ export class TemplateAssetPanel {
   }
 }
 
-function assetGalleryHtml(webview: vscode.Webview, extensionUri: vscode.Uri): string {
+function assetGalleryHtml(webview: vscode.Webview, extensionUri: vscode.Uri, mode = 'annotations'): string {
   const file = path.join(extensionUri.fsPath, 'media', 'templateAssetPanel', 'index.html');
   const nonce = getNonce();
   const resource = (name: string) => webview.asWebviewUri(
@@ -771,6 +900,7 @@ function assetGalleryHtml(webview: vscode.Webview, extensionUri: vscode.Uri): st
       .split('__CSP_NONCE__').join(nonce)
       .split('__CSP_SOURCE__').join(webview.cspSource)
       .split('__STYLE_URI__').join(resource('style.css'))
-      .split('__APP_SCRIPT_URI__').join(resource('app.js')),
+      .split('__APP_SCRIPT_URI__').join(resource('app.js'))
+      .split('__ASSET_MODE__').join(mode),
   ));
 }

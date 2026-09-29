@@ -159,6 +159,7 @@
   "Enter game window title pattern (regex), or leave empty for all windows": "게임 창 제목 정규식을 입력하세요(비우면 모든 창)",
   "Failed to add to template assets: {error}": "템플릿 에셋 추가 실패: {error}",
   "Failed to delete: {name}": "삭제 실패: {name}",
+  "Deleted the record for {name}, but the temporary file is still at {path}.": "{name} 기록은 삭제했지만 임시 파일이 {path}에 남아 있습니다.",
   "Failed to save screenshot.": "스크린샷 저장에 실패했습니다.",
   "Import images to {dir}": "{dir} 로 이미지 가져오기",
   "Imported {count} image(s)": "이미지 {count}개를 가져왔습니다",
@@ -216,5 +217,8 @@
   "Failed to swap annotations.": "어노테이션 교환에 실패했습니다.",
   "Annotations changed while confirming. Retry the swap.": "확인하는 동안 어노테이션이 변경되었습니다. 교환을 다시 시도하세요.",
   "Cannot read image size, so annotations cannot be swapped.": "이미지 크기를 읽을 수 없어 어노테이션을 교환할 수 없습니다.",
-  "Neither image has annotations, nothing to swap.": "두 이미지 모두 어노테이션이 없어 교환할 것이 없습니다."
+  "Neither image has annotations, nothing to swap.": "두 이미지 모두 어노테이션이 없어 교환할 것이 없습니다.",
+  "Could not save the box resource.": "박스 리소스를 저장하지 못했습니다.",
+  "Could not save annotations.": "주석을 저장하지 못했습니다.",
+  "Publish": "게시"
 }

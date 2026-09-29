@@ -12,6 +12,7 @@
     <button class="mini-btn" id="drawBtn">Draw (R)</button>
     <button class="mini-btn" id="coordBtn">Coords (C)</button>
     <button class="mini-btn" id="deleteBtn">Delete (D)</button>
+    <button class="mini-btn" id="generateBoxBtn" type="button"></button>
     <button class="icon-btn" id="undoBtn" title="Undo">↩</button>
     <button class="icon-btn" id="redoBtn" title="Redo">↪</button>
     <div class="spacer"></div>
@@ -19,9 +20,20 @@
     <button class="icon-btn" id="prevBtn" title="Previous image">◀</button>
     <button class="icon-btn" id="nextBtn" title="Next image">▶</button>
   </div>
-  <div class="canvas-wrap">
-    <canvas id="canvas"></canvas>
-    <div class="empty" id="emptyMsg"></div>
+  <div class="editor-body">
+    <div class="canvas-wrap">
+      <canvas id="canvas"></canvas>
+      <div class="empty" id="emptyMsg"></div>
+    </div>
+    <aside class="annotation-list">
+      <div class="annotation-list-title" id="annotationListTitle"></div>
+      <div class="annotation-list-actions">
+        <button class="mini-btn" id="showAllBtn" type="button"></button>
+        <button class="mini-btn" id="hideAllBtn" type="button"></button>
+        <button class="mini-btn" id="onlyCurrentBtn" type="button"></button>
+      </div>
+      <div class="annotation-list-rows" id="annotationRows"></div>
+    </aside>
   </div>
   <div class="color-bar">
     <div class="color-swatch" id="swatch"></div>
@@ -44,6 +56,21 @@
       <div class="actions">
         <button class="mini-btn" id="bboxCancel">Cancel</button>
         <button class="mini-btn mini-btn--primary" id="bboxOk">OK</button>
+      </div>
+    </div>
+  </div>
+  <div class="modal-overlay" id="generateModal">
+    <div class="modal">
+      <h3 id="generateTitle">Create box</h3>
+      <div id="generateChoices"></div>
+      <div class="row">
+        <label id="generatePathLabel" for="generatePath">Path:</label>
+        <input type="text" id="generatePath" />
+      </div>
+      <div class="error" id="generateError"></div>
+      <div class="actions">
+        <button class="mini-btn" id="generateCancel" type="button">Cancel</button>
+        <button class="mini-btn mini-btn--primary" id="generateOk" type="button">OK</button>
       </div>
     </div>
   </div>

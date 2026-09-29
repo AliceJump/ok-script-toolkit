@@ -12,11 +12,24 @@ import { EffectData, EffectEntry } from './effectData';
 import { DEFAULT_FEATURE_ALIASES, ideSetting, labelEnumAliases, loadProjectConfig } from './projectConfig';
 import { cropTemplateToDataUrlCached } from './pngCrop';
 import { selectedProjectLocale, tr } from './localization';
+import { getProjectConfig } from './screenshotCapture';
+import { posPaths, previewRectForPath } from './boxPanels';
 
 /** 匹配 self.lang.<模块>.<key>（支持 Unicode 标识符，如中文 OCR 文本；负向后视避免匹配 self.langx 之类） */
 const EXPR_RE = /(?<![\w.])self\.lang\.([\p{L}\p{N}_]+)\.([\p{L}\p{N}_]+)/gu;
 
 /** 转义正则特殊字符（别名可能含 . 等） */
+const POS_RE = /(?<![\w.])self\.pos\.((?:[A-Za-z_][A-Za-z0-9_]*\.)*[A-Za-z_][A-Za-z0-9_]*)\.to_box\(\)|(?<![\w.])self\.pos\.((?:[A-Za-z_][A-Za-z0-9_]*\.)*[A-Za-z_][A-Za-z0-9_]*)(?![\w.(])/g;
+
+function findPosMatch(line: string, character: number): { path: string } | undefined {
+  POS_RE.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = POS_RE.exec(line))) {
+    if (character >= match.index && character <= match.index + match[0].length) return { path: match[1] || match[2] };
+  }
+  return undefined;
+}
+
 function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -407,6 +420,17 @@ export class LangHoverProvider implements vscode.HoverProvider {
         if (entry) return new vscode.Hover(formatEntry(entry, currentLocale()));
       }
     }
+    const pos = findPosMatch(line, position.character);
+    if (pos) {
+      const preview = previewRectForPath(getProjectConfig().projectDir, pos.path);
+      const md = new vscode.MarkdownString(undefined, true);
+      md.appendCodeblock(`self.pos.${pos.path}.to_box()`, 'python');
+      if (preview) {
+        const img = cropTemplateToDataUrlCached(preview.imagePath, preview.bbox);
+        if (img) md.appendMarkdown(`\n![box](${img})\n`);
+      }
+      return new vscode.Hover(md);
+    }
     for (const mf of findFeatureMatches(line)) {
       if (position.character >= mf.start && position.character <= mf.end) {
         const ft = this.features.entry(mf.name);
@@ -484,6 +508,18 @@ export class LangCompletionProvider implements vscode.CompletionItemProvider {
         }
         return item;
       });
+    }
+
+    const posMatch = /(?<![\w.])self\.pos\.((?:[A-Za-z_][A-Za-z0-9_]*\.)*)([A-Za-z_][A-Za-z0-9_]*)?$/.exec(before);
+    if (posMatch) {
+      const parent = posMatch[1].replace(/\.$/, '');
+      const prefix = parent ? `${parent}.` : '';
+      const paths = posPaths(getProjectConfig().projectDir);
+      const segments = [...new Set(paths
+        .filter((item) => item.startsWith(prefix))
+        .map((item) => item.slice(prefix.length).split('.')[0])
+        .filter(Boolean))];
+      return segments.map((segment) => new vscode.CompletionItem(segment, vscode.CompletionItemKind.Field));
     }
 
     // 别名. -> 补全模板名（如 fL. / FeatureList.；缩略图懒加载）
