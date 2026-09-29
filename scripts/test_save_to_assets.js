@@ -709,6 +709,30 @@ async function test_annotationSwapUsesExactFileName() {
       'an unregistered same-stem file must not resolve to another image');
     assert(data.swapAnnotationsForImages(path.join(templateDir, 'same.bmp'), png, [], []) === false,
       'an unregistered same-stem file must not write annotations');
+    const bmp = path.join(templateDir, 'same.bmp');
+    fs.writeFileSync(bmp, createPng(20, 10, 1, 2, 3));
+    assert(data.setAnnotationsForImage(bmp, [
+      { category: 'bmp-only', x: 1, y: 1, w: 2, h: 2 },
+    ]), 'same stem with another extension must be registered on its own');
+    data.save();
+    const afterDraw = JSON.parse(fs.readFileSync(cocoPath, 'utf-8'));
+    assert(afterDraw.annotations.some((ann) => ann.image_id === 1 && ann.category_id === 1),
+      'drawing on another extension must not replace the PNG boxes');
+    const bmpEntry = afterDraw.images.find((img) => img.file_name === 'same.bmp');
+    assert(bmpEntry && afterDraw.annotations.some((ann) => ann.image_id === bmpEntry.id),
+      'the new extension keeps its own box');
+    data.deleteImage(bmp);
+    const afterDelete = JSON.parse(fs.readFileSync(cocoPath, 'utf-8'));
+    assert(afterDelete.images.some((img) => img.file_name === 'same.png'),
+      'deleting one extension must leave the other image record');
+    assert(afterDelete.annotations.some((ann) => ann.image_id === 1),
+      'deleting one extension must leave the other image boxes');
+    assert(!afterDelete.images.some((img) => img.file_name === 'same.bmp'),
+      'deleting the new extension removes only that record');
+    assert(afterDelete.images.some((img) => img.file_name === 'same.jpg'),
+      'deleting the bmp must leave the JPG record');
+    assert(afterDelete.annotations.some((ann) => ann.image_id === 1),
+      'the PNG boxes survive deleting another extension');
     console.log('[PASS] test_annotationSwapUsesExactFileName');
   } finally {
     teardown();
@@ -752,6 +776,70 @@ async function test_annotationSwapFallbackRequiresSameFile() {
   }
 }
 
+/* ========== 测试 13：没登记进标注文件的图也能交换，空的一侧交换后仍是空的 ========== */
+
+async function test_annotationSwapRegistersImageWithoutBoxes() {
+  setup();
+  const cocoPath = path.join(templateDir, 'coco_annotations.json');
+  try {
+    fs.writeFileSync(cocoPath, JSON.stringify({
+      images: [{ id: 1, file_name: 'a.png', width: 100, height: 50 }],
+      annotations: [
+        { id: 1, image_id: 1, category_id: 1, bbox: [1, 2, 3, 4], area: 12, iscrowd: 0 },
+      ],
+      categories: [{ id: 1, name: 'mark', supercategory: '' }],
+    }));
+    const data = new TemplateAssetData(tmpDir);
+    data.load();
+    const registered = path.join(templateDir, 'a.png');
+    const fresh = path.join(templateDir, 'fish_ok_page.png');
+    const swapped = data.swapAnnotationsForImages(
+      fresh,
+      registered,
+      [{ category: 'mark', x: 10, y: 20, w: 30, h: 40 }],
+      [],
+      { width: 1920, height: 1080 },
+      { width: 100, height: 50 },
+    );
+    assert(swapped, 'an image that is only on disk should still swap');
+    const saved = JSON.parse(fs.readFileSync(cocoPath, 'utf-8'));
+    const fish = saved.images.find((img) => img.file_name === 'fish_ok_page.png');
+    assert(fish && fish.width === 1920 && fish.height === 1080, 'the new image is recorded with its real size');
+    assert(saved.annotations.length === 1 && saved.annotations[0].image_id === fish.id,
+      'the boxes move onto the previously empty image');
+    assert(!saved.annotations.some((ann) => ann.image_id === 1), 'the other image is left with no boxes');
+    console.log('[PASS] test_annotationSwapRegistersImageWithoutBoxes');
+  } finally {
+    teardown();
+  }
+}
+
+/* ========== 测试 14：没登记的图上画框会补登记并写入标注 ========== */
+
+async function test_setAnnotationsRegistersMissingImage() {
+  setup();
+  const cocoPath = path.join(templateDir, 'coco_annotations.json');
+  try {
+    fs.writeFileSync(cocoPath, JSON.stringify({ images: [], annotations: [], categories: [] }));
+    fs.writeFileSync(path.join(templateDir, 'fish_ok_page.png'), createPng(80, 40, 10, 20, 30));
+    const data = new TemplateAssetData(tmpDir);
+    data.load();
+    const image = path.join(templateDir, 'fish_ok_page.png');
+    assert(data.setAnnotationsForImage(image, [{ category: 'hook', x: 1, y: 2, w: 3, h: 4 }]),
+      'drawing on an unregistered image should save');
+    data.save();
+    const saved = JSON.parse(fs.readFileSync(cocoPath, 'utf-8'));
+    const fish = saved.images.find((img) => img.file_name === 'fish_ok_page.png');
+    assert(fish && fish.width === 80 && fish.height === 40, 'the image is registered from its header');
+    assert(saved.annotations.length === 1 && saved.annotations[0].image_id === fish.id,
+      'the new box is stored on that image');
+    assert(saved.categories.some((cat) => cat.name === 'hook'), 'the category is created');
+    console.log('[PASS] test_setAnnotationsRegistersMissingImage');
+  } finally {
+    teardown();
+  }
+}
+
 /* ========== 运行所有测试 ========== */
 
 const tests = [
@@ -767,6 +855,8 @@ const tests = [
   test_annotationSwapPersistsOrRollsBack,
   test_annotationSwapUsesExactFileName,
   test_annotationSwapFallbackRequiresSameFile,
+  test_annotationSwapRegistersImageWithoutBoxes,
+  test_setAnnotationsRegistersMissingImage,
 ];
 
 let passed = 0;

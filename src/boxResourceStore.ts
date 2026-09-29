@@ -109,6 +109,40 @@ export function boxesForImage(file: AuthoringFile, fileName: string): AuthoringB
   return file.boxes.filter((box) => sameImage(box.image, fileName));
 }
 
+/** 删图时去掉它的框。文件还不存在就什么都不写。 */
+export function removeImageBoxes(rootDir: string, templatesDirectory: string, fileName: string): boolean {
+  const target = authoringFile(rootDir, templatesDirectory);
+  const parsed = readAuthoringResult(rootDir, templatesDirectory);
+  if (parsed.errors.length) return false;
+  if (!fs.existsSync(target)) return true;
+  const next = parsed.file.boxes.filter((box) => !sameImage(box.image, fileName));
+  if (next.length === parsed.file.boxes.length) return true;
+  return writeText(target, serializeAuthoring({ version: 1, boxes: next }));
+}
+
+/** 两张图的框整套对调。框坐标是相对整图的，不按像素再缩放。文件还不存在且两边都没有框时不创建文件。 */
+export function swapImageBoxes(rootDir: string, templatesDirectory: string, fileA: string, fileB: string): boolean {
+  const target = authoringFile(rootDir, templatesDirectory);
+  const parsed = readAuthoringResult(rootDir, templatesDirectory);
+  if (parsed.errors.length) return false;
+  const nameA = imageFileName(fileA);
+  const nameB = imageFileName(fileB);
+  let changed = false;
+  const next = parsed.file.boxes.map((box) => {
+    if (sameImage(box.image, nameA)) {
+      changed = true;
+      return { ...box, image: nameB };
+    }
+    if (sameImage(box.image, nameB)) {
+      changed = true;
+      return { ...box, image: nameA };
+    }
+    return box;
+  });
+  if (!changed) return true;
+  return writeText(target, serializeAuthoring({ version: 1, boxes: next }));
+}
+
 export function replaceImageBoxes(
   rootDir: string,
   templatesDirectory: string,

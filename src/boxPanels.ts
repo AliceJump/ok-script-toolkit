@@ -4,11 +4,9 @@ import * as vscode from 'vscode';
 import { annotationHtml } from './annotationPanel';
 import {
   boxesForImage,
-  publishRuntime,
   readAuthoringFile,
   readRuntimeFile,
   replaceImageBoxes,
-  runtimeOnlyPaths,
   EditedBox,
 } from './boxResourceStore';
 import { BoxRect, rectToPixel } from './boxResourcePure';
@@ -38,67 +36,6 @@ function panelHtml(webview: vscode.Webview, extensionUri: vscode.Uri, mode: stri
       .split('__APP_SCRIPT_URI__').join(resource('app.js'))
       .split('__MODE__').join(mode),
   ));
-}
-
-export class BoxAssetViewProvider implements vscode.WebviewViewProvider {
-  static readonly viewType = 'okScriptToolkit.boxAssets';
-  private view: vscode.WebviewView | undefined;
-
-  constructor(
-    private readonly data: TemplateAssetData,
-    private readonly extensionUri: vscode.Uri,
-  ) {}
-
-  resolveWebviewView(webviewView: vscode.WebviewView): void {
-    this.view = webviewView;
-    webviewView.webview.options = { enableScripts: true, localResourceRoots: [this.extensionUri] };
-    webviewView.webview.html = panelHtml(webviewView.webview, this.extensionUri, 'assets');
-    webviewView.webview.onDidReceiveMessage((msg) => { void this.onMessage(msg); });
-  }
-
-  private root(): string {
-    return getProjectConfig().projectDir;
-  }
-
-  private async onMessage(msg: { type?: string; id?: string; clicks?: number }): Promise<void> {
-    const root = this.root();
-    if (!root || !this.view) return;
-    if (msg.type === 'ready' || msg.type === 'refresh') {
-      this.data.load();
-      const authoring = readAuthoringFile(root, templatesDirectory(root));
-      const rows = this.data.listImages().map((imagePath) => ({
-        id: imagePath,
-        label: `${path.basename(imagePath)} (${boxesForImage(authoring, path.basename(imagePath)).length})`,
-      }));
-      void this.view.webview.postMessage({ type: 'rows', rows });
-      return;
-    }
-    if (msg.type === 'activate' && msg.clicks === 2 && msg.id) {
-      openBoxEditor(this.extensionUri, this.data, msg.id);
-      return;
-    }
-    if (msg.type === 'publish') {
-      const templates = templatesDirectory(root);
-      const args = runtimeArgs(root);
-      const authoring = readAuthoringFile(root, templates);
-      const runtime = readRuntimeFile(root, args.declared, args.fromConfig);
-      const dropped = runtimeOnlyPaths(authoring, runtime);
-      if (dropped.length) {
-        const answer = await vscode.window.showWarningMessage(
-          dropped.join('\n'),
-          { modal: true },
-          'Publish',
-        );
-        if (answer !== 'Publish') return;
-      }
-      const published = publishRuntime(root, templates, args.declared, args.fromConfig);
-      if (!published) {
-        void vscode.window.showErrorMessage(tr('Could not save the box resource.'));
-        return;
-      }
-      void this.onMessage({ type: 'refresh' });
-    }
-  }
 }
 
 export class BoxGalleryViewProvider implements vscode.WebviewViewProvider {

@@ -217,5 +217,7 @@
   "Annotations changed while confirming. Retry the swap.": "Las anotaciones cambiaron durante la confirmación. Vuelve a intentar el intercambio.",
   "Cannot read image size, so annotations cannot be swapped.": "No se pudo leer el tamaño de la imagen, así que no se pueden intercambiar las anotaciones.",
   "Neither image has annotations, nothing to swap.": "Ninguna de las dos imágenes tiene anotaciones, no hay nada que intercambiar.",
-  "Could not save the box resource.": "No se pudo guardar el recurso de cuadros."
+  "Could not save the box resource.": "No se pudo guardar el recurso de cuadros.",
+  "Could not save annotations.": "No se pudieron guardar las anotaciones.",
+  "Publish": "Publicar"
 }

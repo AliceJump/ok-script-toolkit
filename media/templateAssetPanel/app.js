@@ -22,7 +22,9 @@
   hardForegroundChk.addEventListener('change', () => {
     vscode.setState(Object.assign({}, vscode.getState() || {}, { hardForeground: hardForegroundChk.checked }));
   });
-  document.getElementById('saveBtn').textContent = t('saveToAssetsTitle');
+  const assetMode = (document.getElementById('assetMode')?.textContent || 'annotations').trim();
+  document.getElementById('saveBtn').textContent = assetMode === 'boxes' ? t('publish') : t('saveToAssetsTitle');
+  if (assetMode === 'boxes') document.title = t('boxAssetsTitle');
 
   function updateCount() {
     const shown = shownCount();

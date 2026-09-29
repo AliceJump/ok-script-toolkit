@@ -32,7 +32,8 @@ import {
 } from './templateAssetPanel';
 import { TempScreenshotStore } from './tempScreenshotStore';
 import { TempScreenshotViewProvider } from './tempScreenshotPanel';
-import { BoxAssetViewProvider, BoxGalleryViewProvider } from './boxPanels';
+import { BoxGalleryViewProvider } from './boxPanels';
+import { BoxAssetViewProvider } from './templateAssetPanel';
 
 /** 缩略图缓存 key 版本：内容 hash 化后旧命名（t_/a_）需要清理一次 */
 const THUMB_KEY_VERSION = 'content-hash-v2';
@@ -397,7 +398,7 @@ export function activate(context: vscode.ExtensionContext): void {
     ),
     vscode.window.registerWebviewViewProvider(
       BoxAssetViewProvider.viewType,
-      new BoxAssetViewProvider(templateAssetData, context.extensionUri),
+      new BoxAssetViewProvider(templateAssetData, thumbDir, context.extensionUri, tempScreenshotStore),
     ),
     vscode.window.registerWebviewViewProvider(
       BoxGalleryViewProvider.viewType,

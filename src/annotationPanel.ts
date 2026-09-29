@@ -104,7 +104,7 @@ class AnnotationController {
     }
 
     // 读取标注数据
-    const annotations = this.data.getAnnotationsForImage(imagePath);
+    const annotations = this.data.getAnnotationsForImage(imagePath, true);
 
     // 获取所有分类名（用于验证唯一性）
     const allCategories: Record<string, string> = {};
@@ -164,11 +164,9 @@ class AnnotationController {
         break;
       case 'save': {
         if (!this._currentImage || !msg.annotations) break;
-        this.data.setAnnotationsForImage(
-          this._currentImage,
-          msg.annotations.map((a) => ({ category: a.category, x: a.x, y: a.y, w: a.w, h: a.h })),
-        );
-        this.data.save();
+        if (!this.persistAnnotations(this._currentImage, msg.annotations.map((a) => ({
+          category: a.category, x: a.x, y: a.y, w: a.w, h: a.h,
+        })))) break;
         this.onSaved(this._currentImage);
         break;
       }
@@ -199,14 +197,13 @@ class AnnotationController {
       }
       case 'deleteAnnotation': {
         if (!this._currentImage || !msg.annotation) break;
-        const annotations = this.data.getAnnotationsForImage(this._currentImage);
+        const annotations = this.data.getAnnotationsForImage(this._currentImage, true);
         const annId = (msg.annotation as unknown as { id: number }).id;
         const filtered = annotations.filter((a) => a.id !== annId);
-        this.data.setAnnotationsForImage(
+        if (!this.persistAnnotations(
           this._currentImage,
           filtered.map((a) => ({ category: a.categoryName, x: a.bbox[0], y: a.bbox[1], w: a.bbox[2], h: a.bbox[3] })),
-        );
-        this.data.save();
+        )) break;
         this.onSaved(this._currentImage);
         // 重新加载
         await this.loadImage(this._currentImage);
@@ -227,6 +224,23 @@ class AnnotationController {
         }
         break;
       }
+    }
+  }
+
+  private persistAnnotations(
+    imagePath: string,
+    annotations: Array<{ category: string; x: number; y: number; w: number; h: number }>,
+  ): boolean {
+    try {
+      if (!this.data.setAnnotationsForImage(imagePath, annotations)) {
+        void vscode.window.showErrorMessage(tr('Could not save annotations.'));
+        return false;
+      }
+      this.data.save();
+      return true;
+    } catch {
+      void vscode.window.showErrorMessage(tr('Could not save annotations.'));
+      return false;
     }
   }
 

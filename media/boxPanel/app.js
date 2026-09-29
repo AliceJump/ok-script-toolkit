@@ -11,16 +11,52 @@
   document.getElementById('refreshBtn').onclick = () => vscode.postMessage({ type: 'refresh' });
   publish.onclick = () => vscode.postMessage({ type: 'publish' });
 
+  const cards = new Map();
+  function fillThumb(card, url) {
+    const box = card.querySelector('.thumb-box');
+    if (!box || box.querySelector('img')) return;
+    const img = document.createElement('img');
+    img.alt = '';
+    img.addEventListener('error', () => img.remove());
+    box.textContent = '';
+    box.append(img);
+    img.src = url;
+  }
   window.addEventListener('message', (event) => {
     const msg = event.data;
-    if (msg.type !== 'rows') return;
     const rows = document.getElementById('rows');
+    if (msg.type === 'thumbs' && mode === 'assets') {
+      (msg.items || []).forEach((item) => {
+        const card = cards.get(item.id);
+        if (card) fillThumb(card, item.url);
+      });
+      return;
+    }
+    if (msg.type !== 'rows') return;
+    cards.clear();
     while (rows.firstChild) rows.removeChild(rows.firstChild);
+    rows.className = mode === 'assets' ? 'asset-grid' : '';
     (msg.rows || []).forEach((row) => {
       const button = document.createElement('button');
       button.type = 'button';
-      button.className = 'box-row';
-      button.textContent = row.label;
+      if (mode === 'assets') {
+        button.className = 'card asset-card';
+        button.title = row.name;
+        const box = document.createElement('div');
+        box.className = 'thumb-box';
+        box.textContent = '…';
+        const name = document.createElement('div');
+        name.className = 'asset-name';
+        name.textContent = row.name;
+        const count = document.createElement('div');
+        count.className = 'asset-count';
+        count.textContent = String(row.count);
+        button.append(box, name, count);
+        cards.set(row.id, button);
+      } else {
+        button.className = 'box-row';
+        button.textContent = row.label;
+      }
       let clickTimer = 0;
       button.onclick = () => {
         window.clearTimeout(clickTimer);

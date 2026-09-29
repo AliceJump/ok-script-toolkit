@@ -217,5 +217,7 @@
   "Annotations changed while confirming. Retry the swap.": "確認中にアノテーションが変更されました。交換をやり直してください。",
   "Cannot read image size, so annotations cannot be swapped.": "画像サイズを読み取れないため、アノテーションを交換できません。",
   "Neither image has annotations, nothing to swap.": "どちらの画像にもアノテーションがないため、交換するものはありません。",
-  "Could not save the box resource.": "ボックス資源を保存できませんでした。"
+  "Could not save the box resource.": "ボックス資源を保存できませんでした。",
+  "Could not save annotations.": "注釈を保存できませんでした。",
+  "Publish": "公開"
 }
