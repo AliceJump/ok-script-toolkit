@@ -37,7 +37,7 @@ import {
   swapImageBoxes as swapImageBoxesPure,
   unionPixelBoxes,
 } from './boxResourcePure';
-import { readImageSize } from './pngCrop';
+import { readImageSize } from './imageHeader';
 
 export interface EditedBox {
   path: string;
