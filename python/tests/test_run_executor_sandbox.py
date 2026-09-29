@@ -9,6 +9,8 @@ import json
 import os
 import shutil
 import sys
+from types import ModuleType
+from unittest.mock import patch
 from pathlib import Path
 
 from _test_tmp import make_tmp_tempdir
@@ -191,6 +193,73 @@ with make_tmp_tempdir("ok-executor-sandbox") as tmp:
     print("\n[9] 自定义 config_folder 名")
     check(os.path.isfile(os.path.join(config["config_folder"], "WeeklyTask.json")),
           "沙箱内容来自项目声明的配置目录")
+
+# Isolation failures must stop initialization rather than fall through to writes
+# in the project's real Config folder.
+with make_tmp_tempdir("ok-executor-sandbox") as tmp:
+    project = os.path.join(tmp, "proj")
+    os.makedirs(os.path.join(project, "configs"))
+    with patch.object(mod.os, "makedirs", side_effect=PermissionError("read only")):
+        try:
+            run_in(project, os.path.join(tmp, "sandbox"))
+        except RuntimeError:
+            check(True, "sandbox creation failure stops startup")
+        else:
+            check(False, "sandbox creation failure stops startup")
+    for run_dir in (project, os.path.join(project, "configs", "plugin")):
+        try:
+            run_in(project, run_dir)
+        except ValueError:
+            check(True, "overlapping sandbox is rejected")
+        else:
+            check(False, "overlapping sandbox is rejected")
+    with patch.object(mod.shutil, "copytree", side_effect=OSError("copy failed")):
+        try:
+            run_in(project, os.path.join(tmp, "sandbox"))
+        except RuntimeError:
+            check(True, "baseline copy failure stops startup")
+        else:
+            check(False, "baseline copy failure stops startup")
+
+# A config constructed while importing a project must read the already copied
+# baseline. Cover both custom folders and absolute/combined path calls.
+with make_tmp_tempdir("ok-executor-sandbox") as tmp:
+    project = os.path.join(tmp, "proj")
+    source = os.path.join(project, "settings-data")
+    os.makedirs(source)
+    baseline = os.path.join(source, "early.json")
+    Path(baseline).write_text('{"value": "project"}', encoding="utf-8")
+    _, run_dir = run_in(project, os.path.join(tmp, "sandbox"), "settings-data")
+    fake_ok = ModuleType("ok")
+    fake_util = ModuleType("ok.util")
+    fake_file = ModuleType("ok.util.file")
+    fake_config = ModuleType("ok.util.config")
+    fake_file.get_relative_path = lambda *parts: os.path.join(os.getcwd(), *parts)
+    class ImportTimeConfig(dict):
+        config_folder = "configs"
+        def __init__(self, name):
+            self.config_file = fake_config.get_relative_path(self.config_folder, name + ".json")
+            super().__init__(json.loads(Path(self.config_file).read_text(encoding="utf-8")))
+    fake_config.Config = ImportTimeConfig
+    fake_config.get_relative_path = fake_file.get_relative_path
+    modules = {"ok": fake_ok, "ok.util": fake_util, "ok.util.file": fake_file,
+               "ok.util.config": fake_config}
+    previous_cwd = os.getcwd()
+    try:
+        os.chdir(project)
+        with patch.dict(sys.modules, modules), patch.dict(os.environ, {"OK_TOOLKIT_RUN_DIR": run_dir}):
+            mod.install_config_path_patch("settings-data")
+            early = ImportTimeConfig("early")
+            check(early["value"] == "project", "import-time Config reads project baseline")
+            redirected = fake_file.get_relative_path(os.path.join(source, "early.json"))
+            check(os.path.samefile(redirected, early.config_file), "absolute project config path redirects")
+            check(fake_file.get_relative_path("configs/early.json") == early.config_file,
+                  "combined relative config path redirects")
+            Path(early.config_file).write_text('{"value": "plugin"}', encoding="utf-8")
+            check(json.loads(Path(baseline).read_text(encoding="utf-8"))["value"] == "project",
+                  "import-time writes remain isolated")
+    finally:
+        os.chdir(previous_cwd)
 
 print("\n" + ("全部通过" if not failures else f"失败 {len(failures)} 项"))
 sys.exit(1 if failures else 0)
