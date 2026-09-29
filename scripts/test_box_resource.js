@@ -333,8 +333,94 @@ check(occupied('screen.brand_new', 'screen.main_viewport') === undefined, '换�
 check(occupied('screen.other', 'screen.main_viewport')?.code === 'duplicate', '改成其他图占用的 path：报重复');
 check(occupied('  screen.other  ', 'screen.main_viewport')?.code === 'duplicate', '占用比对先做 trim');
 
-if (failures.length) {
-  console.error(`\n${failures.length} failed`);
-  process.exit(1);
+// 执行编译后的真实控制器；只替换 VS Code 对话框，确认期间修改磁盘上的尺寸。
+async function checkSwapConfirmation() {
+  const panelSource = fs.readFileSync(path.join(root, 'out', 'templateAssetPanel.js'), 'utf8');
+  const retry = 'Annotations changed while confirming. Retry the swap.';
+  const cases = [
+    ['源图宽度变化', (file) => { file.images[0].width = 200; }],
+    ['源图高度变化', (file) => { file.images[0].height = 200; }],
+    ['目标图宽度变化', (file) => { file.images[1].width = 200; }],
+    ['目标图高度变化', (file) => { file.images[1].height = 200; }],
+    ...[0, 1].map((index) => [
+      `${index === 0 ? '源' : '目标'}图尺寸不可读`,
+      (file, dir) => {
+        fs.unlinkSync(path.join(dir, file.images[index].file));
+        file.images.splice(index, 1);
+      },
+    ]),
+    ['尺寸不变', () => {}, true],
+  ];
+  for (const [label, mutate, shouldSwap = false] of cases) {
+    const project = fs.mkdtempSync(path.join(os.tmpdir(), 'ok-box-swap-confirm-'));
+    try {
+      const dir = path.join(project, 'ok_templates');
+      fs.mkdirSync(dir);
+      for (const name of ['a.png', 'b.png']) writePng(path.join(dir, name), 100, 100);
+      const file = {
+        version: pure.AUTHORING_VERSION,
+        images: ['a.png', 'b.png'].map((name) => ({ file: name, width: 100, height: 100 })),
+        boxes: [{ path: 'screen.a', image: 'a.png', bbox: [10, 10, 20, 20] }],
+      };
+      const diskPath = path.join(dir, 'boxes.json');
+      fs.writeFileSync(diskPath, pure.serializeAuthoring(file));
+      let confirmedText;
+      let swapCalls = 0;
+      let updates = 0;
+      const warnings = [];
+      const errors = [];
+      const ui = { window: {
+        showWarningMessage: async (message, options, action) => {
+          if (!options?.modal) { warnings.push(message); return; }
+          mutate(file, dir);
+          confirmedText = pure.serializeAuthoring(file);
+          fs.writeFileSync(diskPath, confirmedText);
+          return action;
+        },
+        showErrorMessage: (message) => { errors.push(message); },
+        showInformationMessage: () => {},
+      } };
+      const mocks = {
+        vscode: ui,
+        './boxResourceStore': { ...store, swapImageBoxes: (...args) => {
+          swapCalls++;
+          return store.swapImageBoxes(...args);
+        } },
+        './projectConfig': { templatesDirectory: () => 'ok_templates' },
+        './annotationSwapPure': require(path.join(root, 'out', 'annotationSwapPure')),
+        './localization': { tr: (message) => message },
+      };
+      const Controller = new Function('exports', 'require', `${panelSource}\nreturn AssetGalleryController;`)(
+        {}, (name) => name === 'fs' || name === 'path' ? require(name) : mocks[name] ?? {},
+      );
+      const controller = Object.create(Controller.prototype);
+      controller.data = { root: project, listImages: () => ['a.png', 'b.png'].map((name) => path.join(dir, name)), load: () => {} };
+      controller.update = async () => { updates++; };
+      await controller.handleSwapBoxes(path.join(dir, 'a.png'), path.join(dir, 'b.png'));
+      assert.deepStrictEqual(errors, [], `${label}：没有写盘错误`);
+      assert.strictEqual(swapCalls, shouldSwap ? 1 : 0, `${label}：确认后决定是否调用交换`);
+      assert.strictEqual(updates, shouldSwap ? 1 : 0, `${label}：只有完成交换才刷新`);
+      assert.deepStrictEqual(warnings, shouldSwap ? [] : [retry], `${label}：尺寸变化提示重试`);
+      if (shouldSwap) {
+        assert.strictEqual(store.readAuthoringFile(project, 'ok_templates').boxes[0].image, 'b.png');
+      } else {
+        assert.strictEqual(fs.readFileSync(diskPath, 'utf8'), confirmedText, `${label}：不覆盖确认期间的修改`);
+      }
+      console.log(`  ok    确认交换：${label}`);
+    } finally {
+      fs.rmSync(project, { recursive: true, force: true });
+    }
+  }
 }
-console.log('\nbox resource pixel contract ok');
+
+checkSwapConfirmation().then(() => {
+  if (failures.length) {
+    console.error(`\n${failures.length} failed`);
+    process.exitCode = 1;
+    return;
+  }
+  console.log('\nbox resource pixel contract ok');
+}).catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});
