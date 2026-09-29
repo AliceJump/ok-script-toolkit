@@ -22,6 +22,44 @@ const config = require(path.join(root, 'out', 'projectConfigPure'));
 const store = require(path.join(root, 'out', 'boxResourceStore'));
 const { encodePngRgb } = require(path.join(root, 'out', 'pngCrop'));
 
+// 测试图直接在这里造（最小合法 PNG：签名 + IHDR + IDAT + IEND）。
+// 不能 require out/pngCrop：它的 featureData 导入链会牵进 projectConfig → vscode，
+// 在 CI 的普通 node 进程里直接 Cannot find module 'vscode'。
+const zlib = require('zlib');
+const CRC_TABLE = (() => {
+  const table = new Int32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    table[n] = c;
+  }
+  return table;
+})();
+function pngChunk(type, data) {
+  const len = Buffer.alloc(4);
+  len.writeUInt32BE(data.length);
+  const body = Buffer.concat([Buffer.from(type, 'ascii'), data]);
+  const crc = Buffer.alloc(4);
+  let c = 0xffffffff;
+  for (const byte of body) c = CRC_TABLE[(c ^ byte) & 0xff] ^ (c >>> 8);
+  crc.writeUInt32BE((c ^ 0xffffffff) >>> 0);
+  return Buffer.concat([len, body, crc]);
+}
+function writePng(file, width, height) {
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(width, 0);
+  ihdr.writeUInt32BE(height, 4);
+  ihdr[8] = 8;  // bit depth
+  ihdr[9] = 0;  // grayscale
+  const raw = Buffer.alloc((width + 1) * height); // 每行一个 0 号 filter 字节
+  fs.writeFileSync(file, Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    pngChunk('IHDR', ihdr),
+    pngChunk('IDAT', zlib.deflateSync(raw)),
+    pngChunk('IEND', Buffer.alloc(0)),
+  ]));
+}
+
 const failures = [];
 function check(condition, message) {
   if (condition) console.log(`  ok    ${message}`);
@@ -168,7 +206,7 @@ try {
   const templatesAbs = path.join(tmp, templates);
   fs.mkdirSync(templatesAbs, { recursive: true });
   const writeImage = (name, width, height) => {
-    fs.writeFileSync(path.join(templatesAbs, name), encodePngRgb(width, height, Buffer.alloc(width * height * 4, 255)));
+    writePng(path.join(templatesAbs, name), width, height);
   };
   writeImage('12.png', 1920, 1080);
 
