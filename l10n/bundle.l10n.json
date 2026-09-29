@@ -168,6 +168,7 @@
   "Enter game window title pattern (regex), or leave empty for all windows": "Enter game window title pattern (regex), or leave empty for all windows",
   "Failed to add to template assets: {error}": "Failed to add to template assets: {error}",
   "Failed to delete: {name}": "Failed to delete: {name}",
+  "Deleted the record for {name}, but the temporary file is still at {path}.": "Deleted the record for {name}, but the temporary file is still at {path}.",
   "Failed to save screenshot.": "Failed to save screenshot.",
   "Import images to {dir}": "Import images to {dir}",
   "Imported {count} image(s)": "Imported {count} image(s)",

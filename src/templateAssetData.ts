@@ -449,32 +449,52 @@ export class TemplateAssetData {
 
   /* ---------- 删除图片文件和COCO数据 ---------- */
 
-  deleteImage(imagePath: string): boolean {
+  deleteImage(imagePath: string): true | false | string {
     const templates = templatesDirectory(this.rootDir);
     const snapshot = captureAuthoring(this.rootDir, templates);
     if (!snapshot) return false;
     const staged = `${imagePath}.${process.pid}.ok-delete`;
     let moved = false;
+    let committed = false;
     try {
       if (!removeImageBoxes(this.rootDir, templates, path.basename(imagePath))) return false;
+      // 挪走文件后，大小写不同的记录不能再靠 realpath 对上，所以先记下 id。
+      const imageId = this.getSwapImageEntry(imagePath)?.id;
       if (fs.existsSync(imagePath)) {
         fs.renameSync(imagePath, staged);
         moved = true;
       }
-      const hadEntry = this.getSwapImageEntry(imagePath) !== undefined;
-      this.removeImageEntry(imagePath);
-      if (hadEntry || fs.existsSync(this.cocoPath)) this.save();
-      if (moved) {
-        try { fs.unlinkSync(staged); } catch { /* 图已经不在模板目录，框和标注已落盘 */ }
+      if (imageId !== undefined) {
+        this.cocoData.images = this.cocoData.images.filter((img) => img.id !== imageId);
+        this.cocoData.annotations = this.cocoData.annotations.filter((ann) => ann.image_id !== imageId);
+        this._cleanupCategories();
+        this._dirty = true;
       }
+      if (imageId !== undefined || fs.existsSync(this.cocoPath)) this.save();
+      committed = true;
+      if (moved && !this.removeStagedImage(staged)) return staged;
       return true;
     } catch {
+      if (committed) return moved && fs.existsSync(staged) ? staged : false;
       if (moved && fs.existsSync(staged) && !fs.existsSync(imagePath)) {
         try { fs.renameSync(staged, imagePath); } catch { /* 原路径占着时留给下面的框恢复判断 */ }
       }
       if (fs.existsSync(imagePath)) restoreAuthoring(this.rootDir, templates, snapshot);
       try { this.load(); } catch { /* 标注写盘没成功时，内存仍可能是删过的那份 */ }
       return false;
+    }
+  }
+
+  private removeStagedImage(staged: string): boolean {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        fs.unlinkSync(staged);
+        return true;
+      } catch (error) {
+        const code = (error as NodeJS.ErrnoException).code;
+        if (attempt >= 3 || !['EPERM', 'EACCES', 'EBUSY'].includes(code ?? '')) return false;
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25);
+      }
     }
   }
 

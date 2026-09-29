@@ -159,6 +159,7 @@
   "Enter game window title pattern (regex), or leave empty for all windows": "Introduce el patrón de título de la ventana (regex), o déjalo vacío para todas las ventanas",
   "Failed to add to template assets: {error}": "No se pudo añadir a recursos de plantillas: {error}",
   "Failed to delete: {name}": "No se pudo eliminar: {name}",
+  "Deleted the record for {name}, but the temporary file is still at {path}.": "Se eliminó el registro de {name}, pero el archivo temporal sigue en {path}.",
   "Failed to save screenshot.": "No se pudo guardar la captura.",
   "Import images to {dir}": "Importar imágenes a {dir}",
   "Imported {count} image(s)": "Se importaron {count} imagen(es)",

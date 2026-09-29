@@ -159,6 +159,7 @@
   "Enter game window title pattern (regex), or leave empty for all windows": "게임 창 제목 정규식을 입력하세요(비우면 모든 창)",
   "Failed to add to template assets: {error}": "템플릿 에셋 추가 실패: {error}",
   "Failed to delete: {name}": "삭제 실패: {name}",
+  "Deleted the record for {name}, but the temporary file is still at {path}.": "{name} 기록은 삭제했지만 임시 파일이 {path}에 남아 있습니다.",
   "Failed to save screenshot.": "스크린샷 저장에 실패했습니다.",
   "Import images to {dir}": "{dir} 로 이미지 가져오기",
   "Imported {count} image(s)": "이미지 {count}개를 가져왔습니다",

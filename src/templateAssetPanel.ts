@@ -503,8 +503,12 @@ class AssetGalleryController {
     );
     if (confirm !== tr('Delete')) return;
 
-    if (this.data.deleteImage(imagePath)) {
+    const deleted = this.data.deleteImage(imagePath);
+    if (deleted === true) {
       void vscode.window.showInformationMessage(tr('Deleted: {name}', { name }));
+      await this.update();
+    } else if (typeof deleted === 'string') {
+      void vscode.window.showErrorMessage(tr('Deleted the record for {name}, but the temporary file is still at {path}.', { name, path: deleted }));
       await this.update();
     } else {
       void vscode.window.showErrorMessage(tr('Failed to delete: {name}', { name }));
