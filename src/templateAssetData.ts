@@ -451,11 +451,12 @@ export class TemplateAssetData {
 
   deleteImage(imagePath: string): boolean {
     try {
+      if (!removeImageBoxes(this.rootDir, templatesDirectory(this.rootDir), path.basename(imagePath))) return false;
       if (fs.existsSync(imagePath)) fs.unlinkSync(imagePath);
       const hadEntry = this.getSwapImageEntry(imagePath) !== undefined;
       this.removeImageEntry(imagePath);
       if (hadEntry || fs.existsSync(this.cocoPath)) this.save();
-      return removeImageBoxes(this.rootDir, templatesDirectory(this.rootDir), path.basename(imagePath));
+      return true;
     } catch {
       return false;
     }
