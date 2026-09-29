@@ -11,7 +11,7 @@ import { tr } from './localization';
 import { labelEnumNameSetting, templatesDirectory } from './projectConfig';
 import { PYTHON_KEYWORDS, writableClassName } from './labelEnumGuard';
 import { isPathInsideRoot } from './saveToAssetsPure';
-import { removeImageBoxes } from './boxResourceStore';
+import { captureAuthoring, removeImageBoxes, restoreAuthoring } from './boxResourceStore';
 
 /* ---------------- COCO 数据类型 ---------------- */
 
@@ -450,14 +450,18 @@ export class TemplateAssetData {
   /* ---------- 删除图片文件和COCO数据 ---------- */
 
   deleteImage(imagePath: string): boolean {
+    const templates = templatesDirectory(this.rootDir);
+    const snapshot = captureAuthoring(this.rootDir, templates);
+    if (!snapshot) return false;
     try {
-      if (!removeImageBoxes(this.rootDir, templatesDirectory(this.rootDir), path.basename(imagePath))) return false;
+      if (!removeImageBoxes(this.rootDir, templates, path.basename(imagePath))) return false;
       if (fs.existsSync(imagePath)) fs.unlinkSync(imagePath);
       const hadEntry = this.getSwapImageEntry(imagePath) !== undefined;
       this.removeImageEntry(imagePath);
       if (hadEntry || fs.existsSync(this.cocoPath)) this.save();
       return true;
     } catch {
+      if (fs.existsSync(imagePath)) restoreAuthoring(this.rootDir, templates, snapshot);
       return false;
     }
   }

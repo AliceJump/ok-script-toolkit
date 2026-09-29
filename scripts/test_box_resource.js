@@ -9,6 +9,8 @@
  * 4. 发布丢掉 image，显隐不进资源。
  */
 const assert = require('assert');
+const fs = require('fs');
+const os = require('os');
 const path = require('path');
 
 const root = path.resolve(__dirname, '..');
@@ -170,6 +172,31 @@ check(!applied.error && applied.boxes.map((box) => box.path).sort().join() === '
 const declared = config.boxesRuntimeOf({ boxes: { runtime: 'src/scene/boxes.json' } });
 check(declared === 'src/scene/boxes.json', '约定文件的 boxes.runtime 归一化后可读');
 check(config.boxesRuntimeOf({ boxes: { runtime: 42 } }) === undefined, '类型不对当没写');
+
+const store = require(path.join(root, 'out', 'boxResourceStore'));
+const snapshotDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ok-boxes-'));
+try {
+  const templates = 'ok_templates';
+  fs.mkdirSync(path.join(snapshotDir, templates));
+  const boxesPath = path.join(snapshotDir, templates, 'boxes.json');
+  const original = '{"version":1,"boxes":[{"path":"screen.a","image":"shot.png","rect":[0,0,0.5,0.5]}]}';
+  fs.writeFileSync(boxesPath, original);
+  const snapshot = store.captureAuthoring(snapshotDir, templates);
+  check(snapshot && snapshot.text === original, '删图前能记下 boxes.json 原文');
+  check(store.removeImageBoxes(snapshotDir, templates, 'shot.png'), '先去掉这张图的框');
+  check(!fs.readFileSync(boxesPath, 'utf8').includes('shot.png'), '框记录已经从文件里消失');
+  check(store.restoreAuthoring(snapshotDir, templates, snapshot), '图片还在时写回原文件');
+  check(fs.readFileSync(boxesPath, 'utf8') === original, '删除失败不会丢掉框记录');
+  const empty = fs.mkdtempSync(path.join(os.tmpdir(), 'ok-boxes-empty-'));
+  try {
+    const absent = store.captureAuthoring(empty, templates);
+    check(absent && absent.text === null, '没有 boxes.json 时快照是空的');
+  } finally {
+    fs.rmSync(empty, { recursive: true, force: true });
+  }
+} finally {
+  fs.rmSync(snapshotDir, { recursive: true, force: true });
+}
 
 if (failures.length) {
   console.error(`\n${failures.length} failed`);

@@ -118,6 +118,29 @@ export function boxesForImage(file: AuthoringFile, fileName: string): AuthoringB
   return file.boxes.filter((box) => sameImage(box.image, fileName));
 }
 
+/** 删图前记下 boxes.json。缺文件是空快照；读失败返回 null，调用方应停止删除。 */
+export function captureAuthoring(rootDir: string, templatesDirectory: string): { text: string | null } | null {
+  const read = readText(authoringFile(rootDir, templatesDirectory));
+  if (read.error) return null;
+  if (read.missing) return { text: null };
+  return { text: read.text ?? '' };
+}
+
+/** 图片文件还在时，把删图前的 boxes.json 写回去。快照为空就删掉这次多出来的文件。 */
+export function restoreAuthoring(rootDir: string, templatesDirectory: string, snapshot: { text: string | null }): boolean {
+  const target = authoringFile(rootDir, templatesDirectory);
+  if (snapshot.text === null) {
+    if (!fs.existsSync(target)) return true;
+    try {
+      fs.unlinkSync(target);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  return writeText(target, snapshot.text);
+}
+
 /** 删图时去掉它的框。文件还不存在就什么都不写。 */
 export function removeImageBoxes(rootDir: string, templatesDirectory: string, fileName: string): boolean {
   const target = authoringFile(rootDir, templatesDirectory);
