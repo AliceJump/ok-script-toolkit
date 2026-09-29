@@ -128,7 +128,7 @@ bottom = (y + h) / height
 
 框管理对标模板管理：每个 box path 一张**bbox 裁剪后的资源缩略图**（标注管理 ↔ 框资源管理是原图缩略图；模板管理 ↔ 框管理是裁剪缩略图）。裁剪、内容哈希缓存、异步批量生成与失败处理复用模板那条管线，不另造预览系统。补全只索引运行时资源。插入文本是 `self.pos.screen.main_viewport.to_box()`。另给一个只复制属性路径的动作。
 
-预览图不进运行时文件。用 path 回查标注资源拿 `image` 和 Pixel bbox；运行时独有的 path 才退回 normalized → Pixel（Runtime Preview 转换层）。复用模板的裁剪缓存，缓存键仍然是内容哈希加像素 bbox，框一改就自然失效。对不上原图时，文档只显示 path。
+预览图不进运行时文件。用 path 回查标注资源拿 `image` 和 Pixel bbox，按原图裁剪；复用模板的裁剪缓存，缓存键仍然是内容哈希加像素 bbox，框一改就自然失效。对不上原图（含运行时独有的 path）时，文档只显示 path。
 
 文档内容沿用模板：裁剪图、表达式、path、归一化 rect、原图相对路径。JetBrains 可以加一行短坐标 inlay；VS Code 不加，与「模板不做幽灵注释」一致。
 

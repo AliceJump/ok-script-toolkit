@@ -9,7 +9,7 @@ import {
   replaceImageBoxes,
   EditedBox,
 } from './boxResourceStore';
-import { BOX_PATH_SEGMENT_SOURCE, PixelBox, RESERVED_BOX_ROOTS, rectToPixel } from './boxResourcePure';
+import { BOX_PATH_SEGMENT_SOURCE, PixelBox, RESERVED_BOX_ROOTS } from './boxResourcePure';
 import { probedBoxesJson } from './cocoFeaturePath';
 import { injectWebviewLocalization, tr } from './localization';
 import { boxesRuntimeSetting, templatesDirectory } from './projectConfig';
@@ -91,8 +91,8 @@ export class BoxGalleryViewProvider implements vscode.WebviewViewProvider {
 
   /**
    * 框管理对标模板管理：每个 box path 一张**bbox 裁剪后的资源缩略图**。
-   * 来源优先 authoring（Pixel bbox + 原图），运行时独有的 path 退回
-   * normalized → Pixel（Runtime Preview 转换层）。裁剪、内容 hash 缓存、
+   * 来源是 authoring 的 Pixel bbox + 原图；运行时独有的 path 拿不到来源图，
+   * 保持无图占位（不做 normalized → Pixel 的死转换）。裁剪、内容 hash 缓存、
    * 失败处理全部复用 `cropTemplateThumbFileAsync`，不另造预览系统。
    */
   private async refresh(root: string): Promise<void> {
@@ -109,15 +109,7 @@ export class BoxGalleryViewProvider implements vscode.WebviewViewProvider {
       const source = sourceByPath.get(box.path);
       const fileName = source?.image;
       const imagePath = fileName ? path.join(root, templates, fileName) : '';
-      let bbox: [number, number, number, number] | undefined;
-      if (source && fs.existsSync(imagePath)) {
-        bbox = source.bbox;
-      } else if (imagePath && fs.existsSync(imagePath)) {
-        // 运行时独有的 path：Runtime Preview 允许 normalized → Pixel
-        const size = readImageSize(fs.readFileSync(imagePath));
-        const pixel = size ? rectToPixel(box.rect, size.width, size.height) : undefined;
-        bbox = pixel ? [pixel.x, pixel.y, pixel.w, pixel.h] : undefined;
-      }
+      const bbox = source && imagePath && fs.existsSync(imagePath) ? source.bbox : undefined;
       return { id: box.path, label, imagePath: bbox ? imagePath : '', bbox };
     });
     void view.webview.postMessage({ type: 'rows', rows });
@@ -270,13 +262,12 @@ export function openBoxEditor(extensionUri: vscode.Uri, data: TemplateAssetData,
 }
 
 /**
- * Runtime Preview：运行时 normalized rect 按原图尺寸转回 Pixel 裁剪预览。
- * authoring 里已有 Pixel bbox，优先直取 —— 这是转换层的合法用途。
+ * 框路径的 Hover 预览：直接用 authoring 的 Pixel bbox 裁剪原图。
+ * 运行时独有的 path 没有来源图，不做 normalized → Pixel 的死转换。
  */
 export function previewRectForPath(root: string, boxPath: string): { imagePath: string; bbox: [number, number, number, number] } | undefined {
   const templates = templatesDirectory(root);
   const authoring = readAuthoringFile(root, templates);
-  const runtime = readRuntimeFile(root, runtimeArgs(root).declared, runtimeArgs(root).fromConfig).boxes.find((box) => box.path === boxPath);
   const source = authoring.boxes.find((box) => box.path === boxPath);
   const fileName = source?.image;
   if (!fileName) return undefined;
@@ -284,12 +275,8 @@ export function previewRectForPath(root: string, boxPath: string): { imagePath: 
   if (!fs.existsSync(imagePath)) return undefined;
   const size = readImageSize(fs.readFileSync(imagePath));
   if (!size) return undefined;
-  const pixel: PixelBox | undefined = source
-    ? { x: source.bbox[0], y: source.bbox[1], w: source.bbox[2], h: source.bbox[3] }
-    : runtime
-      ? rectToPixel(runtime.rect, size.width, size.height)
-      : undefined;
-  if (!pixel || pixel.w <= 0 || pixel.h <= 0) return undefined;
+  const pixel: PixelBox = { x: source.bbox[0], y: source.bbox[1], w: source.bbox[2], h: source.bbox[3] };
+  if (pixel.w <= 0 || pixel.h <= 0) return undefined;
   return { imagePath, bbox: [pixel.x, pixel.y, pixel.w, pixel.h] };
 }
 

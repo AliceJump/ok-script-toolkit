@@ -15,7 +15,7 @@
  * 设计见 `docs/box-resources.md`。本模块不读盘、不 import `vscode`。
  */
 import * as path from 'path';
-import { clampBoxToSize, isSameSize, scaleBox, type ImageSize, type SwapBox } from './annotationSwapPure';
+import { isSameSize, scaleBox, type ImageSize, type SwapBox } from './annotationSwapPure';
 
 export const AUTHORING_VERSION = 2;
 export const RUNTIME_VERSION = 1;
@@ -209,18 +209,6 @@ export function pixelBboxError(
   return undefined;
 }
 
-function clampPixelBbox(bbox: PixelBbox, size: { width: number; height: number }): PixelBbox {
-  if (!(size.width > 0 && size.height > 0)) return bbox;
-  const w = Math.min(Math.max(1, bbox[2]), size.width);
-  const h = Math.min(Math.max(1, bbox[3]), size.height);
-  return [
-    Math.min(Math.max(0, bbox[0]), size.width - w),
-    Math.min(Math.max(0, bbox[1]), size.height - h),
-    w,
-    h,
-  ];
-}
-
 /** 同一张原图上的像素框取最小包围矩形。空列表返回 `undefined`。不做任何归一化。 */
 export function unionPixelBoxes(boxes: readonly PixelBox[]): PixelBox | undefined {
   if (boxes.length === 0) return undefined;
@@ -240,8 +228,9 @@ export function unionPixelBoxes(boxes: readonly PixelBox[]): PixelBox | undefine
 /* ────────────────────────────────────────────────────────────────
  * Runtime 转换层：normalized ↔ Pixel。
  *
- * 只允许 Publish（`publishBoxes`）、Runtime Preview（`previewRectForPath`）
- * 和旧格式迁移调用；Authoring 的编辑 / 保存主流程不得使用。
+ * 只允许 Publish（`publishBoxes`）调用；Authoring 的编辑 / 保存主流程不得使用。
+ * `rectToPixel` 当前仓库内已无调用方（preview 直接用 authoring 的 Pixel bbox），保留作与
+ * `pixelToRect` 对称的转换工具，供未来的 Runtime 预览/迁移类需求复用。
  * ──────────────────────────────────────────────────────────────── */
 
 /** normalized rect → Pixel bbox（Runtime Preview 用）。 */

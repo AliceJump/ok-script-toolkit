@@ -6,7 +6,7 @@
  * 1. 运行时路径是 约定 > config.py > src/scene/boxes.json，首选存在时不合并探测位置；
  * 2. Authoring 是 Pixel bbox + 图片 width/height（version 2），序列化整数、按 path 排序；
  * 3. Publish 是 Pixel → normalized 的唯一入口，输出 6 位小数，丢 image；
- * 4. 旧 normalized（version 1）只能经迁移入口转 Pixel，读不出尺寸的框被丢弃并记错；
+ * 4. 旧 normalized（version 1）不受支持：解析直接报 version 错误，不做迁移；
  * 5. 图片交换：同尺寸换 image，不同尺寸按比例映射并钳制进目标边界；
  * 6. 生成框走 Pixel union，全程不出现 normalized；
  * 7. webview 的路径校验规则由宿主下发，不允许再内联一份。
@@ -20,7 +20,6 @@ const root = path.resolve(__dirname, '..');
 const pure = require(path.join(root, 'out', 'boxResourcePure'));
 const config = require(path.join(root, 'out', 'projectConfigPure'));
 const store = require(path.join(root, 'out', 'boxResourceStore'));
-const { encodePngRgb } = require(path.join(root, 'out', 'pngCrop'));
 
 // 测试图直接在这里造（最小合法 PNG：签名 + IHDR + IDAT + IEND）。
 // 不能 require out/pngCrop：它的 featureData 导入链会牵进 projectConfig → vscode，
