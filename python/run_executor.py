@@ -98,6 +98,7 @@ sys.stderr.reconfigure(encoding="utf-8")
 import project_store  # noqa: E402 — 必须在 sys.path 调整之后
 from project_runtime import RUN_DIR_ENV, detect_config_folder, resolve_run_dir  # noqa: E402
 from executor_runtime import copy_config_containers, start_framework_runtime  # noqa: E402
+from executor_input import iter_command_lines  # noqa: E402
 
 MARKER_CONNECTING = "OK_TOOLKIT_EXECUTOR_CONNECTING"
 MARKER_READY = "OK_TOOLKIT_EXECUTOR_READY"
@@ -126,13 +127,17 @@ _MISSING = object()
 
 def _emit(line: str) -> None:
     with _print_lock:
-        print(line, flush=True)
+        # A single write keeps framework logs from landing between a control
+        # marker's payload and its newline on another thread.
+        sys.stdout.write(line + "\n")
+        sys.stdout.flush()
 
 
 def _note(message: str) -> None:
     """人可读的日志行（宿主原样展示在输出频道）。"""
     with _print_lock:
-        print(f"[toolkit] {message}", flush=True)
+        sys.stdout.write(f"[toolkit] {message}\n")
+        sys.stdout.flush()
 
 
 def task_key(task) -> str:
@@ -952,13 +957,13 @@ def start_stdin_listener(commands, cancel) -> None:
 
     def listen() -> None:
         try:
-            for line in sys.stdin:
+            for line in iter_command_lines(sys.stdin, cancel):
                 if line.strip():
                     commands.put(line)
                     if line.strip().lower() == "stop":
                         cancel.set()
-        except Exception:  # noqa: BLE001 — stdin 关闭等场景直接退出线程
-            pass
+        except Exception as error:  # noqa: BLE001 — 保留输入错误供宿主排查
+            _emit(f"{MARKER_ERROR}stdin {type(error).__name__}: {error}")
 
     threading.Thread(target=listen, name="ok-toolkit-stdin", daemon=True).start()
 

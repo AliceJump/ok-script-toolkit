@@ -376,7 +376,7 @@
     "test:probe-window-config": "python python/tests/test_probe_window_config.py",
     "test:run-sandbox": "python python/tests/test_run_executor_sandbox.py",
     "test:startup-patches": "python python/tests/test_run_executor_startup_patches.py",
-    "test:executor-runtime": "python python/tests/test_executor_runtime.py && python python/tests/test_executor_session.py",
+    "test:executor-runtime": "python python/tests/test_executor_runtime.py && python python/tests/test_executor_session.py && python python/tests/test_executor_input.py",
     "test:executor-project-config": "python python/tests/test_run_executor_project_config.py",
     "test:executor-gconfig": "python python/tests/test_run_executor_gconfig.py",
     "test:project-store": "python python/tests/test_project_store.py",
