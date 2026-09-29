@@ -96,10 +96,11 @@ class AssetGalleryController {
 
     // 构建元数据
     const templates = templatesDirectory(this.data.root);
-    if (this.boxes && authoringReadErrors(this.data.root, templates).length) {
-      void vscode.window.showErrorMessage(tr('Could not save the box resource.'));
+    const authoringErrors = this.boxes ? authoringReadErrors(this.data.root, templates) : [];
+    if (authoringErrors.length) {
+      void vscode.window.showErrorMessage(this.boxErrorMessage(authoringErrors));
     }
-    const authoring = this.boxes && !authoringReadErrors(this.data.root, templates).length
+    const authoring = this.boxes && !authoringErrors.length
       ? readAuthoringFile(this.data.root, templates)
       : undefined;
     const metas = imageFiles.map((imgPath) => {
@@ -639,8 +640,9 @@ class AssetGalleryController {
     const root = this.data.root;
     if (!root) return;
     const templates = templatesDirectory(root);
-    if (authoringReadErrors(root, templates).length || runtimeReadErrors(root, boxesRuntimeSetting(root), probedBoxesJson(root)).length) {
-      void vscode.window.showErrorMessage(tr('Could not save the box resource.'));
+    const authoringErrors = authoringReadErrors(root, templates);
+    if (authoringErrors.length || runtimeReadErrors(root, boxesRuntimeSetting(root), probedBoxesJson(root)).length) {
+      void vscode.window.showErrorMessage(this.boxErrorMessage(authoringErrors));
       return;
     }
     const declared = boxesRuntimeSetting(root);
@@ -652,14 +654,37 @@ class AssetGalleryController {
       const answer = await vscode.window.showWarningMessage(dropped.join('\n'), { modal: true }, tr('Publish'));
       if (answer !== tr('Publish')) return;
     }
-    if (!publishRuntime(root, templates, declared, fromConfig)) {
+    const result = publishRuntime(root, templates, declared, fromConfig);
+    if (!result.ok) {
+      // 发布失败要说清原因：最多见的是"框的原图读不出尺寸，Pixel 转 normalized 无从做起"。
+      const sizeMissing = result.errors
+        .filter((item) => item.startsWith('size:'))
+        .map((item) => item.slice('size:'.length));
+      if (sizeMissing.length) {
+        void vscode.window.showErrorMessage(tr('Boxes without an image size were not published: {paths}.', {
+          paths: sizeMissing.join(', '),
+        }));
+        return;
+      }
       void vscode.window.showErrorMessage(tr('Could not save the box resource.'));
       return;
     }
     await this.update();
   }
 
-  /** 框坐标相对整张原图，交换只改所属图片，不按像素再缩放。缺 boxes.json 且两边都没有框时不创建文件。 */
+  /** 框资源的读盘失败统一走这里：旧格式迁移丢框要有自己的说法，不能全塞进一句"保存失败"。 */
+  private boxErrorMessage(errors: string[]): string {
+    if (errors.some((item) => item.startsWith('migrate:') || item.startsWith('legacy:'))) {
+      return tr('Some legacy boxes were dropped during migration: their image size is unknown.');
+    }
+    return tr('Could not save the box resource.');
+  }
+
+  /**
+   * 框的图片交换。Pixel authoring 下坐标语义依赖图片尺寸：同尺寸只换所属图片，
+   * 尺寸不同时按比例映射（复用模板交换的 `scaleBox`，映射与钳制在纯层完成），
+   * 所以确认框要像模板交换一样把"会缩放"说清楚；确认之后重新核对再写盘。
+   */
   private async handleSwapBoxes(sourcePath: string, targetPath: string): Promise<void> {
     if (!sourcePath || !targetPath || sourcePath === targetPath) return;
     const allowed = new Set(this.data.listImages());
@@ -669,8 +694,9 @@ class AssetGalleryController {
     }
     const root = this.data.root;
     const templates = templatesDirectory(root);
-    if (authoringReadErrors(root, templates).length) {
-      void vscode.window.showErrorMessage(tr('Could not save the box resource.'));
+    const authoringErrors = authoringReadErrors(root, templates);
+    if (authoringErrors.length) {
+      void vscode.window.showErrorMessage(this.boxErrorMessage(authoringErrors));
       return;
     }
     const authoring = readAuthoringFile(root, templates);
@@ -682,9 +708,28 @@ class AssetGalleryController {
     }
     const first = path.basename(sourcePath);
     const second = path.basename(targetPath);
-    const detail = tr('{first}: {firstCount} boxes, {second}: {secondCount} boxes', {
-      first, second, firstCount: String(sourceBoxes.length), secondCount: String(targetBoxes.length),
-    });
+    const sizeOf = (fileName: string) => {
+      const entry = authoring.images.find((item) => item.file.toLowerCase() === fileName.toLowerCase());
+      return entry && entry.width > 0 && entry.height > 0 ? { width: entry.width, height: entry.height } : undefined;
+    };
+    const sourceSize = sizeOf(first);
+    const targetSize = sizeOf(second);
+    if (!sourceSize || !targetSize) {
+      void vscode.window.showErrorMessage(tr('Cannot read image size, so annotations cannot be swapped.'));
+      return;
+    }
+    const scaled = !isSameSize(sourceSize, targetSize);
+    const detail = [
+      scaled
+        ? tr('Sizes differ ({from} → {to}); boxes are scaled proportionally.', {
+            from: `${sourceSize.width}×${sourceSize.height}`,
+            to: `${targetSize.width}×${targetSize.height}`,
+          })
+        : '',
+      tr('{first}: {firstCount} boxes, {second}: {secondCount} boxes', {
+        first, second, firstCount: String(sourceBoxes.length), secondCount: String(targetBoxes.length),
+      }),
+    ].filter((line) => line.length > 0).join('\n');
     const swap = tr('Swap');
     const choice = await vscode.window.showWarningMessage(
       tr("Swap annotations between '{first}' and '{second}'?", { first, second }),
@@ -692,6 +737,16 @@ class AssetGalleryController {
       swap,
     );
     if (choice !== swap) return;
+    // 模板交换的同一条保险：模态框会让出事件循环，写盘前重新核对"图还在、框没变"。
+    this.data.load();
+    const current = readAuthoringFile(root, templates);
+    const currentAllowed = new Set(this.data.listImages());
+    if (!currentAllowed.has(sourcePath) || !currentAllowed.has(targetPath)
+      || JSON.stringify(boxesForImage(current, first)) !== JSON.stringify(sourceBoxes)
+      || JSON.stringify(boxesForImage(current, second)) !== JSON.stringify(targetBoxes)) {
+      void vscode.window.showWarningMessage(tr('Annotations changed while confirming. Retry the swap.'));
+      return;
+    }
     if (!swapImageBoxes(root, templates, first, second)) {
       void vscode.window.showErrorMessage(tr('Failed to swap annotations.'));
       return;

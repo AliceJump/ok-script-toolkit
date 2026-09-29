@@ -105,6 +105,8 @@ textarea {
 }
 input:focus, select:focus, textarea:focus { border-color: var(--border-strong); }
 input:disabled, select:disabled, textarea:disabled { opacity: .55; cursor: not-allowed; }
+/* 即时校验失败：不合法时标在输入框本身，而不是只在下方留一行说明 */
+input.input-invalid { border-color: color-mix(in srgb, var(--err) 45%, var(--border)); }
 
 /* ── Checkbox / Radio / Switch（统一 accent）────────────────────────── */
 input[type='checkbox'],

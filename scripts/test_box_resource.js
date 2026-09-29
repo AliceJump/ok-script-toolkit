@@ -1,12 +1,15 @@
 #!/usr/bin/env node
 /**
- * 框资源纯契约测试（`src/boxResourcePure.ts`）。
+ * 框资源契约测试（`src/boxResourcePure.ts` + `src/boxResourceStore.ts`）。
  *
- * 钉住和模板两份 COCO 同一类的不变量：
+ * Authoring 已切换为与模板标注一致的 Pixel 模型，钉住这些不变量：
  * 1. 运行时路径是 约定 > config.py > src/scene/boxes.json，首选存在时不合并探测位置；
- * 2. 序列化按 path 排序、矩形 6 位小数，改一个框不会重排其余对象；
- * 3. 像素没变时写回保留原浮点；
- * 4. 发布丢掉 image，显隐不进资源。
+ * 2. Authoring 是 Pixel bbox + 图片 width/height（version 2），序列化整数、按 path 排序；
+ * 3. Publish 是 Pixel → normalized 的唯一入口，输出 6 位小数，丢 image；
+ * 4. 旧 normalized（version 1）只能经迁移入口转 Pixel，读不出尺寸的框被丢弃并记错；
+ * 5. 图片交换：同尺寸换 image，不同尺寸按比例映射并钳制进目标边界；
+ * 6. 生成框走 Pixel union，全程不出现 normalized；
+ * 7. webview 的路径校验规则由宿主下发，不允许再内联一份。
  */
 const assert = require('assert');
 const fs = require('fs');
@@ -16,6 +19,8 @@ const path = require('path');
 const root = path.resolve(__dirname, '..');
 const pure = require(path.join(root, 'out', 'boxResourcePure'));
 const config = require(path.join(root, 'out', 'projectConfigPure'));
+const store = require(path.join(root, 'out', 'boxResourceStore'));
+const { encodePngRgb } = require(path.join(root, 'out', 'pngCrop'));
 
 const failures = [];
 function check(condition, message) {
@@ -38,168 +43,224 @@ check(plan(undefined, 'assets/boxes.json').layer === 'configPy', '只有 config.
 check(plan('custom/boxes.json', 'assets/boxes.json').layer === 'convention', '约定压过 config.py');
 check(plan('   ', '  ').layer === 'probe', '空白声明等同于没写');
 
-const preferred = plan('custom/boxes.json');
-check(
-  pure.effectiveBoxRuntimeFile(preferred, () => true) === path.join(ROOT, 'custom', 'boxes.json'),
-  '首选存在时只用首选，不把探测位置并进来',
-);
-check(pure.effectiveBoxRuntimeFile(plan(), () => false) === undefined, '文件都不存在时读取结果为空');
-check(pure.runtimeWriteTarget(plan()) === PROBE, '未声明时发布目标就是探测位置');
-check(
-  pure.runtimeWriteTarget(preferred) === path.join(ROOT, 'custom', 'boxes.json'),
-  '已声明时发布目标是首选，即使文件还没创建',
-);
-const authoringPath = path.join(ROOT, 'ok_templates', 'boxes.json');
-check(pure.sameBoxFile(authoringPath, path.join(ROOT, 'ok_templates', '.', 'boxes.json')), '规范化后同一路径视为同一文件');
-check(!pure.sameBoxFile(authoringPath, PROBE), '标注文件和运行时探测位置不是同一个文件');
+// ── Authoring 的 Pixel 校验 ─────────────────────────────────────────
+check(pure.pixelBboxError([10, 20, 300, 200], { width: 1920, height: 1080 }) === undefined, '图内的像素 bbox 合法');
+check(pure.pixelBboxError([-1, 20, 300, 200], { width: 1920, height: 1080 }) === 'rect', '负坐标拒绝');
+check(pure.pixelBboxError([0, 0, 0, 100], { width: 1920, height: 1080 }) === 'rect', '零宽拒绝');
+check(pure.pixelBboxError([1900, 20, 300, 200], { width: 1920, height: 1080 }) === 'rect', '越出右边界拒绝');
+check(pure.pixelBboxError([0, 0, 1920, 200], { width: 1920, height: 1080 }) === undefined, '贴边矩形可以保存');
+check(pure.pixelBboxError([0, 0, 30, 20]) === undefined, '尺寸未知时只查正性');
 
-check(pure.boxPathError('screen.main_viewport') === undefined, 'screen.main_viewport 合法');
-check(pure.boxPathError('main_viewport') === 'shallow', '少一层 group 不合法');
-check(pure.boxPathError('panels.esc.mail') === 'reserved', 'panels 留给点击点');
-check(pure.boxPathError('screen.bad-name') === 'segment', '非法标识符拒绝');
-check(pure.boxPathError('') === 'empty', '空路径拒绝');
-check(pure.imageFileName('ok_templates/12.png') === '12.png', 'image 只留文件名');
+const union = pure.unionPixelBoxes([{ x: 100, y: 50, w: 40, h: 30 }, { x: 120, y: 60, w: 60, h: 20 }]);
+check(union && union.x === 100 && union.y === 50 && union.w === 80 && union.h === 30, 'Pixel union 是最小包围框');
+check(pure.unionPixelBoxes([]) === undefined, '空列表没有包围框');
 
-const original = [0.0984, 0.1042, 0.8961, 0.8944];
-const pixel = pure.rectToPixel(original, 2560, 1440);
-const kept = pure.rectForSave(original, pixel, 2560, 1440);
-check(kept === original, '像素没变时保留原浮点数组，打开后保存不会重算');
-const moved = { ...pixel, x: pixel.x + 4 };
-const rewritten = pure.rectForSave(original, moved, 2560, 1440);
-check(rewritten !== original && rewritten[0] !== original[0], '像素变了才重新归一化');
-
-const union = pure.unionOnImage(
-  [{ x: 10, y: 20, w: 30, h: 40 }, { x: 50, y: 10, w: 20, h: 15 }],
-  100,
-  100,
-);
-check(
-  union[0] === 0.1 && union[1] === 0.1 && union[2] === 0.7 && union[3] === 0.6,
-  '同图包围框取 min left/top 与 max right/bottom',
-);
-check(pure.unionOnImage([], 100, 100) === undefined, '空列表没有包围框');
-
-const authoring = {
-  version: 1,
-  boxes: [
-    { path: 'screen.main_viewport', image: '12.png', rect: [0.0984, 0.1042, 0.8961, 0.8944] },
-    { path: 'screen.dialog_icon', image: '3.png', rect: [0.845, 0.047, 0.975, 0.074] },
-  ],
+// ── v2 解析 / 序列化 ─────────────────────────────────────────────────
+const fileV2 = {
+  version: pure.AUTHORING_VERSION,
+  images: [{ file: '12.png', width: 1920, height: 1080 }],
+  boxes: [{ path: 'screen.main_viewport', image: '12.png', bbox: [184, 112, 1544, 853] }],
 };
-const text = pure.serializeAuthoring(authoring);
-const expected = [
-  '{',
-  '  "version": 1,',
-  '  "boxes": [',
-  '    {',
-  '      "path": "screen.dialog_icon",',
-  '      "image": "3.png",',
-  '      "rect": [0.845000, 0.047000, 0.975000, 0.074000]',
-  '    },',
-  '    {',
-  '      "path": "screen.main_viewport",',
-  '      "image": "12.png",',
-  '      "rect": [0.098400, 0.104200, 0.896100, 0.894400]',
-  '    }',
-  '  ]',
-  '}',
-  '',
-].join('\n');
-check(text === expected, '标注资源按 path 排序，矩形固定 6 位小数');
+const text = pure.serializeAuthoring(fileV2);
+check(text.includes('"version": 2'), 'authoring 序列化是 version 2');
+check(!text.includes('0.100000'), 'authoring 不再出现 normalized 小数');
+const round = pure.parseAuthoring(text);
+check(!round.errors.length, '刚写出的文件能原样读回');
+check(round.file.boxes[0].path === 'screen.main_viewport' && round.file.boxes[0].bbox.join() === '184,112,1544,853', '读回后 bbox 是同一组整数');
+check(round.file.images[0].width === 1920 && round.file.images[0].height === 1080, '读回后图片尺寸还在');
 
-const parsed = pure.parseAuthoring(text);
-check(parsed.errors.length === 0 && parsed.file.boxes.length === 2, '刚写出的文件能原样读回');
-check(parsed.file.boxes[0].path === 'screen.dialog_icon', '读回后仍按 path 排序');
-
-const runtimeText = pure.serializeRuntime(pure.publishBoxes(parsed.file));
-check(!runtimeText.includes('"image"'), '发布结果不含 image');
-check(runtimeText.includes('"path": "screen.dialog_icon"'), '发布保留 path 和 rect');
-
-const duplicate = pure.parseAuthoring(JSON.stringify({
-  version: 1,
+const badParse = pure.parseAuthoring(JSON.stringify({
+  version: 2,
+  images: [{ file: '12.png', width: 1920, height: 1080 }],
   boxes: [
-    { path: 'screen.a', image: '1.png', rect: [0, 0, 0.5, 0.5] },
-    { path: 'screen.a', image: '2.png', rect: [0, 0, 0.2, 0.2] },
+    { path: 'screen.ok', image: '12.png', bbox: [0, 0, 10, 10] },
+    { path: 'screen.ok', image: '12.png', bbox: [0, 0, 10, 10] },
+    { path: 'screen.a', image: 'missing.png', bbox: [0, 0, 10, 10] },
+    { path: 'screen.b', image: '12.png', bbox: [0, 0, 99999, 10] },
+    { path: 'mainonly', image: '12.png', bbox: [0, 0, 10, 10] },
   ],
 }));
-check(duplicate.file.boxes.length === 1 && duplicate.file.boxes[0].image === '1.png', '重复 path 保留先出现的那条');
-check(duplicate.errors.some((item) => item.endsWith(':duplicate')), '重复 path 记一条错误');
+check(badParse.errors.includes('1:duplicate'), '重复 path 记错');
+check(badParse.errors.includes('2:image'), '引用未登记图片的框记错');
+check(badParse.errors.includes('3:rect'), '越界 bbox 记错');
+check(badParse.errors.includes('4:path'), '一段 path 记错');
 
-const bad = pure.parseRuntime('{');
-check(bad.errors[0] === 'json' && bad.file.boxes.length === 0, '坏 JSON 给出空运行时文件而不是抛异常');
-
-const hidden = pure.applyVisibility(['a', 'b'], new Set(), 'hideAll');
-check(hidden.has('a') && hidden.has('b'), '隐藏全部覆盖当前条目');
-const shown = pure.applyVisibility(['a', 'b'], hidden, 'showAll');
-check(shown.size === 0, '显示全部清空隐藏集合');
-const only = pure.applyVisibility(['a', 'b'], shown, 'only', 'b');
-check(only.has('a') && !only.has('b'), '只显示当前留下选中项');
-const toggled = pure.applyVisibility(['a', 'b'], only, 'toggle', 'a');
-check(!toggled.has('a') && !toggled.has('b'), '再勾一次把隐藏去掉');
-check(pure.isAnnotationVisible('b', toggled), '不在隐藏集合里的条目可见');
-
-const statuses = pure.publishStatus(parsed.file, pure.parseRuntime(runtimeText).file);
-check(statuses.every((item) => item.status === 'same'), '刚发布的运行时与标注几何一致');
-
-const batchRect = [0, 0, 0.5, 0.5];
-const batchPixel = pure.rectToPixel(batchRect, 100, 100);
-const edit = (fileName, boxPath) => ({
-  fileName,
-  width: 100,
-  height: 100,
-  boxes: [{ path: boxPath, x: batchPixel.x, y: batchPixel.y, w: batchPixel.w, h: batchPixel.h, original: batchRect }],
-});
-const existing = [
-  { path: 'screen.a', image: '1.png', rect: batchRect },
-  { path: 'screen.b', image: '2.png', rect: batchRect },
-];
-check(pure.isStorableRect([0, 0, 1, 1]), '贴边矩形可以保存');
-check(!pure.isStorableRect([-0.1, 0, 0.5, 0.5]), '越出左边界的矩形拒绝写入');
-check(!pure.isStorableRect([0, 0, 1.1, 0.5]), '越出右边界的矩形拒绝写入');
-const outside = pure.replaceAuthoringImages(existing, [{
-  fileName: '1.png',
-  width: 100,
-  height: 100,
-  boxes: [{ path: 'screen.a', x: -10, y: 0, w: 20, h: 20 }],
+// ── 内存编辑：replaceAuthoringImages ────────────────────────────────
+const edited = pure.replaceAuthoringImages(fileV2, [{
+  fileName: '12.png', width: 1920, height: 1080,
+  boxes: [{ path: 'combat.enemy.hp', x: 5, y: 6, w: 100, h: 50 }],
 }]);
-check(outside.error === 'rect', '越界像素框整批替换失败，原文件不会被写坏');
+check(!edited.error, '整图替换成功');
+check(edited.file.boxes.length === 1 && edited.file.boxes[0].path === 'combat.enemy.hp', '旧框被这套替换掉');
+check(edited.file.images[0].width === 1920, 'images 条目随编辑刷新');
+const fresh = pure.replaceAuthoringImages(pure.emptyAuthoringFile(), [{
+  fileName: 'new.png', width: 640, height: 480,
+  boxes: [{ path: 'screen.x', x: 1, y: 2, w: 30, h: 40 }],
+}]);
+check(!fresh.error && fresh.file.images.some((item) => item.file === 'new.png'), '首次编辑登记新图片尺寸');
+check(pure.replaceAuthoringImages(fileV2, [
+  { fileName: 'a.png', width: 100, height: 100, boxes: [{ path: 'screen.ok', x: 0, y: 0, w: 10, h: 10 }] },
+  { fileName: 'a.png', width: 100, height: 100, boxes: [{ path: 'screen.bad', x: 0, y: 0, w: 999, h: 10 }] },
+]).error === 'rect', '多图编辑有一张越界就整批失败');
 
-const conflict = pure.replaceAuthoringImages(existing, [edit('1.png', 'screen.a'), edit('2.png', 'screen.a')]);
-check(conflict.error === 'duplicate', '后一张图路径冲突时整批替换失败');
-const applied = pure.replaceAuthoringImages(existing, [edit('1.png', 'screen.a'), edit('2.png', 'screen.b')]);
-check(!applied.error && applied.boxes.map((box) => box.path).sort().join() === 'screen.a,screen.b', '两张图都合法时一起替换');
+// ── 图片交换：同尺寸换 image，不同尺寸按比例映射 ─────────────────────
+const swapBase = {
+  version: pure.AUTHORING_VERSION,
+  images: [
+    { file: 'big.png', width: 1920, height: 1080 },
+    { file: 'small.png', width: 960, height: 540 },
+  ],
+  boxes: [
+    { path: 'screen.a', image: 'big.png', bbox: [960, 540, 960, 540] },
+    { path: 'screen.b', image: 'small.png', bbox: [480, 270, 480, 270] },
+  ],
+};
+const swappedSame = pure.swapImageBoxes({
+  version: pure.AUTHORING_VERSION,
+  images: [{ file: 'a.png', width: 100, height: 100 }, { file: 'b.png', width: 100, height: 100 }],
+  boxes: [{ path: 'screen.a', image: 'a.png', bbox: [10, 10, 20, 20] }],
+}, 'a.png', 'b.png');
+check(!swappedSame.error && swappedSame.file.boxes[0].image === 'b.png' && swappedSame.file.boxes[0].bbox.join() === '10,10,20,20', '同尺寸交换坐标逐字段不变');
+const swappedDiff = pure.swapImageBoxes(swapBase, 'big.png', 'small.png');
+check(!swappedDiff.error, '不同尺寸也能交换');
+const movedA = swappedDiff.file.boxes.find((box) => box.path === 'screen.a');
+check(movedA.image === 'small.png' && movedA.bbox.join() === '480,270,480,270', 'big→small 按比例映射（x/2）');
+const movedB = swappedDiff.file.boxes.find((box) => box.path === 'screen.b');
+check(movedB.image === 'big.png' && movedB.bbox.join() === '960,540,960,540', 'small→big 按比例映射（x*2）');
+check(pure.swapImageBoxes({ ...swapBase, images: [{ file: 'big.png', width: 1920, height: 1080 }] }, 'big.png', 'small.png').error === 'size', '尺寸缺失的交换拒绝');
 
-const declared = config.boxesRuntimeOf({ boxes: { runtime: 'src/scene/boxes.json' } });
-check(declared === 'src/scene/boxes.json', '约定文件的 boxes.runtime 归一化后可读');
-check(config.boxesRuntimeOf({ boxes: { runtime: 42 } }) === undefined, '类型不对当没写');
+// ── Publish：Pixel → normalized 的唯一入口 ──────────────────────────
+const published = pure.publishBoxes(fileV2);
+check(!published.errors.length, '尺寸齐全时发布成功');
+check(published.file.version === pure.RUNTIME_VERSION, 'runtime 还是 version 1');
+const rect = published.file.boxes[0].rect;
+check(
+  rect[0] === 184 / 1920 && rect[1] === 112 / 1080
+  && rect[2] === (184 + 1544) / 1920 && rect[3] === (112 + 853) / 1080,
+  '发布输出 normalized [left, top, right, bottom]',
+);
+const runtimeText = pure.serializeRuntime(published.file);
+check(runtimeText.includes('0.095833'), 'runtime 序列化固定 6 位小数');
+check(pure.publishBoxes({ ...fileV2, images: [] }).errors.some((item) => item.startsWith('size:')), '尺寸缺失的框不发布并记错');
+check(pure.isStorableRuntimeRect(rect) && !pure.isStorableRuntimeRect([0, 0, 2, 0.5]), '0~1 规则只属于 Runtime');
 
-const store = require(path.join(root, 'out', 'boxResourceStore'));
-const snapshotDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ok-boxes-'));
+const status = pure.publishStatus(
+  fileV2,
+  { version: 1, boxes: [{ path: 'screen.main_viewport', rect }] },
+);
+check(status[0].status === 'same', '发布状态一致');
+check(pure.publishStatus(fileV2, { version: 1, boxes: [{ path: 'gone.only', rect }] })
+  .some((item) => item.status === 'runtimeOnly'), '运行时独有的 path 单独标记');
+
+// ── 旧格式迁移入口 ──────────────────────────────────────────────────
+const legacyText = JSON.stringify({
+  version: 1,
+  boxes: [{ path: 'screen.main_viewport', image: '12.png', rect: [0.1, 0.2, 0.9, 0.8] }],
+});
+check(pure.parseAuthoring(legacyText).errors.includes('legacy'), 'v1 被识别为迁移入口而不是空目录');
+const legacyParsed = pure.parseLegacyAuthoring(legacyText);
+check(legacyParsed.boxes.length === 1 && !legacyParsed.errors.length, 'v1 结构能解析');
+const migrated = pure.migrateAuthoringV1(legacyParsed.boxes, () => ({ width: 1920, height: 1080 }));
+check(!migrated.errors.length, '有尺寸时迁移成功');
+check(migrated.file.boxes[0].bbox.join() === '192,216,1536,648', 'normalized → Pixel 用图片尺寸换算');
+check(migrated.file.images[0].width === 1920, '迁移同时登记图片尺寸');
+const orphan = pure.migrateAuthoringV1(legacyParsed.boxes, () => undefined);
+check(orphan.errors.length === 1 && orphan.errors[0] === 'migrate:12.png' && orphan.file.boxes.length === 0, '读不出尺寸的框丢弃并记错');
+
+// ── 读盘侧：自动创建、登记、迁移写回 ────────────────────────────────
+const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ok-boxes-pixel-'));
 try {
   const templates = 'ok_templates';
-  fs.mkdirSync(path.join(snapshotDir, templates));
-  const boxesPath = path.join(snapshotDir, templates, 'boxes.json');
-  const original = '{"version":1,"boxes":[{"path":"screen.a","image":"shot.png","rect":[0,0,0.5,0.5]}]}';
-  fs.writeFileSync(boxesPath, original);
-  const snapshot = store.captureAuthoring(snapshotDir, templates);
-  check(snapshot && snapshot.text === original, '删图前能记下 boxes.json 原文');
-  check(store.removeImageBoxes(snapshotDir, templates, 'shot.png'), '先去掉这张图的框');
-  check(!fs.readFileSync(boxesPath, 'utf8').includes('shot.png'), '框记录已经从文件里消失');
-  check(store.restoreAuthoring(snapshotDir, templates, snapshot), '图片还在时写回原文件');
-  check(fs.readFileSync(boxesPath, 'utf8') === original, '删除失败不会丢掉框记录');
-  const empty = fs.mkdtempSync(path.join(os.tmpdir(), 'ok-boxes-empty-'));
-  try {
-    const absent = store.captureAuthoring(empty, templates);
-    check(absent && absent.text === null, '没有 boxes.json 时快照是空的');
-  } finally {
-    fs.rmSync(empty, { recursive: true, force: true });
-  }
+  const templatesAbs = path.join(tmp, templates);
+  fs.mkdirSync(templatesAbs, { recursive: true });
+  const writeImage = (name, width, height) => {
+    fs.writeFileSync(path.join(templatesAbs, name), encodePngRgb(width, height, Buffer.alloc(width * height * 4, 255)));
+  };
+  writeImage('12.png', 1920, 1080);
+
+  const err1 = store.addBox(tmp, templates, 'screen.main_viewport', '12.png', { x: 184, y: 112, w: 1544, h: 853 });
+  check(err1 === undefined, '首次合法保存自动创建 boxes.json');
+  const authoring1 = store.readAuthoringFile(tmp, templates);
+  check(authoring1.images.some((item) => item.file === '12.png' && item.width === 1920), '保存时登记图片尺寸');
+  check(pure.serializeAuthoring(authoring1) === pure.serializeAuthoring(store.readAuthoringFile(tmp, templates)), '读回稳定');
+  check(store.addBox(tmp, templates, 'screen.main_viewport', '12.png', { x: 0, y: 0, w: 10, h: 10 }) === 'duplicate', '重复 path 拒绝');
+  check(store.addBox(tmp, templates, 'screen.huge', '12.png', { x: 0, y: 0, w: 9999, h: 10 }) === 'rect', '越界 bbox 拒绝');
+  check(store.addBox(tmp, templates, 'panels.x', '12.png', { x: 0, y: 0, w: 10, h: 10 }) === 'reserved', '保留根拒绝');
+  check(store.addBox(tmp, templates, 'screen.other', 'missing.png', { x: 0, y: 0, w: 10, h: 10 }) === 'image', '图片不存在拒绝');
+
+  const saveErr = store.replaceImageBoxes(tmp, templates, '12.png', 1920, 1080, [
+    { path: 'screen.main_viewport', x: 200, y: 120, w: 1500, h: 840 },
+  ]);
+  check(saveErr === undefined, '整图替换保存成功');
+  const authoring2 = store.readAuthoringFile(tmp, templates);
+  check(authoring2.boxes.length === 1 && authoring2.boxes[0].bbox.join() === '200,120,1500,840', '替换后只剩新框');
+
+  const published2 = store.publishRuntime(tmp, templates);
+  check(published2.ok && !published2.errors.length, '发布成功');
+  const runtimeFile = path.join(tmp, 'src', 'scene', 'boxes.json');
+  check(fs.existsSync(runtimeFile), '运行时文件已写出');
+  const runtimeRead = pure.parseRuntime(fs.readFileSync(runtimeFile, 'utf8'));
+  check(!runtimeRead.errors.length && runtimeRead.file.boxes[0].path === 'screen.main_viewport', '运行时内容可读');
+  check(fs.readFileSync(runtimeFile, 'utf8').includes('0.104167'), '发布坐标是 normalized 6 位小数');
+
+  // 迁移：旧 normalized + COCO 尺寸 → 读一次就变成 v2
+  const legacyFile = path.join(templatesAbs, 'boxes.json');
+  fs.writeFileSync(legacyFile, JSON.stringify({
+    version: 1,
+    boxes: [{ path: 'screen.legacy', image: '12.png', rect: [0.25, 0.25, 0.75, 0.75] }],
+  }));
+  const migratedFile = store.readAuthoringFile(tmp, templates);
+  const legacyBox = migratedFile.boxes.find((box) => box.path === 'screen.legacy');
+  check(!!legacyBox && legacyBox.bbox.join() === '480,270,960,540', '旧框读盘时迁移成 Pixel');
+  const onDisk = JSON.parse(fs.readFileSync(legacyFile, 'utf8'));
+  check(onDisk.version === 2 && onDisk.images.length > 0, '迁移后写回新格式');
+
+  // 删除图片：框与尺寸登记一起消失，失败时快照恢复
+  const snapshot = store.captureAuthoring(tmp, templates);
+  check(store.removeImageBoxes(tmp, templates, '12.png'), '先去掉这张图的框');
+  const afterRemove = JSON.parse(fs.readFileSync(legacyFile, 'utf8'));
+  check(!afterRemove.images.some((item) => item.file === '12.png'), '尺寸登记也清掉');
+  check(store.restoreAuthoring(tmp, templates, snapshot), '图片还在时写回原文件');
+
+  // 读不出尺寸的框：丢弃并报错，文件保持旧格式不写回（避免半迁移）
+  fs.writeFileSync(legacyFile, JSON.stringify({
+    version: 1,
+    boxes: [{ path: 'screen.orphan', image: 'ghost.png', rect: [0.25, 0.25, 0.75, 0.75] }],
+  }));
+  const orphanErrors = store.authoringReadErrors(tmp, templates);
+  check(orphanErrors.some((item) => item.startsWith('migrate:')), '缺尺寸的迁移丢框并报错');
+  check(JSON.parse(fs.readFileSync(legacyFile, 'utf8')).version === 1, '半迁移不写回');
+
+  // 交换（读盘侧）
+  writeImage('big.png', 1920, 1080);
+  writeImage('small.png', 960, 540);
+  fs.writeFileSync(path.join(templatesAbs, 'boxes.json'), pure.serializeAuthoring(swapBase));
+  check(store.swapImageBoxes(tmp, templates, 'big.png', 'small.png'), '交换写盘成功');
+  const afterSwap = store.readAuthoringFile(tmp, templates);
+  check(afterSwap.boxes.find((box) => box.path === 'screen.a').image === 'small.png', '交换后框换了宿主');
 } finally {
-  fs.rmSync(snapshotDir, { recursive: true, force: true });
+  fs.rmSync(tmp, { recursive: true, force: true });
 }
+
+// ── webview 与宿主共用同一份路径规则 ─────────────────────────────────
+const appSource = fs.readFileSync(path.join(root, 'media', 'annotationPanel', 'app.js'), 'utf8');
+const annotationSource = fs.readFileSync(path.join(root, 'src', 'annotationPanel.ts'), 'utf8');
+const boxPanelsSource = fs.readFileSync(path.join(root, 'src', 'boxPanels.ts'), 'utf8');
+
+check(typeof pure.BOX_PATH_SEGMENT_SOURCE === 'string', '纯模块导出段名规则的字面量');
+const injectedSegment = new RegExp(pure.BOX_PATH_SEGMENT_SOURCE);
+check(injectedSegment.test('main_viewport') && injectedSegment.test('_p2'), '下发的文法接受 Python 标识符');
+check(!injectedSegment.test('2bad') && !injectedSegment.test('has-dash') && !injectedSegment.test(''), '下发的文法拒绝数字开头与非标识符');
+check(!/SEGMENT\s*=\s*\//.test(appSource) && !/RESERVED_BOX_ROOTS\s*=/.test(appSource), 'webview 不再内联自己的路径文法');
+check(/msg\.boxPathRule/.test(appSource), 'webview 从 config 消息取用下发的规则');
+check(/ok\.disabled\s*=\s*!!problem/.test(appSource), '路径不合法时禁用保存按钮');
+check(/if \(refreshGeneratePathState\(\)\) return;/.test(appSource), '保存前再校验一次，不合法直接拦住');
+check(/boxPathOccupied/.test(appSource), 'webview 做全局占用查重');
+check(annotationSource.includes('BOX_PATH_SEGMENT_SOURCE') && /boxPaths/.test(annotationSource), '标注编辑器下发规则与 path 占用');
+check(boxPanelsSource.includes('BOX_PATH_SEGMENT_SOURCE') && boxPanelsSource.includes('boxPathOccupancy'), '框编辑器下发同一份规则与占用表');
 
 if (failures.length) {
   console.error(`\n${failures.length} failed`);
   process.exit(1);
 }
-console.log('\nbox resource pure ok');
+console.log('\nbox resource pixel contract ok');

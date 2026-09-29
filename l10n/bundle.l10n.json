@@ -221,4 +221,7 @@
   "Could not save the box resource.": "Could not save the box resource.",
   "Could not save annotations.": "Could not save annotations.",
   "Publish": "Publish"
+,
+  "Boxes without an image size were not published: {paths}.": "Boxes without an image size were not published: {paths}.",
+  "Some legacy boxes were dropped during migration: their image size is unknown.": "Some legacy boxes were dropped during migration: their image size is unknown."
 }
