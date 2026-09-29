@@ -222,4 +222,6 @@
   "Could not save annotations.": "無法儲存標註。",
   "Publish": "發布",
   "Boxes without an image size were not published: {paths}.": "這些框缺少圖片尺寸，未發布：{paths}。"
+,
+  "Could not read the box resource file. Box overlays are hidden until it is fixed.": "無法讀取框資源檔案。修復或刪除該檔案後，框疊加才會重新顯示。"
 }

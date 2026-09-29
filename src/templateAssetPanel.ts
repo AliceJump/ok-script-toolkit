@@ -4,7 +4,7 @@ import * as vscode from 'vscode';
 import { TemplateAssetData } from './templateAssetData';
 import { AnnotationPanel } from './annotationPanel';
 import { openBoxEditor } from './boxPanels';
-import { authoringReadErrors, boxesForImage, publishRuntime, readAuthoringFile, readRuntimeFile, runtimeOnlyPaths, runtimeReadErrors, swapImageBoxes } from './boxResourceStore';
+import { authoringImageSize, authoringReadErrors, boxesForImage, publishRuntime, readAuthoringFile, readRuntimeFile, runtimeOnlyPaths, runtimeReadErrors, swapImageBoxes } from './boxResourceStore';
 import { probedBoxesJson } from './cocoFeaturePath';
 import { cropTemplateThumbFileAsync, THUMB_HEIGHT } from './pngCrop';
 import { injectWebviewLocalization, tr } from './localization';
@@ -66,6 +66,8 @@ export function repaintAllAssetGalleries(): void {
 class AssetGalleryController {
   private generation = 0;
   private disposed = false;
+  /** 上次刷新时 authoring 是否不可读（用于只在状态翻转时弹一次提示） */
+  private lastBoxReadErrors = false;
   private readonly disposables: vscode.Disposable[] = [];
 
   constructor(
@@ -97,9 +99,14 @@ class AssetGalleryController {
     // 构建元数据
     const templates = templatesDirectory(this.data.root);
     const authoringErrors = this.boxes ? authoringReadErrors(this.data.root, templates) : [];
-    if (authoringErrors.length) {
-      void vscode.window.showErrorMessage(tr('Could not save the box resource.'));
+    if (authoringErrors.length && !this.lastBoxReadErrors) {
+      // 只在"可读 → 不可读"翻转时弹一次：update 是高频刷新，每次都弹就是 toast 刷屏；
+      // 文案说的是"读不了"，不是"保存失败" —— 用户此时并没有执行保存。
+      void vscode.window.showErrorMessage(
+        tr('Could not read the box resource file. Box overlays are hidden until it is fixed.'),
+      );
     }
+    this.lastBoxReadErrors = authoringErrors.length > 0;
     const authoring = this.boxes && !authoringErrors.length
       ? readAuthoringFile(this.data.root, templates)
       : undefined;
@@ -700,10 +707,9 @@ class AssetGalleryController {
     }
     const first = path.basename(sourcePath);
     const second = path.basename(targetPath);
-    const sizeOf = (fileName: string) => {
-      const entry = authoring.images.find((item) => item.file.toLowerCase() === fileName.toLowerCase());
-      return entry && entry.width > 0 && entry.height > 0 ? { width: entry.width, height: entry.height } : undefined;
-    };
+    // 与 store 侧补登记同一条规则：登记尺寸不可用时回退图片头，
+    // 否则"把框换到还没标过框的新截图"会在弹确认框之前就被拦下。
+    const sizeOf = (fileName: string) => authoringImageSize(root, templates, fileName);
     const sourceSize = sizeOf(first);
     const targetSize = sizeOf(second);
     if (!sourceSize || !targetSize) {

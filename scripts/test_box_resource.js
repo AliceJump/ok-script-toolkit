@@ -118,9 +118,13 @@ const badParse = pure.parseAuthoring(JSON.stringify({
   ],
 }));
 check(badParse.errors.includes('1:duplicate'), '重复 path 记错');
-check(badParse.errors.includes('2:image'), '引用未登记图片的框记错');
 check(badParse.errors.includes('3:rect'), '越界 bbox 记错');
 check(badParse.errors.includes('4:path'), '一段 path 记错');
+const unregistered = badParse.file.boxes.find((box) => box.path === 'screen.a');
+check(!!unregistered, '引用未登记图片的框保持可读（0 尺寸占位）');
+check(badParse.file.images.some((item) => item.file === 'missing.png' && item.width === 0), '未登记图片按 0 尺寸占位');
+const unregisteredPublish = pure.publishBoxes(badParse.file);
+check(unregisteredPublish.errors.some((item) => item === 'size:screen.a'), '0 尺寸占位的框发布时按 size: 报告');
 
 // ── 内存编辑：replaceAuthoringImages ────────────────────────────────
 const edited = pure.replaceAuthoringImages(fileV2, [{
@@ -139,6 +143,18 @@ check(pure.replaceAuthoringImages(fileV2, [
   { fileName: 'a.png', width: 100, height: 100, boxes: [{ path: 'screen.ok', x: 0, y: 0, w: 10, h: 10 }] },
   { fileName: 'a.png', width: 100, height: 100, boxes: [{ path: 'screen.bad', x: 0, y: 0, w: 999, h: 10 }] },
 ]).error === 'rect', '多图编辑有一张越界就整批失败');
+
+const trimmedEdit = pure.replaceAuthoringImages(fileV2, [{
+  fileName: '12.png', width: 1920, height: 1080,
+  boxes: [{ path: '  screen.padded  ', x: 1, y: 2, w: 30, h: 40 }],
+}]);
+check(!trimmedEdit.error && trimmedEdit.file.boxes[0].path === 'screen.padded', '保存前 path 先 trim，不以原值入库');
+const paddedParse = pure.parseAuthoring(pure.serializeAuthoring({
+  version: pure.AUTHORING_VERSION,
+  images: [{ file: '12.png', width: 1920, height: 1080 }],
+  boxes: [{ path: ' screen.pad2 ', image: '12.png', bbox: [1, 2, 30, 40] }],
+}));
+check(!paddedParse.errors.length && paddedParse.file.boxes[0].path === 'screen.pad2', '解析时 path 同样先 trim');
 
 // ── 图片交换：同尺寸换 image，不同尺寸按比例映射 ─────────────────────
 const swapBase = {
@@ -254,13 +270,29 @@ try {
   check(!afterRemove.images.some((item) => item.file === '12.png'), '尺寸登记也清掉');
   check(store.restoreAuthoring(tmp, templates, snapshot), '图片还在时写回原文件');
 
-  // 交换（读盘侧）
+  // 交换（读盘侧）：目标图没登记尺寸时从图片头补登记
   writeImage('big.png', 1920, 1080);
   writeImage('small.png', 960, 540);
-  fs.writeFileSync(path.join(templatesAbs, 'boxes.json'), pure.serializeAuthoring(swapBase));
-  check(store.swapImageBoxes(tmp, templates, 'big.png', 'small.png'), '交换写盘成功');
+  const swapBaseNoEntry = {
+    ...swapBase,
+    images: [swapBase.images[0]], // small.png 没登记（从未标过框的新截图场景）
+  };
+  fs.writeFileSync(path.join(templatesAbs, 'boxes.json'), pure.serializeAuthoring(swapBaseNoEntry));
+  // 界面预检查用的尺寸查询：与补登记同一条回退。此时 small.png 只有 0 尺寸占位条目
+  // （box screen.b 引用了它但没登记尺寸）—— 不回退图片头的话，界面会在弹确认框前先拦下。
+  check(
+    JSON.stringify(store.authoringImageSize(tmp, templates, 'big.png')) === JSON.stringify({ width: 1920, height: 1080 }),
+    '已登记的有效尺寸直接返回登记值',
+  );
+  check(
+    JSON.stringify(store.authoringImageSize(tmp, templates, 'small.png')) === JSON.stringify({ width: 960, height: 540 }),
+    '0 尺寸占位时回退图片头',
+  );
+  check(store.authoringImageSize(tmp, templates, 'not-here.png') === undefined, '图片头也读不出来时返回 undefined');
+  check(store.swapImageBoxes(tmp, templates, 'big.png', 'small.png'), '目标图缺尺寸登记时交换成功');
   const afterSwap = store.readAuthoringFile(tmp, templates);
   check(afterSwap.boxes.find((box) => box.path === 'screen.a').image === 'small.png', '交换后框换了宿主');
+  check(afterSwap.images.some((item) => item.file === 'small.png' && item.width === 960), '交换时补登记了目标图尺寸');
 } finally {
   fs.rmSync(tmp, { recursive: true, force: true });
 }

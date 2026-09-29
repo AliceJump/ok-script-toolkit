@@ -125,6 +125,25 @@ export function authoringReadErrors(rootDir: string, templatesDirectory: string)
   return readAuthoringResult(rootDir, templatesDirectory).errors;
 }
 
+/**
+ * 图片尺寸查询：authoring 里登记的**有效**条目优先，缺失或 0 尺寸占位（`parseAuthoring`
+ * 对"引用了未登记图片"的占位）时回退到图片头 —— 与 `swapImageBoxes` 的补登记同一条规则。
+ *
+ * 交换前的 UI 预检查走这里。只在 `swapImageBoxes` 里补登记的话，从未标过框的新截图
+ * 仍然会在弹确认框之前就被 "Cannot read image size" 拦下。
+ */
+export function authoringImageSize(
+  rootDir: string,
+  templatesDirectory: string,
+  fileName: string,
+): { width: number; height: number } | undefined {
+  const name = imageFileName(fileName);
+  if (!name) return undefined;
+  const entry = readAuthoringFile(rootDir, templatesDirectory).images.find((item) => sameImage(item.file, name));
+  if (entry && entry.width > 0 && entry.height > 0) return { width: entry.width, height: entry.height };
+  return imageHeaderSize(path.join(rootDir, templatesDirectory, name));
+}
+
 export function runtimeReadErrors(rootDir: string, declared?: string, fromConfigPy?: string): string[] {
   return readRuntimeResult(rootDir, declared, fromConfigPy).errors;
 }
@@ -196,7 +215,8 @@ export function removeImageBoxes(rootDir: string, templatesDirectory: string, fi
  * 文件不存在时，这次合法保存就是它的创建时刻。
  */
 export function addBox(rootDir: string, templatesDirectory: string, boxPath: string, image: string, box: PixelBox): string | undefined {
-  const pathError = boxPathError(boxPath);
+  const boxPathTrimmed = boxPath.trim();
+  const pathError = boxPathError(boxPathTrimmed);
   if (pathError) return pathError;
   const fileName = imageFileName(image);
   if (!fileName) return 'image';
@@ -206,12 +226,12 @@ export function addBox(rootDir: string, templatesDirectory: string, boxPath: str
   if (parsed.errors.length) return 'parse';
   const current = boxesForImageFile(parsed.file, fileName)
     .map((item) => ({ path: item.path, x: item.bbox[0], y: item.bbox[1], w: item.bbox[2], h: item.bbox[3] }));
-  if (current.some((item) => item.path === boxPath.trim())) return 'duplicate';
+  if (current.some((item) => item.path === boxPathTrimmed)) return 'duplicate';
   const merged = replaceAuthoringImages(parsed.file, [{
     fileName,
     width: header.width,
     height: header.height,
-    boxes: [...current, { path: boxPath, x: box.x, y: box.y, w: box.w, h: box.h }],
+    boxes: [...current, { path: boxPathTrimmed, x: box.x, y: box.y, w: box.w, h: box.h }],
   }]);
   if (merged.error) return merged.error;
   return writeText(authoringFile(rootDir, templatesDirectory), serializeAuthoring(merged.file)) ? undefined : 'write';
@@ -244,14 +264,33 @@ export function replaceImageBoxes(
  * 两张图的框整套对调。Pixel authoring 下坐标语义依赖图片尺寸：
  * 同尺寸直接换 `image`；不同尺寸按比例映射（复用模板交换的 `scaleBox`），
  * 映射与钳制在纯层完成。缺文件或两边都没有框时不创建文件。
+ *
+ * 目标图片没有尺寸登记时（常见：把框换到一张从未标过框的新截图上），
+ * 先从图片头补登记再交换 —— 补不出来才拒绝。
  */
 export function swapImageBoxes(rootDir: string, templatesDirectory: string, fileA: string, fileB: string): boolean {
   const parsed = readAuthoringResult(rootDir, templatesDirectory);
   if (parsed.errors.length) return false;
   if (parsed.file.boxes.length === 0) return true;
-  const swapped = swapImageBoxesPure(parsed.file, fileA, fileB);
+  let images = parsed.file.images;
+  const ensureEntry = (fileName: string): boolean => {
+    const name = imageFileName(fileName);
+    const existing = images.find((entry) => sameImage(entry.file, name));
+    // 已登记且尺寸有效才放行；缺失或 0 尺寸占位的条目从图片头补齐/覆盖
+    if (existing && existing.width > 0 && existing.height > 0) return true;
+    const header = imageHeaderSize(path.join(rootDir, templatesDirectory, name));
+    if (!header) return false;
+    const fresh: AuthoringFile["images"][number] = { file: name, width: header.width, height: header.height };
+    images = existing
+      ? images.map((entry) => (sameImage(entry.file, name) ? fresh : entry))
+      : [...images, fresh];
+    return true;
+  };
+  if (!ensureEntry(fileA) || !ensureEntry(fileB)) return false;
+  const prepared: AuthoringFile = { version: parsed.file.version, images, boxes: parsed.file.boxes };
+  const swapped = swapImageBoxesPure(prepared, fileA, fileB);
   if (swapped.error) return false;
-  if (serializeAuthoring(swapped.file) === serializeAuthoring(parsed.file)) return true;
+  if (serializeAuthoring(swapped.file) === serializeAuthoring(prepared)) return true;
   return writeText(authoringFile(rootDir, templatesDirectory), serializeAuthoring(swapped.file));
 }
 

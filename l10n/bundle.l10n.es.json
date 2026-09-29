@@ -222,4 +222,6 @@
   "Could not save annotations.": "No se pudieron guardar las anotaciones.",
   "Publish": "Publicar",
   "Boxes without an image size were not published: {paths}.": "Cajas sin tamaño de imagen no publicadas: {paths}"
+,
+  "Could not read the box resource file. Box overlays are hidden until it is fixed.": "No se pudo leer el archivo de recursos de cajas. Las superposiciones vuelven cuando se arregle."
 }

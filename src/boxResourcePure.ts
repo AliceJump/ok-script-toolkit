@@ -300,15 +300,17 @@ export function replaceAuthoringImages(
     const taken = new Set(kept.map((box) => box.path));
     const next: AuthoringBox[] = [];
     for (const box of edit.boxes) {
-      const pathError = boxPathError(box.path);
+      // path 与 runtime 同一规则：先 trim 再校验、再落盘，" screen.x " 不能以原值入库
+      const boxPath = box.path.trim();
+      const pathError = boxPathError(boxPath);
       if (pathError) return { file: existing, error: pathError };
-      if (taken.has(box.path)) return { file: existing, error: 'duplicate' };
-      taken.add(box.path);
+      if (taken.has(boxPath)) return { file: existing, error: 'duplicate' };
+      taken.add(boxPath);
       const bbox = roundPixelBbox([box.x, box.y, box.w, box.h]);
       if (pixelBboxError(bbox, { width: edit.width, height: edit.height })) {
         return { file: existing, error: 'rect' };
       }
-      next.push({ path: box.path, image, bbox });
+      next.push({ path: boxPath, image, bbox });
     }
     const entryIndex = current.images.findIndex((item) => sameImage(item.file, image));
     const entry: AuthoringImage = { file: image, width: edit.width, height: edit.height };
@@ -462,7 +464,14 @@ export function parseAuthoring(text: string): BoxParseResult<AuthoringFile> {
       return;
     }
     const image = typeof item?.image === 'string' ? imageFileName(item.image) : '';
-    const imageEntry = image ? byFile.get(image.toLowerCase()) : undefined;
+    let imageEntry = image ? byFile.get(image.toLowerCase()) : undefined;
+    if (image && !imageEntry) {
+      // 引用了未登记的图片：先按 0 尺寸占位登记，保持文件可读；bbox 只查正性，
+      // 尺寸由交换/发布前的图片头补登记补齐，补不出来时按 size:<path> 报告。
+      imageEntry = { file: image, width: 0, height: 0 };
+      byFile.set(image.toLowerCase(), imageEntry);
+      images.push(imageEntry);
+    }
     if (!imageEntry) {
       errors.push(`${index}:image`);
       return;
@@ -476,12 +485,14 @@ export function parseAuthoring(text: string): BoxParseResult<AuthoringFile> {
       errors.push(`${index}:rect`);
       return;
     }
-    if (seen.has(item.path)) {
+    // 与 runtime 同一规则：入库前 trim，" screen.x " 不能以原值留在文件里
+    const boxPath = item.path.trim();
+    if (seen.has(boxPath)) {
       errors.push(`${index}:duplicate`);
       return;
     }
-    seen.add(item.path);
-    boxes.push({ path: item.path, image: imageEntry.file, bbox });
+    seen.add(boxPath);
+    boxes.push({ path: boxPath, image: imageEntry.file, bbox });
   });
   boxes.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
   images.sort((a, b) => (a.file < b.file ? -1 : a.file > b.file ? 1 : 0));
