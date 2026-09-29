@@ -453,15 +453,27 @@ export class TemplateAssetData {
     const templates = templatesDirectory(this.rootDir);
     const snapshot = captureAuthoring(this.rootDir, templates);
     if (!snapshot) return false;
+    const staged = `${imagePath}.${process.pid}.ok-delete`;
+    let moved = false;
     try {
       if (!removeImageBoxes(this.rootDir, templates, path.basename(imagePath))) return false;
-      if (fs.existsSync(imagePath)) fs.unlinkSync(imagePath);
+      if (fs.existsSync(imagePath)) {
+        fs.renameSync(imagePath, staged);
+        moved = true;
+      }
       const hadEntry = this.getSwapImageEntry(imagePath) !== undefined;
       this.removeImageEntry(imagePath);
       if (hadEntry || fs.existsSync(this.cocoPath)) this.save();
+      if (moved) {
+        try { fs.unlinkSync(staged); } catch { /* 图已经不在模板目录，框和标注已落盘 */ }
+      }
       return true;
     } catch {
+      if (moved && fs.existsSync(staged) && !fs.existsSync(imagePath)) {
+        try { fs.renameSync(staged, imagePath); } catch { /* 原路径占着时留给下面的框恢复判断 */ }
+      }
       if (fs.existsSync(imagePath)) restoreAuthoring(this.rootDir, templates, snapshot);
+      try { this.load(); } catch { /* 标注写盘没成功时，内存仍可能是删过的那份 */ }
       return false;
     }
   }
