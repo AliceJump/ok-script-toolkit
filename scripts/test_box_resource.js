@@ -116,7 +116,7 @@ const tick = () => new Promise(resolve => setTimeout(resolve, 30));
     await editor.onMessage({ type: 'ready' });
     assert(editorMessages.find(message => message.type === 'config' && message.boxMode), 'shared controller enables box name validation');
     assert.deepStrictEqual(editorMessages.filter(message => message.type === 'load').at(-1).annotations, []);
-    await editor.onMessage({ type: 'save', annotations: [{ id: 1, category: 'screen.first', x: 10, y: 20, w: 30, h: 40 }] });
+    await editor.onMessage({ type: 'save', annotations: [{ id: 1, category: ' screen.first ', x: 10, y: 20, w: 30, h: 40 }] });
     assert.deepStrictEqual(errors, [], 'first direct draw saves without a source file');
     let raw = JSON.parse(fs.readFileSync(boxesFile, 'utf8'));
     assert.deepStrictEqual(Object.keys(raw), Object.keys(JSON.parse(templateText)), 'box and template sources have exactly the same COCO fields');

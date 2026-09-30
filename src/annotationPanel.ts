@@ -275,6 +275,7 @@ class AnnotationController {
     try {
       this.saving = true;
       this.data.load();
+      if (this.boxMode) annotations = annotations.map(ann => ({ ...ann, category: ann.category.trim() }));
       const namesError = this.boxMode ? boxNamesError(this.data, imagePath, annotations.map(ann => ann.category)) : undefined;
       if (namesError) throw new Error(namesError);
       if (!this.data.setAnnotationsForImage(imagePath, annotations)) {
