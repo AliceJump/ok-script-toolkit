@@ -178,7 +178,6 @@
   "Saved to: {path}": "Guardado en: {path}",
   "Screenshot failed: file not created": "Captura fallida: no se creó el archivo",
   "Screenshot failed: {error}": "Captura fallida: {error}",
-  "Screenshot saved but COCO update failed: {error}": "Captura guardada, pero falló la actualización de COCO: {error}",
   "Screenshot saved: {name}": "Captura guardada: {name}",
   "Screenshot script not found. capture_game_window.py is missing from the extension.": "No se encontró el script de captura. Falta capture_game_window.py en la extensión.",
   "Source: {layer}": "Origen: {layer}",
@@ -221,7 +220,8 @@
   "Could not save the box resource.": "No se pudo guardar el recurso de cuadros.",
   "Could not save annotations.": "No se pudieron guardar las anotaciones.",
   "Publish": "Publicar",
-  "Boxes without an image size were not published: {paths}.": "Cajas sin tamaño de imagen no publicadas: {paths}"
-,
-  "Could not read the box resource file. Box overlays are hidden until it is fixed.": "No se pudo leer el archivo de recursos de cajas. Las superposiciones vuelven cuando se arregle."
+  "Boxes without an image size were not published: {paths}.": "Cajas sin tamaño de imagen no publicadas: {paths}",
+  "Could not read the box resource file. Box overlays are hidden until it is fixed.": "No se pudo leer el archivo de recursos de cajas. Las superposiciones vuelven cuando se arregle.",
+  "No box annotations to publish.": "No hay anotaciones de cuadros para publicar.",
+  "The annotation source is invalid. Fix the source file before saving or exporting.": "El archivo de anotaciones no es válido. Corrígelo antes de guardar o exportar."
 }

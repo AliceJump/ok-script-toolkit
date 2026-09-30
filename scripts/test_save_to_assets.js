@@ -840,6 +840,74 @@ async function test_setAnnotationsRegistersMissingImage() {
   }
 }
 
+/* ========== 测试 15：导入图片不写 coco_annotations.json ========== */
+
+async function test_importImageLeavesCocoUntouched() {
+  setup();
+  const cocoPath = path.join(templateDir, 'coco_annotations.json');
+  try {
+    const existing = {
+      images: [{ id: 1, file_name: '1.png', width: 10, height: 10 }],
+      annotations: [],
+      categories: [],
+    };
+    fs.writeFileSync(cocoPath, JSON.stringify(existing, null, 2));
+    const before = fs.readFileSync(cocoPath, 'utf-8');
+    const source = path.join(tmpDir, 'incoming.png');
+    fs.writeFileSync(source, createPng(12, 8, 1, 2, 3));
+
+    const data = new TemplateAssetData(tmpDir);
+    data.load();
+    const dst = data.importImageFile(source);
+    assert(dst === path.join(templateDir, '2.png'),
+      `import takes the next free number and does not reuse the COCO one, got ${dst}`);
+    assert(fs.existsSync(dst), 'the imported file lands on disk');
+
+    assert(fs.readFileSync(cocoPath, 'utf-8') === before,
+      'importing an image must leave coco_annotations.json byte-identical');
+    const after = JSON.parse(fs.readFileSync(cocoPath, 'utf-8'));
+    assert(after.images.length === 1 && after.images[0].file_name === '1.png',
+      'the imported image is not registered as a COCO image');
+    console.log('[PASS] test_importImageLeavesCocoUntouched');
+  } finally {
+    teardown();
+  }
+}
+
+/* ========== 测试 16：导入不会凭空造出标注文件 ========== */
+
+async function test_importImageDoesNotCreateCocoFile() {
+  setup();
+  const cocoPath = path.join(templateDir, 'coco_annotations.json');
+  try {
+    const source = path.join(tmpDir, 'incoming.png');
+    fs.writeFileSync(source, createPng(5, 5, 0, 0, 0));
+
+    const data = new TemplateAssetData(tmpDir);
+    data.load();
+    assert(data.importImageFile(source), 'the import itself succeeds');
+    assert(!fs.existsSync(cocoPath),
+      'import must not create coco_annotations.json just because a file was copied in');
+    console.log('[PASS] test_importImageDoesNotCreateCocoFile');
+  } finally {
+    teardown();
+  }
+}
+
+/* ========== 测试 17：截图流程不再有"登记进 COCO"的入口 ========== */
+
+async function test_screenshotFlowHasNoCocoRegistrationEntryPoint() {
+  // 截图只落盘（`capture_game_window.py` 直接写文件）并刷新素材列表；COCO 图片登记
+  // 的**唯一**入口是标注保存（`setAnnotationsForImage` → `ensureSwapImage`，
+  // 见测试 14）。这里守住"不给截图流程重新开一个登记入口"：
+  // 之前正是 `TemplateAssetData.addImageToCoco` 让每截一张图都往标注文件塞一条空记录。
+  assert(TemplateAssetData.addImageToCoco === undefined,
+    'the screenshot flow must not expose a static COCO registration helper');
+  assert(TemplateAssetData.prototype.addScreenshot === undefined,
+    'the unused base64 screenshot helper must not come back with COCO registration');
+  console.log('[PASS] test_screenshotFlowHasNoCocoRegistrationEntryPoint');
+}
+
 /* ========== 运行所有测试 ========== */
 
 const tests = [
@@ -857,6 +925,9 @@ const tests = [
   test_annotationSwapFallbackRequiresSameFile,
   test_annotationSwapRegistersImageWithoutBoxes,
   test_setAnnotationsRegistersMissingImage,
+  test_importImageLeavesCocoUntouched,
+  test_importImageDoesNotCreateCocoFile,
+  test_screenshotFlowHasNoCocoRegistrationEntryPoint,
 ];
 
 let passed = 0;

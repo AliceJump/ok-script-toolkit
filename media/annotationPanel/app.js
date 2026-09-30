@@ -1301,6 +1301,11 @@
       updateButtonTexts();
       return;
     }
+    if (msg.type === 'boxPaths') {
+      if (imageData) imageData.boxPaths = msg.boxPaths || {};
+      refreshGeneratePathState();
+      return;
+    }
     if (msg.type === 'generateBoxResult') {
       const error = document.getElementById('generateError');
       if (msg.ok) {

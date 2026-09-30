@@ -50,19 +50,25 @@
 
 ## 4. 数据模型
 
-标注资源带着原图与尺寸（version 2，与模板标注同一套 Pixel 模型）：
+模板和框各存一份源标注，但两份文件都使用完全相同的 COCO 格式。框名称放在 categories.name，图片关联、尺寸和像素矩形直接使用标准字段：
 
 ```json
 {
-  "version": 2,
   "images": [
-    { "file": "12.png", "width": 1920, "height": 1080 }
+    { "id": 1, "file_name": "12.png", "width": 1920, "height": 1080 }
   ],
-  "boxes": [
-    { "path": "screen.main_viewport", "image": "12.png", "bbox": [184, 112, 1544, 853] }
+  "annotations": [
+    { "id": 1, "image_id": 1, "category_id": 1, "bbox": [184, 112, 1544, 853], "area": 1317032, "iscrowd": 0 }
+  ],
+  "categories": [
+    { "id": 1, "name": "screen.main_viewport", "supercategory": "" }
   ]
 }
 ```
+
+源文件不再有独立的 version / boxes 模型。VS Code 的模板和框共用 CocoAnnotationData、AnnotationController；JetBrains 共用 CocoAnnotationData、AnnotationDialog。图片登记、矩形校验、交换、原子保存和刷新通知也共用；差异仅为源文件路径、名称校验、导出。两端可以交替编辑相同的 COCO 源文件。
+
+旧的 version 1 / version 2 框源文件只作为兼容输入。读取时不改盘；首次编辑保存前备份原文件（boxes.json.pre-coco.<uuid>.bak），再写成 COCO。缺少转换所需图片尺寸或源文件损坏时停止保存，保留全部原数据。
 
 运行时资源只有归一化几何（version 1 不变）。`to_box()` 不需要图片：
 
@@ -83,12 +89,12 @@
 - `path` 是 `self.pos.` 后面的属性路径。至少两段，每段是 Python 标识符。`screen.main_viewport` 对应 `self.pos.screen.main_viewport`。路径规则只有一份（`boxResourcePure.boxPathError`），webview 的即时校验用它随 `config` 下发的同一份文法。
 - `bbox` 是 `[x, y, w, h]` 像素框，与模板 COCO 的 `bbox` 同形：整数、宽高 ≥ 1、完整落在原图 `width × height` 内。编辑、保存、校验全程 Pixel，不出现 normalized。
 - `images` 登记每张被引用原图的尺寸；保存框时按图片头登记 / 刷新，发布和预览都从这张表取尺寸。
-- 序列化：authoring 整数像素、按 `path` 排序；runtime 按矩形 6 位小数输出。改一个框时 diff 停在那个对象。
+- 序列化：源标注共用模板的 COCO 序列化；runtime 按 path 排序、矩形保留 6 位小数。
 - `image` 是模板目录下的文件名，用现有文件名归一化规则对齐。不复制图片，不把裁剪 PNG 写进仓库。
 - 参照图必须是整屏截图。`assets/images` 里的打包裁切块不能当框的原图。
 - `to_box()` 的调试名由 path 推导：`screen` 下的叶子写成 `ScreenPosition.<叶子>`。它不是主键。
 
-发布把 Pixel authoring 投影成 normalized runtime —— 这是唯一的归一化入口：
+发布读取框源 COCO 并投影成 normalized runtime。空源文件或源文件不存在时提示没有可发布的框，不覆盖已有运行时资源。这是日常工作流中唯一的归一化入口：
 
 ```text
 left   = x / width
@@ -103,9 +109,9 @@ bottom = (y + h) / height
 
 框引用标注管理正在用的同一批原图。框资源管理不导入图片、不截图入库、不打包导出。
 
-不新写画布。编辑器会话只认识图片和 `id + 标签 + 像素 xywh`。模板适配器的标签是分类名，保存仍写 COCO。框适配器的标签是 path，打开时直接用 authoring 的 Pixel bbox，写回时仍按像素保存 —— 打开后直接保存不会改文件。
+共用画布、控制器和 COCO 存储。模板标签校验模板名称，框标签校验 Python 属性路径；两种标签都保存在 categories.name，坐标都保存在 annotations.bbox。源文件不存在时视为空标注集，首次保存自动登记图片与尺寸并创建文件。
 
-从标注生成框：选中的像素标注直接做 Pixel union（最小包围矩形）写入 authoring，中途不做归一化；合法性（是否越界）按图片头尺寸校验。
+从模板生成框：选中的像素标注取最小包围矩形，作为一条普通 COCO 标注写入框源文件。保存成功立即更新框资源列表、已打开的框编辑器及路径占用表。内部保存和外部文件变更走同一刷新通道；重复文件事件不重置当前编辑器的撤销历史。
 
 图片交换：同尺寸只换所属图片；尺寸不同按比例映射（复用模板标注交换的 `annotationSwapPure`，映射后钳制进目标边界），确认框里说明缩放。
 
@@ -157,7 +163,12 @@ bbox = [left, top, right - left, bottom - top]
 
 | 位置 | 职责 |
 |---|---|
-| `src/boxResourcePure.ts` 与 `core/BoxResource.kt` | 路径、矩形、发布、显隐。两端语义一致 |
+| `src/cocoAnnotationData.ts` / `src/annotationPanel.ts` | VS Code 共用 COCO 源数据与标注控制器 |
+| `core/CocoAnnotationData.kt` / `ui/AnnotationDialog.kt` | JetBrains 共用 COCO 源数据与标注对话框 |
+| `src/annotationGeometry.ts` | 模板、框共用的像素矩形校验 |
+| `core/AnnotationGeometry.kt` / `core/CocoSource.kt` | JetBrains 共用像素矩形校验、源文件解析、原子写入和刷新通知 |
+| `src/boxResourcePure.ts` / `src/boxResourceStore.ts` | 框名称校验、旧源文件兼容导入与运行时导出 |
+| `core/BoxResource.kt` / `core/BoxAnnotationStore.kt` | JetBrains 的框名称规则、旧源导入与运行时导出适配 |
 | `core/BoxRuntimePath.kt` 与纯模块中的路径函数 | 运行时文件取值链，对标 `CocoFeaturePath` |
 | `schemas/ok-script-toolkit.schema.json` 的 `boxes.runtime` | 约定文件。没有个人偏好层 |
 | `python/probe_window_config.py` 的 `boxes_json` | 从 `config.py` 顶层读出运行时路径 |
@@ -177,7 +188,7 @@ bbox = [left, top, right - left, bottom - top]
 ## 11. 风险
 
 - 编辑器改造不能改变模板标注的保存结果。显隐默认全显，撤销不含显隐。
-- 打开即保存不得改写未移动框的浮点。
+- 旧版插件不认识 COCO 框源文件；两端需要同时更新。旧源文件备份保留在标注目录，运行时文件格式保持一致。
 - 框若标在裁切块上，归一化结果不是屏幕比例。
 - JSON 与类属性同名时以 JSON 为准。导入并发布后，应在业务项目里删掉对应手写属性，避免两处各改各的。
 - 插件不得把 `hcenter` 算进 `rect`。

@@ -178,7 +178,6 @@
   "Saved to: {path}": "已儲存到: {path}",
   "Screenshot failed: file not created": "截圖失敗: 未產生檔案",
   "Screenshot failed: {error}": "截圖失敗: {error}",
-  "Screenshot saved but COCO update failed: {error}": "截圖已儲存，但 COCO 更新失敗: {error}",
   "Screenshot saved: {name}": "截圖已儲存: {name}",
   "Screenshot script not found. capture_game_window.py is missing from the extension.": "找不到截圖腳本，擴充功能缺少 capture_game_window.py。",
   "Source: {layer}": "來源：{layer}",
@@ -221,7 +220,8 @@
   "Could not save the box resource.": "無法儲存框資源。",
   "Could not save annotations.": "無法儲存標註。",
   "Publish": "發布",
-  "Boxes without an image size were not published: {paths}.": "這些框缺少圖片尺寸，未發布：{paths}。"
-,
-  "Could not read the box resource file. Box overlays are hidden until it is fixed.": "無法讀取框資源檔案。修復或刪除該檔案後，框疊加才會重新顯示。"
+  "Boxes without an image size were not published: {paths}.": "這些框缺少圖片尺寸，未發布：{paths}。",
+  "Could not read the box resource file. Box overlays are hidden until it is fixed.": "無法讀取框資源檔案。修復或刪除該檔案後，框疊加才會重新顯示。",
+  "No box annotations to publish.": "沒有可發佈的框標註。",
+  "The annotation source is invalid. Fix the source file before saving or exporting.": "標註來源檔案無效，請修復來源檔案後再儲存或匯出。"
 }
