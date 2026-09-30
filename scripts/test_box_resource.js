@@ -231,6 +231,26 @@ const tick = () => new Promise(resolve => setTimeout(resolve, 30));
     disposables.push(templateGallery);
     await templateGallery.update();
     assert(errors.includes('The annotation source is invalid. Fix the source file before saving or exporting.'));
+    const reservedSources = [
+      ['coco_annotations.json', { images: [{ id: 1, file_name: '1.png', width: 100, height: 100 }], annotations: [], categories: [] }],
+      ['boxes.json', { images: [{ id: 1, file_name: '1.png', width: 100, height: 100 }], annotations: [], categories: [] }],
+      ['boxes.json', { version: 1, boxes: [{ path: 'screen.old', image: '1.png', rect: [0, 0, 1, 1] }] }],
+      ['boxes.json', { version: 2, images: [{ file: '1.png', width: 100, height: 100 }], boxes: [] }],
+    ];
+    for (const [index, [fileName, content]] of reservedSources.entries()) {
+      const isolatedRoot = path.join(project, 'reservations-' + index);
+      const isolatedDir = path.join(isolatedRoot, 'ok_templates');
+      fs.mkdirSync(isolatedDir, { recursive: true });
+      const reservedFile = path.join(isolatedDir, fileName);
+      const text = JSON.stringify(content);
+      fs.writeFileSync(reservedFile, text);
+      const importing = new TemplateAssetData(isolatedRoot, fileName === 'boxes.json' ? 'coco_annotations.json' : 'boxes.json');
+      assert.strictEqual(importing.nextImageName(), '2');
+      assert.strictEqual(importing.importImageFile(image), path.join(isolatedDir, '2.png'));
+      assert(!fs.existsSync(path.join(isolatedDir, '1.png')));
+      assert.strictEqual(fs.readFileSync(reservedFile, 'utf8'), text);
+      assert.strictEqual(importing.data.images.length, 0);
+    }
   } finally {
     for (const disposable of disposables) disposable.dispose();
     Module._load = originalLoad;

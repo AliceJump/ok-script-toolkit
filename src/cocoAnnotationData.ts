@@ -256,6 +256,19 @@ export class CocoAnnotationData {
     const existing = new Set(
       [...this.cocoData.images.map(img => img.file_name), ...this.listImages()].map(name => path.basename(name, path.extname(name)))
     );
+    // Both editors share the directory; reserve names even for missing files and legacy box sources.
+    for (const source of new Set([this.fileName, 'coco_annotations.json', 'boxes.json'])) {
+      try {
+        const raw = JSON.parse(fs.readFileSync(path.join(this.templateFolder, source), 'utf8'));
+        const names: unknown[] = [
+          ...(Array.isArray(raw?.images) ? raw.images.flatMap((image: { file_name?: string; file?: string } | null) => [image?.file_name, image?.file]) : []),
+          ...(Array.isArray(raw?.boxes) ? raw.boxes.map((box: { image?: string } | null) => box?.image) : []),
+        ];
+        for (const name of names) {
+          if (typeof name === 'string') existing.add(filenameKey(name.replace(/\\/g, '/')));
+        }
+      } catch { /* Missing or unreadable sources do not prevent copying image files. */ }
+    }
     let i = 1;
     while (existing.has(String(i))) i++;
     return String(i);
