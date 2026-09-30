@@ -26,28 +26,52 @@ def resolve_run_dir(project_dir):
     return os.path.abspath(configured) if configured else os.path.join(project_dir, *LEGACY_RUN_DIR_PARTS)
 
 
-def detect_config_folder(project_dir):
-    """Read a literal ``config_folder`` before importing the target project."""
-    for candidate in (
-        os.path.join(project_dir, "src", "config.py"),
-        os.path.join(project_dir, "config.py"),
-    ):
+def _config_path_value(node, constants):
+    """Resolve strings and path joins without executing project code."""
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
+    if isinstance(node, ast.Name):
+        return constants.get(node.id)
+    if isinstance(node, ast.Call) and ast.unparse(node.func) == "os.path.join" and not node.keywords:
+        parts = [_config_path_value(arg, constants) for arg in node.args]
+        if parts and all(isinstance(part, str) for part in parts):
+            return os.path.join(*parts)
+    return None
+
+
+def detect_config_folder(project_dir, config_module=None):
+    """Read the selected module's config path before importing the project.
+
+    Runtime-only expressions retain the default here; the executor reconciles
+    them with the imported config before constructing the framework.
+    """
+    modules = (config_module,) if config_module else ("src.config", "config")
+    for module in modules:
+        module_path = os.path.join(project_dir, *module.split("."))
+        candidate = module_path + ".py"
+        if not os.path.isfile(candidate):
+            candidate = os.path.join(module_path, "__init__.py")
         try:
             with open(candidate, encoding="utf-8") as stream:
                 tree = ast.parse(stream.read(), filename=candidate)
         except (OSError, SyntaxError):
             continue
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.Dict):
-                continue
-            for key, value in zip(node.keys, node.values):
-                if (
-                    isinstance(key, ast.Constant)
-                    and key.value == "config_folder"
-                    and isinstance(value, ast.Constant)
-                    and isinstance(value.value, str)
-                ):
-                    return value.value
+        constants = {}
+        for node in tree.body:
+            if isinstance(node, ast.Assign):
+                value = _config_path_value(node.value, constants)
+                for target in node.targets:
+                    if isinstance(target, ast.Name):
+                        constants[target.id] = value
+            # Capture bindings at the declaration, before later reassignments.
+            for declaration in ast.walk(node):
+                if not isinstance(declaration, ast.Dict):
+                    continue
+                for key, value in zip(declaration.keys, declaration.values):
+                    if isinstance(key, ast.Constant) and key.value == "config_folder":
+                        folder = _config_path_value(value, constants)
+                        if folder is not None:
+                            return folder
     return "configs"
 
 

@@ -11,7 +11,7 @@
 其余触发任务（见 ok/__init__.py）。于是旧实现每个任务各起一个进程，同一时刻只能跑
 一个触发任务，无法做多触发任务轮询。
 
-本脚本改为：`OK(config)` 初始化一次 → `start_controller.do_start(None)` → 全部触发任务
+本脚本改为：`OK(config)` 初始化一次 → `OK.start_runtime()` → 原生 StartController → 全部触发任务
 留在 `executor.trigger_tasks` 里，交给框架原生的 `TaskExecutor.execute()` 循环。
 该循环的 `next_task()` 顺序是：onetime 队列 → 任一 enabled 的一次性任务 → 触发任务按
 `trigger_task_index` 轮转，命中 `enabled and should_trigger()` 就执行，转满一圈后按全局
@@ -81,11 +81,11 @@ import importlib
 import inspect
 import json
 import os
+import queue
 import shutil
 import sys
 import tempfile
 import threading
-import time
 
 # 同目录的共享模块（project_store）要能 import：脚本按文件位置加载时（测试、
 # 以及宿主从任意 cwd 拉起）脚本目录不在 sys.path 上。
@@ -95,7 +95,9 @@ sys.stdout.reconfigure(encoding="utf-8")
 sys.stderr.reconfigure(encoding="utf-8")
 
 import project_store  # noqa: E402 — 必须在 sys.path 调整之后
-from project_runtime import RUN_DIR_ENV  # noqa: E402
+from project_runtime import RUN_DIR_ENV, detect_config_folder, resolve_run_dir  # noqa: E402
+from executor_runtime import copy_config_containers, start_framework_runtime  # noqa: E402
+from executor_input import iter_command_lines  # noqa: E402
 
 MARKER_CONNECTING = "OK_TOOLKIT_EXECUTOR_CONNECTING"
 MARKER_READY = "OK_TOOLKIT_EXECUTOR_READY"
@@ -124,13 +126,17 @@ _MISSING = object()
 
 def _emit(line: str) -> None:
     with _print_lock:
-        print(line, flush=True)
+        # A single write keeps framework logs from landing between a control
+        # marker's payload and its newline on another thread.
+        sys.stdout.write(line + "\n")
+        sys.stdout.flush()
 
 
 def _note(message: str) -> None:
     """人可读的日志行（宿主原样展示在输出频道）。"""
     with _print_lock:
-        print(f"[toolkit] {message}", flush=True)
+        sys.stdout.write(f"[toolkit] {message}\n")
+        sys.stdout.flush()
 
 
 def task_key(task) -> str:
@@ -173,7 +179,8 @@ def copy_account_file_once(source: str, target: str) -> None:
 def apply_config_sandbox(config: dict) -> str:
     """把 ok 框架的配置读写改道到沙箱目录，避免污染目标项目的 configs/。
 
-    必须在 `OK(config)` 之前调用：任务在 `OK()` 内部实例化，而 `Config.__init__`
+    main() 在导入项目之前调用：项目模块也可能创建 Config，任务在 `OK()` 内部
+    实例化，而 `Config.__init__`
     （ok/util/config.py）一执行就以 `Config.config_folder` 定下 `config_file` 路径，
     之后 `save_file()` 永远写它，再改就晚了。
 
@@ -192,12 +199,23 @@ def apply_config_sandbox(config: dict) -> str:
     run_dir = os.path.abspath(run_dir)
     config_folder = os.path.join(run_dir, "configs")
     screenshots_folder = os.path.join(run_dir, "screenshots")
+    source_configs = os.path.abspath(str(config.get("config_folder") or "configs"))
+    # An overlapping sandbox would overwrite the project's baseline, or recurse
+    # while copying it. Resolve symlinks/junctions before accepting the boundary.
+    target_real = os.path.normcase(os.path.realpath(config_folder))
+    for source in (source_configs, os.path.abspath("configs")):
+        source_real = os.path.normcase(os.path.realpath(source))
+        try:
+            common = os.path.commonpath((source_real, target_real))
+        except ValueError:  # separate Windows drives
+            continue
+        if common in (source_real, target_real):
+            raise ValueError("configuration sandbox overlaps the project configuration directory")
     try:
         os.makedirs(config_folder, exist_ok=True)
         os.makedirs(screenshots_folder, exist_ok=True)
-    except OSError as e:  # noqa: BLE001 — 建不出沙箱就退回旧行为，绝不因它起不来
-        _note(f"配置沙箱创建失败，回退为不隔离：{e}")
-        return ""
+    except OSError as e:
+        raise RuntimeError("configuration sandbox could not be created") from e
 
     # 项目 configs/ → 沙箱：任务的初始配置值跟项目配置走（devices.json 也随之进来，
     # connect_game.py 写的项目侧文件对执行器可见）。不拷的话任务读到的全是默认值，
@@ -208,13 +226,6 @@ def apply_config_sandbox(config: dict) -> str:
     # 否则每次启动都会把用户编辑覆盖成项目里的旧文件。
     # 注意必须**先**读项目原值再覆盖 config["config_folder"] —— 覆盖之后 config
     # 里已经是沙箱路径，再读就拷了个寂寞（首次实现就栽在这里，被测试 4 抓住）。
-    source_folder = str(config.get("config_folder") or "configs")
-    source_configs = (
-        source_folder
-        if os.path.isabs(source_folder)
-        else os.path.join(os.getcwd(), source_folder)
-    )
-
     config["config_folder"] = config_folder
     # 截图目录必须一起改道：ok 启动时会清空它（会真的删文件）。
     config["screenshots_folder"] = screenshots_folder
@@ -240,8 +251,8 @@ def apply_config_sandbox(config: dict) -> str:
             copy_account_file_once(
                 os.path.join(source_configs, account_file), sandbox_account_file,
             )
-        except OSError as e:  # noqa: BLE001 — 拷贝失败退回「默认值」语义，绝不阻断启动
-            _note(f"项目 configs 拷入沙箱失败（任务将读到默认值）：{e}")
+        except OSError as e:
+            raise RuntimeError("project configuration could not be copied into the sandbox") from e
 
     # 插件侧的全局配置组快照（OK_TOOLKIT_GCONFIG）：merge 进沙箱 configs/<组名>.json。
     # 必须在 copytree 之后 —— 插件值优先于项目值；在 OK(config) 之前 —— 框架实例化
@@ -257,33 +268,68 @@ def apply_config_sandbox(config: dict) -> str:
 # 账号存储（account_scoped_overrides.json）同样进沙箱：插件编辑不落项目文件，
 # 与「项目 GUI 与插件独立」的语义一致（代价：GUI 写的账号数据执行器侧不可见，
 # 以执行器/插件侧为准）。
-def install_config_path_patch() -> None:
+def install_config_path_patch(source_folder="configs"):
     """把 get_relative_path("configs", ...) 的相对调用改道到沙箱 configs。
 
     必须在 import 项目 config 之前安装（store 模块在导入期就用该函数固定路径）。
     ok.util.config 在模块导入时复制了函数引用，需要同步替换。
+    Config 首次打开动态目录时预载并重定向，返回同一份目录准备函数。
     """
     run_dir = os.environ.get(RUN_DIR_ENV, "").strip()
     if not run_dir:
         return
     sandbox_configs = os.path.join(os.path.abspath(run_dir), "configs")
-    try:
-        import ok.util.config as ok_config
-        import ok.util.file as ok_file
-    except Exception as e:  # noqa: BLE001 — ok 未就绪时跳过（import config 后仍有 apply_config_sandbox 兜底）
-        _note(f"get_relative_path 改道跳过：{e}")
-        return
+    import ok.util.config as ok_config
+    import ok.util.file as ok_file
+
+    sources = [os.path.normcase(os.path.realpath(source_folder))]
+    seeded = set(sources)
+    source_lock = threading.RLock()
+    sandbox_real = os.path.normcase(os.path.realpath(sandbox_configs))
+    legacy_real = os.path.normcase(os.path.realpath("configs"))
+    if legacy_real not in sources:
+        sources.append(legacy_real)
 
     original = ok_file.get_relative_path
 
+    def contains(root, path):
+        try:
+            return os.path.commonpath((root, path)) == root
+        except ValueError:
+            return False
+
+    def add_source_folder(folder):
+        # Resolve through the native helper, including argv-based project paths.
+        path = original(folder)
+        resolved = os.path.normcase(os.path.realpath(path))
+        with source_lock:
+            if contains(sandbox_real, resolved) or any(contains(root, resolved) for root in seeded):
+                return
+            # Copy once before Config captures its filename or verifies defaults.
+            apply_config_sandbox({"config_folder": path})
+            seeded.add(resolved)
+            if resolved not in sources:
+                sources.insert(0, resolved)
+
     def sandboxed_get_relative_path(*files):
-        if files and os.path.normcase(str(files[0])) == "configs":
-            return os.path.normpath(os.path.join(sandbox_configs, *files[1:]))
-        return original(*files)
+        path = original(*files)
+        if path is None:
+            return path
+        resolved = os.path.normcase(os.path.realpath(path))
+        for source in sources:
+            if contains(source, resolved):
+                return os.path.normpath(os.path.join(sandbox_configs, os.path.relpath(resolved, source)))
+        return path
+
+    def sandboxed_config_path(folder, *files):
+        add_source_folder(folder)
+        return sandboxed_get_relative_path(folder, *files)
 
     ok_file.get_relative_path = sandboxed_get_relative_path
-    ok_config.get_relative_path = sandboxed_get_relative_path
+    ok_config.get_relative_path = sandboxed_config_path
+    ok_config.Config.config_folder = sandbox_configs
     _note("configs 相对路径已改道沙箱（自建 store / 账号存储 / 运行期写入一并隔离）")
+    return add_source_folder
 
 
 def apply_global_group_snapshot(config_folder) -> None:
@@ -776,18 +822,6 @@ def emit_state(executor, force: bool = False) -> None:
     _emit(MARKER_STATE + encoded)
 
 
-def start_state_ticker(executor) -> None:
-    def tick() -> None:
-        while True:
-            time.sleep(STATE_HEARTBEAT)
-            try:
-                emit_state(executor)
-            except Exception:  # noqa: BLE001 — 执行器销毁中，忽略
-                pass
-
-    threading.Thread(target=tick, name="ok-toolkit-state", daemon=True).start()
-
-
 # ── 命令处理 ──────────────────────────────────────────────────────────
 
 def _set_overlay(enabled: bool) -> None:
@@ -804,29 +838,12 @@ def _set_overlay(enabled: bool) -> None:
 
 
 def _apply_startup_overlay(enabled: bool) -> None:
-    """启动时把宿主的浮层开关**真正**落到框架上。
-
-    为什么必须显式调用，而不是只设 `config['use_overlay'] = True`：
-    在 headless 路径下这个配置项是**惰性**的 ——
-
-    1. 唯一消费它的 `OK.initialize_overlay()` 只被 `OK.start_runtime()` 调用，而
-       `start_runtime()` 只在 Qt（`ui/qt/MainWindow.py`）和 web（`ui/web/app.py`）
-       两条路径触发，执行器两条都不走；
-    2. `_create_ok_config()` 也只把它当 `Config('_ok', defaults)` 的**默认值**，而
-       `Config.verify_config()` 对「已存在且类型正确」的键会保留磁盘值 ——
-       `configs/_ok.json` 里历史留下的 `use_overlay` 还会再盖一层。
-
-    所以「执行器启动时带上 OK_TOOLKIT_USE_OVERLAY=1」此前实际等于没设。
-    `overlay_host.py` 之所以能出浮层，也是因为它在 `OK(cfg)` 之后显式调了
-    `set_overlay_setting("boxes", True)`；这里做同一件事，只是放在设备连上之后，
-    让 `sync_overlay_source()` 能绑到真实窗口。
-
-    浮层失败不该拖垮执行器，所以异常只记一行日志。
-    """
-    if not enabled:
-        return
+    """Sync the native overlay's position and report the host's chosen state."""
     try:
-        _set_overlay(True)
+        from ok import og
+
+        og.app.sync_overlay_source()
+        _emit(MARKER_OVERLAY_ON if enabled else MARKER_OVERLAY_OFF)
     except Exception as e:  # noqa: BLE001
         _note(f"调试浮层启用失败：{type(e).__name__}: {e}")
 
@@ -964,16 +981,18 @@ def handle_command(ok, line: str) -> None:
     emit_state(executor, force=True)
 
 
-def start_stdin_listener(ok) -> None:
-    """后台线程按行读取 stdin 命令；EOF（宿主关闭或进程退出）时自然结束。"""
+def start_stdin_listener(commands, cancel) -> None:
+    """Read commands without mutating tasks during runtime initialization."""
 
     def listen() -> None:
         try:
-            for line in sys.stdin:
+            for line in iter_command_lines(sys.stdin, cancel):
                 if line.strip():
-                    handle_command(ok, line)
-        except Exception:  # noqa: BLE001 — stdin 关闭等场景直接退出线程
-            pass
+                    commands.put(line)
+                    if line.strip().lower() == "stop":
+                        cancel.set()
+        except Exception as error:  # noqa: BLE001 — 保留输入错误供宿主排查
+            _emit(f"{MARKER_ERROR}stdin {type(error).__name__}: {error}")
 
     threading.Thread(target=listen, name="ok-toolkit-stdin", daemon=True).start()
 
@@ -1026,130 +1045,125 @@ def main() -> None:
     if extra_args and extra_args[0] == "--":
         extra_args = extra_args[1:]
 
-    read_overrides()
-    sys.path.insert(0, ".")
-    # 自建 store（如 ok-end-field global_config_store）在模块导入期就用
-    # get_relative_path("configs") 固定存储路径 —— 必须在 import config 前改道。
-    # 仅改相对的 "configs" 前缀；OK(config) 后 Config.config_folder 的正式改道不受影响。
-    try:
-        install_config_path_patch()
-    except Exception as e:  # noqa: BLE001
-        _note(f"configs 路径改道失败（自建 store 将直写项目 configs）：{e}")
-
-    # 目标项目的约定文件（`ok-script-toolkit.json`，只读）。
-    # 项目可在约定文件里声明启动准备；未声明时静态识别 main.py 里
-    # import config 之前直接调用的 patches 钩子。
-    project_config = load_project_config(os.getcwd())
-    # 与项目 main.py 一致：这一批必须在 import config **之前**跑。
-    # 放在最前，是因为它们可能改环境（如 ok-end-field 的 pre_config_patch 设置 PATH）。
-    declared_before = startup_hooks(project_config, "beforeConfigImport")
-    run_startup_hooks(
-        declared_before or discover_pre_config_hooks(os.getcwd()),
-        "import config 之前",
-    )
-
-    # 参数覆盖补丁必须在 import 任务前装好
-    install_override_patch()
-    install_trigger_persistence_patch()
-    # 任务自己写盘时别把插件覆盖值一起带出去（Config.save_file 是整个字典 dump）
-    install_override_save_patch()
-    # 注：这里**不再**有 windows.args 启动参数补丁。执行器只用目标项目自己的补丁
-    # （见 install_project_startup_patches），启动参数由项目在 src/patches/ 里自行处理。
-
-    config_module = __import__(args.config_module, fromlist=["config"])
-    config = dict(config_module.config)
-    config["check_mutex"] = False
-    # 项目自建全局配置 store 的模块名：按项目 config 的 custom_tabs 声明推导
-    # （不硬编码路径 —— 项目把 store 挪包改名都不该让那批全局配置静默消失）。
-    global _PROJECT_STORE_MODULES
-    try:
-        _PROJECT_STORE_MODULES = project_store.store_modules(config, os.getcwd())
-    except Exception as e:  # noqa: BLE001 — 推导失败退回历史默认名，不影响启动
-        _note(f"全局配置 store 定位失败（退回默认模块名）：{e}")
-    # Use the language mode selected in the development UI. The task manager
-    # patch below keeps every registered task runnable under that mode.
-    selected_locale = os.environ.get("OK_TOOLKIT_LOCALE")
-    if selected_locale:
-        config["locale"] = selected_locale
-    # 调试插件绝不改动目标项目的 configs/：把框架读写整体改道到沙箱。
-    # 必须在 OK(config) 之前 —— 任务是在 OK() 内部实例化的。
-    apply_config_sandbox(config)
-    # 项目补丁可能依据 UI 模式安装 Qt-only 部分（如 NTE）。先声明执行器的
-    # headless 模式，再把同一份 config 交给补丁，避免安装不会运行的 Qt UI 补丁。
-    config["gui"] = None
-    config["use_gui"] = False
-    # 目标项目自带的启动补丁（src/patches/startup_patches.py）。
-    # 项目自己的 main.py 会在 OK(config) 之前调用它，执行器过去**漏了这一步** ——
-    # 于是同一份代码"项目自己跑没事、用插件跑就崩"（典型：win32_gdi 污染
-    # user32.GetCursorPos.argtypes，导致 Mouse.py 抛 ctypes.ArgumentError）。
-    #
-    # 约定文件里声明了就用声明的（顺序与项目 main.py 一致，可以放多个）；
-    # 没声明才退回按约定探测 —— 保持对老项目的兼容。
-    declared_after = startup_hooks(project_config, "afterConfigImport")
-    if declared_after:
-        run_startup_hooks(declared_after, "OK(config) 之前", config)
-    else:
-        install_project_startup_patches(args.config_module, config)
-    # 浮层开关（宿主经 OK_TOOLKIT_USE_OVERLAY 传入）。注意这一项在 headless 下是
-    # **惰性**的，真正生效要等设备连上后由 _apply_startup_overlay() 显式落下去。
-    overlay_requested = os.environ.get("OK_TOOLKIT_USE_OVERLAY", "").strip().lower() in ("1", "true", "yes")
-    if overlay_requested:
-        config["use_overlay"] = True
-
-    # 框架 OK.__init__ 会 parse_arguments() 解析 sys.argv，辅助脚本自身的参数不能带进去
     saved_argv = sys.argv[:]
-    sys.argv = [saved_argv[0], *extra_args]
+    project_dir = os.path.abspath(os.getcwd())
+    # Project resource helpers resolve paths relative to argv[0], including in
+    # background services long after OK() returns. Keep the project entry point
+    # and framework arguments for the entire session, including startup patches.
+    sys.argv = [os.path.join(project_dir, "main.py"), "--headless", *extra_args]
+    sys.path.insert(0, project_dir)
     ok = None
+    exit_code = 0
     try:
+        _emit(MARKER_CONNECTING)
+        read_overrides()
+        os.environ[RUN_DIR_ENV] = resolve_run_dir(project_dir)
+
+        # Seed resolvable paths and redirect before importing project modules,
+        # including Config/store instances created during config imports.
+        source_folder = detect_config_folder(project_dir, args.config_module)
+        sandbox_config = {"config_folder": source_folder}
+        apply_config_sandbox(sandbox_config)
+
+        project_config = load_project_config(project_dir)
+        declared_before = startup_hooks(project_config, "beforeConfigImport")
+        run_startup_hooks(
+            declared_before or discover_pre_config_hooks(project_dir),
+            "import config 之前",
+        )
+        # Environment preparation must precede the first framework import.
+        add_config_source = install_config_path_patch(source_folder)
+        install_override_patch()
+        install_trigger_persistence_patch()
+        install_override_save_patch()
+
+        config_module = importlib.import_module(args.config_module)
+        config = copy_config_containers(config_module.config)
+        # Already-opened Config instances have seeded their folders. Do not
+        # overwrite their sandbox writes when reconciling the imported value.
+        add_config_source(str(config.get("config_folder") or "configs"))
+        config.update(sandbox_config)
+        config["check_mutex"] = False
+        config["gui"] = None
+        config["use_gui"] = False
+        selected_locale = os.environ.get("OK_TOOLKIT_LOCALE")
+        if selected_locale:
+            config["locale"] = selected_locale
+
+        global _PROJECT_STORE_MODULES
+        _PROJECT_STORE_MODULES = project_store.store_modules(config, project_dir)
+        declared_after = startup_hooks(project_config, "afterConfigImport")
+        if declared_after:
+            run_startup_hooks(declared_after, "OK(config) 之前", config)
+        else:
+            install_project_startup_patches(args.config_module, config)
+
+        overlay_requested = os.environ.get("OK_TOOLKIT_USE_OVERLAY", "").strip().lower() in ("1", "true", "yes")
+        if overlay_requested:
+            config["use_overlay"] = True
+
         from ok import OK
         from task_visibility import install_all_registered_tasks
 
-        _emit(MARKER_CONNECTING)
         install_all_registered_tasks(config.get("locale"))
         ok = OK(config)
-    except Exception as e:  # noqa: BLE001 — 初始化失败也要让宿主拿到结构化错误
-        _emit(f"{MARKER_ERROR}{type(e).__name__}: {e}")
-        shutdown(None, 1)
-    finally:
-        sys.argv = saved_argv
+        # The IDE owns its debug-overlay toggle. Prevent a copied project _ok
+        # preference from overriding it during native initialize_overlay().
+        dict.__setitem__(ok.headless_app.ok_config, "use_overlay", overlay_requested)
+        executor = ok.task_executor
+        enabled_keys = read_startup_triggers()
+        for task in executor.trigger_tasks:
+            wanted = task_key(task) in enabled_keys
+            task._enabled = wanted
+            dict.__setitem__(task.config, "_enabled", wanted)
 
-    executor = ok.task_executor
-    enabled_keys = read_startup_triggers()
-    # 插件的启用集合是权威值：未列出的触发任务一律关掉（项目 configs 里可能残留 true）
-    for task in executor.trigger_tasks:
-        wanted = task_key(task) in enabled_keys
-        task._enabled = wanted
-        dict.__setitem__(task.config, "_enabled", wanted)
-    if enabled_keys:
-        _note(f"启动即入列的触发任务：{len(enabled_keys)} 个")
+        commands = queue.Queue()
+        cancel = threading.Event()
+        start_stdin_listener(commands, cancel)
+        if not start_framework_runtime(ok, cancel=cancel):
+            if not cancel.is_set() and not ok.exit_event.is_set():
+                raise RuntimeError("executor failed to start")
+            return
 
-    start_stdin_listener(ok)
-    start_state_ticker(executor)
+        _apply_startup_overlay(overlay_requested)
+        _emit(MARKER_READY)
+        emit_state(executor, force=True)
+        capture = getattr(ok.device_manager, "capture_method", None)
+        window = getattr(ok.device_manager, "hwnd_window", None)
+        _note("runtime=" + json.dumps({
+            "entry": sys.argv[0],
+            "startup": "OK.start_runtime/StartController.start",
+            "configFolder": config["config_folder"],
+            "capture": type(capture).__name__ if capture else None,
+            "hwnd": getattr(window, "hwnd", None),
+            "size": [getattr(window, "width", None), getattr(window, "height", None)],
+            "tasks": [len(executor.onetime_tasks), len(executor.trigger_tasks)],
+        }, ensure_ascii=False))
 
-    try:
-        started = ok.headless_app.start_controller.do_start(None)
-    except Exception as e:  # noqa: BLE001
-        _emit(f"{MARKER_ERROR}{type(e).__name__}: {e}")
-        shutdown(ok, 1)
-        return
-    if not started:
-        _emit(f"{MARKER_ERROR}executor failed to start")
-        shutdown(ok, 1)
-        return
-
-    _emit(MARKER_READY)
-    # 设备已连接、窗口已确定，这时才把浮层挂上去（见 _apply_startup_overlay 的说明）
-    _apply_startup_overlay(overlay_requested)
-    emit_state(executor, force=True)
-    _note("执行器已就绪：设备已连接，触发任务按启用集合轮询")
-
-    try:
+        # Commands and state emission have one owner. In particular, resume or
+        # enqueue cannot race ahead of project runtime/service initialization.
         while not ok.exit_event.is_set():
-            time.sleep(0.5)
+            try:
+                line = commands.get(timeout=STATE_HEARTBEAT)
+            except queue.Empty:
+                pass
+            else:
+                handle_command(ok, line)
+            emit_state(executor)
     except KeyboardInterrupt:
-        _request_stop(ok)
+        if ok is not None:
+            _request_stop(ok)
+    except Exception as e:  # noqa: BLE001 — host must receive startup/import errors too
+        exit_code = 1
+        _emit(f"{MARKER_ERROR}{type(e).__name__}: {e}")
+        if isinstance(e, TimeoutError):
+            import faulthandler
+            faulthandler.dump_traceback(file=sys.stderr, all_threads=True)
     finally:
-        shutdown(ok, 0)
+        try:
+            shutdown(ok, exit_code)
+        finally:
+            sys.argv = saved_argv
 
 
 if __name__ == "__main__":
