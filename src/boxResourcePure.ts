@@ -1,23 +1,9 @@
-/**
- * 框资源的纯数据契约。与 JetBrains 侧 `core/BoxResource.kt`、`core/BoxRuntimePath.kt` 一一对应。
- *
- * 两份文件，关系对标模板的两份 COCO：
- *
- * | 文件 | 是什么 | 坐标 |
- * |---|---|---|
- * | `<模板目录>/boxes.json`（version 2） | 框标注资源（带原图与尺寸） | **Pixel bbox `[x, y, w, h]`** |
- * | `src/scene/boxes.json`（或约定 / config.py 指定的别处） | 运行时位置表 | normalized `[left, top, right, bottom]` |
- *
- * Authoring 与模板标注共用同一套 Pixel 模型（图片 width/height + 像素 bbox，见
- * `templateAssetData.ts` 的 `CocoImage`）；归一化只发生在 Publish（`publishBoxes`）。
- * 旧 version 1（normalized rect）不受支持：解析直接报 `version` 错误，不做迁移。
- *
- * 设计见 `docs/box-resources.md`。本模块不读盘、不 import `vscode`。
- */
+/** Box name rules, COCO export projection, and runtime geometry. */
 import * as path from 'path';
-import { isSameSize, scaleBox, type ImageSize, type SwapBox } from './annotationSwapPure';
+import { CocoData, emptyCocoData, parseCocoData } from './cocoAnnotationData';
+import { pixelBboxError, roundPixelBbox } from './annotationGeometry';
+export { pixelBboxError, roundPixelBbox } from './annotationGeometry';
 
-export const AUTHORING_VERSION = 2;
 export const RUNTIME_VERSION = 1;
 export const AUTHORING_FILE_NAME = 'boxes.json';
 
@@ -45,7 +31,6 @@ export interface AuthoringBox {
 }
 
 export interface AuthoringFile {
-  version: number;
   images: AuthoringImage[];
   boxes: AuthoringBox[];
 }
@@ -91,7 +76,7 @@ const SEGMENT = /^[A-Za-z_][A-Za-z0-9_]*$/;
 export const BOX_PATH_SEGMENT_SOURCE = SEGMENT.source;
 
 export function emptyAuthoringFile(): AuthoringFile {
-  return { version: AUTHORING_VERSION, images: [], boxes: [] };
+  return { images: [], boxes: [] };
 }
 
 export function emptyRuntimeFile(): RuntimeFile {
@@ -100,7 +85,7 @@ export function emptyRuntimeFile(): RuntimeFile {
 
 /** 标注资源路径。跟随模板目录，与 `<模板目录>/coco_annotations.json` 同一规则。 */
 export function authoringFile(rootDir: string, templatesDirectory: string): string {
-  return path.join(rootDir, templatesDirectory, AUTHORING_FILE_NAME);
+  return path.resolve(rootDir, templatesDirectory, AUTHORING_FILE_NAME);
 }
 
 function toAbsolute(rootDir: string, value: string): string {
@@ -187,28 +172,6 @@ export function boxesForImageFile(file: AuthoringFile, fileName: string): Author
  * 整数、正的宽高、落在原图 width × height 之内。
  * ──────────────────────────────────────────────────────────────── */
 
-/** 非整数输入按四舍五入收进像素格（编辑器画布本来就只产生整数）。 */
-export function roundPixelBbox(bbox: readonly number[]): PixelBbox {
-  return [Math.round(bbox[0]), Math.round(bbox[1]), Math.round(bbox[2]), Math.round(bbox[3])];
-}
-
-/**
- * Authoring 的 bbox 校验。`size` 缺失时退回"只查正性"（图片尺寸未知不能造出假边界），
- * 尺寸可用时必须完整落在 `0,0,width,height` 之内。返回 `undefined` 表示合法。
- */
-export function pixelBboxError(
-  bbox: readonly number[],
-  size?: { width: number; height: number },
-): 'rect' | undefined {
-  if (bbox.length !== 4 || !bbox.every((item) => Number.isFinite(item))) return 'rect';
-  const [x, y, w, h] = roundPixelBbox(bbox);
-  if (x < 0 || y < 0 || w < 1 || h < 1) return 'rect';
-  if (size && size.width > 0 && size.height > 0) {
-    if (x + w > size.width || y + h > size.height) return 'rect';
-  }
-  return undefined;
-}
-
 /** 同一张原图上的像素框取最小包围矩形。空列表返回 `undefined`。不做任何归一化。 */
 export function unionPixelBoxes(boxes: readonly PixelBox[]): PixelBox | undefined {
   if (boxes.length === 0) return undefined;
@@ -229,18 +192,17 @@ export function unionPixelBoxes(boxes: readonly PixelBox[]): PixelBox | undefine
  * Runtime 转换层：normalized ↔ Pixel。
  *
  * 只允许 Publish（`publishBoxes`）调用；Authoring 的编辑 / 保存主流程不得使用。
- * `rectToPixel` 当前仓库内已无调用方（preview 直接用 authoring 的 Pixel bbox），保留作与
- * `pixelToRect` 对称的转换工具，供未来的 Runtime 预览/迁移类需求复用。
+ * rectToPixel 仅用于导入旧 normalized 源文件，日常编辑直接使用 COCO bbox。
  * ──────────────────────────────────────────────────────────────── */
 
-/** normalized rect → Pixel bbox（Runtime Preview 用）。 */
+/** normalized rect → Pixel bbox（旧源文件兼容导入）。 */
 export function rectToPixel(rect: NormalizedRect, width: number, height: number): PixelBox | undefined {
   if (width <= 0 || height <= 0) return undefined;
   const [left, top, right, bottom] = rect;
   const x = Math.round(left * width);
   const y = Math.round(top * height);
-  const w = Math.round((right - left) * width);
-  const h = Math.round((bottom - top) * height);
+  const w = Math.round(right * width) - x;
+  const h = Math.round(bottom * height) - y;
   if (w <= 0 || h <= 0) return undefined;
   return { x, y, w, h };
 }
@@ -258,73 +220,6 @@ export function isStorableRuntimeRect(rect: readonly number[]): boolean {
   return left >= 0 && top >= 0 && right <= 1 && bottom <= 1 && left < right && top < bottom;
 }
 
-/* ────────────────────────────────────────────────────────────────
- * Authoring 的内存编辑。全程 Pixel，不出现 normalized。
- * ──────────────────────────────────────────────────────────────── */
-
-export interface AuthoringEditBox {
-  path: string;
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-}
-
-export interface AuthoringImageEdit {
-  fileName: string;
-  width: number;
-  height: number;
-  boxes: readonly AuthoringEditBox[];
-}
-
-/**
- * 在内存里依次替换多张图的框，并登记 / 刷新它们的图片尺寸。任一图不合法就整批失败，
- * 调用方此时还不能写盘 —— 一次确认里的多张图要么一起留下，要么保持原文件。
- *
- * 尺寸来源是**本次编辑拿到的真实值**（调用方读的图片头），已有的 images 条目被直接
- * 刷新成这个值：authoring 自己就是尺寸的事实来源，不需要拿旧记录顶。
- */
-export function replaceAuthoringImages(
-  existing: AuthoringFile,
-  edits: readonly AuthoringImageEdit[],
-): { file: AuthoringFile; error?: string } {
-  let current: AuthoringFile = {
-    version: AUTHORING_VERSION,
-    images: existing.images.slice(),
-    boxes: existing.boxes.slice(),
-  };
-  for (const edit of edits) {
-    const image = imageFileName(edit.fileName);
-    if (!image || !(edit.width > 0) || !(edit.height > 0)) return { file: existing, error: 'image' };
-    const kept = current.boxes.filter((box) => !sameImage(box.image, image));
-    const taken = new Set(kept.map((box) => box.path));
-    const next: AuthoringBox[] = [];
-    for (const box of edit.boxes) {
-      // path 与 runtime 同一规则：先 trim 再校验、再落盘，" screen.x " 不能以原值入库
-      const boxPath = box.path.trim();
-      const pathError = boxPathError(boxPath);
-      if (pathError) return { file: existing, error: pathError };
-      if (taken.has(boxPath)) return { file: existing, error: 'duplicate' };
-      taken.add(boxPath);
-      const bbox = roundPixelBbox([box.x, box.y, box.w, box.h]);
-      if (pixelBboxError(bbox, { width: edit.width, height: edit.height })) {
-        return { file: existing, error: 'rect' };
-      }
-      next.push({ path: boxPath, image, bbox });
-    }
-    const entryIndex = current.images.findIndex((item) => sameImage(item.file, image));
-    const entry: AuthoringImage = { file: image, width: edit.width, height: edit.height };
-    if (entryIndex >= 0) current.images[entryIndex] = entry;
-    else current.images.push(entry);
-    current = { version: AUTHORING_VERSION, images: current.images, boxes: [...kept, ...next] };
-  }
-  return { file: current };
-}
-
-/* ────────────────────────────────────────────────────────────────
- * Publish：Pixel → normalized 的唯一入口。
- * ──────────────────────────────────────────────────────────────── */
-
 /** 单条框的发布投影。图片条目缺失或尺寸非法时返回 `undefined`，调用方必须报告而不是静默跳过。 */
 export function publishedRect(
   box: AuthoringBox,
@@ -339,12 +234,18 @@ export function publishedRect(
 export function publishBoxes(file: AuthoringFile): { file: RuntimeFile; errors: string[] } {
   const boxes: RuntimeBox[] = [];
   const errors: string[] = [];
+  const seen = new Set<string>();
   for (const box of file.boxes) {
+    const nameError = boxPathError(box.path);
+    if (nameError) { errors.push(nameError + ':' + box.path); continue; }
+    if (seen.has(box.path)) { errors.push('duplicate:' + box.path); continue; }
+    seen.add(box.path);
     const rect = publishedRect(box, file.images);
     if (!rect) {
       errors.push(`size:${box.path}`);
       continue;
     }
+    if (!isStorableRuntimeRect(rect)) { errors.push('rect:' + box.path); continue; }
     boxes.push({ path: box.path, rect });
   }
   return { file: { version: RUNTIME_VERSION, boxes }, errors };
@@ -373,173 +274,86 @@ function sameRect(a: NormalizedRect, b: NormalizedRect): boolean {
   return a.length === b.length && a.every((value, index) => formatRectNumber(value) === formatRectNumber(b[index]));
 }
 
-/* ────────────────────────────────────────────────────────────────
- * 图片交换：Pixel authoring 不能再"只换 image 名"——
- * 尺寸不同时坐标语义会变，必须按比例映射。映射与钳制直接复用模板
- * 标注交换的纯逻辑（`annotationSwapPure.scaleBox`：x' = x * W2 / W1，
- * 再钳制进目标边界，宽高至少 1px）。
- * ──────────────────────────────────────────────────────────────── */
-
-export function swapImageBoxes(file: AuthoringFile, fileA: string, fileB: string): { file: AuthoringFile; error?: 'size' } {
-  const nameA = imageFileName(fileA);
-  const nameB = imageFileName(fileB);
-  const entryA = file.images.find((item) => sameImage(item.file, nameA));
-  const entryB = file.images.find((item) => sameImage(item.file, nameB));
-  const sizeA: ImageSize | undefined = entryA && entryA.width > 0 && entryA.height > 0 ? entryA : undefined;
-  const sizeB: ImageSize | undefined = entryB && entryB.width > 0 && entryB.height > 0 ? entryB : undefined;
-  if (!sizeA || !sizeB) return { file, error: 'size' };
-
-  const remap = (box: AuthoringBox, target: string, from: ImageSize, to: ImageSize): AuthoringBox => {
-    if (isSameSize(from, to)) return { ...box, image: target };
-    const scaled: SwapBox = scaleBox(
-      { category: box.path, x: box.bbox[0], y: box.bbox[1], w: box.bbox[2], h: box.bbox[3] },
-      from,
-      to,
-    );
-    return { path: box.path, image: target, bbox: [scaled.x, scaled.y, scaled.w, scaled.h] };
-  };
-
-  const next = file.boxes.map((box) => {
-    if (sameImage(box.image, nameA)) return remap(box, nameB, sizeA, sizeB);
-    if (sameImage(box.image, nameB)) return remap(box, nameA, sizeB, sizeA);
-    return box;
-  });
-  return { file: { version: AUTHORING_VERSION, images: file.images.slice(), boxes: next } };
+/** Only an export/preview view; the authoring file itself is ordinary COCO. */
+export function authoringFromCoco(data: CocoData): AuthoringFile {
+  const images = data.images.map(image => ({ file: image.file_name, width: image.width, height: image.height }));
+  const imageById = new Map(data.images.map(image => [image.id, image]));
+  const categoryById = new Map(data.categories.map(category => [category.id, category]));
+  const boxes = data.annotations.map(annotation => ({
+    path: categoryById.get(annotation.category_id)!.name.trim(),
+    image: imageById.get(annotation.image_id)!.file_name,
+    bbox: annotation.bbox,
+  }));
+  return { images, boxes };
 }
 
-/* ────────────────────────────────────────────────────────────────
- * 解析 / 序列化。Authoring 不再与 Runtime 共用 normalized 规则。
- * ──────────────────────────────────────────────────────────────── */
+function cocoFromAuthoring(file: AuthoringFile): CocoData {
+  const data = emptyCocoData();
+  const images = new Map<string, number>();
+  const categories = new Map<string, number>();
+  for (const image of file.images) {
+    const id = data.images.length + 1;
+    images.set(image.file.toLowerCase(), id);
+    data.images.push({ id, file_name: image.file, width: image.width, height: image.height });
+  }
+  for (const box of file.boxes) {
+    let imageId = images.get(box.image.toLowerCase());
+    if (imageId === undefined) {
+      imageId = data.images.length + 1;
+      data.images.push({ id: imageId, file_name: box.image, width: 0, height: 0 });
+      images.set(box.image.toLowerCase(), imageId);
+    }
+    const name = box.path.trim();
+    let categoryId = categories.get(name);
+    if (categoryId === undefined) {
+      categoryId = data.categories.length + 1;
+      data.categories.push({ id: categoryId, name, supercategory: '' });
+      categories.set(name, categoryId);
+    }
+    data.annotations.push({ id: data.annotations.length + 1, image_id: imageId, category_id: categoryId,
+      bbox: box.bbox, area: box.bbox[2] * box.bbox[3], iscrowd: 0 });
+  }
+  return data;
+}
 
-export function parseAuthoring(text: string): BoxParseResult<AuthoringFile> {
-  let raw: unknown;
-  try {
-    raw = JSON.parse(text);
-  } catch {
-    return { file: emptyAuthoringFile(), errors: ['json'] };
-  }
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
-    return { file: emptyAuthoringFile(), errors: ['root'] };
-  }
-  const record = raw as { version?: unknown };
-  // version 1（旧 normalized rect）不支持，也不迁移：authoring 只有 Pixel 一种模型。
-  if (record.version !== AUTHORING_VERSION) {
-    return { file: emptyAuthoringFile(), errors: ['version'] };
-  }
+/** Compatibility import only. All subsequent edits use the shared COCO store. */
+export function parseBoxCoco(text: string, sizeOf?: (name: string) => { width: number; height: number } | undefined): { data: CocoData; errors: string[]; legacy?: boolean } {
+  let raw;
+  try { raw = JSON.parse(text); } catch { return { data: emptyCocoData(), errors: ['json'] }; }
+  if (!raw || !Array.isArray(raw.boxes)) return parseCocoData(text);
+  if (![1, 2].includes(raw.version)) return { data: emptyCocoData(), errors: ['version'] };
+  const file = emptyAuthoringFile();
   const errors: string[] = [];
-  const imagesRecord = (raw as { images?: unknown }).images;
-  if (!Array.isArray(imagesRecord)) {
-    return { file: emptyAuthoringFile(), errors: ['images'] };
+  for (const [index, box] of raw.boxes.entries()) {
+    if (!box || typeof box.path !== 'string' || typeof box.image !== 'string' || !imageFileName(box.image)) {
+      errors.push(index + ':entry'); continue;
+    }
+    const name = imageFileName(box.image);
+    let image = file.images.find(item => sameImage(item.file, name));
+    if (!image) {
+      const old = Array.isArray(raw.images) ? raw.images.find((item: { file?: string }) => item?.file && sameImage(item.file, name)) : undefined;
+      const size = old && old.width > 0 && old.height > 0 ? old : sizeOf?.(name);
+      image = { file: name, width: size?.width ?? 0, height: size?.height ?? 0 };
+      file.images.push(image);
+    }
+    let bbox: PixelBbox;
+    if (raw.version === 1) {
+      if (!Array.isArray(box.rect) || !isStorableRuntimeRect(box.rect) || !image.width || !image.height) {
+        errors.push('size:' + box.path); continue;
+      }
+      const pixel = rectToPixel(box.rect as NormalizedRect, image.width, image.height);
+      if (!pixel) { errors.push(index + ':rect'); continue; }
+      bbox = [pixel.x, pixel.y, pixel.w, pixel.h];
+    } else {
+      if (!Array.isArray(box.bbox) || box.bbox.length !== 4) { errors.push(index + ':rect'); continue; }
+      bbox = roundPixelBbox(box.bbox);
+    }
+    if (pixelBboxError(bbox, image)) { errors.push(index + ':rect'); continue; }
+    file.boxes.push({ path: box.path.trim(), image: name, bbox });
   }
-  const images: AuthoringImage[] = [];
-  const byFile = new Map<string, AuthoringImage>();
-  imagesRecord.forEach((entry, index) => {
-    const item = entry as { file?: unknown; width?: unknown; height?: unknown };
-    const file = typeof item?.file === 'string' ? imageFileName(item.file) : '';
-    const width = typeof item?.width === 'number' && Number.isFinite(item.width) ? Math.round(item.width) : 0;
-    const height = typeof item?.height === 'number' && Number.isFinite(item.height) ? Math.round(item.height) : 0;
-    if (!file || width <= 0 || height <= 0) {
-      errors.push(`images:${index}`);
-      return;
-    }
-    if (byFile.has(file.toLowerCase())) {
-      errors.push(`images:${index}:duplicate`);
-      return;
-    }
-    const parsed: AuthoringImage = { file, width, height };
-    byFile.set(file.toLowerCase(), parsed);
-    images.push(parsed);
-  });
-
-  const boxesRecord = (raw as { boxes?: unknown }).boxes;
-  if (!Array.isArray(boxesRecord)) {
-    return { file: { version: AUTHORING_VERSION, images, boxes: [] }, errors: [...errors, 'boxes'] };
-  }
-  const boxes: AuthoringBox[] = [];
-  const seen = new Set<string>();
-  boxesRecord.forEach((entry, index) => {
-    const item = entry as { path?: unknown; image?: unknown; bbox?: unknown };
-    if (typeof item?.path !== 'string' || boxPathError(item.path)) {
-      errors.push(`${index}:path`);
-      return;
-    }
-    const image = typeof item?.image === 'string' ? imageFileName(item.image) : '';
-    let imageEntry = image ? byFile.get(image.toLowerCase()) : undefined;
-    if (image && !imageEntry) {
-      // 引用了未登记的图片：先按 0 尺寸占位登记，保持文件可读；bbox 只查正性，
-      // 尺寸由交换/发布前的图片头补登记补齐，补不出来时按 size:<path> 报告。
-      imageEntry = { file: image, width: 0, height: 0 };
-      byFile.set(image.toLowerCase(), imageEntry);
-      images.push(imageEntry);
-    }
-    if (!imageEntry) {
-      errors.push(`${index}:image`);
-      return;
-    }
-    if (!Array.isArray(item.bbox)) {
-      errors.push(`${index}:rect`);
-      return;
-    }
-    const bbox = roundPixelBbox(item.bbox as number[]);
-    if (pixelBboxError(bbox, imageEntry)) {
-      errors.push(`${index}:rect`);
-      return;
-    }
-    // 与 runtime 同一规则：入库前 trim，" screen.x " 不能以原值留在文件里
-    const boxPath = item.path.trim();
-    if (seen.has(boxPath)) {
-      errors.push(`${index}:duplicate`);
-      return;
-    }
-    seen.add(boxPath);
-    boxes.push({ path: boxPath, image: imageEntry.file, bbox });
-  });
-  boxes.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
-  images.sort((a, b) => (a.file < b.file ? -1 : a.file > b.file ? 1 : 0));
-  return { file: { version: AUTHORING_VERSION, images, boxes }, errors };
+  if (errors.length) return { data: emptyCocoData(), errors };
+  return { ...parseCocoData(JSON.stringify(cocoFromAuthoring(file))), legacy: true };
 }
-
-export function serializeAuthoring(file: AuthoringFile): string {
-  const images = [...file.images].sort((a, b) => (a.file < b.file ? -1 : a.file > b.file ? 1 : 0));
-  const boxes = uniqueAuthoring(file.boxes);
-  const imageBody = images.map((image) =>
-    `    { "file": ${JSON.stringify(image.file)}, "width": ${Math.round(image.width)}, "height": ${Math.round(image.height)} }`,
-  ).join(',\n');
-  const boxBody = boxes.map((box) =>
-    [
-      '    {',
-      `      "path": ${JSON.stringify(box.path)},`,
-      `      "image": ${JSON.stringify(box.image)},`,
-      `      "bbox": [${box.bbox.map((value) => Math.round(value)).join(', ')}]`,
-      '    }',
-    ].join('\n'),
-  ).join(',\n');
-  return [
-    '{',
-    `  "version": ${AUTHORING_VERSION},`,
-    '  "images": [' + (imageBody ? `\n${imageBody}\n  ` : '') + '],',
-    '  "boxes": [' + (boxBody ? `\n${boxBody}\n  ` : '') + ']',
-    '}',
-    '',
-  ].join('\n');
-}
-
-function uniqueAuthoring(boxes: readonly AuthoringBox[]): AuthoringBox[] {
-  const seen = new Set<string>();
-  return [...boxes]
-    .filter((box) => {
-      if (seen.has(box.path)) return false;
-      seen.add(box.path);
-      return true;
-    })
-    .sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
-}
-
-/* ────────────────────────────────────────────────────────────────
- * Runtime 解析 / 序列化（normalized，6 位小数）。
- * `quantizeRect` / `BOX_RECT_DECIMALS` / `formatRectNumber` 是 Runtime 的
- * 输出稳定性契约，Authoring 已不再使用，但不能删。
- * ──────────────────────────────────────────────────────────────── */
 
 const BOX_RECT_DECIMALS = 6;
 

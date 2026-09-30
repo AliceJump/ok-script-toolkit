@@ -4,7 +4,7 @@ import * as vscode from 'vscode';
 import { TemplateAssetData } from './templateAssetData';
 import { AnnotationPanel } from './annotationPanel';
 import { openBoxEditor } from './boxPanels';
-import { authoringImageSize, authoringReadErrors, boxesForImage, publishRuntime, readAuthoringFile, readRuntimeFile, runtimeOnlyPaths, runtimeReadErrors, swapImageBoxes } from './boxResourceStore';
+import { authoringReadErrors, publishRuntime, readAuthoringFile, readRuntimeFile, runtimeOnlyPaths, runtimeReadErrors } from './boxResourceStore';
 import { probedBoxesJson } from './cocoFeaturePath';
 import { cropTemplateThumbFileAsync, THUMB_HEIGHT } from './pngCrop';
 import { injectWebviewLocalization, tr } from './localization';
@@ -14,6 +14,8 @@ import { takePendingDrag } from './tempDrag';
 import { boxesRuntimeSetting, currentWorkspaceFolderUri, ideSetting, labelEnumClassName, labelEnumPathInputError, labelEnumPathSetting, normalizeLabelEnumPathInput, setIdeSetting, templatesDirectory } from './projectConfig';
 import { labelEnumRenameImpact, labelEnumRenameMessage, referencingFiles, writableClassName } from './labelEnumGuard';
 import { derivedEnumPath, isPathInsideRoot, needsEnumPathPrompt, SaveTarget, saveToAssetsItems } from './saveToAssetsPure';
+import { AUTHORING_FILE_NAME } from './boxResourcePure';
+import { onAnnotationDataChanged, sameAnnotationFile } from './cocoAnnotationData';
 import { isSameSize, scaleBoxes, SwapBox } from './annotationSwapPure';
 import { applySharedAssets, getNonce } from './webviewHtml';
 
@@ -69,6 +71,7 @@ class AssetGalleryController {
   /** 上次刷新时 authoring 是否不可读（用于只在状态翻转时弹一次提示） */
   private lastBoxReadErrors = false;
   private readonly disposables: vscode.Disposable[] = [];
+  private readonly sourceData: TemplateAssetData;
 
   constructor(
     private readonly webview: vscode.Webview,
@@ -79,7 +82,12 @@ class AssetGalleryController {
     private readonly tempStore?: TempScreenshotStore,
     private readonly boxes = false,
   ) {
+    this.sourceData = data;
+    if (boxes) this.data = new TemplateAssetData(data.root, AUTHORING_FILE_NAME);
     liveControllers.add(this);
+    this.disposables.push(onAnnotationDataChanged(file => {
+      if (sameAnnotationFile(file, this.data.annotationFile)) void this.update();
+    }));
     this.disposables.push(
       webview.onDidReceiveMessage((msg) => { void this.onMessage(msg); }),
     );
@@ -93,27 +101,21 @@ class AssetGalleryController {
     if (this.disposed || !this.isVisible()) return;
     const gen = ++this.generation;
 
+    if (this.boxes && (this.data.root !== this.sourceData.root || this.data.templatesDir !== this.sourceData.templatesDir)) {
+      this.data.setRoot(this.sourceData.root);
+    }
     this.data.load();
     const imageFiles = this.data.listImages();
 
     // 构建元数据
-    const templates = templatesDirectory(this.data.root);
-    const authoringErrors = this.boxes ? authoringReadErrors(this.data.root, templates) : [];
+    const authoringErrors = this.boxes ? this.data.readErrors : [];
     if (authoringErrors.length && !this.lastBoxReadErrors) {
-      // 只在"可读 → 不可读"翻转时弹一次：update 是高频刷新，每次都弹就是 toast 刷屏；
-      // 文案说的是"读不了"，不是"保存失败" —— 用户此时并没有执行保存。
-      void vscode.window.showErrorMessage(
-        tr('Could not read the box resource file. Box overlays are hidden until it is fixed.'),
-      );
+      void vscode.window.showErrorMessage(tr('Could not read the box resource file. Box overlays are hidden until it is fixed.'));
     }
     this.lastBoxReadErrors = authoringErrors.length > 0;
-    const authoring = this.boxes && !authoringErrors.length
-      ? readAuthoringFile(this.data.root, templates)
-      : undefined;
     const metas = imageFiles.map((imgPath) => {
       const size = this.imagePixelSize(imgPath);
-      const boxPaths = authoring ? boxesForImage(authoring, path.basename(imgPath)).map((box) => box.path) : [];
-      const cats = this.boxes ? boxPaths : this.data.getCategoriesForImage(imgPath);
+      const cats = this.data.getCategoriesForImage(imgPath);
       return {
         name: path.basename(imgPath),
         imagePath: imgPath,
@@ -122,7 +124,7 @@ class AssetGalleryController {
         categories: cats,
         // 交换目标选择器要显示"这张图上有几个框"，而分类名是去重后的
         // （同一张图上两个同名按钮共用一个分类）⇒ 数量必须单独给。
-        annotations: this.boxes ? boxPaths.length : this.data.getAnnotationsForImage(imgPath, true).length,
+        annotations: this.data.getAnnotationsForImage(imgPath, true).length,
       };
     });
 
@@ -195,7 +197,7 @@ class AssetGalleryController {
         if (msg.imagePath) {
           const imageList = this.data.listImages();
           if (this.boxes) {
-            openBoxEditor(this.extensionUri, this.data, msg.imagePath);
+            openBoxEditor(this.extensionUri, this.data, msg.imagePath, this.thumbDir);
           } else {
             AnnotationPanel.show(this.extensionUri, this.data, this.thumbDir, msg.imagePath, imageList, () => {
               void this.update();
@@ -537,10 +539,7 @@ class AssetGalleryController {
    * 所以必须整体成功或整体不动 —— 半交换的 coco 比不交换更难收拾。
    */
   private async handleSwapAnnotations(sourcePath: string, targetPath: string): Promise<void> {
-    if (this.boxes) {
-      await this.handleSwapBoxes(sourcePath, targetPath);
-      return;
-    }
+
     if (!sourcePath || !targetPath || sourcePath === targetPath) return;
     // Webview 消息携带的路径须来自当前模板集，再读取图片或 COCO 数据。
     const allowed = new Set(this.data.listImages());
@@ -637,7 +636,7 @@ class AssetGalleryController {
     await this.update();
     // 标注编辑器是常驻面板且逐操作自动落盘：正显示这两张图之一时必须同步，
     // 否则它手里的旧框会在下一次编辑时把交换结果整份写回去。
-    AnnotationPanel.current?.controller.reloadIfShowing([sourcePath, targetPath]);
+    (this.boxes ? AnnotationPanel.currentBoxes : AnnotationPanel.current)?.controller.reloadIfShowing([sourcePath, targetPath]);
     void vscode.window.showInformationMessage(
       tr("Swapped annotations between '{first}' and '{second}'.", { first, second }),
     );
@@ -648,7 +647,7 @@ class AssetGalleryController {
     if (!root) return;
     const templates = templatesDirectory(root);
     const authoringErrors = authoringReadErrors(root, templates);
-    if (authoringErrors.length || runtimeReadErrors(root, boxesRuntimeSetting(root), probedBoxesJson(root)).length) {
+    if (authoringErrors.length) {
       void vscode.window.showErrorMessage(tr('Could not save the box resource.'));
       return;
     }
@@ -656,6 +655,14 @@ class AssetGalleryController {
     const fromConfig = probedBoxesJson(root);
     const authoring = readAuthoringFile(root, templates);
     const runtime = readRuntimeFile(root, declared, fromConfig);
+    if (!authoring.boxes.length) {
+      void vscode.window.showInformationMessage(tr('No box annotations to publish.'));
+      return;
+    }
+    if (runtimeReadErrors(root, declared, fromConfig).length) {
+      void vscode.window.showErrorMessage(tr('Could not save the box resource.'));
+      return;
+    }
     const dropped = runtimeOnlyPaths(authoring, runtime);
     if (dropped.length) {
       const answer = await vscode.window.showWarningMessage(dropped.join('\n'), { modal: true }, tr('Publish'));
@@ -677,86 +684,6 @@ class AssetGalleryController {
       return;
     }
     await this.update();
-  }
-
-  /**
-   * 框的图片交换。Pixel authoring 下坐标语义依赖图片尺寸：同尺寸只换所属图片，
-   * 尺寸不同时按比例映射（复用模板交换的 `scaleBox`，映射与钳制在纯层完成），
-   * 所以确认框要像模板交换一样把"会缩放"说清楚；确认之后重新核对再写盘。
-   */
-  private async handleSwapBoxes(sourcePath: string, targetPath: string): Promise<void> {
-    if (!sourcePath || !targetPath || sourcePath === targetPath) return;
-    const allowed = new Set(this.data.listImages());
-    if (!allowed.has(sourcePath) || !allowed.has(targetPath)) {
-      void vscode.window.showErrorMessage(tr('Failed to swap annotations.'));
-      return;
-    }
-    const root = this.data.root;
-    const templates = templatesDirectory(root);
-    const authoringErrors = authoringReadErrors(root, templates);
-    if (authoringErrors.length) {
-      void vscode.window.showErrorMessage(tr('Could not save the box resource.'));
-      return;
-    }
-    const authoring = readAuthoringFile(root, templates);
-    const sourceBoxes = boxesForImage(authoring, path.basename(sourcePath));
-    const targetBoxes = boxesForImage(authoring, path.basename(targetPath));
-    if (sourceBoxes.length === 0 && targetBoxes.length === 0) {
-      void vscode.window.showInformationMessage(tr('Neither image has annotations, nothing to swap.'));
-      return;
-    }
-    const first = path.basename(sourcePath);
-    const second = path.basename(targetPath);
-    // 与 store 侧补登记同一条规则：登记尺寸不可用时回退图片头，
-    // 否则"把框换到还没标过框的新截图"会在弹确认框之前就被拦下。
-    const sizeOf = (fileName: string) => authoringImageSize(root, templates, fileName);
-    const sourceSize = sizeOf(first);
-    const targetSize = sizeOf(second);
-    if (!sourceSize || !targetSize) {
-      void vscode.window.showErrorMessage(tr('Cannot read image size, so annotations cannot be swapped.'));
-      return;
-    }
-    const scaled = !isSameSize(sourceSize, targetSize);
-    const detail = [
-      scaled
-        ? tr('Sizes differ ({from} → {to}); boxes are scaled proportionally.', {
-            from: `${sourceSize.width}×${sourceSize.height}`,
-            to: `${targetSize.width}×${targetSize.height}`,
-          })
-        : '',
-      tr('{first}: {firstCount} boxes, {second}: {secondCount} boxes', {
-        first, second, firstCount: String(sourceBoxes.length), secondCount: String(targetBoxes.length),
-      }),
-    ].filter((line) => line.length > 0).join('\n');
-    const swap = tr('Swap');
-    const choice = await vscode.window.showWarningMessage(
-      tr("Swap annotations between '{first}' and '{second}'?", { first, second }),
-      { modal: true, detail },
-      swap,
-    );
-    if (choice !== swap) return;
-    // 模板交换的同一条保险：模态框会让出事件循环，写盘前重新核对图片、尺寸与框。
-    this.data.load();
-    const current = readAuthoringFile(root, templates);
-    const currentSourceSize = sizeOf(first);
-    const currentTargetSize = sizeOf(second);
-    const currentAllowed = new Set(this.data.listImages());
-    if (!currentAllowed.has(sourcePath) || !currentAllowed.has(targetPath)
-      || !currentSourceSize || !currentTargetSize
-      || !isSameSize(currentSourceSize, sourceSize) || !isSameSize(currentTargetSize, targetSize)
-      || JSON.stringify(boxesForImage(current, first)) !== JSON.stringify(sourceBoxes)
-      || JSON.stringify(boxesForImage(current, second)) !== JSON.stringify(targetBoxes)) {
-      void vscode.window.showWarningMessage(tr('Annotations changed while confirming. Retry the swap.'));
-      return;
-    }
-    if (!swapImageBoxes(root, templates, first, second)) {
-      void vscode.window.showErrorMessage(tr('Failed to swap annotations.'));
-      return;
-    }
-    await this.update();
-    void vscode.window.showInformationMessage(
-      tr("Swapped annotations between '{first}' and '{second}'.", { first, second }),
-    );
   }
 
   /** 读某张图的标注，转成 `SwapBox` 形状（纯逻辑与数据层共用的入参） */

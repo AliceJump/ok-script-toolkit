@@ -2,10 +2,9 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { TemplateAssetData } from './templateAssetData';
-import { addBox, pixelUnionFromAnnotations, readAuthoringFile } from './boxResourceStore';
-import { BOX_PATH_SEGMENT_SOURCE, RESERVED_BOX_ROOTS } from './boxResourcePure';
-import { templatesDirectory } from './projectConfig';
-import { getProjectConfig } from './screenshotCapture';
+import { addBox, pixelUnionFromAnnotations, readAuthoringFile, boxNamesError } from './boxResourceStore';
+import { AUTHORING_FILE_NAME, BOX_PATH_SEGMENT_SOURCE, RESERVED_BOX_ROOTS } from './boxResourcePure';
+import { onAnnotationDataChanged, sameAnnotationFile } from './cocoAnnotationData';
 import { readImageSize } from './pngCrop';
 import { injectWebviewLocalization, tr } from './localization';
 import { applySharedAssets, getNonce } from './webviewHtml';
@@ -26,6 +25,8 @@ interface Annotation {
 class AnnotationController {
   private generation = 0;
   private disposed = false;
+  private saving = false;
+  private sourceRevision: string | undefined;
   private readonly disposables: vscode.Disposable[] = [];
   private _currentImage: string | undefined;
   private _imageList: string[] = [];
@@ -37,9 +38,20 @@ class AnnotationController {
     private readonly thumbDir: string,
     private readonly isVisible: () => boolean,
     private readonly onSaved: (imagePath: string) => void,
+    private readonly boxMode = false,
   ) {
     this.disposables.push(
       webview.onDidReceiveMessage((msg) => { void this.onMessage(msg); }),
+      onAnnotationDataChanged(file => {
+        if (this.saving || !this._currentImage) return;
+        if (sameAnnotationFile(this.data.annotationFile, file)) {
+          let revision: string | undefined;
+          try { revision = fs.readFileSync(file, 'utf8'); } catch { /* deleted or unreadable source */ }
+          if (revision !== this.sourceRevision) this.reloadIfShowing([this._currentImage]);
+        } else if (!this.boxMode && sameAnnotationFile(file, path.resolve(this.data.templatesDir, AUTHORING_FILE_NAME))) {
+          void this.webview.postMessage({ type: 'boxPaths', boxPaths: this.boxOccupancy() });
+        }
+      }),
       // 面板开着时改设置也要热更新（review 意见：不要靠「切一下视图」触发）
       vscode.workspace.onDidChangeConfiguration((e) => {
         if (e.affectsConfiguration('okScriptToolkit.copyCoordsSpace') ||
@@ -49,6 +61,8 @@ class AnnotationController {
       }),
     );
   }
+
+  get dataFile(): string { return this.data.annotationFile; }
 
   get currentImage(): string | undefined { return this._currentImage; }
 
@@ -78,6 +92,7 @@ class AnnotationController {
     const copyCoordsSpace = cfg.get<boolean>('copyCoordsSpace', true);
     void this.webview.postMessage({
       type: 'config',
+      boxMode: this.boxMode,
       keybindings: kb,
       copyCoordsSpace,
       // 框路径规则：给「生成框」输入框做即时校验，规则只有这一个来源。
@@ -98,6 +113,9 @@ class AnnotationController {
   private async loadImage(imagePath: string): Promise<void> {
     if (this.disposed) return;
     this._currentImage = imagePath;
+    const generation = ++this.generation;
+    this.data.load();
+    this.sourceRevision = this.data.revision;
 
     // 读取图片为 base64（异步读，避免大截图阻塞扩展宿主）；
     // webview 原生渲染 PNG/JPEG/BMP，MIME 按魔数判定
@@ -114,6 +132,7 @@ class AnnotationController {
       imageBase64 = '';
     }
 
+    if (this.disposed || generation !== this.generation) return;
     // 读取标注数据
     const annotations = this.data.getAnnotationsForImage(imagePath, true);
 
@@ -128,12 +147,7 @@ class AnnotationController {
       }
     }
 
-    // 跨图片的框 path 占用：path → 所属图片。「生成框」对话框用它做重复校验。
-    const boxPaths: Record<string, string> = {};
-    const authoring = readAuthoringFile(this.data.root, this.data.templatesDir);
-    for (const box of authoring.boxes) {
-      boxPaths[box.path] = box.image;
-    }
+    const boxPaths = this.boxOccupancy();
 
     const currentIndex = this._imageList.indexOf(imagePath);
 
@@ -155,6 +169,11 @@ class AnnotationController {
       totalImages: this._imageList.length,
       filename: path.basename(imagePath),
     });
+  }
+
+  private boxOccupancy(): Record<string, string> {
+    const authoring = readAuthoringFile(this.data.root, this.data.templatesDir);
+    return Object.fromEntries(authoring.boxes.map(box => [box.path, box.image]));
   }
 
   private async onMessage(msg: {
@@ -204,11 +223,12 @@ class AnnotationController {
         // Pixel annotations → Pixel union → Pixel authoring。中途不再绕 normalized；
         // 越界与否由 addBox 按图片头尺寸校验（与保存链同一道闸）。
         const union = size ? pixelUnionFromAnnotations(msg.boxes) : undefined;
-        const root = getProjectConfig().projectDir;
+        const root = this.data.root;
         const error = union && root
-          ? addBox(root, templatesDirectory(root), msg.path, path.basename(this._currentImage), union)
+          ? addBox(root, path.relative(root, this.data.templatesDir), msg.path, path.basename(this._currentImage), union)
           : 'image';
         void this.webview.postMessage({ type: 'generateBoxResult', ok: !error, error: error || '' });
+        if (!error) this.onSaved(this._currentImage);
         break;
       }
       case 'navigate': {
@@ -253,15 +273,23 @@ class AnnotationController {
     annotations: Array<{ category: string; x: number; y: number; w: number; h: number }>,
   ): boolean {
     try {
+      this.saving = true;
+      this.data.load();
+      const namesError = this.boxMode ? boxNamesError(this.data, imagePath, annotations.map(ann => ann.category)) : undefined;
+      if (namesError) throw new Error(namesError);
       if (!this.data.setAnnotationsForImage(imagePath, annotations)) {
         void vscode.window.showErrorMessage(tr('Could not save annotations.'));
         return false;
       }
       this.data.save();
+      this.sourceRevision = this.data.revision;
       return true;
-    } catch {
+    } catch (error) {
+      console.error('[ok-script] save annotations:', error);
       void vscode.window.showErrorMessage(tr('Could not save annotations.'));
       return false;
+    } finally {
+      this.saving = false;
     }
   }
 
@@ -277,6 +305,7 @@ class AnnotationController {
 
 export class AnnotationPanel {
   static current: AnnotationPanel | undefined;
+  static currentBoxes: AnnotationPanel | undefined;
 
   static show(
     extensionUri: vscode.Uri,
@@ -285,14 +314,17 @@ export class AnnotationPanel {
     imagePath: string,
     imageList: string[],
     onSaved: (imagePath: string) => void,
+    boxMode = false,
   ): void {
-    if (AnnotationPanel.current) {
-      AnnotationPanel.current.panel.reveal();
-      AnnotationPanel.current.controller.open(imagePath, imageList);
+    const current = boxMode ? AnnotationPanel.currentBoxes : AnnotationPanel.current;
+    if (current && !sameAnnotationFile(current.controller.dataFile, data.annotationFile)) current.panel.dispose();
+    else if (current) {
+      current.panel.reveal();
+      current.controller.open(imagePath, imageList);
       return;
     }
     const panel = vscode.window.createWebviewPanel(
-      'okScriptToolkitAnnotation',
+      boxMode ? 'okScriptToolkitBoxAnnotation' : 'okScriptToolkitAnnotation',
       tr('Annotation Editor'),
       vscode.ViewColumn.Beside,
       {
@@ -312,19 +344,24 @@ export class AnnotationPanel {
       thumbDir,
       () => panel.visible,
       onSaved,
+      boxMode,
     );
-    AnnotationPanel.current = new AnnotationPanel(panel, controller);
+    const instance = new AnnotationPanel(panel, controller, boxMode);
+    if (boxMode) AnnotationPanel.currentBoxes = instance;
+    else AnnotationPanel.current = instance;
     controller.open(imagePath, imageList);
   }
 
   private constructor(
     private readonly panel: vscode.WebviewPanel,
     readonly controller: AnnotationController,
+    boxMode: boolean,
   ) {
     controller.attachHtml();
     panel.onDidDispose(() => {
       controller.dispose();
-      AnnotationPanel.current = undefined;
+      if (boxMode && AnnotationPanel.currentBoxes === this) AnnotationPanel.currentBoxes = undefined;
+      else if (!boxMode && AnnotationPanel.current === this) AnnotationPanel.current = undefined;
     });
   }
 }
