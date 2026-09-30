@@ -735,11 +735,15 @@ class AssetGalleryController {
       swap,
     );
     if (choice !== swap) return;
-    // 模板交换的同一条保险：模态框会让出事件循环，写盘前重新核对"图还在、框没变"。
+    // 模板交换的同一条保险：模态框会让出事件循环，写盘前重新核对图片、尺寸与框。
     this.data.load();
     const current = readAuthoringFile(root, templates);
+    const currentSourceSize = sizeOf(first);
+    const currentTargetSize = sizeOf(second);
     const currentAllowed = new Set(this.data.listImages());
     if (!currentAllowed.has(sourcePath) || !currentAllowed.has(targetPath)
+      || !currentSourceSize || !currentTargetSize
+      || !isSameSize(currentSourceSize, sourceSize) || !isSameSize(currentTargetSize, targetSize)
       || JSON.stringify(boxesForImage(current, first)) !== JSON.stringify(sourceBoxes)
       || JSON.stringify(boxesForImage(current, second)) !== JSON.stringify(targetBoxes)) {
       void vscode.window.showWarningMessage(tr('Annotations changed while confirming. Retry the swap.'));
