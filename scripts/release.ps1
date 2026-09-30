@@ -5,13 +5,21 @@
 .DESCRIPTION
     Automates:
       1. Read current version and auto-increment
-      2. Sync new version to nine places: package.json / package-lock.json /
+      2. Stash local tracked/untracked changes in both repositories
+      3. Sync new version to seven places: package.json / package-lock.json /
          jetbrains/gradle.properties / the four README badges
          (README.md / README.en.md + jetbrains/README.md / jetbrains/README.en.md)
-      3. Verify version consistency
-      4. Commit and push jetbrains submodule
-      5. Commit and push parent repo (with README badge and submodule pointer update)
-      6. Create and push the v{newVersion} tag (this is what triggers the release pipeline)
+      4. Verify version consistency
+      5. Commit and push jetbrains submodule
+      6. Commit and push parent repo (with README badge and submodule pointer update)
+      7. Create and push the v{newVersion} tag (this is what triggers the release pipeline)
+      8. Restore this run's stashes, including the original staging state
+
+    Local changes are not included in the release. Existing stashes and ignored
+    files are left alone. Restoration is attempted even if a release step fails;
+    a conflicting stash is kept and its commit ID is reported for recovery.
+    Uncommitted work left by a failed release is saved in a separate stash before
+    restoring local edits; commits or pushes that already succeeded are not undone.
 
     Precondition: both the parent repo and the jetbrains submodule must be on the
     'main' branch; the script refuses to run otherwise (releasing from another
@@ -52,23 +60,32 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+# Exit codes are checked below, including expected nonzero read-only results.
+$PSNativeCommandUseErrorActionPreference = $false
 
 # -- Helpers --
 function Invoke-Cmd {
     param(
         [string]$Command,
+        [string[]]$Arguments,
         [string]$Label,
-        [string]$WorkingDir = $Root
+        [string]$WorkingDir = $Root,
+        [switch]$ReadOnly,
+        [int[]]$SuccessCodes = @(0)
     )
-    if ($DryRun) {
+    if ($DryRun -and -not $ReadOnly) {
         Write-Host "  [dry-run] $Label" -ForegroundColor DarkGray
         return ''
     }
-    Write-Host "  > $Label" -ForegroundColor Cyan
+    if ($Label) { Write-Host "  > $Label" -ForegroundColor Cyan }
     $prevLocation = Get-Location
     try {
         Set-Location $WorkingDir
-        $output = Invoke-Expression "$Command 2>&1" | Out-String
+        $output = & $Command @Arguments 2>&1 | Out-String
+        $exitCode = $LASTEXITCODE
+        if ($exitCode -notin $SuccessCodes) {
+            throw "$Command failed (exit $exitCode): $($output.Trim())"
+        }
         return $output.Trim()
     } finally {
         Set-Location $prevLocation
@@ -76,12 +93,53 @@ function Invoke-Cmd {
 }
 
 function Read-CurrentVersion {
-    $pkgPath = Join-Path $Root 'package.json'
-    $pkgContent = Get-Content $pkgPath -Raw
+    # Local package.json edits will be stashed; dry-run must use that same baseline.
+    $pkgContent = Invoke-Cmd -Command git -Arguments @('show', 'HEAD:package.json') -ReadOnly
     if ($pkgContent -match '"version"\s*:\s*"(\d+)\.(\d+)\.(\d+)"') {
         return @{ Raw = $Matches[0]; Major = [int]$Matches[1]; Minor = [int]$Matches[2]; Patch = [int]$Matches[3] }
     }
     throw 'package.json: no valid version found'
+}
+
+function Get-WorkspaceStatus {
+    param([string]$Directory, [switch]$IgnoreSubmodules)
+    $ignore = if ($IgnoreSubmodules) { 'all' } else { 'dirty' }
+    Invoke-Cmd -Command git -Arguments @('status', '--porcelain', '--untracked-files=all', "--ignore-submodules=$ignore") -WorkingDir $Directory -ReadOnly
+}
+
+function Get-StashHead {
+    param([string]$Directory)
+    Invoke-Cmd -Command git -Arguments @('rev-parse', '--verify', '--quiet', 'refs/stash') -WorkingDir $Directory -ReadOnly -SuccessCodes @(0, 1)
+}
+
+function Save-ReleaseChanges {
+    param([string]$Directory, [string]$Name, [switch]$Retain)
+    if (-not (Get-WorkspaceStatus $Directory)) { return }
+    if ($DryRun) {
+        Write-Host "  [dry-run] Stash tracked/untracked changes ($Name); restore after release" -ForegroundColor DarkGray
+        return
+    }
+    $previous = Get-StashHead $Directory
+    Invoke-Cmd -Command git -Arguments @('stash', 'push', '--include-untracked', '--message', "ok-script release v$newVersion $stashRunId ($Name)") -Label "Stash local changes ($Name)" -WorkingDir $Directory | Out-Null
+    $stashId = Get-StashHead $Directory
+    if ($stashId -and $stashId -ne $previous) {
+        if (-not $Retain) {
+            $savedStashes.Add(@{ Directory = $Directory; Name = $Name; Id = $stashId })
+        }
+        Write-Host "  Saved $Name changes: $stashId" -ForegroundColor DarkGray
+    }
+}
+
+function Restore-ReleaseChanges {
+    param([hashtable]$Saved)
+    # Apply by immutable ID; never pop the user's latest stash by position.
+    Invoke-Cmd -Command git -Arguments @('stash', 'apply', '--index', $Saved.Id) -Label "Restore local changes ($($Saved.Name))" -WorkingDir $Saved.Directory | Out-Null
+    $entries = Invoke-Cmd -Command git -Arguments @('stash', 'list', '--format=%H%x09%gd') -WorkingDir $Saved.Directory -ReadOnly
+    $entry = $entries -split '\r?\n' | Where-Object { $_.StartsWith($Saved.Id + "`t") } | Select-Object -First 1
+    if ($entry) {
+        $selector = ($entry -split "`t", 2)[1]
+        Invoke-Cmd -Command git -Arguments @('stash', 'drop', $selector) -Label "Remove restored release stash ($($Saved.Name))" -WorkingDir $Saved.Directory | Out-Null
+    }
 }
 
 function Bump-Version {
@@ -116,67 +174,99 @@ Write-Host ""
 Write-Host "Release: $oldVersion -> v$newVersion" -ForegroundColor Green
 Write-Host ""
 
-# 1. Check current branch: releases are only allowed on main. These git calls are
-#    made directly (not via Invoke-Cmd) on purpose: Invoke-Cmd no-ops in dry-run
-#    and would return an empty value, defeating read-only checks.
+# 1. Check current branch even during dry-run: releases are only allowed on main.
 Write-Host "> Checking current branch..."
-$parentBranch = (git -C $Root rev-parse --abbrev-ref HEAD).Trim()
+$parentBranch = Invoke-Cmd -Command git -Arguments @('rev-parse', '--abbrev-ref', 'HEAD') -ReadOnly
 if ($parentBranch -ne 'main') {
     Write-Error "`nParent repo is on branch [$parentBranch]. Releases must run on 'main' (git checkout main). Releasing from another branch lands the release commit there (hit on v1.12.0)."
     exit 1
 }
-$jetbrainsBranch = (git -C $JetbrainsDir rev-parse --abbrev-ref HEAD).Trim()
+$jetbrainsBranch = Invoke-Cmd -Command git -Arguments @('rev-parse', '--abbrev-ref', 'HEAD') -WorkingDir $JetbrainsDir -ReadOnly
 if ($jetbrainsBranch -ne 'main') {
     Write-Error "`nJetbrains submodule is on branch [$jetbrainsBranch]. Releases require the submodule to be on 'main'."
     exit 1
 }
 
-# 2. Check clean workspaces (direct git calls, same dry-run rationale as step 1)
-Write-Host "> Checking workspace status..."
-$parentStatus = (git -C $Root status --porcelain | Out-String).Trim()
-if ($parentStatus) {
-    Write-Error "`nParent repo has uncommitted changes:`n$parentStatus"
-    exit 1
+$savedStashes = [System.Collections.Generic.List[hashtable]]::new()
+$stashRunId = [guid]::NewGuid().ToString('N')
+$releaseFailure = $null
+$releaseStarted = $false
+$restoreFailures = [System.Collections.Generic.List[string]]::new()
+try {
+    Write-Host "> Stashing local changes..."
+    # Git does not stash submodule contents; save the child before the parent.
+    Save-ReleaseChanges $JetbrainsDir 'jetbrains'
+    Save-ReleaseChanges $Root 'parent'
+    if (-not $DryRun) {
+        # A checked-out child commit can differ from the parent's gitlink; the
+        # release will update that pointer after committing the child version.
+        if ((Get-WorkspaceStatus $Root -IgnoreSubmodules) -or (Get-WorkspaceStatus $JetbrainsDir)) {
+            throw 'Workspace is still dirty after stashing; release stopped.'
+        }
+    }
+
+    $releaseStarted = $true
+    Write-Host "> Syncing version -> $newVersion"
+    $syncScript = Join-Path $Root 'scripts\release\sync-version.js'
+    Invoke-Cmd -Command node -Arguments @($syncScript, $newVersion) -Label 'version:sync'
+
+    Write-Host "> Verifying version consistency..."
+    $verifyScript = Join-Path $Root 'scripts\release\verify-version.js'
+    Invoke-Cmd -Command node -Arguments @($verifyScript) -Label 'verify:version'
+
+    Write-Host "> Committing jetbrains submodule..."
+    Invoke-Cmd -Command git -Arguments @('add', '-A') -Label 'git add (jetbrains)' -WorkingDir $JetbrainsDir
+    $commitMsg = "chore(release): prepare v$newVersion"
+    Invoke-Cmd -Command git -Arguments @('commit', '-m', $commitMsg) -Label 'git commit (jetbrains)' -WorkingDir $JetbrainsDir
+    Invoke-Cmd -Command git -Arguments @('push', 'origin', 'main') -Label 'git push (jetbrains)' -WorkingDir $JetbrainsDir
+
+    # All four README badges must be committed; the parent also pins the new child.
+    Write-Host "> Committing parent repo..."
+    Invoke-Cmd -Command git -Arguments @('add', 'package.json', 'package-lock.json', 'README.md', 'README.en.md', 'jetbrains') -Label 'git add (parent)'
+    Invoke-Cmd -Command git -Arguments @('commit', '-m', $commitMsg) -Label 'git commit (parent)'
+    Invoke-Cmd -Command git -Arguments @('push', 'origin', 'main') -Label 'git push (parent)'
+
+    Write-Host "> Creating tag v$newVersion..."
+    Invoke-Cmd -Command git -Arguments @('tag', '-a', "v$newVersion", '-m', "Release v$newVersion") -Label 'git tag'
+    Invoke-Cmd -Command git -Arguments @('push', 'origin', "v$newVersion") -Label 'git push tag'
+} catch {
+    $releaseFailure = $_.Exception.Message
+    # In particular, a failed commit leaves version files staged. Save that work
+    # separately so it cannot prevent restoration of the user's original index.
+    if ($releaseStarted) {
+        foreach ($pending in @(
+            @{ Directory = $JetbrainsDir; Name = 'unfinished release - jetbrains' },
+            @{ Directory = $Root; Name = 'unfinished release - parent' }
+        )) {
+            try {
+                Save-ReleaseChanges $pending.Directory $pending.Name -Retain
+            } catch {
+                Write-Warning "Could not stash unfinished release work ($($pending.Name)): $($_.Exception.Message)"
+            }
+        }
+    }
+} finally {
+    # Attempt every restoration even if another repository has a conflict.
+    for ($i = $savedStashes.Count - 1; $i -ge 0; $i--) {
+        $saved = $savedStashes[$i]
+        try {
+            Restore-ReleaseChanges $saved
+        } catch {
+            $message = "Could not finish restoring $($saved.Name) changes: $($_.Exception.Message). Saved changes remain at stash $($saved.Id) in $($saved.Directory). Inspect git status and git stash show before recovering."
+            $restoreFailures.Add($message)
+            Write-Warning $message
+        }
+    }
 }
 
-$jetbrainsStatus = (git -C $JetbrainsDir status --porcelain | Out-String).Trim()
-if ($jetbrainsStatus) {
-    Write-Error "`nJetbrains submodule has uncommitted changes:`n$jetbrainsStatus"
+if ($releaseFailure -or $restoreFailures.Count) {
+    if ($releaseFailure) { Write-Error "Release failed: $releaseFailure" -ErrorAction Continue }
+    if ($restoreFailures.Count) {
+        if (-not $releaseFailure) { Write-Host "Release v$newVersion was pushed; only local-change restoration needs attention." -ForegroundColor Yellow }
+        Write-Error 'Local changes need manual recovery from the retained stash(es).' -ErrorAction Continue
+    }
     exit 1
 }
-
-# 3. Sync version
-Write-Host "> Syncing version -> $newVersion"
-$syncScript = Join-Path $Root 'scripts\release\sync-version.js'
-Invoke-Cmd "node `"$syncScript`" $newVersion" 'version:sync'
-
-# 4. Verify version consistency
-Write-Host "> Verifying version consistency..."
-$verifyScript = Join-Path $Root 'scripts\release\verify-version.js'
-Invoke-Cmd "node `"$verifyScript`"" 'verify:version'
-
-# 5. Commit jetbrains submodule
-Write-Host "> Committing jetbrains submodule..."
-Invoke-Cmd 'git add -A' 'git add (jetbrains)' $JetbrainsDir
-$commitMsg = "chore(release): prepare v$newVersion"
-Invoke-Cmd "git commit -m `"$commitMsg`"" 'git commit (jetbrains)' $JetbrainsDir
-Invoke-Cmd 'git push origin main' 'git push (jetbrains)' $JetbrainsDir
-
-# 6. Commit parent repo (with submodule pointer update)
-# README badge files must be added EXPLICITLY one by one: sync-version.js rewrites
-# all four README badges, but `git commit` (without -a) only picks up staged files.
-# This list used to omit README.en.md, leaving the English badge update stuck in the
-# working tree and failing CI's version check (hit on v1.11.0, 2026-09-22).
-# When adding a new README, remember to extend this list.
-Write-Host "> Committing parent repo..."
-Invoke-Cmd 'git add package.json package-lock.json README.md README.en.md jetbrains' 'git add (parent)'
-Invoke-Cmd "git commit -m `"$commitMsg`"" 'git commit (parent)'
-Invoke-Cmd 'git push origin main' 'git push (parent)'
-
-# 7. Create tag and push
-Write-Host "> Creating tag v$newVersion..."
-Invoke-Cmd "git tag -a v$newVersion -m `"Release v$newVersion`"" 'git tag'
-Invoke-Cmd "git push origin v$newVersion" 'git push tag'
 
 Write-Host ""
 Write-Host "Done! $oldVersion -> v$newVersion" -ForegroundColor Green

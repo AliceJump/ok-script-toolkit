@@ -91,6 +91,16 @@ GitHub Secret 支持多行文本，可直接粘贴 PEM/CRT 全文；也可先 Ba
 > 拒绝——发版 commit 会落在执行时所在的分支（v1.12.0 实测踩坑）。
 > 手动发布时请严格按下面顺序，**不要漏掉任何一步**。
 
+Windows 的 `scripts/release.ps1` 会先分别储藏父仓库和 JetBrains 子仓库的未提交改动，
+包含未跟踪文件，忽略文件不纳入储藏。发版只使用已提交代码，自动递增也以 `HEAD` 中的
+版本为基准。结束后会尝试恢复本次储藏及原来的暂存状态，已有 stash 保持不动。
+恢复冲突时保留对应 stash 并打印其提交编号；发版失败留下的未提交版本改动会单独储藏，
+已成功的提交或推送不会自动回滚。PowerShell 预览参数是 `-DryRun`，不会实际储藏或发版；
+Shell 版仍要求工作区干净。
+
+可运行 `node scripts/test_release.js` 验证 PowerShell 发版流程。测试需要 `git`、`node`
+和 `pwsh`，只使用临时仓库及本地远端，不会触发项目的真实发布。
+
 例如发布 `0.6.0`：
 
 ```bash
@@ -225,6 +235,18 @@ GitHub Secrets support multi-line text; you can paste PEM/CRT full text directly
 > otherwise — the release commit lands on whatever branch it runs from (hit on v1.12.0).
 > If releasing manually, follow the order below exactly and
 > **do not skip any step**.
+
+On Windows, `scripts/release.ps1` first stashes uncommitted changes separately in the
+parent and JetBrains repositories, including untracked files but excluding ignored files.
+The release uses committed code; automatic version increments use the version in `HEAD`.
+It attempts to restore this run's stashes and the original staging state afterward,
+without touching existing stashes. Conflicting stashes are retained and their commit IDs
+are printed. Uncommitted version changes left by a failed release are stashed separately;
+successful commits or pushes are not rolled back. PowerShell uses `-DryRun` to preview
+without stashing or releasing. The Shell script still requires clean workspaces.
+
+Run `node scripts/test_release.js` to verify the PowerShell release flow. It requires
+`git`, `node`, and `pwsh`, and uses temporary repositories and local remotes only.
 
 For example, releasing `0.6.0`:
 
