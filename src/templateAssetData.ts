@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { decodeRgba, encodePngRgb, readImageSize } from './pngCrop';
+import { decodeRgba, encodePngRgb } from './pngCrop';
 import {
   AssetPackCancelledError, AssetPackPageTask,
   isAssetPackPoolInitialized, renderPagesViaPool,
@@ -27,26 +27,6 @@ export class TemplateAssetData extends CocoAnnotationData {
 
   override setRoot(rootDir: string): void {
     super.setRoot(rootDir, templatesDirectory(rootDir));
-  }
-
-  /** Add an image file to COCO data (static helper for external callers). */
-  static async addImageToCoco(imagePath: string, rootDir?: string): Promise<void> {
-    const folder = vscode.workspace.workspaceFolders?.[0];
-    const target = rootDir || folder?.uri.fsPath;
-    if (!target) throw new Error(tr('noWorkspaceFolder'));
-    const data = new TemplateAssetData(target);
-    await data.load();
-    data.addImageEntry(imagePath, 0, 0);
-    // Read actual dimensions (PNG/JPEG/BMP via header)
-    try {
-      const buf = fs.readFileSync(imagePath);
-      const dims = readImageSize(buf);
-      if (dims) {
-        const img = data.cocoData.images.find(i => i.file_name === path.basename(imagePath));
-        if (img) { img.width = dims.width; img.height = dims.height; }
-      }
-    } catch { /* ignore */ }
-    data.save();
   }
 
   /* ---------- 删除图片文件和COCO数据 ---------- */
@@ -485,9 +465,13 @@ export class TemplateAssetData extends CocoAnnotationData {
   /* ---------- 导入外部图片文件 ---------- */
 
   /**
-   * 把外部图片文件复制进 ok_templates 并登记 COCO 条目。
-   * 文件名使用 nextImageName() 生成的序号（保持与面板导入一致的行为）。
-   * 返回落盘后的绝对路径，失败返回 undefined。
+   * 把外部图片文件复制进模板目录。文件名使用 nextImageName() 生成的序号
+   * （保持与面板导入一致的行为）。返回落盘后的绝对路径，失败返回 undefined。
+   *
+   * **不写 `coco_annotations.json`**：导入只是把文件放进模板目录。图片条目由
+   * **标注保存流程**按需补登记（`setAnnotationsForImage` → `ensureSwapImage`）——
+   * 否则"导进来但一张框都没标"的图会立刻在标注文件里占一条空记录。
+   * 模板序号占位同时看磁盘与 COCO（见 `nextImageName`），所以不登记也不会撞名。
    */
   importImageFile(srcPath: string): string | undefined {
     try {
@@ -496,31 +480,7 @@ export class TemplateAssetData extends CocoAnnotationData {
       const name = this.nextImageName() + ext;
       const dst = path.join(this.templateFolder, name);
       fs.copyFileSync(srcPath, dst);
-      const buf = fs.readFileSync(dst);
-      const dims = readImageSize(buf);
-      this.addImageEntry(dst, dims?.width ?? 0, dims?.height ?? 0);
-      this.save();
       return dst;
-    } catch {
-      return undefined;
-    }
-  }
-
-  /* ---------- 添加截图（base64 PNG） ---------- */
-
-  addScreenshot(base64Png: string): string | undefined {
-    try {
-      this.ensureTemplateFolder();
-      const name = this.nextImageName();
-      const filePath = path.join(this.templateFolder, `${name}.png`);
-      const buf = Buffer.from(base64Png, 'base64');
-      fs.writeFileSync(filePath, buf);
-
-      // 读取图片尺寸
-      const dims = readImageSize(buf);
-      this.addImageEntry(filePath, dims?.width ?? 0, dims?.height ?? 0);
-      this.save();
-      return filePath;
     } catch {
       return undefined;
     }

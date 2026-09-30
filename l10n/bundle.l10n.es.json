@@ -178,7 +178,6 @@
   "Saved to: {path}": "Guardado en: {path}",
   "Screenshot failed: file not created": "Captura fallida: no se creó el archivo",
   "Screenshot failed: {error}": "Captura fallida: {error}",
-  "Screenshot saved but COCO update failed: {error}": "Captura guardada, pero falló la actualización de COCO: {error}",
   "Screenshot saved: {name}": "Captura guardada: {name}",
   "Screenshot script not found. capture_game_window.py is missing from the extension.": "No se encontró el script de captura. Falta capture_game_window.py en la extensión.",
   "Source: {layer}": "Origen: {layer}",

@@ -254,11 +254,16 @@ class AssetGalleryController {
   /* ---------- 截图处理 ---------- */
 
   /**
-   * 截图并登记进 COCO。
+   * 截图落盘并刷新素材列表。
    *
    * **public 是刻意的**：快捷键命令（`okScriptToolkit.screenshotToTemplate`）要复用它 ——
    * 截图实现只此一处，命令只负责"打开面板 + 调这里"，绝不另造一套，
-   * 否则两条路径的截图行为（落盘位置、COCO 登记）迟早漂移。
+   * 否则两条路径的截图行为（落盘位置、列表刷新）迟早漂移。
+   *
+   * **不写 COCO**：截图只把 PNG 放进模板目录。`coco_annotations.json` 的 images 由
+   * **标注保存流程**按需补登记（`setAnnotationsForImage` → `ensureSwapImage`）——
+   * 否则每截一张图（哪怕根本没标框）都会往标注文件里塞一条空记录，
+   * 让"截了但没标"的图污染标注数据。
    */
   async handleScreenshot(hardForeground?: boolean): Promise<void> {
     const folder = vscode.workspace.workspaceFolders?.[0];
@@ -286,14 +291,9 @@ class AssetGalleryController {
       return;
     }
 
-    // Add to COCO data
-    try {
-      await TemplateAssetData.addImageToCoco(outputPath, projectRoot);
-      void vscode.window.showInformationMessage(tr('Screenshot saved: {name}', { name: path.basename(outputPath) }));
-      await this.update();
-    } catch (e) {
-      void vscode.window.showErrorMessage(tr('Screenshot saved but COCO update failed: {error}', { error: String(e) }));
-    }
+    // 截图只落盘 + 刷新列表；COCO 图片登记属于标注保存流程，这里不碰。
+    void vscode.window.showInformationMessage(tr('Screenshot saved: {name}', { name: path.basename(outputPath) }));
+    await this.update();
   }
 
   /* ---------- 保存到 assets ---------- */

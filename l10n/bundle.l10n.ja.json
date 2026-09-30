@@ -178,7 +178,6 @@
   "Saved to: {path}": "保存しました: {path}",
   "Screenshot failed: file not created": "スクリーンショット失敗: ファイルが作成されませんでした",
   "Screenshot failed: {error}": "スクリーンショット失敗: {error}",
-  "Screenshot saved but COCO update failed: {error}": "スクリーンショットは保存されましたが COCO 更新に失敗: {error}",
   "Screenshot saved: {name}": "スクリーンショットを保存しました: {name}",
   "Screenshot script not found. capture_game_window.py is missing from the extension.": "スクリーンショットスクリプトが見つかりません。拡張機能に capture_game_window.py がありません。",
   "Source: {layer}": "由来: {layer}",

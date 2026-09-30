@@ -351,7 +351,7 @@ import 得到（只是拿不到新标签），不会报错；而改类名是**�
 
 **要什么**：一个"截图 → 进标注模板管理"的快捷键。默认目标是**标注模板管理**
 （`openTemplateAssets` / `ShowTemplateAssetsAction`，其面板自带截图动作：
-截图落盘后登记进 COCO），而**不是**临时截图（`showTempScreenshots` /
+截图落盘后刷新素材列表），而**不是**临时截图（`showTempScreenshots` /
 `ShowTempShotsAction`）。
 
 **为什么是 IDE 级**：键位是个人偏好。放进项目配置会强加给同事，而且 VS Code 与
