@@ -1,8 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { randomUUID } from 'crypto';
 import * as vscode from 'vscode';
-import { decodeRgba, encodePngRgb, readImageSize } from './pngCrop';
+import { decodeRgba, encodePngRgb } from './pngCrop';
 import {
   AssetPackCancelledError, AssetPackPageTask,
   isAssetPackPoolInitialized, renderPagesViaPool,
@@ -12,444 +11,32 @@ import { labelEnumNameSetting, templatesDirectory } from './projectConfig';
 import { PYTHON_KEYWORDS, writableClassName } from './labelEnumGuard';
 import { isPathInsideRoot } from './saveToAssetsPure';
 import { captureAuthoring, removeImageBoxes, restoreAuthoring } from './boxResourceStore';
+import { CocoAnnotationData, CocoData, CocoImage, CocoAnnotation, filenameKey, readImageHeaderSize } from './cocoAnnotationData';
+import { AUTHORING_FILE_NAME, parseBoxCoco } from './boxResourcePure';
+export { CocoImage, CocoAnnotation, CocoCategory, CocoData, filenameKey } from './cocoAnnotationData';
 
-/* ---------------- COCO 数据类型 ---------------- */
-
-export interface CocoImage {
-  id: number;
-  file_name: string;
-  width: number;
-  height: number;
-}
-
-export interface CocoAnnotation {
-  id: number;
-  image_id: number;
-  category_id: number;
-  bbox: [number, number, number, number]; // [x, y, w, h]
-  area: number;
-  iscrowd: number;
-}
-
-export interface CocoCategory {
-  id: number;
-  name: string;
-  supercategory: string;
-}
-
-export interface CocoData {
-  images: CocoImage[];
-  annotations: CocoAnnotation[];
-  categories: CocoCategory[];
-}
-
-/* ---------------- 文件名归一化（兼容大小写/扩展名） ---------------- */
-
-export function filenameKey(name: string): string {
-  return path.basename(name).toLowerCase().replace(/\.[^.]+$/, '');
-}
-
-/* ---------------- 模板素材数据管理 ---------------- */
-
-const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.bmp']);
 const COCO_JSON = 'coco_annotations.json';
 
-/** 只读图片头拿宽高（PNG/JPEG/BMP），不做像素解码；失败返回 undefined */
-function readImageHeaderSize(src: string): { width: number; height: number } | undefined {
-  let fd: number | undefined;
-  try {
-    fd = fs.openSync(src, 'r');
-    // JPEG 的 SOF marker 可能被 EXIF 等大 APP 段推后，多读一些
-    const buf = Buffer.alloc(65536);
-    const read = fs.readSync(fd, buf, 0, buf.length, 0);
-    return readImageSize(buf.subarray(0, read));
-  } catch {
-    return undefined;
-  } finally {
-    if (fd !== undefined) {
-      try { fs.closeSync(fd); } catch { /* ignore */ }
-    }
-  }
-}
-
-function sameFile(a: string, b: string): boolean {
-  try {
-    return fs.realpathSync.native(a) === fs.realpathSync.native(b);
-  } catch {
-    return false;
-  }
-}
-
-export class TemplateAssetData {
-  private rootDir: string;
-  private cocoData: CocoData = { images: [], annotations: [], categories: [] };
-  private cocoPath: string;
-  private templateFolder: string;
-  private _dirty = false;
-
-  constructor(root: vscode.WorkspaceFolder | string | undefined) {
-    this.rootDir = typeof root === 'string' ? root : root ? root.uri.fsPath : '';
-    // 目录名走取值链（IDE 设置 > 项目约定文件 templates.directory > `ok_templates`）。
-    // 配置从**本对象自己的 rootDir** 读，与 `generateLabelEnum` 里
-    // `labelEnumNameSetting(filePath, this.rootDir)` 保持同一个根 ——
-    // 模板数据可能来自另一个仓库，用错根会读到别人的约定文件。
-    this.templateFolder = path.join(this.rootDir, templatesDirectory(this.rootDir));
-    this.cocoPath = path.join(this.templateFolder, COCO_JSON);
+export class TemplateAssetData extends CocoAnnotationData {
+  constructor(root: vscode.WorkspaceFolder | string | undefined, fileName = 'coco_annotations.json') {
+    const rootDir = typeof root === 'string' ? root : root ? root.uri.fsPath : '';
+    super(rootDir, templatesDirectory(rootDir), fileName, fileName === AUTHORING_FILE_NAME
+      ? text => parseBoxCoco(text, name => this.resolveImageSize(path.join(this.templatesDir, name)))
+      : undefined);
   }
 
-  setRoot(rootDir: string): void {
-    this.rootDir = rootDir;
-    this.templateFolder = path.join(rootDir, templatesDirectory(rootDir));
-    this.cocoPath = path.join(this.templateFolder, COCO_JSON);
-    this.cocoData = { images: [], annotations: [], categories: [] };
-  }
-
-  /** Add an image file to COCO data (static helper for external callers). */
-  static async addImageToCoco(imagePath: string, rootDir?: string): Promise<void> {
-    const folder = vscode.workspace.workspaceFolders?.[0];
-    const target = rootDir || folder?.uri.fsPath;
-    if (!target) throw new Error(tr('noWorkspaceFolder'));
-    const data = new TemplateAssetData(target);
-    await data.load();
-    data.addImageEntry(imagePath, 0, 0);
-    // Read actual dimensions (PNG/JPEG/BMP via header)
-    try {
-      const buf = fs.readFileSync(imagePath);
-      const dims = readImageSize(buf);
-      if (dims) {
-        const img = data.cocoData.images.find(i => i.file_name === path.basename(imagePath));
-        if (img) { img.width = dims.width; img.height = dims.height; }
-      }
-    } catch { /* ignore */ }
-    data.save();
-  }
-
-  get root(): string { return this.rootDir; }
-  get templatesDir(): string { return this.templateFolder; }
-
-  /* ---------- 初始化/加载 ---------- */
-
-  ensureTemplateFolder(): string {
-    if (!fs.existsSync(this.templateFolder)) {
-      fs.mkdirSync(this.templateFolder, { recursive: true });
-    }
-    return this.templateFolder;
-  }
-
-  load(): CocoData {
-    this.ensureTemplateFolder();
-    if (fs.existsSync(this.cocoPath)) {
-      try {
-        const raw = JSON.parse(fs.readFileSync(this.cocoPath, 'utf-8'));
-        this.cocoData = {
-          images: raw.images ?? [],
-          annotations: raw.annotations ?? [],
-          categories: raw.categories ?? [],
-        };
-      } catch {
-        this.cocoData = { images: [], annotations: [], categories: [] };
-      }
-    } else {
-      this.cocoData = { images: [], annotations: [], categories: [] };
-    }
-    this._dirty = false;
-    return this.cocoData;
-  }
-
-  save(): void {
-    this.ensureTemplateFolder();
-    // Write beside the destination so a failed write cannot truncate the current COCO file.
-    const temporaryPath = path.join(this.templateFolder, `.${COCO_JSON}.${randomUUID()}.tmp`);
-    try {
-      fs.writeFileSync(temporaryPath, JSON.stringify(this.cocoData, null, 2), 'utf-8');
-      // Windows readers can briefly deny replacement; retry only transient lock errors.
-      for (let attempt = 0; ; attempt++) {
-        try {
-          fs.renameSync(temporaryPath, this.cocoPath);
-          break;
-        } catch (error) {
-          const code = (error as NodeJS.ErrnoException).code;
-          if (attempt >= 3 || !['EPERM', 'EACCES', 'EBUSY'].includes(code ?? '')) throw error;
-          Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25);
-        }
-      }
-    } finally {
-      try { fs.rmSync(temporaryPath, { force: true }); } catch { /* preserve the write error */ }
-    }
-    this._dirty = false;
-  }
-
-  get data(): CocoData { return this.cocoData; }
-
-  /* ---------- 图片列表 ---------- */
-
-  listImages(): string[] {
-    this.ensureTemplateFolder();
-    try {
-      return fs.readdirSync(this.templateFolder)
-        .filter((f) => IMAGE_EXTS.has(path.extname(f).toLowerCase()))
-        .sort((a, b) => {
-          const sa = fs.statSync(path.join(this.templateFolder, a));
-          const sb = fs.statSync(path.join(this.templateFolder, b));
-          return sb.mtimeMs - sa.mtimeMs; // 最新的在前
-        })
-        .map((f) => path.join(this.templateFolder, f));
-    } catch {
-      return [];
-    }
-  }
-
-  /* ---------- 图片名称管理 ---------- */
-
-  nextImageName(): string {
-    const existing = new Set(
-      this.cocoData.images.map((img) => path.basename(img.file_name, path.extname(img.file_name)))
-    );
-    let i = 1;
-    while (existing.has(String(i))) i++;
-    return String(i);
-  }
-
-  /* ---------- COCO 图片操作 ---------- */
-
-  getImageEntryForPath(imagePath: string): CocoImage | undefined {
-    const key = filenameKey(imagePath);
-    return this.cocoData.images.find((img) => filenameKey(img.file_name) === key);
-  }
-
-  /** Swaps must use the selected file, not the legacy same-stem fallback used by other callers. */
-  getSwapImageEntry(imagePath: string): CocoImage | undefined {
-    const fileName = path.basename(imagePath);
-    const exact = this.cocoData.images.find((img) => img.file_name === fileName);
-    if (exact) return exact;
-    const caseInsensitive = this.cocoData.images.filter((img) => img.file_name.toLowerCase() === fileName.toLowerCase());
-    if (caseInsensitive.length !== 1) return undefined;
-    // On case-sensitive disks `foo.png` and `Foo.png` are different files; accept the fallback only for the same file.
-    const candidatePath = path.join(path.dirname(imagePath), caseInsensitive[0].file_name);
-    return sameFile(imagePath, candidatePath) ? caseInsensitive[0] : undefined;
-  }
-
-  getImageId(imagePath: string): number | undefined {
-    return this.getImageEntryForPath(imagePath)?.id;
-  }
-
-  /**
-   * 图片的**真实**尺寸，供标注交换做比例映射。
-   *
-   * 先读文件头再退回 COCO 记录，顺序不能反：COCO 里的 width/height 可能是 0
-   * （老数据、或登记时读不出尺寸），拿 0 当除数会算出 Infinity；而反过来，
-   * 文件头读不出来时 COCO 至少还是个已知值。两者都没有才返回 undefined，
-   * 由调用方决定"拒绝交换"而不是"按 1 倍瞎搬"。
-   */
-  resolveImageSize(imagePath: string): { width: number; height: number } | undefined {
-    const header = readImageHeaderSize(imagePath);
-    if (header && header.width > 0 && header.height > 0) return header;
-    const entry = this.getSwapImageEntry(imagePath);
-    if (entry && entry.width > 0 && entry.height > 0) {
-      return { width: entry.width, height: entry.height };
-    }
-    return undefined;
-  }
-
-  /**
-   * 交换落盘前补一条图片记录。已有精确记录就用它。
-   * 同名不同扩展名不能借别人的记录，必须按这次的文件名新建。
-   */
-  private ensureSwapImage(filePath: string, size?: { width: number; height: number }): number | undefined {
-    const existing = this.getSwapImageEntry(filePath);
-    if (existing) return existing.id;
-    if (!size || size.width <= 0 || size.height <= 0) return undefined;
-    const fileName = path.basename(filePath);
-    const located = path.resolve(this.templateFolder, fileName);
-    if (path.resolve(filePath) !== located && !sameFile(filePath, located)) return undefined;
-    let maxId = 0;
-    for (const img of this.cocoData.images) {
-      if (img.id > maxId) maxId = img.id;
-    }
-    const id = maxId + 1;
-    this.cocoData.images.push({ id, file_name: fileName, width: size.width, height: size.height });
-    return id;
-  }
-
-  addImageEntry(imagePath: string, width: number, height: number): void {
-    const filename = path.basename(imagePath);
-    if (this.getSwapImageEntry(imagePath)) return;
-    let maxId = 0;
-    for (const img of this.cocoData.images) {
-      if (img.id > maxId) maxId = img.id;
-    }
-    this.cocoData.images.push({ id: maxId + 1, file_name: filename, width, height });
-    this._dirty = true;
-  }
-
-  removeImageEntry(imagePath: string): void {
-    const imageId = this.getSwapImageEntry(imagePath)?.id;
-    if (imageId === undefined) return;
-    this.cocoData.images = this.cocoData.images.filter((img) => img.id !== imageId);
-    this.cocoData.annotations = this.cocoData.annotations.filter((ann) => ann.image_id !== imageId);
-    this._cleanupCategories();
-    this._dirty = true;
-  }
-
-  /* ---------- COCO 标注操作 ---------- */
-
-  getAnnotationsForImage(imagePath: string, exactFileName = false): Array<CocoAnnotation & { categoryName: string }> {
-    const imageId = exactFileName ? this.getSwapImageEntry(imagePath)?.id : this.getImageId(imagePath);
-    if (imageId === undefined) return [];
-    return this.cocoData.annotations
-      .filter((ann) => ann.image_id === imageId)
-      .map((ann) => ({
-        ...ann,
-        categoryName: this.getCategoryName(ann.category_id) || String(ann.category_id),
-      }));
-  }
-
-  setAnnotationsForImage(imagePath: string, annotations: Array<{ category: string; x: number; y: number; w: number; h: number }>): boolean {
-    let imageId = this.getSwapImageEntry(imagePath)?.id;
-    if (imageId === undefined) {
-      imageId = this.ensureSwapImage(imagePath, this.resolveImageSize(imagePath));
-    }
-    if (imageId === undefined) return false;
-    // 移除旧标注
-    this.cocoData.annotations = this.cocoData.annotations.filter((ann) => ann.image_id !== imageId);
-    // 添加新标注
-    let maxAnnId = 0;
-    for (const ann of this.cocoData.annotations) {
-      if (ann.id > maxAnnId) maxAnnId = ann.id;
-    }
-    for (const ann of annotations) {
-      const catId = this._getOrCreateCategoryId(ann.category);
-      maxAnnId++;
-      this.cocoData.annotations.push({
-        id: maxAnnId,
-        image_id: imageId,
-        category_id: catId,
-        bbox: [ann.x, ann.y, ann.w, ann.h],
-        area: ann.w * ann.h,
-        iscrowd: 0,
-      });
-    }
-    this._cleanupCategories();
-    this._dirty = true;
-    return true;
-  }
-
-  /**
-   * 两张图的标注集合**整体互换**。`boxesForA` / `boxesForB` 是调用方算好的**最终**坐标
-   * （已按目标图尺寸映射过，见 `annotationSwapPure.scaleBoxes`），本方法只负责落数据。
-   *
-   * 为什么不能"调两次 setAnnotationsForImage"：
-   * ① 那条路径每次都 `_cleanupCategories()`。先写的那一侧会把"只有自己引用"的分类
-   *    判成无人使用而删掉，紧接着写另一侧时再按名字重建 —— 分类名不变、**id 会漂**。
-   *    中间那一刻的 cocoData 也是自相矛盾的（A 的标注已经搬走、B 的还是旧的）。
-   * ② 两次调用之间任何一处抛错，会留下"换了一半"的内存状态。
-   * 在副本上先摘掉旧标注、写回两边、清理分类，再一次性保存。
-   * 保存失败时恢复原内存数据，磁盘文件也不会被截断。
-   *
-   * 返回 false 只表示这两张图没法交换（读不出尺寸，或指向同一张图）。
-   * 磁盘上有、但还没写进标注文件的图会在这次保存里补登记；它原来没有框，
-   * 交换后拿到的就是对方的框，对方则变成没有框。失败时什么都不改。
-   */
-  swapAnnotationsForImages(
-    pathA: string,
-    pathB: string,
-    boxesForA: Array<{ category: string; x: number; y: number; w: number; h: number }>,
-    boxesForB: Array<{ category: string; x: number; y: number; w: number; h: number }>,
-    sizeA?: { width: number; height: number },
-    sizeB?: { width: number; height: number },
-  ): boolean {
-    const previousData = this.cocoData;
-    const previousDirty = this._dirty;
-    this.cocoData = {
-      images: [...previousData.images],
-      annotations: [...previousData.annotations],
-      categories: [...previousData.categories],
-    };
-    const idA = this.ensureSwapImage(pathA, sizeA);
-    const idB = this.ensureSwapImage(pathB, sizeB);
-    if (idA === undefined || idB === undefined || idA === idB) {
-      this.cocoData = previousData;
-      this._dirty = previousDirty;
-      return false;
-    }
-    try {
-      this.cocoData.annotations = this.cocoData.annotations.filter(
-        (ann) => ann.image_id !== idA && ann.image_id !== idB,
-      );
-
-      let maxAnnId = 0;
-      for (const ann of this.cocoData.annotations) {
-        if (ann.id > maxAnnId) maxAnnId = ann.id;
-      }
-      const append = (imageId: number, boxes: typeof boxesForA): void => {
-        for (const box of boxes) {
-          const catId = this._getOrCreateCategoryId(box.category);
-          maxAnnId++;
-          this.cocoData.annotations.push({
-            id: maxAnnId,
-            image_id: imageId,
-            category_id: catId,
-            bbox: [box.x, box.y, box.w, box.h],
-            area: box.w * box.h,
-            iscrowd: 0,
-          });
-        }
-      };
-      append(idA, boxesForA);
-      append(idB, boxesForB);
-
-      this._cleanupCategories();
-      this._dirty = true;
-      this.save();
-      return true;
-    } catch (error) {
-      this.cocoData = previousData;
-      this._dirty = previousDirty;
-      throw error;
-    }
-  }
-
-  /* ---------- 分类操作 ---------- */
-
-  getCategoryName(catId: number): string | undefined {
-    return this.cocoData.categories.find((c) => c.id === catId)?.name;
-  }
-
-  _getOrCreateCategoryId(name: string): number {
-    const existing = this.cocoData.categories.find((c) => c.name === name);
-    if (existing) return existing.id;
-    let maxId = 0;
-    for (const c of this.cocoData.categories) {
-      if (c.id > maxId) maxId = c.id;
-    }
-    const newId = maxId + 1;
-    this.cocoData.categories.push({ id: newId, name, supercategory: '' });
-    return newId;
-  }
-
-  _cleanupCategories(): void {
-    const usedIds = new Set(this.cocoData.annotations.map((ann) => ann.category_id));
-    this.cocoData.categories = this.cocoData.categories.filter((c) => usedIds.has(c.id));
-  }
-
-  /* ---------- 获取图片关联的分类名 ---------- */
-
-  getCategoriesForImage(imagePath: string): string[] {
-    const imageId = this.getSwapImageEntry(imagePath)?.id;
-    if (imageId === undefined) return [];
-    const catIds = new Set(
-      this.cocoData.annotations
-        .filter((ann) => ann.image_id === imageId)
-        .map((ann) => ann.category_id)
-    );
-    return this.cocoData.categories
-      .filter((c) => catIds.has(c.id))
-      .map((c) => c.name);
+  override setRoot(rootDir: string): void {
+    super.setRoot(rootDir, templatesDirectory(rootDir));
   }
 
   /* ---------- 删除图片文件和COCO数据 ---------- */
 
   deleteImage(imagePath: string): true | false | string {
+    if (this.fileName === AUTHORING_FILE_NAME) {
+      const templates = new TemplateAssetData(this.root);
+      templates.load();
+      return templates.deleteImage(imagePath);
+    }
     const templates = templatesDirectory(this.rootDir);
     const snapshot = captureAuthoring(this.rootDir, templates);
     if (!snapshot) return false;
@@ -523,6 +110,7 @@ export class TemplateAssetData {
     cancellationToken?: vscode.CancellationToken,
     folderUri?: vscode.Uri,
   ): Promise<void> {
+    if (this.readErrors.length) throw new Error(tr('The annotation source is invalid. Fix the source file before saving or exporting.'));
     if (cancellationToken?.isCancellationRequested) throw new vscode.CancellationError();
     const enumFile = generateEnum
       ? path.resolve(this.rootDir, enumPath || path.join(targetFolder, 'LabelEnum.py'))
@@ -878,9 +466,13 @@ export class TemplateAssetData {
   /* ---------- 导入外部图片文件 ---------- */
 
   /**
-   * 把外部图片文件复制进 ok_templates 并登记 COCO 条目。
-   * 文件名使用 nextImageName() 生成的序号（保持与面板导入一致的行为）。
-   * 返回落盘后的绝对路径，失败返回 undefined。
+   * 把外部图片文件复制进模板目录。文件名使用 nextImageName() 生成的序号
+   * （保持与面板导入一致的行为）。返回落盘后的绝对路径，失败返回 undefined。
+   *
+   * **不写 `coco_annotations.json`**：导入只是把文件放进模板目录。图片条目由
+   * **标注保存流程**按需补登记（`setAnnotationsForImage` → `ensureSwapImage`）——
+   * 否则"导进来但一张框都没标"的图会立刻在标注文件里占一条空记录。
+   * 模板序号占位同时看磁盘与 COCO（见 `nextImageName`），所以不登记也不会撞名。
    */
   importImageFile(srcPath: string): string | undefined {
     try {
@@ -889,31 +481,7 @@ export class TemplateAssetData {
       const name = this.nextImageName() + ext;
       const dst = path.join(this.templateFolder, name);
       fs.copyFileSync(srcPath, dst);
-      const buf = fs.readFileSync(dst);
-      const dims = readImageSize(buf);
-      this.addImageEntry(dst, dims?.width ?? 0, dims?.height ?? 0);
-      this.save();
       return dst;
-    } catch {
-      return undefined;
-    }
-  }
-
-  /* ---------- 添加截图（base64 PNG） ---------- */
-
-  addScreenshot(base64Png: string): string | undefined {
-    try {
-      this.ensureTemplateFolder();
-      const name = this.nextImageName();
-      const filePath = path.join(this.templateFolder, `${name}.png`);
-      const buf = Buffer.from(base64Png, 'base64');
-      fs.writeFileSync(filePath, buf);
-
-      // 读取图片尺寸
-      const dims = readImageSize(buf);
-      this.addImageEntry(filePath, dims?.width ?? 0, dims?.height ?? 0);
-      this.save();
-      return filePath;
     } catch {
       return undefined;
     }

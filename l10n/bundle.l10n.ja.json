@@ -178,7 +178,6 @@
   "Saved to: {path}": "保存しました: {path}",
   "Screenshot failed: file not created": "スクリーンショット失敗: ファイルが作成されませんでした",
   "Screenshot failed: {error}": "スクリーンショット失敗: {error}",
-  "Screenshot saved but COCO update failed: {error}": "スクリーンショットは保存されましたが COCO 更新に失敗: {error}",
   "Screenshot saved: {name}": "スクリーンショットを保存しました: {name}",
   "Screenshot script not found. capture_game_window.py is missing from the extension.": "スクリーンショットスクリプトが見つかりません。拡張機能に capture_game_window.py がありません。",
   "Source: {layer}": "由来: {layer}",
@@ -221,7 +220,8 @@
   "Could not save the box resource.": "ボックス資源を保存できませんでした。",
   "Could not save annotations.": "注釈を保存できませんでした。",
   "Publish": "公開",
-  "Boxes without an image size were not published: {paths}.": "画像サイズが判らないため公開されなかったボックス: {paths}"
-,
-  "Could not read the box resource file. Box overlays are hidden until it is fixed.": "ボックスリソースファイルを読み取れません。修正または削除するとボックスのオーバーレイが戻ります。"
+  "Boxes without an image size were not published: {paths}.": "画像サイズが判らないため公開されなかったボックス: {paths}",
+  "Could not read the box resource file. Box overlays are hidden until it is fixed.": "ボックスリソースファイルを読み取れません。修正または削除するとボックスのオーバーレイが戻ります。",
+  "No box annotations to publish.": "公開するボックス注釈がありません。",
+  "The annotation source is invalid. Fix the source file before saving or exporting.": "注釈のソースファイルが無効です。保存またはエクスポートする前に修正してください。"
 }

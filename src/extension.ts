@@ -3,8 +3,8 @@ import * as crypto from 'crypto';
 import * as vscode from 'vscode';
 import { LangData, poDirectorySetting } from './langData';
 import { tr } from './localization';
-import { cocoFeatureRelPaths, refreshCocoFeaturePath } from './cocoFeaturePath';
-import { effectsFileSetting, i18nLangDirectorySetting, resolveProjectDir, templatesDirectory } from './projectConfig';
+import { cocoFeatureRelPaths, refreshCocoFeaturePath, probedBoxesJson } from './cocoFeaturePath';
+import { boxesRuntimeSetting, effectsFileSetting, i18nLangDirectorySetting, resolveProjectDir, templatesDirectory } from './projectConfig';
 import { showConventionSources } from './conventionSources';
 import { FeatureData } from './featureData';
 import { EffectData } from './effectData';
@@ -33,6 +33,8 @@ import {
 import { TempScreenshotStore } from './tempScreenshotStore';
 import { TempScreenshotViewProvider } from './tempScreenshotPanel';
 import { BoxGalleryViewProvider } from './boxPanels';
+import { notifyAnnotationDataChanged } from './cocoAnnotationData';
+import { boxRuntimeRelPaths, resolveBoxRuntimePlan } from './boxResourcePure';
 import { BoxAssetViewProvider } from './templateAssetPanel';
 
 /** 缩略图缓存 key 版本：内容 hash 化后旧命名（t_/a_）需要清理一次 */
@@ -85,7 +87,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
   // ---- 各数据源独立防抖刷新（300ms） ----
   /** 哪些数据源需要刷新（由 getAffectedSources 判定） */
-  type RefreshTarget = { lang: boolean; features: boolean; effects: boolean; coco: boolean };
+  type RefreshTarget = { lang: boolean; features: boolean; effects: boolean; coco: boolean; annotations: boolean };
 
   const DEBOUNCE_MS = 300;
 
@@ -192,10 +194,12 @@ export function activate(context: vscode.ExtensionContext): void {
     const cocoGlobs = cocoFeatureRelPaths(targetRoot)
       .map((rel) => rel.split('/').map(escapeGlobSeg).join('/'))
       .join(',');
+    const boxGlobs = boxRuntimeRelPaths(resolveBoxRuntimePlan(targetRoot, boxesRuntimeSetting(targetRoot), probedBoxesJson(targetRoot)), targetRoot)
+      .map(rel => rel.split('/').map(escapeGlobSeg).join('/')).join(',');
     // 末尾的 `config.py`：它决定运行时模板库放在哪，改了要重探 + 重建监听。
     // 放在 `**/{...}` 里等价于 `**/config.py`（任意深度的同名文件都会派发进来，
     // `getAffectedSources` 再按路径筛一次）。
-    return `**/{${langGlob}/*.json,${poGlob}/**/*.po,${cocoGlobs},${tplGlob}/boxes.json,src/scene/boxes.json,assets/images/*.png,ok_tasks/assets/images/*.png,${tplGlob}/*.png,${effectsFile},config.py}`;
+    return `**/{${langGlob}/*.json,${poGlob}/**/*.po,${cocoGlobs},${tplGlob}/coco_annotations.json,${tplGlob}/boxes.json,${boxGlobs},assets/images/*.png,ok_tasks/assets/images/*.png,${tplGlob}/*.png,${effectsFile},config.py}`;
   };
 
   /**
@@ -205,7 +209,7 @@ export function activate(context: vscode.ExtensionContext): void {
    * 代码都重载模板库。
    */
   const getAffectedSources = (uri: vscode.Uri): RefreshTarget => {
-    const empty: RefreshTarget = { lang: false, features: false, effects: false, coco: false };
+    const empty: RefreshTarget = { lang: false, features: false, effects: false, coco: false, annotations: false };
     const rel = (targetRoot ? path.relative(targetRoot, uri.fsPath) : uri.fsPath)
       .replace(/[\\/]+/g, '/')
       .replace(/^\/+/, '');
@@ -221,6 +225,11 @@ export function activate(context: vscode.ExtensionContext): void {
     }
     if (rel.startsWith(`${poDir}/`) && rel.endsWith('.po')) {
       return { ...empty, lang: true };
+    }
+    const sourceDirectory = templatesDirectory(targetRoot);
+    if ([sourceDirectory + '/coco_annotations.json', sourceDirectory + '/boxes.json',
+      ...boxRuntimeRelPaths(resolveBoxRuntimePlan(targetRoot, boxesRuntimeSetting(targetRoot), probedBoxesJson(targetRoot)), targetRoot)].includes(rel)) {
+      return { ...empty, annotations: true };
     }
     const pngRe = /\.png$/i;
     // 运行时模板库：路径可配（项目约定 → config.py → 两个惯例位置），所以不能写死。
@@ -259,6 +268,7 @@ export function activate(context: vscode.ExtensionContext): void {
   };
 
   const dispatchRefresh = (target: RefreshTarget, uri?: vscode.Uri) => {
+    if (target.annotations && uri) notifyAnnotationDataChanged(uri.fsPath);
     if (target.lang) refreshLang();
     if (target.effects) refreshEffects();
     if (target.coco) {

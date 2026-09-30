@@ -187,7 +187,6 @@
   "Saved to: {path}": "Saved to: {path}",
   "Screenshot failed: file not created": "Screenshot failed: file not created",
   "Screenshot failed: {error}": "Screenshot failed: {error}",
-  "Screenshot saved but COCO update failed: {error}": "Screenshot saved but COCO update failed: {error}",
   "Screenshot saved: {name}": "Screenshot saved: {name}",
   "Source: {layer}": "Source: {layer}",
   "Screenshot script not found. capture_game_window.py is missing from the extension.": "Screenshot script not found. capture_game_window.py is missing from the extension.",
@@ -221,7 +220,8 @@
   "Could not save the box resource.": "Could not save the box resource.",
   "Could not save annotations.": "Could not save annotations.",
   "Publish": "Publish",
-  "Boxes without an image size were not published: {paths}.": "Boxes without an image size were not published: {paths}."
-,
-  "Could not read the box resource file. Box overlays are hidden until it is fixed.": "Could not read the box resource file. Box overlays are hidden until it is fixed."
+  "Boxes without an image size were not published: {paths}.": "Boxes without an image size were not published: {paths}.",
+  "Could not read the box resource file. Box overlays are hidden until it is fixed.": "Could not read the box resource file. Box overlays are hidden until it is fixed.",
+  "No box annotations to publish.": "No box annotations to publish.",
+  "The annotation source is invalid. Fix the source file before saving or exporting.": "The annotation source is invalid. Fix the source file before saving or exporting."
 }

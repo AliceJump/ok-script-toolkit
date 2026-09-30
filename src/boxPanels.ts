@@ -1,21 +1,20 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { annotationHtml } from './annotationPanel';
+import { AnnotationPanel } from './annotationPanel';
 import {
   boxesForImage,
   readAuthoringFile,
   readRuntimeFile,
-  replaceImageBoxes,
-  EditedBox,
 } from './boxResourceStore';
-import { BOX_PATH_SEGMENT_SOURCE, PixelBox, RESERVED_BOX_ROOTS } from './boxResourcePure';
+import { AUTHORING_FILE_NAME, PixelBox } from './boxResourcePure';
 import { probedBoxesJson } from './cocoFeaturePath';
 import { injectWebviewLocalization, tr } from './localization';
 import { boxesRuntimeSetting, templatesDirectory } from './projectConfig';
 import { cropTemplateThumbFileAsync, readImageSize, THUMB_HEIGHT } from './pngCrop';
 import { getProjectConfig } from './screenshotCapture';
 import { TemplateAssetData } from './templateAssetData';
+import { onAnnotationDataChanged } from './cocoAnnotationData';
 import { applySharedAssets, getNonce } from './webviewHtml';
 
 function runtimeArgs(root: string): { declared?: string; fromConfig?: string } {
@@ -68,6 +67,11 @@ export class BoxGalleryViewProvider implements vscode.WebviewViewProvider {
     };
     webviewView.webview.html = panelHtml(webviewView.webview, this.extensionUri, 'gallery');
     webviewView.webview.onDidReceiveMessage((msg) => { void this.onMessage(msg); });
+    const subscription = onAnnotationDataChanged(() => {
+      const root = getProjectConfig().projectDir;
+      if (root) void this.refresh(root);
+    });
+    webviewView.onDidDispose(() => { subscription.dispose(); this.view = undefined; this.generation++; });
   }
 
   private async onMessage(msg: { type?: string; id?: string; clicks?: number }): Promise<void> {
@@ -130,135 +134,10 @@ export class BoxGalleryViewProvider implements vscode.WebviewViewProvider {
   }
 }
 
-class BoxEditor {
-  private image = '';
-  private images: string[] = [];
-
-  constructor(
-    private readonly panel: vscode.WebviewPanel,
-    private readonly rootDir: string,
-    private readonly templatesDir: string,
-  ) {
-    panel.webview.onDidReceiveMessage((msg) => { void this.onMessage(msg); });
-  }
-
-  open(imagePath: string, imageList: string[]): void {
-    this.image = imagePath;
-    this.images = imageList;
-    void this.load();
-  }
-
-  private async load(): Promise<void> {
-    const root = this.rootDir;
-    let size: { width: number; height: number } | undefined;
-    let imageBase64 = '';
-    try {
-      const buf = fs.readFileSync(this.image);
-      size = readImageSize(buf);
-      const mime = buf[0] === 0xff ? 'image/jpeg' : 'image/png';
-      imageBase64 = `data:${mime};base64,${buf.toString('base64')}`;
-    } catch {
-      // 图片读不出来：发空图，让画布显示加载失败而不是宿主崩掉
-    }
-    const authoring = readAuthoringFile(root, this.templatesDir);
-    const annotations = boxesForImage(authoring, path.basename(this.image)).map((box, index) => ({
-      id: index + 1,
-      category: box.path,
-      x: box.bbox[0],
-      y: box.bbox[1],
-      w: box.bbox[2],
-      h: box.bbox[3],
-    }));
-    void this.panel.webview.postMessage({
-      type: 'config',
-      boxMode: true,
-      keybindings: vscode.workspace.getConfiguration('okScriptToolkit').get('annotationKeybindings'),
-      copyCoordsSpace: vscode.workspace.getConfiguration('okScriptToolkit').get('copyCoordsSpace', true),
-      // 与标注编辑器同一份规则（「生成框」输入框的即时校验要用）。
-      boxPathRule: {
-        segment: BOX_PATH_SEGMENT_SOURCE,
-        reservedRoots: [...RESERVED_BOX_ROOTS],
-      },
-    });
-    void this.panel.webview.postMessage({
-      type: 'load',
-      imagePath: this.image,
-      imageBase64,
-      annotations,
-      // 跨图片 path 占用：path → 所属图片。bbox 对话框的重复校验吃这张表，
-      // 不再传空的 allCategories: {}。
-      boxPaths: boxPathOccupancy(authoring),
-      currentIndex: Math.max(0, this.images.indexOf(this.image)),
-      totalImages: this.images.length,
-      filename: path.basename(this.image),
-    });
-  }
-
-  private async onMessage(msg: {
-    type?: string;
-    annotations?: Array<{ id: number; category: string; x: number; y: number; w: number; h: number }>;
-    index?: number;
-  }): Promise<void> {
-    if (msg.type === 'ready') {
-      await this.load();
-      return;
-    }
-    if (msg.type === 'navigate' && msg.index !== undefined) {
-      const next = this.images[msg.index];
-      if (next) {
-        this.image = next;
-        await this.load();
-      }
-      return;
-    }
-    if (msg.type !== 'save' || !msg.annotations) return;
-    let size: { width: number; height: number } | undefined;
-    try {
-      size = readImageSize(fs.readFileSync(this.image));
-    } catch {
-      void vscode.window.showErrorMessage(tr('Could not save the box resource.'));
-      return;
-    }
-    if (!size) return;
-    const edited: EditedBox[] = msg.annotations.map((ann) => ({
-      path: ann.category,
-      x: ann.x,
-      y: ann.y,
-      w: ann.w,
-      h: ann.h,
-    }));
-    const error = replaceImageBoxes(this.rootDir, this.templatesDir, path.basename(this.image), size.width, size.height, edited);
-    if (error) void vscode.window.showErrorMessage(tr('Could not save the box resource.'));
-  }
-}
-
-let boxEditorPanel: vscode.WebviewPanel | undefined;
-let boxEditor: BoxEditor | undefined;
-
-export function openBoxEditor(extensionUri: vscode.Uri, data: TemplateAssetData, imagePath: string): void {
-  const images = data.listImages();
-  // 根与模板目录都取自 data 自己的归属，不从全局配置重新推导 ——
-  // 模板数据可能来自另一个仓库，用错根会读到别人的约定文件。
-  const root = data.root;
-  const templatesDir = data.templatesDir;
-  if (boxEditorPanel && boxEditor) {
-    boxEditorPanel.reveal();
-    boxEditor.open(imagePath, images);
-    return;
-  }
-  const panel = vscode.window.createWebviewPanel(
-    'okScriptToolkitBoxAnnotation',
-    path.basename(imagePath),
-    vscode.ViewColumn.Beside,
-    { enableScripts: true, retainContextWhenHidden: true, localResourceRoots: [extensionUri, vscode.Uri.file(data.templatesDir)] },
-  );
-  panel.webview.html = annotationHtml(panel.webview.cspSource, extensionUri, panel.webview);
-  boxEditor = new BoxEditor(panel, root, templatesDir);
-  boxEditor.open(imagePath, images);
-  panel.onDidDispose(() => {
-    boxEditorPanel = undefined;
-    boxEditor = undefined;
-  });
+/** Same editor/controller as template annotations; only the source file and name rule differ. */
+export function openBoxEditor(extensionUri: vscode.Uri, data: TemplateAssetData, imagePath: string, thumbDir = ''): void {
+  const boxes = data.fileName === AUTHORING_FILE_NAME ? data : new TemplateAssetData(data.root, AUTHORING_FILE_NAME);
+  AnnotationPanel.show(extensionUri, boxes, thumbDir || boxes.templatesDir, imagePath, boxes.listImages(), () => {}, true);
 }
 
 /**
