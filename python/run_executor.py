@@ -86,7 +86,6 @@ import shutil
 import sys
 import tempfile
 import threading
-import time
 
 # 同目录的共享模块（project_store）要能 import：脚本按文件位置加载时（测试、
 # 以及宿主从任意 cwd 拉起）脚本目录不在 sys.path 上。
@@ -269,11 +268,12 @@ def apply_config_sandbox(config: dict) -> str:
 # 账号存储（account_scoped_overrides.json）同样进沙箱：插件编辑不落项目文件，
 # 与「项目 GUI 与插件独立」的语义一致（代价：GUI 写的账号数据执行器侧不可见，
 # 以执行器/插件侧为准）。
-def install_config_path_patch(source_folder="configs") -> None:
+def install_config_path_patch(source_folder="configs"):
     """把 get_relative_path("configs", ...) 的相对调用改道到沙箱 configs。
 
     必须在 import 项目 config 之前安装（store 模块在导入期就用该函数固定路径）。
     ok.util.config 在模块导入时复制了函数引用，需要同步替换。
+    返回追加源目录的函数，导入后补充动态目录时保留已有的函数引用。
     """
     run_dir = os.environ.get(RUN_DIR_ENV, "").strip()
     if not run_dir:
@@ -282,8 +282,16 @@ def install_config_path_patch(source_folder="configs") -> None:
     import ok.util.config as ok_config
     import ok.util.file as ok_file
 
-    source_real = os.path.normcase(os.path.realpath(source_folder))
+    sources = [os.path.normcase(os.path.realpath(source_folder))]
     legacy_real = os.path.normcase(os.path.realpath("configs"))
+    if legacy_real not in sources:
+        sources.append(legacy_real)
+
+    def add_source_folder(folder):
+        # Keep the same wrapper for references captured during project imports.
+        resolved = os.path.normcase(os.path.realpath(folder))
+        if resolved not in sources:
+            sources.insert(0, resolved)
 
     original = ok_file.get_relative_path
 
@@ -292,7 +300,7 @@ def install_config_path_patch(source_folder="configs") -> None:
         if path is None:
             return path
         resolved = os.path.normcase(os.path.realpath(path))
-        for source in (source_real, legacy_real):
+        for source in sources:
             try:
                 if os.path.commonpath((source, resolved)) == source:
                     return os.path.normpath(os.path.join(sandbox_configs, os.path.relpath(resolved, source)))
@@ -304,6 +312,7 @@ def install_config_path_patch(source_folder="configs") -> None:
     ok_config.get_relative_path = sandboxed_get_relative_path
     ok_config.Config.config_folder = sandbox_configs
     _note("configs 相对路径已改道沙箱（自建 store / 账号存储 / 运行期写入一并隔离）")
+    return add_source_folder
 
 
 def apply_global_group_snapshot(config_folder) -> None:
@@ -812,9 +821,12 @@ def _set_overlay(enabled: bool) -> None:
 
 
 def _apply_startup_overlay(enabled: bool) -> None:
-    """Confirm the host's overlay choice after native device initialization."""
+    """Sync the native overlay's position and report the host's chosen state."""
     try:
-        _set_overlay(enabled)
+        from ok import og
+
+        og.app.sync_overlay_source()
+        _emit(MARKER_OVERLAY_ON if enabled else MARKER_OVERLAY_OFF)
     except Exception as e:  # noqa: BLE001
         _note(f"调试浮层启用失败：{type(e).__name__}: {e}")
 
@@ -1030,12 +1042,12 @@ def main() -> None:
         read_overrides()
         os.environ[RUN_DIR_ENV] = resolve_run_dir(project_dir)
 
-        # Populate and redirect before importing any project module. Import-time
-        # Config/store instances must see the same baseline as the task instances.
-        source_folder = detect_config_folder(project_dir)
+        # Seed resolvable paths and redirect before importing project modules,
+        # including Config/store instances created during config imports.
+        source_folder = detect_config_folder(project_dir, args.config_module)
         sandbox_config = {"config_folder": source_folder}
         apply_config_sandbox(sandbox_config)
-        install_config_path_patch(source_folder)
+        add_config_source = install_config_path_patch(source_folder)
 
         project_config = load_project_config(project_dir)
         declared_before = startup_hooks(project_config, "beforeConfigImport")
@@ -1051,7 +1063,11 @@ def main() -> None:
         config = copy_config_containers(config_module.config)
         actual_folder = os.path.abspath(str(config.get("config_folder") or "configs"))
         if os.path.normcase(actual_folder) != os.path.normcase(os.path.abspath(source_folder)):
-            raise ValueError("config_folder must be statically declared before project imports")
+            # The imported value is authoritative for paths computed at runtime.
+            # Config instances still write to the sandbox established above.
+            sandbox_config = {"config_folder": actual_folder}
+            apply_config_sandbox(sandbox_config)
+            add_config_source(actual_folder)
         config.update(sandbox_config)
         config["check_mutex"] = False
         config["gui"] = None

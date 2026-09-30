@@ -39,8 +39,8 @@ def run_in(project_dir, run_dir=None, config_folder=None):
     """在 project_dir 作为 cwd 的环境下调用，模拟执行器的真实工作目录。
 
     config_folder 模拟「项目 config.py 声明了自定义配置目录名」的场景 ——
-    执行器是在 import config 之后才调用 apply_config_sandbox 的，此时 config
-    dict 里已带项目自己的 config_folder 值。
+    执行器会先解析配置目录，在 import config 之前调用 apply_config_sandbox；
+    导入后才确定的动态路径会在构建框架之前补充同步。
     """
     saved_cwd = os.getcwd()
     saved_env = os.environ.get("OK_TOOLKIT_RUN_DIR")

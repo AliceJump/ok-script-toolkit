@@ -45,6 +45,19 @@ with make_tmp_tempdir("ok-project-runtime") as root:
     assert detect_config_folder(root) == "root-data"
 
 with make_tmp_tempdir("ok-project-runtime") as root:
+    write(os.path.join(root, "src", "config.py"), "config = {'config_folder': 'wrong-folder'}\n")
+    write(os.path.join(root, "custom", "settings.py"), (
+        "import os\n"
+        "base = 'settings'\n"
+        "config = {'config_folder': os.path.join(base, 'runtime')}\n"
+        "raise RuntimeError('config discovery must not import the project')\n"
+    ))
+    assert detect_config_folder(root, "custom.settings") == os.path.join("settings", "runtime")
+    assert detect_config_folder(root, "missing.settings") == "configs"
+    write(os.path.join(root, "package_config", "__init__.py"), "config = {'config_folder': 'package-data'}\n")
+    assert detect_config_folder(root, "package_config") == "package-data"
+
+with make_tmp_tempdir("ok-project-runtime") as root:
     write(os.path.join(root, "src", "config.py"), "config = {'config_folder': missing_name}\n")
     assert detect_config_folder(root) == "configs"
 

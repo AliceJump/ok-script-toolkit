@@ -23,27 +23,53 @@ spec.loader.exec_module(executor)
 
 class SessionTests(unittest.TestCase):
     def test_import_time_configs_and_commands_use_initialized_isolated_runtime(self):
+        self.run_session()
+
+    def test_computed_folder_is_seeded_before_import_and_overlay_is_initialized_once(self):
+        self.run_session(
+            folder=os.path.join("settings", "runtime"),
+            prefix="import os\nbase = 'settings'\n",
+            expression="os.path.join(base, 'runtime')",
+            overlay=True,
+        )
+
+    def test_runtime_only_folder_is_reconciled_before_framework_construction(self):
+        self.run_session(
+            folder="runtime-settings",
+            prefix="def config_dir():\n    return 'runtime-settings'\n",
+            expression="config_dir()",
+            import_time=False,
+        )
+
+    def run_session(self, *, folder="settings-data", prefix="", expression="'settings-data'",
+                    import_time=True, overlay=False):
         with make_tmp_tempdir("ok-executor-session") as tmp:
             project = Path(tmp) / "project"
-            source = project / "settings-data"
+            source = project / folder
             source.mkdir(parents=True)
             (project / "src").mkdir()
             (source / "Early.json").write_text('{"value": "project"}', encoding="utf-8")
             (source / "Global.json").write_text('{"value": "global-project"}', encoding="utf-8")
             module_name = "executor_session_fixture"
             declaration = (
+                prefix +
                 "from ok.util.config import Config\n"
-                "early = Config('Early', {'value': 'default'})\n"
-                "global_value = Config('Global', {'value': 'global-default'})\n"
-                "config = {'config_folder': 'settings-data', 'gui': {'type': 'qt'}, "
+                "from ok.util.file import get_relative_path\n" +
+                ("early = Config('Early', {'value': 'default'})\n"
+                 "global_value = Config('Global', {'value': 'global-default'})\n" if import_time else "") +
+                f"config = {{'config_folder': {expression}, 'gui': {{'type': 'qt'}}, "
                 "'windows': {'capture_method': ['WGC']}}\n"
             )
-            (project / "src" / "config.py").write_text(declaration, encoding="utf-8")
+            # The selected module must win over the conventional src.config.
+            (project / "src" / "config.py").write_text(
+                "config = {'config_folder': 'wrong-folder'}\n", encoding="utf-8",
+            )
             (project / (module_name + ".py")).write_text(declaration, encoding="utf-8")
             before = {p.name: p.read_bytes() for p in source.iterdir()}
             events = []
             commands = []
             instances = []
+            overlay_settings = []
 
             file_module = ModuleType("ok.util.file")
             config_module = ModuleType("ok.util.config")
@@ -80,17 +106,23 @@ class SessionTests(unittest.TestCase):
                     )
                     self.device_manager = SimpleNamespace()
                     self.headless_app = SimpleNamespace(start_controller=NativeController(), ok_config={})
-                    self.headless_app.set_overlay_setting = lambda *args: None
+                    self.headless_app.set_overlay_setting = lambda *args: overlay_settings.append(args)
+                    self.headless_app.sync_overlay_source = lambda: events.append("overlay-sync")
                     modules["ok"].og = SimpleNamespace(app=self.headless_app)
+                    fixture = sys.modules[module_name]
+                    self.early = fixture.early if import_time else Config('Early', {'value': 'default'})
+                    self.global_value = fixture.global_value if import_time else Config('Global', {'value': 'global-default'})
+                    self.store_path = fixture.get_relative_path(fixture.config["config_folder"], "Early.json")
                     events.append("framework-init")
                     config["windows"]["capture_method"].append("native-choice")
                 def start_runtime(self):
                     events.append("native-runtime")
-                    fixture = sys.modules[module_name]
-                    if fixture.early["value"] != "project":
+                    if self.early["value"] != "project":
                         raise AssertionError("import-time baseline was replaced by defaults")
-                    if fixture.global_value["value"] != "plugin-global":
+                    if self.global_value["value"] != "plugin-global":
                         raise AssertionError("global snapshot was not ready before imports")
+                    if self.headless_app.ok_config["use_overlay"]:
+                        events.append("native-overlay")
                     self.argv = sys.argv[:]
             modules = {name: ModuleType(name) for name in ("ok", "ok.util", "task_visibility")}
             modules.update({"ok.util.file": file_module, "ok.util.config": config_module})
@@ -118,7 +150,7 @@ class SessionTests(unittest.TestCase):
                 stack.enter_context(patch.dict(os.environ, {
                     "OK_TOOLKIT_RUN_DIR": str(Path(tmp) / "sandbox"),
                     "OK_TOOLKIT_TRIGGERS": "[]",
-                    "OK_TOOLKIT_USE_OVERLAY": "0",
+                    "OK_TOOLKIT_USE_OVERLAY": "1" if overlay else "0",
                     "OK_TOOLKIT_GCONFIG": '{"Global": {"value": "plugin-global"}}',
                 }))
                 stack.enter_context(patch.object(sys, "argv", ["plugin-helper.py", "--config-module", module_name]))
@@ -132,12 +164,32 @@ class SessionTests(unittest.TestCase):
                 stack.enter_context(redirect_stdout(io.StringIO()))
                 with self.assertRaises(SystemExit):
                     executor.main()
+                self.assertIn(executor.MARKER_READY, events)
                 self.assertEqual(commands, ["params {}"])
+                self.assertEqual(overlay_settings, [])
+                self.assertEqual(events.count("native-overlay"), int(overlay))
+                self.assertEqual(events.count("overlay-sync"), 1)
+                self.assertLess(events.index("native-controller"), events.index("overlay-sync"))
+                self.assertLess(events.index("overlay-sync"), events.index(executor.MARKER_READY))
+                self.assertIn(executor.MARKER_OVERLAY_ON if overlay else executor.MARKER_OVERLAY_OFF, events)
+                self.assertEqual(Path(instances[0].store_path), Path(tmp) / "sandbox" / "configs" / "Early.json")
                 self.assertEqual(instances[0].argv, [str(project / "main.py"), "--headless"])
                 self.assertEqual(sys.argv[0], "plugin-helper.py")
                 self.assertEqual(sys.modules[module_name].config["gui"], {"type": "qt"})
                 self.assertEqual(sys.modules[module_name].config["windows"]["capture_method"], ["WGC"])
             self.assertEqual(before, {p.name: p.read_bytes() for p in source.iterdir()})
+
+    def test_overlay_commands_still_apply_the_setting_after_startup(self):
+        app = SimpleNamespace(set_overlay_setting=lambda *args: settings.append(args))
+        settings = []
+        modules = {"ok": SimpleNamespace(og=SimpleNamespace(app=app))}
+        with patch.dict(sys.modules, modules), patch.object(executor, "_emit") as emit:
+            executor._set_overlay(True)
+            executor._set_overlay(False)
+        self.assertEqual(settings, [("boxes", True), ("boxes", False)])
+        self.assertEqual([call.args[0] for call in emit.call_args_list], [
+            executor.MARKER_OVERLAY_ON, executor.MARKER_OVERLAY_OFF,
+        ])
 
     def test_import_failure_is_structured_and_never_reports_ready(self):
         with make_tmp_tempdir("ok-executor-session") as tmp, ExitStack() as stack:
