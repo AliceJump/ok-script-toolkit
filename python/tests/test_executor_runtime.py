@@ -6,6 +6,7 @@ import threading
 import unittest
 from concurrent.futures import Future
 from types import SimpleNamespace
+from unittest.mock import patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from executor_runtime import copy_config_containers, start_framework_runtime
@@ -130,6 +131,45 @@ class LifecycleTests(unittest.TestCase):
         runtime.start_runtime = None
         with self.assertRaisesRegex(RuntimeError, "start_runtime API"):
             start_framework_runtime(runtime)
+
+    def test_launched_game_can_finish_two_native_waits_within_their_budgets(self):
+        for start_exe in (True, False):
+            with self.subTest(start_exe=start_exe):
+                runtime = ProjectRuntime()
+                runtime.config = {"start_timeout": 60, "windows": {"start_exe": start_exe}}
+                entered = threading.Event()
+                release = threading.Event()
+                def connect(task=None):
+                    entered.set()
+                    return release.wait(2)
+                runtime.headless_app.start_controller.do_start = connect
+                calls = 0
+                timer = None
+                def after_two_waits():
+                    nonlocal calls, timer
+                    calls += 1
+                    if calls == 1:
+                        return 0
+                    self.assertTrue(entered.wait(1))
+                    if timer is None:
+                        timer = threading.Timer(0.05, release.set)
+                        timer.start()
+                    # Window ready after 50 seconds, capture ready after 40 more.
+                    return 90
+                try:
+                    with patch("executor_runtime.time", SimpleNamespace(monotonic=after_two_waits)):
+                        if start_exe:
+                            self.assertTrue(start_framework_runtime(runtime))
+                        else:
+                            with self.assertRaises(TimeoutError):
+                                start_framework_runtime(runtime)
+                finally:
+                    release.set()
+                    if timer is not None:
+                        timer.cancel()
+                        timer.join(2)
+                    if runtime.worker:
+                        runtime.worker.join(2)
 
     def test_config_copy_preserves_project_declarations_and_callable_objects(self):
         callback = lambda: None

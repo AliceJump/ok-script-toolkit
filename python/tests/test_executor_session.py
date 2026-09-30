@@ -41,8 +41,27 @@ class SessionTests(unittest.TestCase):
             import_time=False,
         )
 
+    def test_runtime_folder_is_isolated_before_import_time_config_writes(self):
+        self.run_session(
+            folder="runtime-settings",
+            prefix="def config_dir():\n    return 'runtime-settings'\n",
+            expression="config_dir()",
+            explicit_folder=True,
+        )
+
+    def test_later_variable_reassignment_does_not_change_captured_config_folder(self):
+        self.run_session(
+            prefix="CONFIG_DIR = 'settings-data'\n",
+            expression="CONFIG_DIR",
+            suffix="CONFIG_DIR = 'later-settings'\n",
+            explicit_folder=True,
+        )
+
+    def test_prerequisite_hook_runs_before_framework_import(self):
+        self.run_session(pre_hook=True)
+
     def run_session(self, *, folder="settings-data", prefix="", expression="'settings-data'",
-                    import_time=True, overlay=False):
+                    import_time=True, overlay=False, explicit_folder=False, suffix="", pre_hook=False):
         with make_tmp_tempdir("ok-executor-session") as tmp:
             project = Path(tmp) / "project"
             source = project / folder
@@ -51,20 +70,35 @@ class SessionTests(unittest.TestCase):
             (source / "Early.json").write_text('{"value": "project"}', encoding="utf-8")
             (source / "Global.json").write_text('{"value": "global-project"}', encoding="utf-8")
             module_name = "executor_session_fixture"
-            declaration = (
-                prefix +
-                "from ok.util.config import Config\n"
-                "from ok.util.file import get_relative_path\n" +
-                ("early = Config('Early', {'value': 'default'})\n"
-                 "global_value = Config('Global', {'value': 'global-default'})\n" if import_time else "") +
+            config_declaration = (
                 f"config = {{'config_folder': {expression}, 'gui': {{'type': 'qt'}}, "
                 "'windows': {'capture_method': ['WGC']}}\n"
+            )
+            folder_argument = ", folder=config['config_folder']" if explicit_folder else ""
+            early_declaration = (
+                f"early = Config('Early', {{'value': 'default', 'added': True}}{folder_argument})\n"
+                f"global_value = Config('Global', {{'value': 'global-default'}}{folder_argument})\n"
+                if import_time else ""
+            )
+            declaration = (
+                prefix + "from ok.util.config import Config\n"
+                "from ok.util.file import get_relative_path\n" +
+                (config_declaration + early_declaration if explicit_folder else
+                 early_declaration + config_declaration) + suffix
             )
             # The selected module must win over the conventional src.config.
             (project / "src" / "config.py").write_text(
                 "config = {'config_folder': 'wrong-folder'}\n", encoding="utf-8",
             )
             (project / (module_name + ".py")).write_text(declaration, encoding="utf-8")
+            if pre_hook:
+                (project / "executor_prerequisite.py").write_text(
+                    "import os\ndef prepare():\n    os.environ['OK_TEST_PREPARED'] = '1'\n",
+                    encoding="utf-8",
+                )
+                (project / "ok-script-toolkit.json").write_text(json.dumps({
+                    "executor": {"startupHooks": {"beforeConfigImport": ["executor_prerequisite:prepare"]}},
+                }), encoding="utf-8")
             before = {p.name: p.read_bytes() for p in source.iterdir()}
             events = []
             commands = []
@@ -79,11 +113,14 @@ class SessionTests(unittest.TestCase):
 
             class Config(dict):
                 config_folder = "configs"
-                def __init__(self, name, defaults):
-                    self.config_file = config_module.get_relative_path(self.config_folder, name + ".json")
+                def __init__(self, name, defaults, folder=None):
+                    self.config_file = config_module.get_relative_path(
+                        self.config_folder if folder is None else folder, name + ".json",
+                    )
                     super().__init__(defaults)
                     if Path(self.config_file).exists():
                         self.update(file_module.read_json_file(self.config_file))
+                    self.save_file()
                 def save_file(self):
                     Path(self.config_file).write_text(json.dumps(self), encoding="utf-8")
             config_module.Config = Config
@@ -110,7 +147,7 @@ class SessionTests(unittest.TestCase):
                     self.headless_app.sync_overlay_source = lambda: events.append("overlay-sync")
                     modules["ok"].og = SimpleNamespace(app=self.headless_app)
                     fixture = sys.modules[module_name]
-                    self.early = fixture.early if import_time else Config('Early', {'value': 'default'})
+                    self.early = fixture.early if import_time else Config('Early', {'value': 'default', 'added': True})
                     self.global_value = fixture.global_value if import_time else Config('Global', {'value': 'global-default'})
                     self.store_path = fixture.get_relative_path(fixture.config["config_folder"], "Early.json")
                     events.append("framework-init")
@@ -121,6 +158,10 @@ class SessionTests(unittest.TestCase):
                         raise AssertionError("import-time baseline was replaced by defaults")
                     if self.global_value["value"] != "plugin-global":
                         raise AssertionError("global snapshot was not ready before imports")
+                    if not file_module.read_json_file(self.early.config_file).get("added"):
+                        raise AssertionError("reconciliation overwrote an import-time config migration")
+                    self.early["value"] = "plugin-write"
+                    self.early.save_file()
                     if self.headless_app.ok_config["use_overlay"]:
                         events.append("native-overlay")
                     self.argv = sys.argv[:]
@@ -147,12 +188,21 @@ class SessionTests(unittest.TestCase):
                 os.chdir(project)
                 stack.enter_context(patch.dict(sys.modules, modules))
                 stack.callback(sys.modules.pop, module_name, None)
+                stack.callback(sys.modules.pop, "executor_prerequisite", None)
                 stack.enter_context(patch.dict(os.environ, {
                     "OK_TOOLKIT_RUN_DIR": str(Path(tmp) / "sandbox"),
                     "OK_TOOLKIT_TRIGGERS": "[]",
                     "OK_TOOLKIT_USE_OVERLAY": "1" if overlay else "0",
                     "OK_TOOLKIT_GCONFIG": '{"Global": {"value": "plugin-global"}}',
+                    "OK_TEST_PREPARED": "",
                 }))
+                if pre_hook:
+                    original_install = executor.install_config_path_patch
+                    def prerequisite_framework_import(*args):
+                        if os.environ.get("OK_TEST_PREPARED") != "1":
+                            raise ImportError("framework import requires the prerequisite environment")
+                        return original_install(*args)
+                    stack.enter_context(patch.object(executor, "install_config_path_patch", prerequisite_framework_import))
                 stack.enter_context(patch.object(sys, "argv", ["plugin-helper.py", "--config-module", module_name]))
                 for member in ("install_override_patch", "install_trigger_persistence_patch",
                                "install_override_save_patch", "install_project_startup_patches"):

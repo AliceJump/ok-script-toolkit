@@ -63,17 +63,15 @@ def detect_config_folder(project_dir, config_module=None):
                 for target in node.targets:
                     if isinstance(target, ast.Name):
                         constants[target.id] = value
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.Dict):
-                continue
-            for key, value in zip(node.keys, node.values):
-                if (
-                    isinstance(key, ast.Constant)
-                    and key.value == "config_folder"
-                ):
-                    folder = _config_path_value(value, constants)
-                    if folder is not None:
-                        return folder
+            # Capture bindings at the declaration, before later reassignments.
+            for declaration in ast.walk(node):
+                if not isinstance(declaration, ast.Dict):
+                    continue
+                for key, value in zip(declaration.keys, declaration.values):
+                    if isinstance(key, ast.Constant) and key.value == "config_folder":
+                        folder = _config_path_value(value, constants)
+                        if folder is not None:
+                            return folder
     return "configs"
 
 

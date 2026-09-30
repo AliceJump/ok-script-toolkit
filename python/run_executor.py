@@ -273,7 +273,7 @@ def install_config_path_patch(source_folder="configs"):
 
     必须在 import 项目 config 之前安装（store 模块在导入期就用该函数固定路径）。
     ok.util.config 在模块导入时复制了函数引用，需要同步替换。
-    返回追加源目录的函数，导入后补充动态目录时保留已有的函数引用。
+    Config 首次打开动态目录时预载并重定向，返回同一份目录准备函数。
     """
     run_dir = os.environ.get(RUN_DIR_ENV, "").strip()
     if not run_dir:
@@ -283,17 +283,33 @@ def install_config_path_patch(source_folder="configs"):
     import ok.util.file as ok_file
 
     sources = [os.path.normcase(os.path.realpath(source_folder))]
+    seeded = set(sources)
+    source_lock = threading.RLock()
+    sandbox_real = os.path.normcase(os.path.realpath(sandbox_configs))
     legacy_real = os.path.normcase(os.path.realpath("configs"))
     if legacy_real not in sources:
         sources.append(legacy_real)
 
-    def add_source_folder(folder):
-        # Keep the same wrapper for references captured during project imports.
-        resolved = os.path.normcase(os.path.realpath(folder))
-        if resolved not in sources:
-            sources.insert(0, resolved)
-
     original = ok_file.get_relative_path
+
+    def contains(root, path):
+        try:
+            return os.path.commonpath((root, path)) == root
+        except ValueError:
+            return False
+
+    def add_source_folder(folder):
+        # Resolve through the native helper, including argv-based project paths.
+        path = original(folder)
+        resolved = os.path.normcase(os.path.realpath(path))
+        with source_lock:
+            if contains(sandbox_real, resolved) or any(contains(root, resolved) for root in seeded):
+                return
+            # Copy once before Config captures its filename or verifies defaults.
+            apply_config_sandbox({"config_folder": path})
+            seeded.add(resolved)
+            if resolved not in sources:
+                sources.insert(0, resolved)
 
     def sandboxed_get_relative_path(*files):
         path = original(*files)
@@ -301,15 +317,16 @@ def install_config_path_patch(source_folder="configs"):
             return path
         resolved = os.path.normcase(os.path.realpath(path))
         for source in sources:
-            try:
-                if os.path.commonpath((source, resolved)) == source:
-                    return os.path.normpath(os.path.join(sandbox_configs, os.path.relpath(resolved, source)))
-            except ValueError:
-                continue
+            if contains(source, resolved):
+                return os.path.normpath(os.path.join(sandbox_configs, os.path.relpath(resolved, source)))
         return path
 
+    def sandboxed_config_path(folder, *files):
+        add_source_folder(folder)
+        return sandboxed_get_relative_path(folder, *files)
+
     ok_file.get_relative_path = sandboxed_get_relative_path
-    ok_config.get_relative_path = sandboxed_get_relative_path
+    ok_config.get_relative_path = sandboxed_config_path
     ok_config.Config.config_folder = sandbox_configs
     _note("configs 相对路径已改道沙箱（自建 store / 账号存储 / 运行期写入一并隔离）")
     return add_source_folder
@@ -1047,7 +1064,6 @@ def main() -> None:
         source_folder = detect_config_folder(project_dir, args.config_module)
         sandbox_config = {"config_folder": source_folder}
         apply_config_sandbox(sandbox_config)
-        add_config_source = install_config_path_patch(source_folder)
 
         project_config = load_project_config(project_dir)
         declared_before = startup_hooks(project_config, "beforeConfigImport")
@@ -1055,19 +1071,17 @@ def main() -> None:
             declared_before or discover_pre_config_hooks(project_dir),
             "import config 之前",
         )
+        # Environment preparation must precede the first framework import.
+        add_config_source = install_config_path_patch(source_folder)
         install_override_patch()
         install_trigger_persistence_patch()
         install_override_save_patch()
 
         config_module = importlib.import_module(args.config_module)
         config = copy_config_containers(config_module.config)
-        actual_folder = os.path.abspath(str(config.get("config_folder") or "configs"))
-        if os.path.normcase(actual_folder) != os.path.normcase(os.path.abspath(source_folder)):
-            # The imported value is authoritative for paths computed at runtime.
-            # Config instances still write to the sandbox established above.
-            sandbox_config = {"config_folder": actual_folder}
-            apply_config_sandbox(sandbox_config)
-            add_config_source(actual_folder)
+        # Already-opened Config instances have seeded their folders. Do not
+        # overwrite their sandbox writes when reconciling the imported value.
+        add_config_source(str(config.get("config_folder") or "configs"))
         config.update(sandbox_config)
         config["check_mutex"] = False
         config["gui"] = None

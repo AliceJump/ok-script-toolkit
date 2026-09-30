@@ -61,7 +61,11 @@ def start_framework_runtime(ok, cancel=None, timeout=None):
     controller.start = observe_start
     controller.do_start = observe_do_start
     if timeout is None:
-        timeout = float(ok.config.get("start_timeout", 60)) + 15
+        # A launched Windows EXE has separate window-stability and device-ready
+        # deadlines in the native controller, each using start_timeout.
+        windows = ok.config.get("windows") or {}
+        phases = 2 if windows.get("start_exe", True) else 1
+        timeout = float(ok.config.get("start_timeout", 60)) * phases + 15
     deadline = time.monotonic() + timeout
     try:
         threading.Thread(target=bootstrap, name="ok-toolkit-runtime", daemon=True).start()
