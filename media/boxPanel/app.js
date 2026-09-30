@@ -2,7 +2,7 @@
   const I18N = JSON.parse(document.getElementById('boxPanelI18n')?.textContent || '{}');
   const t = (key) => I18N[key] || key;
   const vscode = acquireVsCodeApi();
-  const mode = (document.getElementById('boxPanelMode')?.textContent || 'assets').trim();
+  const mode = (document.getElementById('boxPanelMode')?.textContent || 'gallery').trim();
   document.getElementById('refreshBtn').textContent = t('refresh');
   const publish = document.getElementById('publishBtn');
   publish.textContent = t('publish');
@@ -25,7 +25,8 @@
   window.addEventListener('message', (event) => {
     const msg = event.data;
     const rows = document.getElementById('rows');
-    if (msg.type === 'thumbs' && mode === 'assets') {
+    // 框管理对标模板管理：每个 box path 一张 bbox 裁剪缩略图，分批到达逐张填充
+    if (msg.type === 'thumbs') {
       (msg.items || []).forEach((item) => {
         const card = cards.get(item.id);
         if (card) fillThumb(card, item.url);
@@ -35,28 +36,23 @@
     if (msg.type !== 'rows') return;
     cards.clear();
     while (rows.firstChild) rows.removeChild(rows.firstChild);
-    rows.className = mode === 'assets' ? 'asset-grid' : '';
+    rows.className = 'asset-grid';
     (msg.rows || []).forEach((row) => {
       const button = document.createElement('button');
       button.type = 'button';
-      if (mode === 'assets') {
-        button.className = 'card asset-card';
-        button.title = row.name;
-        const box = document.createElement('div');
-        box.className = 'thumb-box';
-        box.textContent = '…';
-        const name = document.createElement('div');
-        name.className = 'asset-name';
-        name.textContent = row.name;
-        const count = document.createElement('div');
-        count.className = 'asset-count';
-        count.textContent = String(row.count);
-        button.append(box, name, count);
-        cards.set(row.id, button);
-      } else {
-        button.className = 'box-row';
-        button.textContent = row.label;
-      }
+      button.className = 'card asset-card';
+      button.title = row.id;
+      const box = document.createElement('div');
+      box.className = 'thumb-box';
+      box.textContent = '…';
+      const name = document.createElement('div');
+      name.className = 'asset-name';
+      name.textContent = row.id;
+      const count = document.createElement('div');
+      count.className = 'asset-count';
+      count.textContent = row.label;
+      button.append(box, name, count);
+      cards.set(row.id, button);
       let clickTimer = 0;
       button.onclick = () => {
         window.clearTimeout(clickTimer);

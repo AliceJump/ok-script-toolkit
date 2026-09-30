@@ -50,22 +50,21 @@
 
 ## 4. 数据模型
 
-标注资源带着原图，供编辑和裁剪：
+标注资源带着原图与尺寸（version 2，与模板标注同一套 Pixel 模型）：
 
 ```json
 {
-  "version": 1,
+  "version": 2,
+  "images": [
+    { "file": "12.png", "width": 1920, "height": 1080 }
+  ],
   "boxes": [
-    {
-      "path": "screen.main_viewport",
-      "image": "12.png",
-      "rect": [0.098400, 0.104200, 0.896100, 0.894400]
-    }
+    { "path": "screen.main_viewport", "image": "12.png", "bbox": [184, 112, 1544, 853] }
   ]
 }
 ```
 
-运行时资源只有几何。`to_box()` 不需要图片：
+运行时资源只有归一化几何（version 1 不变）。`to_box()` 不需要图片：
 
 ```json
 {
@@ -73,7 +72,7 @@
   "boxes": [
     {
       "path": "screen.main_viewport",
-      "rect": [0.098400, 0.104200, 0.896100, 0.894400]
+      "rect": [0.095833, 0.103704, 0.900000, 0.893519]
     }
   ]
 }
@@ -81,27 +80,34 @@
 
 约定：
 
-- `path` 是 `self.pos.` 后面的属性路径。至少两段，每段是 Python 标识符。`screen.main_viewport` 对应 `self.pos.screen.main_viewport`。
-- `rect` 是 `[left, top, right, bottom]`，相对这张原图的整幅，范围 0–1。这就是 `ScreenRatio` 的四个数。
-- 序列化按 `path` 排序，矩形固定 6 位小数，两空格缩进，文件末尾换行。改一个框时 diff 停在那个对象。
+- `path` 是 `self.pos.` 后面的属性路径。至少两段，每段是 Python 标识符。`screen.main_viewport` 对应 `self.pos.screen.main_viewport`。路径规则只有一份（`boxResourcePure.boxPathError`），webview 的即时校验用它随 `config` 下发的同一份文法。
+- `bbox` 是 `[x, y, w, h]` 像素框，与模板 COCO 的 `bbox` 同形：整数、宽高 ≥ 1、完整落在原图 `width × height` 内。编辑、保存、校验全程 Pixel，不出现 normalized。
+- `images` 登记每张被引用原图的尺寸；保存框时按图片头登记 / 刷新，发布和预览都从这张表取尺寸。
+- 序列化：authoring 整数像素、按 `path` 排序；runtime 按矩形 6 位小数输出。改一个框时 diff 停在那个对象。
 - `image` 是模板目录下的文件名，用现有文件名归一化规则对齐。不复制图片，不把裁剪 PNG 写进仓库。
 - 参照图必须是整屏截图。`assets/images` 里的打包裁切块不能当框的原图。
 - `to_box()` 的调试名由 path 推导：`screen` 下的叶子写成 `ScreenPosition.<叶子>`。它不是主键。
 
-发布把标注条目投影成 `{path, rect}`，去掉 `image`。发布是整份快照：标注里删掉的框，发布后从运行时消失；若会删掉运行时已有 path，先确认。编辑器保存只写标注资源。
+发布把 Pixel authoring 投影成 normalized runtime —— 这是唯一的归一化入口：
+
+```text
+left   = x / width
+top    = y / height
+right  = (x + w) / width
+bottom = (y + h) / height
+```
+
+发布是整份快照：标注里删掉的框，发布后从运行时消失；若会删掉运行时已有 path，先确认。读不出尺寸的框不发布并明确报告。编辑器保存只写标注资源。
 
 ## 5. 图片与编辑器
 
 框引用标注管理正在用的同一批原图。框资源管理不导入图片、不截图入库、不打包导出。
 
-不新写画布。编辑器会话只认识图片和 `id + 标签 + 像素 xywh`。模板适配器的标签是分类名，保存仍写 COCO。框适配器的标签是 path，打开时把 `rect` 换成像素框，写回时：
+不新写画布。编辑器会话只认识图片和 `id + 标签 + 像素 xywh`。模板适配器的标签是分类名，保存仍写 COCO。框适配器的标签是 path，打开时直接用 authoring 的 Pixel bbox，写回时仍按像素保存 —— 打开后直接保存不会改文件。
 
-- 像素矩形没变的条目保留原来的浮点 `rect`。
-- 变过的条目才用 `left = x / 宽` 重新计算。
+从标注生成框：选中的像素标注直接做 Pixel union（最小包围矩形）写入 authoring，中途不做归一化；合法性（是否越界）按图片头尺寸校验。
 
-这样打开后直接保存不会改文件。
-
-点不单独做编辑器。条目按 id 工作，以后的点走同一套会话和显隐。
+图片交换：同尺寸只换所属图片；尺寸不同按比例映射（复用模板标注交换的 `annotationSwapPure`，映射后钳制进目标边界），确认框里说明缩放。
 
 ## 6. 显隐
 
@@ -120,19 +126,21 @@
 
 ## 7. 预览、补全、生成
 
-框管理和 `self.pos.screen.` 的补全只索引运行时资源。插入文本是 `self.pos.screen.main_viewport.to_box()`。另给一个只复制属性路径的动作。
+框管理对标模板管理：每个 box path 一张**bbox 裁剪后的资源缩略图**（标注管理 ↔ 框资源管理是原图缩略图；模板管理 ↔ 框管理是裁剪缩略图）。裁剪、内容哈希缓存、异步批量生成与失败处理复用模板那条管线，不另造预览系统。补全只索引运行时资源。插入文本是 `self.pos.screen.main_viewport.to_box()`。另给一个只复制属性路径的动作。
 
-预览图不进运行时文件。用 path 回查标注资源拿 `image`，再按原图和 `rect` 裁剪，复用模板的裁剪缓存。缓存键仍然是内容哈希加像素 bbox，框一改就自然失效。对不上原图时，文档只显示 path 和 rect。
+预览图不进运行时文件。用 path 回查标注资源拿 `image` 和 Pixel bbox，按原图裁剪；复用模板的裁剪缓存，缓存键仍然是内容哈希加像素 bbox，框一改就自然失效。对不上原图（含运行时独有的 path）时，文档只显示 path。
 
 文档内容沿用模板：裁剪图、表达式、path、归一化 rect、原图相对路径。JetBrains 可以加一行短坐标 inlay；VS Code 不加，与「模板不做幽灵注释」一致。
 
-单个模板生成框：用该标注所在原图把像素 `xywh` 归一化，默认 path 建议 `screen.<分类名>`，已存在则要求换名。多个模板生成包围框只允许同一张原图：
+单个模板生成框：选中的像素标注直接做 Pixel union，默认 path 建议 `screen.<分类名>`，已存在（任何图占用）则要求换名。多个模板生成包围框只允许同一张原图：
 
 ```text
-left   = min(x) / 宽
-top    = min(y) / 高
-right  = max(x + w) / 宽
-bottom = max(y + h) / 高
+left   = min(x)
+top    = min(y)
+right  = max(x + w)
+bottom = max(y + h)
+
+bbox = [left, top, right - left, bottom - top]
 ```
 
 生成结果是普通框，进入标注资源，发布后才进入运行时。

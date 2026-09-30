@@ -220,5 +220,8 @@
   "Neither image has annotations, nothing to swap.": "두 이미지 모두 어노테이션이 없어 교환할 것이 없습니다.",
   "Could not save the box resource.": "박스 리소스를 저장하지 못했습니다.",
   "Could not save annotations.": "주석을 저장하지 못했습니다.",
-  "Publish": "게시"
+  "Publish": "게시",
+  "Boxes without an image size were not published: {paths}.": "이미지 크기를 알 수 없어 게시하지 않은 박스: {paths}"
+,
+  "Could not read the box resource file. Box overlays are hidden until it is fixed.": "박스 리소스 파일을 읽을 수 없습니다. 수정하거나 삭제하면 박스 오버레이가 복원됩니다."
 }

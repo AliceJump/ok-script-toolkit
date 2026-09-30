@@ -30,6 +30,8 @@ const PANEL_HOST = {
   tempScreenshots: 'src/tempScreenshotPanel.ts',
   annotationPanel: 'src/annotationPanel.ts',
   characterManager: 'src/characterPanel.ts',
+  // 框面板与框资源画廊共用 media/boxPanel，宿主都在 src/boxPanels.ts
+  boxPanel: 'src/boxPanels.ts',
 };
 
 const read = (p) => fs.readFileSync(p, 'utf8');

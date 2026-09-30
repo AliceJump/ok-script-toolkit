@@ -220,5 +220,8 @@
   "Neither image has annotations, nothing to swap.": "Neither image has annotations, nothing to swap.",
   "Could not save the box resource.": "Could not save the box resource.",
   "Could not save annotations.": "Could not save annotations.",
-  "Publish": "Publish"
+  "Publish": "Publish",
+  "Boxes without an image size were not published: {paths}.": "Boxes without an image size were not published: {paths}."
+,
+  "Could not read the box resource file. Box overlays are hidden until it is fixed.": "Could not read the box resource file. Box overlays are hidden until it is fixed."
 }

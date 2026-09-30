@@ -2,7 +2,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { TemplateAssetData } from './templateAssetData';
-import { addBox, rectFromPixels } from './boxResourceStore';
+import { addBox, pixelUnionFromAnnotations, readAuthoringFile } from './boxResourceStore';
+import { BOX_PATH_SEGMENT_SOURCE, RESERVED_BOX_ROOTS } from './boxResourcePure';
 import { templatesDirectory } from './projectConfig';
 import { getProjectConfig } from './screenshotCapture';
 import { readImageSize } from './pngCrop';
@@ -75,7 +76,17 @@ class AnnotationController {
     const kb = cfg.get<Record<string, string>>('annotationKeybindings');
     // 坐标逗号后加空格是个人习惯 → application 作用域，只在用户设置里存在
     const copyCoordsSpace = cfg.get<boolean>('copyCoordsSpace', true);
-    void this.webview.postMessage({ type: 'config', keybindings: kb, copyCoordsSpace });
+    void this.webview.postMessage({
+      type: 'config',
+      keybindings: kb,
+      copyCoordsSpace,
+      // 框路径规则：给「生成框」输入框做即时校验，规则只有这一个来源。
+      // 不给的话输入框就无法判定段名，只能走到"拦不住"那一侧。
+      boxPathRule: {
+        segment: BOX_PATH_SEGMENT_SOURCE,
+        reservedRoots: [...RESERVED_BOX_ROOTS],
+      },
+    });
   }
 
   open(imagePath: string, imageList: string[]): void {
@@ -117,6 +128,13 @@ class AnnotationController {
       }
     }
 
+    // 跨图片的框 path 占用：path → 所属图片。「生成框」对话框用它做重复校验。
+    const boxPaths: Record<string, string> = {};
+    const authoring = readAuthoringFile(this.data.root, this.data.templatesDir);
+    for (const box of authoring.boxes) {
+      boxPaths[box.path] = box.image;
+    }
+
     const currentIndex = this._imageList.indexOf(imagePath);
 
     await this.webview.postMessage({
@@ -132,6 +150,7 @@ class AnnotationController {
         h: a.bbox[3],
       })),
       allCategories,
+      boxPaths,
       currentIndex,
       totalImages: this._imageList.length,
       filename: path.basename(imagePath),
@@ -182,10 +201,12 @@ class AnnotationController {
           void this.webview.postMessage({ type: 'generateBoxResult', ok: false, error: 'image' });
           break;
         }
-        const rect = size ? rectFromPixels(msg.boxes, size.width, size.height) : undefined;
+        // Pixel annotations → Pixel union → Pixel authoring。中途不再绕 normalized；
+        // 越界与否由 addBox 按图片头尺寸校验（与保存链同一道闸）。
+        const union = size ? pixelUnionFromAnnotations(msg.boxes) : undefined;
         const root = getProjectConfig().projectDir;
-        const error = rect && root
-          ? addBox(root, templatesDirectory(root), msg.path, path.basename(this._currentImage), rect)
+        const error = union && root
+          ? addBox(root, templatesDirectory(root), msg.path, path.basename(this._currentImage), union)
           : 'image';
         void this.webview.postMessage({ type: 'generateBoxResult', ok: !error, error: error || '' });
         break;

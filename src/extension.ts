@@ -402,7 +402,7 @@ export function activate(context: vscode.ExtensionContext): void {
     ),
     vscode.window.registerWebviewViewProvider(
       BoxGalleryViewProvider.viewType,
-      new BoxGalleryViewProvider(context.extensionUri),
+      new BoxGalleryViewProvider(context.extensionUri, thumbDir),
     ),
     vscode.window.registerWebviewViewProvider(
       TempScreenshotViewProvider.viewType,

@@ -41,6 +41,63 @@
   const COORD_DECIMALS = 4;
   const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
 
+  /* ── 框路径规则 ───────────────────────────────────────────────
+   * 规则本体在扩展侧（`boxResourcePure.boxPathError`），这里只接收它随 `config`
+   * 下发的**同一份**段名正则与保留根，用于「生成框」对话框的即时校验：不合法就
+   * 在输入框下面标红，并且不给保存。以前这里没有校验、宿主只回一个错误码，界面
+   * 上原样显示 `duplicate`/`shallow`，用户不知道"至少要两段、每段是 Python 标识符"。
+   */
+  let boxPathRule = null;
+
+  // 全局重复：path 已被哪张图占用（宿主随 load 下发 boxPaths：path → 图片文件名）。
+  // originalPath 是本条编辑前的旧 path：保持不变时放行，换成别的占用 path 才算重复。
+  // 注意不要拿"占用表的值（图片名）"来当排除参数 —— 排除的判据是原始 path 本身。
+  function boxPathOccupied(value, originalPath) {
+    const occupied = imageData?.boxPaths || {};
+    const trimmed = String(value || '').trim();
+    if (originalPath != null && trimmed === String(originalPath).trim()) return undefined;
+    if (occupied[trimmed]) return { code: 'duplicate' };
+    return undefined;
+  }
+
+  function boxPathProblem(value) {
+    const raw = String(value || '').trim();
+    if (!raw) return { code: 'empty' };
+    const segments = raw.split('.');
+    if (segments.length < 2) return { code: 'shallow', bad: raw };
+    if (!boxPathRule || !boxPathRule.segment) return { code: 'rule' };
+    const segment = new RegExp(boxPathRule.segment);
+    const bad = segments.find((item) => !segment.test(item));
+    if (bad !== undefined) return { code: 'segment', bad };
+    if ((boxPathRule.reservedRoots || []).indexOf(segments[0]) >= 0) return { code: 'reserved', bad: segments[0] };
+    return undefined;
+  }
+
+  function boxPathMessage(problem) {
+    if (!problem) return '';
+    if (problem.code === 'empty') return t('boxPathRequired');
+    if (problem.code === 'shallow') return t('boxPathTwoSegments', { path: problem.bad || '' });
+    if (problem.code === 'segment') return t('boxPathBadSegment', { segment: problem.bad || '' });
+    if (problem.code === 'reserved') return t('boxPathReserved', { root: problem.bad || '' });
+    if (problem.code === 'rule') return t('boxPathRuleMissing');
+    if (problem.code === 'duplicate') return t('boxPathExists');
+    return t('generateBoxFailed');
+  }
+
+  /** 输入框的即时校验：返回 undefined 表示可以保存。 */
+  function refreshGeneratePathState() {
+    const input = document.getElementById('generatePath');
+    const error = document.getElementById('generateError');
+    const ok = document.getElementById('generateOk');
+    if (!input) return undefined;
+    // 「生成框」创建的是一条新框：规则之外，任何已占用的 path 都算重复。
+    const problem = boxPathProblem(input.value) || boxPathOccupied(input.value, null);
+    if (error) error.textContent = problem ? boxPathMessage(problem) : '';
+    input.classList.toggle('input-invalid', !!problem && String(input.value || '').trim().length > 0);
+    if (ok) ok.disabled = !!problem;
+    return problem;
+  }
+
   // 状态
   let imageData = null;   // { imagePath, imageBase64, annotations, allCategories, filename }
   let boxMode = false;
@@ -335,6 +392,9 @@
     });
     const seed = selected ? selected.category : (annotations[0] ? annotations[0].category : 'region');
     pathInput.value = 'screen.' + String(seed).replace(/[^A-Za-z0-9_]/g, '_');
+    pathInput.placeholder = t('generatePathPlaceholder');
+    refreshGeneratePathState();
+    pathInput.oninput = refreshGeneratePathState;
     document.getElementById('generateModal').classList.add('visible');
   }
   function showAllAnnotations() {
@@ -1007,8 +1067,11 @@
     const yInput = document.getElementById('bboxY');
     const wInput = document.getElementById('bboxW');
     const hInput = document.getElementById('bboxH');
+    const bboxOkBtn = document.getElementById('bboxOk');
     document.getElementById('bboxTitle').textContent = category ? t('editBboxTitle') : t('newBboxTitle');
     catInput.value = category;
+    // 框模式里这个名字是框路径：给同一条规则的提示
+    catInput.placeholder = boxMode ? t('generatePathPlaceholder') : '';
     xInput.value = x; yInput.value = y; wInput.value = w; hInput.value = h;
     errorEl.textContent = '';
     modal.classList.add('visible');
@@ -1016,6 +1079,18 @@
 
     function validate() {
       const name = catInput.value.trim();
+      if (boxMode) {
+        // 框路径：规则 + 全局占用（允许保持本条自己的原名）。非法时禁用确定。
+        const problem = boxPathProblem(name) || boxPathOccupied(name, category);
+        if (problem) {
+          errorEl.textContent = boxPathMessage(problem);
+          bboxOkBtn.disabled = true;
+          return false;
+        }
+        errorEl.textContent = '';
+        bboxOkBtn.disabled = false;
+        return true;
+      }
       if (!name) { errorEl.textContent = t('categoryRequired'); return false; }
       const existing = imageData?.allCategories || {};
       if (name !== category && existing[name]) {
@@ -1026,6 +1101,7 @@
       return true;
     }
     catInput.oninput = validate;
+    if (boxMode) validate();
 
     document.getElementById('bboxOk').onclick = () => {
       if (!validate()) return;
@@ -1087,6 +1163,14 @@
   /* ---------- 键盘事件 ---------- */
   document.addEventListener('keydown', (e) => {
     if (document.getElementById('bboxModal').classList.contains('visible')) return;
+
+    // 「生成框」对话框里回车 = 点确定。走的是同一个处理函数：路径不合法时按钮是
+    // 禁用的，click() 不会有任何动作，所以回车也拦得住。
+    if (e.key === 'Enter' && document.getElementById('generateModal').classList.contains('visible')) {
+      e.preventDefault();
+      document.getElementById('generateOk').click();
+      return;
+    }
 
     // 撤销
     if (matchKeybinding(e, keybindings.undo)) {
@@ -1180,6 +1264,8 @@
     document.querySelectorAll('#generateChoices input').forEach((input) => {
       if (input.checked) chosen.push(annotations[Number(input.dataset.index)]);
     });
+    // 路径规则不满足时直接拦住：不合法的输入框不接受保存。
+    if (refreshGeneratePathState()) return;
     const error = document.getElementById('generateError');
     if (!chosen.length) {
       if (error) error.textContent = t('generateNeedSelection');
@@ -1207,6 +1293,9 @@
         copyCoordsSpace = msg.copyCoordsSpace;
       }
       boxMode = msg.boxMode === true;
+      // 框路径的段名规则：以后若要改文法，只需要改 `boxResourcePure`，这里不用改。
+      if (msg.boxPathRule) boxPathRule = msg.boxPathRule;
+      refreshGeneratePathState();
       const generateBoxBtn = document.getElementById('generateBoxBtn');
       if (generateBoxBtn) generateBoxBtn.style.display = boxMode ? 'none' : '';
       updateButtonTexts();
@@ -1214,8 +1303,15 @@
     }
     if (msg.type === 'generateBoxResult') {
       const error = document.getElementById('generateError');
-      if (msg.ok) document.getElementById('generateModal').classList.remove('visible');
-      else if (error) error.textContent = msg.error || t('generateNeedSelection');
+      if (msg.ok) {
+        document.getElementById('generateModal').classList.remove('visible');
+        return;
+      }
+      // 宿主只回一个错误码（`duplicate`/`write`…）。直接显示它就是"看不懂"的来源：
+      // 路径类先按输入框现在的原文重判一次，给出同一套带解释的文案，其余落到一句人话。
+      const local = refreshGeneratePathState();
+      const problem = msg.error === 'duplicate' ? { code: 'duplicate' } : (local || { code: msg.error || 'unknown' });
+      if (error) error.textContent = boxPathMessage(problem);
       return;
     }
     if (msg.type === 'load') {
