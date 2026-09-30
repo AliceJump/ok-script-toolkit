@@ -222,5 +222,6 @@
   "Publish": "게시",
   "Boxes without an image size were not published: {paths}.": "이미지 크기를 알 수 없어 게시하지 않은 박스: {paths}",
   "Could not read the box resource file. Box overlays are hidden until it is fixed.": "박스 리소스 파일을 읽을 수 없습니다. 수정하거나 삭제하면 박스 오버레이가 복원됩니다.",
-  "No box annotations to publish.": "게시할 박스 주석이 없습니다."
+  "No box annotations to publish.": "게시할 박스 주석이 없습니다.",
+  "The annotation source is invalid. Fix the source file before saving or exporting.": "주석 원본 파일이 잘못되었습니다. 저장하거나 내보내기 전에 원본 파일을 수정하세요."
 }

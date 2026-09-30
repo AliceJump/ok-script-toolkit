@@ -69,7 +69,7 @@ class AssetGalleryController {
   private generation = 0;
   private disposed = false;
   /** 上次刷新时 authoring 是否不可读（用于只在状态翻转时弹一次提示） */
-  private lastBoxReadErrors = false;
+  private lastReadErrors = false;
   private readonly disposables: vscode.Disposable[] = [];
   private readonly sourceData: TemplateAssetData;
 
@@ -108,11 +108,13 @@ class AssetGalleryController {
     const imageFiles = this.data.listImages();
 
     // 构建元数据
-    const authoringErrors = this.boxes ? this.data.readErrors : [];
-    if (authoringErrors.length && !this.lastBoxReadErrors) {
-      void vscode.window.showErrorMessage(tr('Could not read the box resource file. Box overlays are hidden until it is fixed.'));
+    const authoringErrors = this.data.readErrors;
+    if (authoringErrors.length && !this.lastReadErrors) {
+      void vscode.window.showErrorMessage(this.boxes
+        ? tr('Could not read the box resource file. Box overlays are hidden until it is fixed.')
+        : tr('The annotation source is invalid. Fix the source file before saving or exporting.'));
     }
-    this.lastBoxReadErrors = authoringErrors.length > 0;
+    this.lastReadErrors = authoringErrors.length > 0;
     const metas = imageFiles.map((imgPath) => {
       const size = this.imagePixelSize(imgPath);
       const cats = this.data.getCategoriesForImage(imgPath);
@@ -298,6 +300,10 @@ class AssetGalleryController {
 
   /* ---------- 保存到 assets ---------- */
   private async handleSaveToAssets(): Promise<void> {
+    if (this.data.readErrors.length) {
+      void vscode.window.showErrorMessage(tr('The annotation source is invalid. Fix the source file before saving or exporting.'));
+      return;
+    }
     const folder = vscode.workspace.workspaceFolders?.[0];
     if (!folder) {
       void vscode.window.showWarningMessage(tr('No workspace folder open.'));

@@ -108,6 +108,23 @@ export const parseCocoData: CocoDecoder = (text) => {
   }
 };
 
+/** Keep structurally readable template records visible; readErrors still blocks writes. */
+function templateDisplayData(text: string): CocoData {
+  try {
+    const raw = JSON.parse(text);
+    if (!raw || !['images', 'annotations', 'categories'].every(key => Array.isArray(raw[key]))) return emptyCocoData();
+    return {
+      images: raw.images.filter((image: CocoImage) => image && Number.isInteger(image.id)
+        && typeof image.file_name === 'string' && Number.isFinite(image.width) && Number.isFinite(image.height)),
+      categories: raw.categories.filter((category: CocoCategory) => category && Number.isInteger(category.id)
+        && typeof category.name === 'string'),
+      annotations: raw.annotations.filter((annotation: CocoAnnotation) => annotation
+        && [annotation.id, annotation.image_id, annotation.category_id].every(Number.isInteger)
+        && Array.isArray(annotation.bbox) && annotation.bbox.length === 4 && annotation.bbox.every(Number.isFinite)),
+    };
+  } catch { return emptyCocoData(); }
+}
+
 const changeListeners = new Set<(file: string) => void>();
 export function onAnnotationDataChanged(listener: (file: string) => void): { dispose(): void } {
   changeListeners.add(listener);
@@ -187,7 +204,8 @@ export class CocoAnnotationData {
     try {
       this.loadedText = fs.readFileSync(this.cocoPath, 'utf8');
       const parsed = this.decode(this.loadedText);
-      this.cocoData = parsed.data;
+      this.cocoData = this.fileName === 'coco_annotations.json' && parsed.errors.length
+        ? templateDisplayData(this.loadedText) : parsed.data;
       this.readErrors = parsed.errors;
       this.legacy = parsed.legacy === true;
     } catch (error) {

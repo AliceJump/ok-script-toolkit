@@ -222,5 +222,6 @@
   "Publish": "Publish",
   "Boxes without an image size were not published: {paths}.": "Boxes without an image size were not published: {paths}.",
   "Could not read the box resource file. Box overlays are hidden until it is fixed.": "Could not read the box resource file. Box overlays are hidden until it is fixed.",
-  "No box annotations to publish.": "No box annotations to publish."
+  "No box annotations to publish.": "No box annotations to publish.",
+  "The annotation source is invalid. Fix the source file before saving or exporting.": "The annotation source is invalid. Fix the source file before saving or exporting."
 }

@@ -60,6 +60,7 @@ const galleryMessages = [];
 const errors = [];
 const infos = [];
 const ui = {
+  l10n: { t: text => text },
   workspace: {
     workspaceFolders: [{ uri: { fsPath: project } }],
     getConfiguration: () => ({ get: (_key, fallback) => fallback, inspect: () => undefined }),
@@ -210,6 +211,26 @@ const tick = () => new Promise(resolve => setTimeout(resolve, 30));
     assert.strictEqual(pure.resolveBoxRuntimePlan(project).layer, 'probe');
     assert.deepStrictEqual(errors, []);
     console.log('shared COCO authoring, first save/publish, live refresh, swapping, legacy preservation: OK');
+    // Template display must retain readable annotations while rejecting invalid source writes.
+    for (const text of [
+      templateText.replace('"category_id": 1', '"category_id": 99'),
+      templateText.replace('30,', '300,'),
+    ]) {
+      assert.notStrictEqual(text, templateText);
+      fs.writeFileSync(templates.annotationFile, text);
+      templates.load();
+      assert(templates.readErrors.length);
+      assert.strictEqual(templates.getAnnotationsForImage(image, true).length, 1);
+      assert.throws(() => templates.save(), /Unreadable annotation file/);
+      await assert.rejects(templates.saveToAssets(path.join(project, 'invalid-assets')), /annotation source is invalid/);
+      assert.strictEqual(fs.readFileSync(templates.annotationFile, 'utf8'), text);
+      assert(!fs.existsSync(path.join(project, 'invalid-assets')));
+    }
+    const templateGallery = new Gallery({ onDidReceiveMessage: () => ({ dispose() {} }), postMessage: () => Promise.resolve(true) },
+      templates, folder, () => true, { fsPath: root });
+    disposables.push(templateGallery);
+    await templateGallery.update();
+    assert(errors.includes('The annotation source is invalid. Fix the source file before saving or exporting.'));
   } finally {
     for (const disposable of disposables) disposable.dispose();
     Module._load = originalLoad;

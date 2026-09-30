@@ -110,6 +110,7 @@ export class TemplateAssetData extends CocoAnnotationData {
     cancellationToken?: vscode.CancellationToken,
     folderUri?: vscode.Uri,
   ): Promise<void> {
+    if (this.readErrors.length) throw new Error(tr('The annotation source is invalid. Fix the source file before saving or exporting.'));
     if (cancellationToken?.isCancellationRequested) throw new vscode.CancellationError();
     const enumFile = generateEnum
       ? path.resolve(this.rootDir, enumPath || path.join(targetFolder, 'LabelEnum.py'))

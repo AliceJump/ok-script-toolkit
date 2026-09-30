@@ -222,5 +222,6 @@
   "Publish": "发布",
   "Boxes without an image size were not published: {paths}.": "这些框缺少图片尺寸，未发布：{paths}。",
   "Could not read the box resource file. Box overlays are hidden until it is fixed.": "无法读取框资源文件。修复或删除该文件后，框叠加才会重新显示。",
-  "No box annotations to publish.": "没有可发布的框标注。"
+  "No box annotations to publish.": "没有可发布的框标注。",
+  "The annotation source is invalid. Fix the source file before saving or exporting.": "标注源文件无效，请修复源文件后再保存或导出。"
 }
