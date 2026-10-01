@@ -208,6 +208,12 @@ class AssetGalleryController {
         }
         break;
       }
+      case 'openSource': {
+        if (msg.imagePath && this.data.listImages().includes(msg.imagePath)) {
+          await vscode.commands.executeCommand('vscode.open', vscode.Uri.file(msg.imagePath));
+        }
+        break;
+      }
       case 'screenshot': {
         // 从剪贴板粘贴截图
         await this.handleScreenshot(msg.hardForeground);

@@ -206,6 +206,31 @@ input[type='radio'] { accent-color: var(--border-strong); }
   background: var(--bg-control);
 }
 
+.thumbnail-actions {
+  position: absolute;
+  bottom: 3px;
+  right: 3px;
+  display: flex;
+  gap: 2px;
+  z-index: 2;
+}
+.thumbnail-actions button {
+  width: 24px;
+  height: 24px;
+  min-height: 24px;
+  padding: 0;
+  border: var(--border-width) solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-control);
+  color: var(--text-primary);
+  font-size: var(--font-sm);
+  line-height: 1;
+}
+.thumbnail-actions button:hover, .thumbnail-actions button:focus-visible {
+  background: var(--bg-control-hover);
+  border-color: var(--border-strong);
+}
+
 /* 行级可点击区（组头 / 折叠标题行 / tab）：极浅色调，不参与按钮权重 */
 .seg__btn:not(.is-active),
 .gbar__row--link,

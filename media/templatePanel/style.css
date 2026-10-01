@@ -46,29 +46,6 @@ body {
 }
 .thumb-box img { max-width: 100%; max-height: 100%; image-rendering: pixelated; }
 
-/* 打开按钮：常驻可见（默认约 85% 不透明度）——可点击控件不能只在 hover 时现身；
-   底色用控件面、文字用前景色，避免原先 rgba(0,0,0,.55)+#fff 在浅色主题成为黑块 */
-.open-btn {
-  position: absolute;
-  top: 3px;
-  right: 3px;
-  width: 22px;
-  height: 22px;
-  min-height: 22px;
-  padding: 0;
-  border: var(--border-width) solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--bg-control);
-  color: var(--text-primary);
-  font-size: var(--font-md);
-  line-height: 1;
-  opacity: .85;
-  transition: opacity .12s ease, background-color .12s ease;
-  z-index: 2;
-}
-.open-btn:hover,
-.open-btn:focus-visible { opacity: 1; background: var(--bg-control-hover); border-color: var(--border-strong); }
-
 .placeholder { color: var(--text-muted); font-size: var(--font-xs); }
 
 .meta { padding: 5px 7px 6px; }

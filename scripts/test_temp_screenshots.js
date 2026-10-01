@@ -42,6 +42,7 @@ html = html
   .replaceAll('__CSP_SOURCE__', "'self'")
   .replaceAll('__I18N_JSON__', JSON.stringify(dictionary))
   .replace('<link rel="stylesheet" href="__STYLE_URI__">', '')
+  .replace('<script src="__SHARED_THUMBNAIL_ACTIONS_URI__"></script>', `<script>${fs.readFileSync(path.join(root, 'media', 'shared', 'thumbnailActions.js'), 'utf8')}</script>`)
   .replace('<script src="__APP_SCRIPT_URI__"></script>', `<script>${fs.readFileSync(path.join(componentRoot, 'app.js'), 'utf8')}</script>`);
 
 let webviewState = {};

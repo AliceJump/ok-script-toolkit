@@ -69,34 +69,6 @@ body {
 .cats { color: var(--text-muted); font-size: var(--font-2xs); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .size { color: var(--text-muted); font-size: var(--font-2xs); }
 
-/* tile 上的操作按钮组：常驻可见（默认 85%），底色/文字走 token，
-   不再用 rgba(0,0,0,.6)+#fff（浅色主题下是黑块） */
-.actions {
-  position: absolute;
-  bottom: 3px;
-  right: 3px;
-  display: flex;
-  gap: 2px;
-  opacity: .85;
-  transition: opacity .12s ease;
-  z-index: 2;
-}
-.card:hover .actions { opacity: 1; }
-.actions button {
-  width: 22px;
-  height: 22px;
-  min-height: 22px;
-  padding: 0;
-  border: var(--border-width) solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--bg-control);
-  color: var(--text-primary);
-  font-size: var(--font-sm);
-  line-height: 1;
-  text-align: center;
-}
-.actions button:hover { background: var(--bg-control-hover); border-color: var(--border-strong); }
-
 .empty {
   margin-top: var(--space-xl);
   text-align: center;

@@ -283,32 +283,19 @@
       const img = document.createElement('img');
       img.src = meta.thumbUrl || meta.url;
       img.alt = meta.name;
-      card.appendChild(img);
+      const preview = document.createElement('div');
+      preview.className = 'thumb-box';
+      preview.appendChild(img);
+      card.appendChild(preview);
 
       const actions = document.createElement('div');
-      actions.className = 'actions';
-
-      const sendBtn = document.createElement('button');
+      actions.className = 'actions thumbnail-actions';
+      const sendBtn = ThumbnailActions.button('→', t('tempSendToAssets'), () => vscode.postMessage({ type: 'sendToAssets', id: meta.id }));
       sendBtn.className = 'send';
-      sendBtn.textContent = '→';
-      sendBtn.title = t('tempSendToAssets');
-      sendBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        vscode.postMessage({ type: 'sendToAssets', id: meta.id });
-      });
-
-      const delBtn = document.createElement('button');
+      const delBtn = ThumbnailActions.button('×', t('tempDelete'), () => vscode.postMessage({ type: 'deleteTemp', id: meta.id }));
       delBtn.className = 'del';
-      delBtn.textContent = '×';
-      delBtn.title = t('tempDelete');
-      delBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        vscode.postMessage({ type: 'deleteTemp', id: meta.id });
-      });
-
-      actions.appendChild(sendBtn);
-      actions.appendChild(delBtn);
-      card.appendChild(actions);
+      actions.append(sendBtn, delBtn);
+      preview.appendChild(actions);
 
       const name = document.createElement('div');
       name.className = 'name';

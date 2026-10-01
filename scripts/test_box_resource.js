@@ -59,6 +59,8 @@ const editorMessages = [];
 const galleryMessages = [];
 const errors = [];
 const infos = [];
+const openedFiles = [];
+const previewSources = [];
 const ui = {
   l10n: { t: text => text },
   workspace: {
@@ -66,12 +68,17 @@ const ui = {
     getConfiguration: () => ({ get: (_key, fallback) => fallback, inspect: () => undefined }),
     onDidChangeConfiguration: () => ({ dispose() {} }),
   },
+  env: { clipboard: { writeText: async text => { ui.copiedText = text; } } },
   window: {
+    visibleTextEditors: [],
+    onDidChangeActiveTextEditor: () => ({ dispose() {} }),
     showErrorMessage: text => errors.push(text),
     showInformationMessage: text => infos.push(text),
     showWarningMessage: async (_text, _options, action) => action,
   },
   Uri: { file: file => ({ fsPath: file }) },
+  SnippetString: class { constructor(value) { this.value = value; } },
+  commands: { executeCommand: async (command, uri) => openedFiles.push({ command, uri }) },
 };
 const originalLoad = Module._load;
 Module._load = function(name, parent, isMain) {
@@ -84,7 +91,12 @@ function loadController(file, name) {
   m.filename = filename;
   m.paths = Module._nodeModulePaths(path.dirname(filename));
   m.require = request => {
-    if (request === './pngCrop') return { ...require('../out/imageHeader'), THUMB_HEIGHT: 84, cropTemplateThumbFileAsync: async () => undefined };
+    if (request === './pngCrop') return {
+      ...require('../out/imageHeader'), THUMB_HEIGHT: 84, cropTemplateThumbFileAsync: async () => undefined,
+      annotatedImageFile: (imagePath, bbox) => { previewSources.push({ imagePath, bbox }); return path.join(folder, 'preview.png'); },
+      annotatedImageFilesAsync: async requests => requests.map(() => path.join(folder, 'preview.png')),
+    };
+    if (file === 'boxPanels' && request === './screenshotCapture') return { getProjectConfig: () => ({ projectDir: project }) };
     if (request === './localization') return { tr: text => text };
     return Module.prototype.require.call(m, request);
   };
@@ -127,6 +139,43 @@ const tick = () => new Promise(resolve => setTimeout(resolve, 30));
     assert.strictEqual(raw.categories[0].name, 'screen.first');
     assert(!('version' in raw) && !('boxes' in raw));
     assert.strictEqual(fs.readFileSync(templates.annotationFile, 'utf8'), templateText, 'editing boxes preserves the independent template source');
+    const BoxGallery = loadController('boxPanels', 'BoxGalleryViewProvider');
+    const boxGallery = new BoxGallery({ fsPath: root }, folder);
+    boxGallery.view = { webview: {} };
+    await boxGallery.onMessage({ type: 'open', id: 'screen.first' });
+    assert.deepStrictEqual(previewSources.pop(), { imagePath: image, bbox: [10, 20, 30, 40] }, 'View Original uses box authoring coordinates even when template names differ');
+    assert.strictEqual(openedFiles.at(-1).command, 'vscode.open');
+    let inserts = 0;
+    ui.window.activeTextEditor = { document: { languageId: 'python' }, insertSnippet: async snippet => { inserts++; ui.insertedText = snippet.value; return true; } };
+    ui.window.visibleTextEditors = [ui.window.activeTextEditor];
+    await boxGallery.onMessage({ type: 'activate', id: 'screen.first', clicks: 2 });
+    assert.strictEqual(ui.copiedText, 'self.pos.screen.first');
+    assert.strictEqual(inserts, 0, 'double-click copies the path without editing Python');
+    await boxGallery.onMessage({ type: 'activate', id: 'screen.first', clicks: 1 });
+    assert.strictEqual(inserts, 1);
+    assert.strictEqual(ui.insertedText, 'self.pos.screen.first.to_box()');
+    ui.window.activeTextEditor = undefined;
+    await boxGallery.onMessage({ type: 'activate', id: 'screen.first', clicks: 1 });
+    assert.strictEqual(inserts, 2, 'the card still inserts into the recent Python editor after taking focus');
+    const cached = ui.window.visibleTextEditors[0];
+    ui.window.visibleTextEditors = [];
+    ui.copiedText = '';
+    await boxGallery.onMessage({ type: 'activate', id: 'screen.first', clicks: 1 });
+    assert.strictEqual(inserts, 2, 'an open document does not make a hidden editor usable');
+    assert.strictEqual(ui.copiedText, 'self.pos.screen.first.to_box()', 'a stale editor copies instead');
+    const replacement = { document: cached.document, insertSnippet: async () => { inserts++; return true; } };
+    ui.window.visibleTextEditors = [replacement];
+    await boxGallery.onMessage({ type: 'activate', id: 'screen.first', clicks: 1 });
+    assert.strictEqual(inserts, 3, 'reacquires the visible editor instance of the same Python document');
+    for (const fail of [async () => false, async () => { throw new Error('disposed editor'); }]) {
+      replacement.insertSnippet = fail;
+      ui.copiedText = '';
+      await boxGallery.onMessage({ type: 'activate', id: 'screen.first', clicks: 1 });
+      assert.strictEqual(ui.copiedText, 'self.pos.screen.first.to_box()', 'failed insertion takes the copy fallback');
+    }
+    const openedCount = openedFiles.length;
+    await boxGallery.onMessage({ type: 'open', id: 'screen.runtime_only' });
+    assert.strictEqual(openedFiles.length, openedCount, 'boxes without an authoring source cannot open a made-up image');
     const loadsBeforeWatch = editorMessages.filter(message => message.type === 'load').length;
     core.notifyAnnotationDataChanged(boxesFile);
     await tick();
@@ -138,6 +187,11 @@ const tick = () => new Promise(resolve => setTimeout(resolve, 30));
     disposables.push(gallery);
     // No thumbnail URI conversion is needed because this fixture skips thumbnail generation.
     await gallery.update();
+    await gallery.onMessage({ type: 'openSource', imagePath: image });
+    assert.strictEqual(openedFiles.at(-1).uri.fsPath, image);
+    const validSourceCount = openedFiles.length;
+    await gallery.onMessage({ type: 'openSource', imagePath: path.join(project, 'outside.png') });
+    assert.strictEqual(openedFiles.length, validSourceCount, 'source buttons only open images belonging to the gallery');
     const templateEditor = new Controller({
       onDidReceiveMessage: () => ({ dispose() {} }), postMessage: message => { editorMessages.push(message); return Promise.resolve(true); },
     }, { fsPath: root }, templates, folder, () => true, () => {}, false);

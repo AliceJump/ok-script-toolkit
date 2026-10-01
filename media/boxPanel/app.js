@@ -18,14 +18,14 @@
     const img = document.createElement('img');
     img.alt = '';
     img.addEventListener('error', () => img.remove());
-    box.textContent = '';
-    box.append(img);
+    box.querySelector('.placeholder')?.remove();
+    box.prepend(img);
     img.src = url;
   }
   window.addEventListener('message', (event) => {
     const msg = event.data;
     const rows = document.getElementById('rows');
-    // 框管理对标模板管理：每个 box path 一张 bbox 裁剪缩略图，分批到达逐张填充
+    // 原图上下文裁剪与红框标记，分批到达逐张填充。
     if (msg.type === 'thumbs') {
       (msg.items || []).forEach((item) => {
         const card = cards.get(item.id);
@@ -38,31 +38,38 @@
     while (rows.firstChild) rows.removeChild(rows.firstChild);
     rows.className = 'asset-grid';
     (msg.rows || []).forEach((row) => {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'card asset-card';
-      button.title = row.id;
+      const card = document.createElement('div');
+      card.className = 'card asset-card';
+      card.title = row.id;
       const box = document.createElement('div');
       box.className = 'thumb-box';
-      box.textContent = '…';
+      const placeholder = document.createElement('span');
+      placeholder.className = 'placeholder';
+      placeholder.textContent = '…';
+      box.append(placeholder);
       const name = document.createElement('div');
       name.className = 'asset-name';
       name.textContent = row.id;
       const count = document.createElement('div');
       count.className = 'asset-count';
       count.textContent = row.label;
-      button.append(box, name, count);
-      cards.set(row.id, button);
-      let clickTimer = 0;
-      button.onclick = () => {
-        window.clearTimeout(clickTimer);
-        clickTimer = window.setTimeout(() => vscode.postMessage({ type: 'activate', id: row.id, clicks: 1 }), 250);
-      };
-      button.ondblclick = () => {
-        window.clearTimeout(clickTimer);
-        vscode.postMessage({ type: 'activate', id: row.id, clicks: 2 });
-      };
-      rows.append(button);
+      const actions = document.createElement('div');
+      actions.className = 'actions thumbnail-actions';
+      actions.append(
+        ThumbnailActions.button('＋', t('insertExpression'), () => vscode.postMessage({ type: 'activate', id: row.id, clicks: 1 })),
+        ThumbnailActions.button('⧉', t('copyExpression'), () => vscode.postMessage({ type: 'activate', id: row.id, clicks: 2 })),
+      );
+      const open = ThumbnailActions.button('👁', t('viewOriginal'), () => vscode.postMessage({ type: 'open', id: row.id }));
+      open.disabled = !(row.imagePath && row.bbox);
+      actions.append(open);
+      box.append(actions);
+      card.append(box, name, count);
+      cards.set(row.id, card);
+      ThumbnailActions.bindClicks(card,
+        () => vscode.postMessage({ type: 'activate', id: row.id, clicks: 1 }),
+        () => vscode.postMessage({ type: 'activate', id: row.id, clicks: 2 }),
+      );
+      rows.append(card);
     });
     if (!(msg.rows || []).length) {
       const empty = document.createElement('div');

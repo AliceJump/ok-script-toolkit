@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
+import { ensureEditorTracker, insertIntoPythonEditor } from './pythonEditor';
 import { FeatureData } from './featureData';
 import { cropTemplateThumbFileAsync, openAnnotatedImage, THUMB_HEIGHT } from './pngCrop';
 import { featureAliases } from './providers';
@@ -22,36 +23,6 @@ interface TemplateMeta {
 export function primaryFeatureAlias(): string {
   const aliases = featureAliases();
   return aliases.length ? aliases[0] : 'fL';
-}
-
-/* ---------------- 最近 Python 编辑器跟踪（模块级单例） ---------------- */
-
-let lastPythonEditor: vscode.TextEditor | undefined;
-let editorTrackerReady = false;
-
-function ensureEditorTracker(): void {
-  if (editorTrackerReady) return;
-  editorTrackerReady = true;
-  vscode.window.onDidChangeActiveTextEditor((editor) => {
-    if (editor && editor.document.languageId === 'python') lastPythonEditor = editor;
-  });
-  const cur = vscode.window.activeTextEditor;
-  if (cur && cur.document.languageId === 'python') lastPythonEditor = cur;
-}
-
-/** 把文本插入最近活动的 Python 编辑器光标处；无可用编辑器时回退为复制 */
-async function insertIntoPythonEditor(text: string): Promise<void> {
-  let editor = lastPythonEditor;
-  if (!editor || editor.document.isClosed) {
-    const act = vscode.window.activeTextEditor;
-    if (act && act.document.languageId === 'python') editor = act;
-  }
-  if (!editor) {
-    await vscode.env.clipboard.writeText(text);
-    void vscode.window.showWarningMessage(tr('No Python editor is available; copied instead: {text}', { text }));
-    return;
-  }
-  await editor.insertSnippet(new vscode.SnippetString(text));
 }
 
 /* ---------------- 存活控制器注册表 ---------------- */
@@ -82,6 +53,7 @@ class GalleryController {
     private readonly isVisible: () => boolean,
     private readonly extensionUri: vscode.Uri,
   ) {
+    ensureEditorTracker();
     liveControllers.add(this);
     this.disposables.push(
       webview.onDidReceiveMessage((msg) => {

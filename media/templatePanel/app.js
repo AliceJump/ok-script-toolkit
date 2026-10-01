@@ -44,21 +44,16 @@
     ph.textContent = '…';
     box.appendChild(ph);
 
-    // 缩略图右上角"查看原图"按钮（悬停显示，不干扰卡片点击）
-    const openBtn = document.createElement('button');
-    openBtn.className = 'open-btn';
-    openBtn.textContent = '👁';
-    openBtn.title = t('viewOriginal');
-    openBtn.addEventListener('click', (e) => {
-      e.stopPropagation(); // 不触发卡片的 click
-      vscode.postMessage({
-        type: 'open',
-        imagePath: meta.imagePath,
-        name: meta.name,
-        bbox: JSON.stringify(meta.bbox),
-      });
-    });
-    box.appendChild(openBtn);
+    const actions = document.createElement('div');
+    actions.className = 'actions thumbnail-actions';
+    actions.append(
+      ThumbnailActions.button('＋', t('insertExpression'), () => vscode.postMessage({ type: 'insert', text: meta.name })),
+      ThumbnailActions.button('⧉', t('copyExpression'), () => vscode.postMessage({ type: 'copy', text: meta.name })),
+      ThumbnailActions.button('👁', t('viewOriginal'), () => vscode.postMessage({
+        type: 'open', imagePath: meta.imagePath, name: meta.name, bbox: JSON.stringify(meta.bbox),
+      })),
+    );
+    box.appendChild(actions);
 
     const m = document.createElement('div');
     m.className = 'meta';
@@ -75,15 +70,10 @@
     card.appendChild(box);
     card.appendChild(m);
 
-    // 单击卡片 → 插入代码；双击卡片 → 复制
-    // 使用 e.detail 区分：第二次点击（detail=2）时跳过，由 dblclick 处理
-    card.addEventListener('click', (e) => {
-      if (e.detail >= 2) return; // 双击序列中的第二次点击，跳过（由 dblclick 处理）
-      vscode.postMessage({ type: 'insert', text: meta.name });
-    });
-    card.addEventListener('dblclick', () => {
-      vscode.postMessage({ type: 'copy', text: meta.name });
-    });
+    ThumbnailActions.bindClicks(card,
+      () => vscode.postMessage({ type: 'insert', text: meta.name }),
+      () => vscode.postMessage({ type: 'copy', text: meta.name }),
+    );
     return card;
   }
 
