@@ -1,4 +1,4 @@
-# Read-only end-to-end tests: paginated API responses and a fake clock, no GitHub writes.
+﻿# Read-only end-to-end tests: paginated API responses and a fake clock, no GitHub writes.
 $ErrorActionPreference = 'Stop'
 $waitScript = Join-Path $PSScriptRoot 'wait-review-threads.ps1'
 $headA = 'a' * 40
@@ -10,7 +10,7 @@ function Reset-World {
     $global:CrThreadMock = [pscustomobject]@{
         head = $headA; state = 'open'; draft = $false; prReads = 0; queries = 0
         threads = @(); pages = $false; headChangeAt = 0; failGraphQl = $false
-        nullGraphQl = $false; settleAt = -1; lastHead = $null
+        nullGraphQl = $false; settleAt = -1; lastHead = $null; paginationFault = ''
     }
 }
 function Comment([string]$Body, [int]$N = 1, [string]$Login = 'coderabbitai', [string]$Type = 'Bot') {
@@ -37,6 +37,11 @@ function global:gh {
         $query = [string]($a | Where-Object { $_ -like 'query=*' })
         if ($query -like '*node(id:*') {
             $page = @{ nodes = @($w.threads[0].comments.nodes[1]); pageInfo = @{hasNextPage = $false; endCursor = 'c2'} }
+            if ($w.paginationFault -eq 'comment-repeat') { $page.pageInfo = @{hasNextPage = $true; endCursor = 'c1'} }
+            if ($w.paginationFault -eq 'comment-empty') { $page.pageInfo = @{hasNextPage = $true; endCursor = $null} }
+            if ($w.paginationFault -eq 'comment-cycle') {
+                $page.pageInfo = @{hasNextPage = $true; endCursor = $(if ($a -contains 'after=c1') { 'c2' } else { 'c1' })}
+            }
             return @{data = @{node = @{comments = $page}}} | ConvertTo-Json -Compress -Depth 15
         }
         if ($w.pages) {
@@ -49,6 +54,9 @@ function global:gh {
                 $next = $true
             }
             $page = @{nodes = $nodes; pageInfo = @{hasNextPage = $next; endCursor = 't1'}}
+            if ($w.paginationFault -eq 'thread-repeat') { $page.pageInfo.hasNextPage = $true }
+            if ($w.paginationFault -eq 'thread-empty') { $page.pageInfo.endCursor = $null }
+            if ($w.paginationFault -eq 'comment-first-empty' -and $next) { $page.nodes[0].comments.pageInfo.endCursor = $null }
         } else { $page = @{nodes = $w.threads; pageInfo = @{hasNextPage = $false; endCursor = $null}} }
         return @{data = @{repository = @{pullRequest = @{reviewThreads = $page}}}} | ConvertTo-Json -Compress -Depth 15
     }
@@ -57,6 +65,7 @@ function global:gh {
         if ($w.headChangeAt -gt 0 -and $w.prReads -ge $w.headChangeAt) { $w.head = 'b' * 40 }
         return @{head = @{sha = $w.head}; state = $w.state; draft = $w.draft; merged = $false} | ConvertTo-Json -Compress
     }
+    if ($a -contains '--slurp') { return '[[]]' }
     throw "Unexpected API request: $($a -join ' ')"
 }
 function Run([hashtable]$Extra = @{}) {
@@ -67,6 +76,11 @@ function Run([hashtable]$Extra = @{}) {
     return [pscustomobject]@{code = $LASTEXITCODE; result = ([string]$lines[-1] | ConvertFrom-Json)}
 }
 function Check([bool]$Condition, [string]$Message) { if (-not $Condition) { throw $Message } }
+function Run-Data {
+    $dataScript = Join-Path $PSScriptRoot 'get-coderabbit-review-data.ps1'
+    $null = & $dataScript -Repo example/repo -PrNumber 7
+    return $LASTEXITCODE
+}
 function Case([string]$Name, [scriptblock]$Body) {
     Reset-World
     try { & $Body; $script:passed++; Write-Output "ok   $Name" }
@@ -81,6 +95,21 @@ Case 'independent pagination of threads and comments' {
     Check ($r.code -eq 0 -and $r.result.counts.threads -eq 2) 'both thread pages required'
     Check ($r.result.threads[0].totalComments -eq 2 -and $r.result.threads[0].outcome -eq 'ACCEPTED') 'second comment page required'
     Check ($global:CrThreadMock.queries -eq 3) 'two thread pages and one comment page'
+}
+foreach ($fault in @('thread-repeat', 'thread-empty', 'comment-repeat', 'comment-empty', 'comment-first-empty', 'comment-cycle')) {
+    Case "pagination stops on $fault" {
+        $global:CrThreadMock.pages = $true
+        $global:CrThreadMock.paginationFault = $fault
+        $global:CrThreadMock.threads = @(
+            (Thread 'T1' @((Comment 'finding'), (Comment 'Thanks for the fix.' 2)) $true),
+            (Thread 'T2' @((Comment 'finding')) $true))
+        $r = Run @{Once = $true}
+        Check ($r.code -eq 2 -and $r.result.observation -eq 'ERROR') 'bad cursors must produce an error'
+        Check ($global:CrThreadMock.queries -le 4) 'bad pagination must stop without waiting for the deadline'
+        $global:CrThreadMock.queries = 0
+        Check ((Run-Data) -eq 2) 'review-data query must also reject the same bad cursors'
+        Check ($global:CrThreadMock.queries -le 4) 'review-data query must stop promptly'
+    }
 }
 Case 'once is a waiting snapshot, not a timeout' {
     $global:CrThreadMock.threads = @((Thread 'T1' @((Comment 'finding'))))
@@ -125,6 +154,24 @@ Case 'closed PR with unfinished threads does not poll forever' {
     $global:CrThreadMock.threads = @((Thread 'T1' @((Comment 'finding'))))
     $r = Run
     Check ($r.code -eq 4 -and $r.result.polls -eq 1) 'closed wait stops'
+}
+Case 'once preserves the closed state with unfinished threads' {
+    $global:CrThreadMock.state = 'closed'
+    $global:CrThreadMock.threads = @((Thread 'T1' @((Comment 'finding'))))
+    $r = Run @{Once = $true}
+    Check ($r.code -eq 4 -and $r.result.observation -eq 'CLOSED' -and $r.result.counts.threads -eq 1) 'historical snapshot retains its closed status and threads'
+}
+Case 'accepted or withdrawn replies remain matchable after resolution' {
+    foreach ($answer in @('Thanks for the fix.', 'I withdraw this finding.')) {
+        $global:CrThreadMock.threads = @((Thread 'T1' @((Comment 'finding'), (Comment $answer 2)) $true))
+        $r = Run @{WaitFor = @('ACCEPTED', 'WITHDRAWN')}
+        Check ($r.code -eq 0 -and $r.result.threads[0].outcome -in @('ACCEPTED', 'WITHDRAWN')) 'resolution does not discard the visible peer reply'
+    }
+}
+Case 'historical acceptance does not satisfy a newer pending reply' {
+    $global:CrThreadMock.threads = @((Thread 'T1' @((Comment 'finding'), (Comment 'Thanks for the fix.' 2), (Comment 'Please check another change.' 3 'AliceJump' 'User'))))
+    $r = Run @{WaitFor = @('ACCEPTED'); Once = $true}
+    Check ($r.code -eq 6 -and $r.result.threads[0].outcome -eq 'AWAITING_PEER_REPLY') 'matching lastPeerOutcome here would mask pending work'
 }
 Case 'no threads is an empty observation, not review completion' {
     $r = Run @{Once = $true}

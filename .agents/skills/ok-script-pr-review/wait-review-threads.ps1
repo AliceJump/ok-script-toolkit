@@ -1,4 +1,4 @@
-<#
+﻿<#
 Watches the review threads of one PR and reports, per thread, whether the peer answered after its
 own finding, whether the thread is resolved and by whom, one outcome flag, and the action it implies.
 
@@ -73,17 +73,22 @@ function Get-CrReviewThreads {
     $moreQuery = "query(`$id:ID!,`$after:String){node(id:`$id){... on PullRequestReviewThread{comments(first:100,after:`$after){pageInfo{hasNextPage endCursor} nodes{$commentFields}}}}}"
     $threads = @()
     $after = $null
+    $threadCursors = New-Object 'System.Collections.Generic.HashSet[string]'
     do {
         $page = (Invoke-CrGraphQl $query @{ owner = $owner; name = $name; number = $PrNumber; after = $after }).repository.pullRequest.reviewThreads
         if ($null -eq $page) { throw "Cannot read review threads for $Repo#$PrNumber" }
+        Assert-CrPaginationProgress $page.pageInfo $threadCursors "review threads for $Repo#$PrNumber"
         foreach ($thread in @($page.nodes)) {
             $comments = @($thread.comments.nodes)
             $info = $thread.comments.pageInfo
+            $commentCursors = New-Object 'System.Collections.Generic.HashSet[string]'
+            Assert-CrPaginationProgress $info $commentCursors "comments for thread $($thread.id)"
             while ($info.hasNextPage) {
                 $more = (Invoke-CrGraphQl $moreQuery @{ id = $thread.id; after = $info.endCursor }).node.comments
                 if ($null -eq $more) { throw "Cannot read comments for thread $($thread.id)" }
                 $comments += @($more.nodes)
                 $info = $more.pageInfo
+                Assert-CrPaginationProgress $info $commentCursors "comments for thread $($thread.id)"
             }
             $threads += [pscustomobject]@{ thread = $thread; comments = $comments }
         }
@@ -178,8 +183,8 @@ try {
         if ($pr.head -ne $ExpectedHead) { $records = @(); $observation = 'HEAD_CHANGED'; $exitCode = 11; break }
         if (Test-CrThreadsSettled $records) { $observation = 'SETTLED'; break }
         $observation = 'WAITING'
-        if ($Once) { $observation = 'WAITING'; $exitCode = 6; break }
         if ($pr.state -ne 'open') { $observation = 'CLOSED'; $exitCode = 4; break }
+        if ($Once) { $exitCode = 6; break }
         $left = ($deadline - (Get-CrNow)).TotalSeconds
         if ($left -le 0) { $timedOut = $true; $observation = 'TIMEOUT'; $exitCode = 6; break }
         $wait = [Math]::Min([double]$PollSeconds, $left)

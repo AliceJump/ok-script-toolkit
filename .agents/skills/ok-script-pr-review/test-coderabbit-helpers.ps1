@@ -259,6 +259,14 @@ $platformFail = @'
 `@AliceJump`，已确认。规则 6 现在仅要求代码提交通过 PR。 🐇 ✅ Thanks for confirming the fix. I couldn't resolve this review thread on the repository platform, so it remains open. Please retry or resolve it manually.
 '@
 Assert-Equal (TOutcome @($finding, $ourReply, (Peer $platformFail))) 'ACCEPTED_OPEN' 'a resolve failure is an accepted fix, not a kept-open thread'
+foreach ($unverifiedReply in @(
+    "已确认需求，但未验证修复。I couldn't resolve this review thread.",
+    "已确认需求，但没有核对修复。I couldn't resolve this review thread.",
+    "Thanks for confirming the fix, but I cannot confirm it is verified. I couldn't resolve this review thread."
+)) {
+    Assert-Equal (TOutcome @($finding, $ourReply, (Peer $unverifiedReply))) 'NEEDS_REVIEW' 'unverified fixes are not accepted even when resolution fails'
+    Assert-Equal (Get-CrThreadAction (TOutcome @($finding, $ourReply, (Peer $unverifiedReply))) $false) 'REVIEW' 'unverified fixes never suggest manual resolution'
+}
 
 # Phrasings seen in the sibling repository.
 Assert-Equal (TOutcome @($finding, $ourReply, (Peer '`@AliceJump`，了解。该风险仍存在，因此此线程保持打开。'))) 'KEPT_OPEN' '保持打开 counts as kept open'

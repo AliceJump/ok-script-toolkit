@@ -46,6 +46,8 @@
 
 默认等待 `AWAITING_*` 消失，并等待已确认或撤回的开放线程实际解析；其他类别交由人工处理。`-WaitFor` 仅等待指定措辞，可能在线程仍开放时结束。
 
+`-WaitFor` 匹配当前 `outcome`。有确认或撤回回复的线程在平台解析之后仍保留该回复对应的 `ACCEPTED` 或 `WITHDRAWN`；但如果之后又发出新的回复，当前状态会改为等待对方回答。不使用历史 `lastPeerOutcome` 提前满足等待，避免把旧确认当成对最新回复的确认。
+
 每轮查询前后重读 PR。head 不同则丢弃该轮数据，以 `HEAD_CHANGED` 结束。未指定 `ExpectedHead` 时绑定启动时的 head。关闭的 PR 仍有待等待线程时不继续轮询；`-Once` 可分析历史快照。
 
 最后一行 stdout 是完整紧凑 JSON，进度走 stderr；包括 `head`、`expectedHead`、`observation`、`counts`、`threads`。

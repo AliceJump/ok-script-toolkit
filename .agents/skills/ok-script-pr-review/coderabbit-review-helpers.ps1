@@ -315,14 +315,15 @@ function Get-CrThreadPeerOutcome {
     param([AllowEmptyString()][string]$Body)
     $text = Get-CrThreadAnswerText $Body
     if ($text -match '(?i)rate limit(?:ed| exceeded| reached)') { return 'RATE_LIMITED' }
+    $unverified = '(?i)(?:修复|问题|风险)[^。；]{0,16}(?:尚未|仍未|未完成|仍(?:然)?存在)|(?:not|not yet|isn''t|is not) (?:fixed|resolved|verified)|(?:issue|risk) (?:still )?remains|cannot confirm|can''t confirm|尚不能确认|无法确认|没有核对|未验证'
     if ($text -match "(?i)couldn'?t resolve this review thread|can(?:not|'t) resolve this review thread") {
-        if ($text -match '(?i)(?:修复|问题|风险)[^。；]{0,16}(?:尚未|仍未|未完成|仍(?:然)?存在)|(?:not|not yet|isn''t|is not) (?:fixed|resolved|verified)|still (?:needs|requires)|仍需|请让|请更新') { return 'NEEDS_REVIEW' }
+        if ($text -match $unverified -or $text -match '(?i)still (?:needs|requires)|仍需|请让|请更新') { return 'NEEDS_REVIEW' }
         if ($text -match '(?i)thanks for confirming the fix|已确认|感谢修复|问题已修复') { return 'ACCEPTED_OPEN' }
         return 'NEEDS_REVIEW'
     }
     if ($text -match '(?i)撤回|withdraw|(?:评论|意见|建议|问题|这条|该条)[^。]{0,10}不适用') { return 'WITHDRAWN' }
     if ($text -match '(?i)(?:线程|讨论|评论|问题|意见)[^。；，]{0,16}保持[^。；，]{0,8}(?:开放|打开|未解决)|保持[^。；，]{0,8}(?:线程|讨论|评论|问题|意见)[^。；，]{0,8}(?:开放|打开|未解决)|(?:thread|finding|conversation)[^.]{0,24}(?:remain(?:s)?|left|open)|(?:keep|leave)[^.]{0,24}(?:thread|finding|conversation)[^.]{0,12}open') { return 'KEPT_OPEN' }
-    if ($text -match '(?i)(?:修复|问题|风险)[^。；]{0,16}(?:尚未|仍未|未完成|仍(?:然)?存在)|(?:not|not yet|isn''t|is not) (?:fixed|resolved|verified)|(?:issue|risk) (?:still )?remains|cannot confirm|can''t confirm|尚不能确认|无法确认|没有核对|未验证') { return 'NEEDS_REVIEW' }
+    if ($text -match $unverified) { return 'NEEDS_REVIEW' }
     if ($text -match '(?i)仍需|请让|请在|请把|请将|请更新|请同时|请改为|应与[^。]{0,12}一起提交|should also') { return 'FOLLOW_UP' }
     if ($text -match '(?i)^[，,。\s]*确认[。，]|fixed in #\d+|感谢修复|感谢确认|已确认|已核对|已核实|核验通过|已核查|已验证|已复核|覆盖了本条|标记为已解决|问题已修复|已在当前代码中核实|确认了你的说法|补充核查完成|这解决了原评论|thanks for (?:fixing|the fix|confirming the fix)|\bI (?:have )?verified\b|(?:^|[,.;\s])verified(?:[,.]| at )') { return 'ACCEPTED' }
     return 'NEEDS_REVIEW'
