@@ -17,13 +17,12 @@ Flags:
 
 Actions (what the flag implies for us):
   NONE                 nothing to do
-  REPLY_IF_UNDETECTED  still AWAITING_DETECTION once this review round finished means the peer
-                       missed the fix: reply with the commit and the location that fixed it
+  REPLY_IF_UNDETECTED  after a review covering this head, verify the fix and inspect the unchanged
+                       thread before replying with the commit and location; silence is not proof
   REPLY                the peer did not accept it: reply with the evidence, or handle the blocker
   WAIT_PEER            wait for the peer's answer
   WAIT_QUOTA           the peer is rate limited; wait for the quota
-  RESOLVE_MANUALLY     the peer confirmed the fix but cannot resolve the thread: resolve it
-  REVIEW               read the thread and decide
+  REVIEW               inspect and report; platform resolution failures do not authorize closing
 
 Default waiting also observes actual resolution after acceptance or withdrawal. It polls until no
 watched thread awaits a reply or resolution, then prints one compact JSON result. Use -WaitFor for a
@@ -197,7 +196,7 @@ try {
         $byOutcome[$flag] = @($records | Where-Object { $_.outcome -eq $flag }).Count
     }
     $byAction = [ordered]@{}
-    foreach ($name in @('NONE', 'REPLY_IF_UNDETECTED', 'REPLY', 'WAIT_PEER', 'WAIT_QUOTA', 'RESOLVE_MANUALLY', 'REVIEW')) {
+    foreach ($name in @('NONE', 'REPLY_IF_UNDETECTED', 'REPLY', 'WAIT_PEER', 'WAIT_QUOTA', 'REVIEW')) {
         $byAction[$name] = @($records | Where-Object { $_.action -eq $name }).Count
     }
     $result = [pscustomobject]@{

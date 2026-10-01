@@ -248,7 +248,7 @@ $script:CrThreadAllFlags = @($script:CrThreadPendingFlags + $script:CrThreadTerm
 # What the caller has to do about a flag. NONE means the thread needs no reply from us.
 $script:CrThreadActions = @{
     RESOLVED_SILENT = 'NONE'; RESOLVED_BY_OTHER = 'NONE'; ACCEPTED = 'WAIT_PEER'; WITHDRAWN = 'WAIT_PEER'
-    ACCEPTED_OPEN = 'RESOLVE_MANUALLY'
+    ACCEPTED_OPEN = 'REVIEW'
     AWAITING_PEER_REPLY = 'WAIT_PEER'; RATE_LIMITED = 'WAIT_QUOTA'
     KEPT_OPEN = 'REPLY'; FOLLOW_UP = 'REPLY'
     NEEDS_REVIEW = 'REVIEW'

@@ -9,7 +9,7 @@
 - `lastPeerOutcome`：原 reviewer 最近回复的措辞分类，在等待新回复时保留作历史依据。
 - `outcome`：当前等待状态或原 reviewer 最近回复的分类。
 - `isResolved` / `resolvedBy` / `resolution`：平台解析状态。解析方是原 reviewer（`PEER`）、其他账号（`OTHER`）、未知（`UNKNOWN`）；未解析为 `OPEN`。
-- `action`：结合措辞与平台状态的建议；执行前仍须核对当前代码与授权。
+- `action`：结合措辞与平台状态的建议；执行前仍须核对当前代码与授权。CodeRabbit 线程交由它自己解析，限流或平台失败时也不代为关闭。
 
 原 reviewer 由根评论作者确定，不把多个机器人合并成一个对方。CodeRabbit 评论严格要求 REST 的 `coderabbitai[bot]` / `Bot` 或 GraphQL 的 `coderabbitai` / `Bot`；只有 `resolvedBy` 接受平台实际返回的 `coderabbitai[bot]` / `User` 形态。人工和其他机器人意见不套用 CodeRabbit 的确认判据，不能判断时保留 `NEEDS_REVIEW`。
 
@@ -20,7 +20,7 @@
 | `AWAITING_DETECTION` | CodeRabbit 首条意见后没有其他发言 | `REPLY_IF_UNDETECTED` |
 | `AWAITING_PEER_REPLY` | 其他参与者的最新回复晚于原 reviewer 的回复 | `WAIT_PEER` |
 | `ACCEPTED` | CodeRabbit 确认修复或核对结果 | `WAIT_PEER`，观察实际解析 |
-| `ACCEPTED_OPEN` | 明确确认修复，同时说明平台无法解析 | `RESOLVE_MANUALLY` |
+| `ACCEPTED_OPEN` | 明确确认修复，同时说明平台无法解析 | `REVIEW`，核对原文并报告开放状态，不代为解析 |
 | `WITHDRAWN` | 明确撤回意见 | `WAIT_PEER`，观察实际解析 |
 | `KEPT_OPEN` | 明确保持审阅线程或意见开放 | `REPLY` |
 | `FOLLOW_UP` | 仍要求后续修改 | `REPLY` |
@@ -32,6 +32,8 @@
 已解析时，不建议重复回复、等额度或人工解析。`KEPT_OPEN`、`FOLLOW_UP`、`NEEDS_REVIEW` 与已解析状态冲突时返回 `REVIEW`，检查原文和代码；其余返回 `NONE`。线程解析不证明代码已修复；旧措辞也不能推翻当前平台状态。
 
 `REPLY_IF_UNDETECTED` 是有条件的建议：先核实该问题已修复，等覆盖当前 head 的审阅完成，再核对线程是否仍未更新。没有新发言本身不能证明漏检或修复，也不是立即补回复的指令。
+
+开放状态本身不能证明 CodeRabbit 拒绝修复；也可能还未扫描、处于限流或平台解析失败。明确不接受时继续修复或补证据；等待扫描或额度时复用等待会话。后续提交按新 head 复核，旧接受或解析不代表新提交已审完。
 
 ## 查询与等待
 

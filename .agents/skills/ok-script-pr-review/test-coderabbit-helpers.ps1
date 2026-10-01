@@ -259,6 +259,7 @@ $platformFail = @'
 `@AliceJump`，已确认。规则 6 现在仅要求代码提交通过 PR。 🐇 ✅ Thanks for confirming the fix. I couldn't resolve this review thread on the repository platform, so it remains open. Please retry or resolve it manually.
 '@
 Assert-Equal (TOutcome @($finding, $ourReply, (Peer $platformFail))) 'ACCEPTED_OPEN' 'a resolve failure is an accepted fix, not a kept-open thread'
+Assert-Equal (Get-CrThreadOutcome -Comments @($finding, $ourReply, (Peer $platformFail))).action 'REVIEW' 'a platform failure requires inspection, never manual resolution'
 foreach ($unverifiedReply in @(
     "已确认需求，但未验证修复。I couldn't resolve this review thread.",
     "已确认需求，但没有核对修复。I couldn't resolve this review thread.",
@@ -278,7 +279,7 @@ Assert-Equal (TOutcome @($finding, $ourReply, (Peer '✅ Fixed in [#405](https:/
 # ---- action: what each flag asks of us ----
 foreach ($pair in @(
         @('RESOLVED_SILENT', 'NONE'), @('ACCEPTED', 'WAIT_PEER'), @('WITHDRAWN', 'WAIT_PEER'), @('RESOLVED_BY_OTHER', 'NONE'),
-        @('ACCEPTED_OPEN', 'RESOLVE_MANUALLY'),
+        @('ACCEPTED_OPEN', 'REVIEW'),
         @('AWAITING_PEER_REPLY', 'WAIT_PEER'), @('RATE_LIMITED', 'WAIT_QUOTA'),
         @('KEPT_OPEN', 'REPLY'), @('FOLLOW_UP', 'REPLY'),
         @('NEEDS_REVIEW', 'REVIEW'),

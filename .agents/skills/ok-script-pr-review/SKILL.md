@@ -78,10 +78,12 @@ description: 处理 ok-script-toolkit 主仓及 JetBrains 子仓的 PR 审阅意
   `media/annotationPanel/index.html` 与 `src/annotationPanel.ts` 两条即是），所以不要因为它
   没回帖就自己代劳。复核状态只查询 GraphQL `reviewThreads` 的 `isResolved`；
   `reviewThreads` 与每条线程的 `comments` 都要分别翻页，不能假设首 100 条已覆盖全部。
-  `ACCEPTED_OPEN` 仅在当前仍未解析、修复已确认、对方说明平台失败时才建议人工解析。
-- 只有对方**已明确无法回复**时才由人兜底解析，并写明依据：例如该线程里 CodeRabbit 的最后一条
-  回复是 `### Rate Limit Exceeded`，或额度查询确认仍在限流且无回复；但还须确认问题已修复
-  或不再适用、当前仍未解析。限流本身不证明修复，不据此批量解析。
+  `ACCEPTED_OPEN` 表示它确认修复但平台解析失败，保留开放状态并报告，不代为关闭。
+- **CodeRabbit 线程不由我们手动解析，包括限流、无回复或平台解析失败时。** 修复、验证并
+  推送后，由它扫描当前提交并决定接受、撤回或继续提出问题；我们提供代码与验证证据，
+  不把自己判断「已修复」当作它已接受。仍开放可能是等待扫描、限流、平台失败或不接受，
+  要核对原文与当前 head 的审阅覆盖；等待中的线程不反复催问，明确不接受时继续修复或说明。
+  后续提交仍须按新 head 等待复核，历史接受或解析不能证明新提交已审完。
   不要用 `@coderabbitai resolve` 之类的命令批量解析（本仓历史 PR 从未使用；姊妹仓库
   `ok-end-field` 用过，CodeRabbit 对它自己的意见会回「Use this command on a human-authored
   review finding」）。暂缓或仍有风险的线程一律保持开放。
