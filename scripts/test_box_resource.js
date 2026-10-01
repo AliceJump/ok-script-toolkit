@@ -59,6 +59,8 @@ const editorMessages = [];
 const galleryMessages = [];
 const errors = [];
 const infos = [];
+const openedFiles = [];
+const previewSources = [];
 const ui = {
   l10n: { t: text => text },
   workspace: {
@@ -72,6 +74,7 @@ const ui = {
     showWarningMessage: async (_text, _options, action) => action,
   },
   Uri: { file: file => ({ fsPath: file }) },
+  commands: { executeCommand: async (command, uri) => openedFiles.push({ command, uri }) },
 };
 const originalLoad = Module._load;
 Module._load = function(name, parent, isMain) {
@@ -84,7 +87,11 @@ function loadController(file, name) {
   m.filename = filename;
   m.paths = Module._nodeModulePaths(path.dirname(filename));
   m.require = request => {
-    if (request === './pngCrop') return { ...require('../out/imageHeader'), THUMB_HEIGHT: 84, cropTemplateThumbFileAsync: async () => undefined };
+    if (request === './pngCrop') return {
+      ...require('../out/imageHeader'), THUMB_HEIGHT: 84, cropTemplateThumbFileAsync: async () => undefined,
+      annotatedImageFile: (imagePath, bbox) => { previewSources.push({ imagePath, bbox }); return path.join(folder, 'preview.png'); },
+    };
+    if (file === 'boxPanels' && request === './screenshotCapture') return { getProjectConfig: () => ({ projectDir: project }) };
     if (request === './localization') return { tr: text => text };
     return Module.prototype.require.call(m, request);
   };
@@ -127,6 +134,15 @@ const tick = () => new Promise(resolve => setTimeout(resolve, 30));
     assert.strictEqual(raw.categories[0].name, 'screen.first');
     assert(!('version' in raw) && !('boxes' in raw));
     assert.strictEqual(fs.readFileSync(templates.annotationFile, 'utf8'), templateText, 'editing boxes preserves the independent template source');
+    const BoxGallery = loadController('boxPanels', 'BoxGalleryViewProvider');
+    const boxGallery = new BoxGallery({ fsPath: root }, folder);
+    boxGallery.view = { webview: {} };
+    await boxGallery.onMessage({ type: 'open', id: 'screen.first' });
+    assert.deepStrictEqual(previewSources.pop(), { imagePath: image, bbox: [10, 20, 30, 40] }, 'View Original uses box authoring coordinates even when template names differ');
+    assert.strictEqual(openedFiles.at(-1).command, 'vscode.open');
+    const openedCount = openedFiles.length;
+    await boxGallery.onMessage({ type: 'open', id: 'screen.runtime_only' });
+    assert.strictEqual(openedFiles.length, openedCount, 'boxes without an authoring source cannot open a made-up image');
     const loadsBeforeWatch = editorMessages.filter(message => message.type === 'load').length;
     core.notifyAnnotationDataChanged(boxesFile);
     await tick();

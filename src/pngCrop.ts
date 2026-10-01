@@ -985,26 +985,34 @@ function drawRectOutline(
   strokeRectInward(rgba, imgW, imgH, x, y, w, h, thickness, 255, 40, 40);
 }
 
-export function writeAnnotatedImage(
-  imagePath: string, bbox: [number, number, number, number], outPath: string,
+/** Shared source crop for box thumbnails, hover and source viewing. */
+export function annotatedImageToDataUrlCached(
+  imagePath: string, bbox: [number, number, number, number],
 ): string | undefined {
+  if (!bbox.every(Number.isFinite) || bbox[2] <= 0 || bbox[3] <= 0) return undefined;
+  const contentHash = imageContentHash(imagePath);
+  if (!contentHash) return undefined;
+  const key = `annotated-v3|${contentHash}|${bbox.join(',')}`;
+  const hit = CROP_CACHE.get(key);
+  if (hit) return hit.url;
   try {
     const buf = fs.readFileSync(imagePath);
     const { width, height, rgba } = decodeRgba(buf);
-    const bx = Math.max(0, Math.min(bbox[0], width - 1));
-    const by = Math.max(0, Math.min(bbox[1], height - 1));
-    const bw = Math.max(1, Math.min(bbox[2], width - Math.max(0, bbox[0])));
-    const bh = Math.max(1, Math.min(bbox[3], height - Math.max(0, bbox[1])));
+    const bx = Math.max(0, Math.round(bbox[0]));
+    const by = Math.max(0, Math.round(bbox[1]));
+    const bw = Math.min(width, Math.round(bbox[0] + bbox[2])) - bx;
+    const bh = Math.min(height, Math.round(bbox[1] + bbox[3])) - by;
+    if (bw <= 0 || bh <= 0) return undefined;
     const pad = 200;
     const cropX = Math.max(0, bx - pad), cropY = Math.max(0, by - pad);
-    const cropW = Math.min(width - cropX, bw + 2 * pad + Math.min(pad, bx));
-    const cropH = Math.min(height - cropY, bh + 2 * pad + Math.min(pad, by));
+    const cropW = Math.min(width, bx + bw + pad) - cropX;
+    const cropH = Math.min(height, by + bh + pad) - cropY;
 
     // 归一化：缩放到目标分辨率内，保证不同原图输出视觉效果一致
     const TARGET = 400;
     const scale = Math.min(1, TARGET / Math.max(cropW, cropH));
-    const outW = Math.round(cropW * scale);
-    const outH = Math.round(cropH * scale);
+    const outW = Math.max(1, Math.round(cropW * scale));
+    const outH = Math.max(1, Math.round(cropH * scale));
 
     // 缩放裁剪区域（最近邻）
     const outRgba = Buffer.alloc(outW * outH * 4);
@@ -1025,11 +1033,35 @@ export function writeAnnotatedImage(
     const thickness = Math.max(2, Math.round(2 * scale));
     drawRectOutline(outRgba, outW, outH,
       Math.round((bx - cropX) * scale), Math.round((by - cropY) * scale),
-      Math.round(bw * scale), Math.round(bh * scale), thickness);
+      Math.max(1, Math.round(bw * scale)), Math.max(1, Math.round(bh * scale)), thickness);
+    const url = `data:image/png;base64,${encodePng(outW, outH, outRgba).toString('base64')}`;
+    cacheSet(key, { url, imagePath, source: thumbSourceSubdir(imagePath) });
+    return url;
+  } catch { return undefined; }
+}
+
+export function writeAnnotatedImage(
+  imagePath: string, bbox: [number, number, number, number], outPath: string,
+): string | undefined {
+  const url = annotatedImageToDataUrlCached(imagePath, bbox);
+  if (!url) return undefined;
+  try {
     fs.mkdirSync(path.dirname(outPath), { recursive: true });
-    fs.writeFileSync(outPath, encodePng(outW, outH, outRgba));
+    fs.writeFileSync(outPath, Buffer.from(url.split(',')[1], 'base64'));
     return outPath;
   } catch { return undefined; }
+}
+
+/** Uses the supplied authoring source directly, without template-name lookup. */
+export function annotatedImageFile(
+  imagePath: string, bbox: [number, number, number, number], thumbDir: string,
+): string | undefined {
+  const contentHash = imageContentHash(imagePath);
+  if (!contentHash) return undefined;
+  const key = crypto.createHash('sha1').update(`v3|${contentHash}|${bbox.join(',')}`).digest('hex').slice(0, 16);
+  const out = path.join(thumbDir, 'annotated', `a2_${key}.png`);
+  try { if (fs.existsSync(out) && fs.statSync(out).size > 0) return out; } catch { /* regenerate */ }
+  return writeAnnotatedImage(imagePath, bbox, out);
 }
 
 export function openAnnotatedImage(
@@ -1042,11 +1074,5 @@ export function openAnnotatedImage(
   const src = entry.imagePath;
   const srcBbox = entry.bbox;
   try { if (!fs.existsSync(src)) return undefined; } catch { return undefined; }
-  // a2 = 内容 hash 版本：原图被替换后标注图同步重绘，不会停留在旧图
-  const contentHash = imageContentHash(src);
-  if (!contentHash) return undefined;
-  const key = crypto.createHash('sha1').update(`v2|${contentHash}|${srcBbox.join(',')}`).digest('hex').slice(0, 16);
-  const out = path.join(thumbDir, 'annotated', `a2_${key}.png`);
-  try { if (fs.existsSync(out) && fs.statSync(out).size > 0) return out; } catch { /* 重新生成 */ }
-  return writeAnnotatedImage(src, srcBbox, out);
+  return annotatedImageFile(src, srcBbox, thumbDir);
 }

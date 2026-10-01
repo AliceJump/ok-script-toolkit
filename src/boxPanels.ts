@@ -11,7 +11,7 @@ import { AUTHORING_FILE_NAME, PixelBox } from './boxResourcePure';
 import { probedBoxesJson } from './cocoFeaturePath';
 import { injectWebviewLocalization, tr } from './localization';
 import { boxesRuntimeSetting, templatesDirectory } from './projectConfig';
-import { cropTemplateThumbFileAsync, readImageSize, THUMB_HEIGHT } from './pngCrop';
+import { annotatedImageFile, readImageSize } from './pngCrop';
 import { getProjectConfig } from './screenshotCapture';
 import { TemplateAssetData } from './templateAssetData';
 import { onAnnotationDataChanged } from './cocoAnnotationData';
@@ -81,6 +81,13 @@ export class BoxGalleryViewProvider implements vscode.WebviewViewProvider {
       await this.refresh(root);
       return;
     }
+    if (msg.type === 'open' && msg.id) {
+      const source = previewRectForPath(root, msg.id);
+      const file = source && annotatedImageFile(source.imagePath, source.bbox, this.thumbDir);
+      if (file) await vscode.commands.executeCommand('vscode.open', vscode.Uri.file(file));
+      else void vscode.window.showWarningMessage(tr('Failed to generate annotated image: source image could not be decoded or was missing'));
+      return;
+    }
     if (msg.type !== 'activate' || !msg.id) return;
     const text = msg.clicks === 2 ? `self.pos.${msg.id}` : `self.pos.${msg.id}.to_box()`;
     const editor = vscode.window.activeTextEditor;
@@ -94,10 +101,10 @@ export class BoxGalleryViewProvider implements vscode.WebviewViewProvider {
   }
 
   /**
-   * 框管理对标模板管理：每个 box path 一张**bbox 裁剪后的资源缩略图**。
+   * 每个 box path 展示原图中 bbox 外扩后的区域，并画红框标明位置。
    * 来源是 authoring 的 Pixel bbox + 原图；运行时独有的 path 拿不到来源图，
    * 保持无图占位（不做 normalized → Pixel 的死转换）。裁剪、内容 hash 缓存、
-   * 失败处理全部复用 `cropTemplateThumbFileAsync`，不另造预览系统。
+   * 缓存、裁剪和标记与查看原图 / Hover 共用。
    */
   private async refresh(root: string): Promise<void> {
     const view = this.view;
@@ -123,7 +130,7 @@ export class BoxGalleryViewProvider implements vscode.WebviewViewProvider {
       const batch = rows.slice(i, i + 8).filter((row) => row.imagePath && row.bbox);
       const thumbs: Array<{ id: string; url: string }> = [];
       for (const row of batch) {
-        const file = await cropTemplateThumbFileAsync(row.imagePath, row.bbox!, this.thumbDir, THUMB_HEIGHT);
+        const file = annotatedImageFile(row.imagePath, row.bbox!, this.thumbDir);
         if (gen !== this.generation || !view) return;
         if (!file) continue;
         thumbs.push({ id: row.id, url: view.webview.asWebviewUri(vscode.Uri.file(file)).toString(true) });
@@ -141,7 +148,7 @@ export function openBoxEditor(extensionUri: vscode.Uri, data: TemplateAssetData,
 }
 
 /**
- * 框路径的 Hover 预览：直接用 authoring 的 Pixel bbox 裁剪原图。
+ * 框路径的预览来源：authoring 的原图与 Pixel bbox。
  * 运行时独有的 path 没有来源图，不做 normalized → Pixel 的死转换。
  */
 export function previewRectForPath(root: string, boxPath: string): { imagePath: string; bbox: [number, number, number, number] } | undefined {

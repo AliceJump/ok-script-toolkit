@@ -179,6 +179,31 @@ async function main() {
     '注入空值时退回默认目录名（不能让来源判定变成"永远匹配不上"）',
   );
 
+  // Box previews share the source crop used by View Original, including context and the red marker.
+  const source = path.join(tmpRoot, 'box-source.png');
+  const bbox = [250, 250, 20, 40];
+  fs.writeFileSync(source, solidPng(800, GREEN));
+  const previewUrl = pngCrop.annotatedImageToDataUrlCached(source, bbox);
+  assert.ok(previewUrl);
+  const preview = pngCrop.decodeRgba(Buffer.from(previewUrl.split(',')[1], 'base64'));
+  assert.deepStrictEqual([preview.width, preview.height], [382, 400], 'adds 200px of context on each side, then fits within 400px');
+  const pixel = (x, y) => [...preview.rgba.subarray((y * preview.width + x) * 4, (y * preview.width + x) * 4 + 3)];
+  assert.deepStrictEqual(pixel(10, 10), GREEN, 'surrounding source pixels remain visible');
+  assert.deepStrictEqual(pixel(182, 182), [255, 40, 40], 'box position is marked red');
+  const annotatedFile = pngCrop.annotatedImageFile(source, bbox, thumbDir);
+  assert.deepStrictEqual(fs.readFileSync(annotatedFile), Buffer.from(previewUrl.split(',')[1], 'base64'), 'viewing and hover use the same rendered PNG');
+  assert.strictEqual(pngCrop.annotatedImageFile(source, bbox, thumbDir), annotatedFile);
+  const edgeUrl = pngCrop.annotatedImageToDataUrlCached(source, [0, 0, 20, 40]);
+  const edge = pngCrop.decodeRgba(Buffer.from(edgeUrl.split(',')[1], 'base64'));
+  assert.deepStrictEqual([edge.width, edge.height], [220, 240], 'context clips to the source image edge');
+  for (const invalid of [[0, 0, 0, 2], [800, 0, 2, 2], [NaN, 0, 2, 2]]) {
+    assert.strictEqual(pngCrop.annotatedImageToDataUrlCached(source, invalid), undefined);
+  }
+  fs.writeFileSync(source, solidPng(800, BLUE));
+  const changedTime = new Date(Date.now() + 10000);
+  fs.utimesSync(source, changedTime, changedTime);
+  assert.notStrictEqual(pngCrop.annotatedImageFile(source, bbox, thumbDir), annotatedFile, 'replaced source invalidates annotated image');
+
   fs.rmSync(tmpRoot, { recursive: true, force: true });
   fs.rmSync(stubDir, { recursive: true, force: true });
   console.log('test_thumb_content_hash: all assertions passed');

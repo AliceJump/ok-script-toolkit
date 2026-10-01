@@ -25,7 +25,7 @@
   window.addEventListener('message', (event) => {
     const msg = event.data;
     const rows = document.getElementById('rows');
-    // 框管理对标模板管理：每个 box path 一张 bbox 裁剪缩略图，分批到达逐张填充
+    // 原图上下文裁剪与红框标记，分批到达逐张填充。
     if (msg.type === 'thumbs') {
       (msg.items || []).forEach((item) => {
         const card = cards.get(item.id);
@@ -38,9 +38,11 @@
     while (rows.firstChild) rows.removeChild(rows.firstChild);
     rows.className = 'asset-grid';
     (msg.rows || []).forEach((row) => {
+      const card = document.createElement('div');
+      card.className = 'card asset-card';
       const button = document.createElement('button');
       button.type = 'button';
-      button.className = 'card asset-card';
+      button.className = 'activate-btn';
       button.title = row.id;
       const box = document.createElement('div');
       box.className = 'thumb-box';
@@ -52,7 +54,18 @@
       count.className = 'asset-count';
       count.textContent = row.label;
       button.append(box, name, count);
-      cards.set(row.id, button);
+      card.append(button);
+      if (row.imagePath && row.bbox) {
+        const open = document.createElement('button');
+        open.type = 'button';
+        open.className = 'open-btn';
+        open.textContent = '👁';
+        open.title = t('viewOriginal');
+        open.setAttribute('aria-label', t('viewOriginal'));
+        open.onclick = () => vscode.postMessage({ type: 'open', id: row.id });
+        card.append(open);
+      }
+      cards.set(row.id, card);
       let clickTimer = 0;
       button.onclick = () => {
         window.clearTimeout(clickTimer);
@@ -62,7 +75,7 @@
         window.clearTimeout(clickTimer);
         vscode.postMessage({ type: 'activate', id: row.id, clicks: 2 });
       };
-      rows.append(button);
+      rows.append(card);
     });
     if (!(msg.rows || []).length) {
       const empty = document.createElement('div');

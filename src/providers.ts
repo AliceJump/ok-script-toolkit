@@ -10,7 +10,7 @@ import {
 import { FeatureData, FeatureTemplate } from './featureData';
 import { EffectData, EffectEntry } from './effectData';
 import { DEFAULT_FEATURE_ALIASES, ideSetting, labelEnumAliases, loadProjectConfig } from './projectConfig';
-import { cropTemplateToDataUrlCached } from './pngCrop';
+import { annotatedImageToDataUrlCached, cropTemplateToDataUrlCached } from './pngCrop';
 import { selectedProjectLocale, tr } from './localization';
 import { getProjectConfig } from './screenshotCapture';
 import { posPaths, previewRectForPath } from './boxPanels';
@@ -426,7 +426,7 @@ export class LangHoverProvider implements vscode.HoverProvider {
       const md = new vscode.MarkdownString(undefined, true);
       md.appendCodeblock(`self.pos.${pos.path}.to_box()`, 'python');
       if (preview) {
-        const img = cropTemplateToDataUrlCached(preview.imagePath, preview.bbox);
+        const img = annotatedImageToDataUrlCached(preview.imagePath, preview.bbox);
         if (img) md.appendMarkdown(`\n![box](${img})\n`);
       }
       return new vscode.Hover(md);
