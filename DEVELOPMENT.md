@@ -1,4 +1,4 @@
-# 开发指南 / Development Guide
+# 开发指南
 
 <div align="center">
 
@@ -8,16 +8,14 @@
 
 本文档面向扩展开发者，包含项目结构、本地构建安装和发布流程。
 
-两端共同维护的运行脚本、协议和宿主边界见 [共用核心](docs/shared-core.md)。
-
-This document is for extension developers and covers the project structure, local build/installation, and release workflow.
+两端共同维护的运行脚本、协议和宿主边界见 [共用核心](docs/shared-core.md)，当前功能和限制见 [功能对齐表](docs/feature-parity.md)。
 
 ---
 
 ## 项目结构
 
 ```text
-src/                         VS Code 扩展宿主 TypeScript 源码（33 个模块，下列为入口与主要模块）
+src/                         VS Code 扩展宿主 TypeScript 源码（下列为入口与主要模块，非完整清单）
 	projectConfig.ts           项目约定文件 ok-script-toolkit.json 的读盘侧（定位 + 缓存 + 个人偏好）
 	projectConfigPure.ts       取值链纯逻辑（不依赖 vscode，可单测）：解析 + 优先级 + 来源层
 	conventionSources.ts       「项目约定 vs 我的设置」溯源面板的数据源
@@ -62,7 +60,7 @@ media/                        每个外置 Webview 的 HTML/CSS/JS（宿主经 C
 python/                       随扩展发布的辅助脚本：任务发现、探测与执行（parse_config_tasks.py、probe_task_schemas.py、run_executor.py），以及模板素材面板的游戏窗口截图与配置探测（capture_game_window.py、probe_window_config.py）
 	python/tests/              开发期 Python 回归测试（test_probe_*.py ×5、test_run_executor_*.py ×4，
 	                           共 9 个，npm test 全部接入；另有三端共用的测试临时目录基建 _test_tmp.py）；
-	                           按 AGENT.md 打包规范不进 VSIX / JetBrains JAR
+	                           按 AGENTS.md 打包规范不进 VSIX / JetBrains JAR
 jetbrains/                    JetBrains 插件的**独立公开仓库**（git submodule），有自己的 README / CI / 发版流程
 schemas/                      ok-script-toolkit.json 的 JSON Schema（编辑器补全与校验）
 docs/                         设计文档（配置读取全景、项目约定文件设计、全局 UI 设计规范、可直接复制的示例配置）
@@ -130,7 +128,7 @@ cd jetbrains
 ./gradlew test buildPlugin verifyPluginStructure verifyPluginConfiguration
 ```
 
-Windows 使用 `gradlew.bat`。生成的 ZIP 位于 `jetbrains/build/distributions/`，可在 JetBrains IDE 的 **Settings / Plugins / Install Plugin from Disk...** 中安装。逐功能的对齐状态与剩余差异见 [`jetbrains/docs/parity-review.md`](https://github.com/AliceJump/ok-script-toolkit-jetbrains/blob/main/docs/parity-review.md)（2026-09-21 已按代码逐条重核，基线 v1.8.0）。
+Windows 使用 `gradlew.bat`。生成的 ZIP 位于 `jetbrains/build/distributions/`，可在 JetBrains IDE 的 **Settings / Plugins / Install Plugin from Disk...** 中安装。逐功能的对齐状态与剩余差异见 [`jetbrains/docs/parity-review.md`](https://github.com/AliceJump/ok-script-toolkit-jetbrains/blob/main/docs/parity-review.md)（保留历史基线；当前实现见 [功能对齐表](docs/feature-parity.md)）。
 
 ## 安装
 

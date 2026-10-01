@@ -1,6 +1,10 @@
 # 项目约定文件（`ok-script-toolkit.json`）设计
 
-> 状态：**部分实现**。配套产物：`schemas/ok-script-toolkit.schema.json`、
+[简体中文](project-config.md) | [English](project-config.en.md)
+
+本文件服务于开发者插件识别**当前本地项目的接口与资源入口**，范围见 [开发者插件的功能范围与使用体验](developer-tool-scope.md)。约定文件不承载业务参数迁移表；业务项目删除或转移参数时，插件跟随当前声明，不自动恢复或搬运旧调试值。
+
+> 状态：**现有字段已接入两端**（2026-10-01 本地代码复核）。配套产物：`schemas/ok-script-toolkit.schema.json`、
 > `docs/ok-script-toolkit.example.json`。
 >
 > | 范围 | 状态 |
@@ -175,7 +179,7 @@
 
 **接线状态**：全部字段已接线（`templates.directory` / `templates.cocoAnnotations` /
 `boxes.runtime` / `labelEnum.*` / `i18n` / `characters` / `effects`）。
-`boxes.runtime` 的后半段（读 `config.py`、定位文件）已接上；框管理界面仍按 `docs/box-resources.md` 继续。
+`boxes.runtime` 已接入文件定位、框资源管理、运行时框画廊及 `self.pos` 补全；实现分别在 `src/boxPanels.ts` / `src/providers.ts` 与子仓 `ui/BoxWindows.kt` / `editor/OkEditorSupport.kt`。几何和保存契约见 [框资源设计](box-resources.md)。
 
 **⚠️ 两个同名的 `coco_annotations.json` 不是一回事** —— 接错会静默指向错的文件：
 
@@ -183,8 +187,8 @@
 |---|---|---|---|
 | `assets/coco_annotations.json`（或 config.py 指的别处） | ok 框架加载的**运行时模板库** | `featureData` / `OkProjectDataService` 读，文件监听盯它 | `templates.cocoAnnotations` → config.py → 两个惯例位置 |
 | `<模板目录>/coco_annotations.json` | 素材面板自己的**标注工作文件** | `templateAssetData` / `TemplateAssetDataService` 读写 | `templates.directory`（**不受** `cocoAnnotations` 影响） |
-| `src/scene/boxes.json`（或 `boxes_json` 指的别处） | 业务项目加载的**运行时框** | 路径已能解析；框管理 / 补全尚未读取。加载器在业务项目的 `ScreenPosition` | `boxes.runtime` → config.py → 探测位置 |
-| `<模板目录>/boxes.json` | 框资源管理的**标注工作文件** | 契约已定，面板尚未接上 | `templates.directory`（**不受** `boxes.runtime` 影响） |
+| `src/scene/boxes.json`（或 `boxes_json` 指的别处） | 业务项目加载的**运行时框** | 框画廊、补全和 Hover 读取；游戏加载器仍由业务项目的 `ScreenPosition` 提供 | `boxes.runtime` → config.py → 探测位置 |
+| `<模板目录>/boxes.json` | 框资源管理的**标注工作文件** | 两端框资源管理和共用标注编辑器读写，显式发布到运行时文件 | `templates.directory`（**不受** `boxes.runtime` 影响） |
 
 `cocoAnnotations` 与 `boxes.runtime` 是"`config.py` 已声明的事实"落地的两条链，
 都**没有 IDE 设置**（没有"个人偏好"层）。`boxes_json` 在现有项目里还没有，缺席时探测 `src/scene/boxes.json`。
@@ -331,10 +335,8 @@ import 得到（只是拿不到新标签），不会报错；而改类名是**�
 >   `OkScriptToolkitSettings.okTemplatesDirectory()`，包括文件监听 glob 与
 >   `thumbSourceSubdir()` 的来源判定（目录名要拼进 glob / 做目录段匹配，所以
 >   两端都先归一化一次 —— 见 `normalizeRelPath`）。
-> - **未做**：`templates.cocoAnnotations`（消费点散在 6 个文件，且要先读 `config.py`
->   的 `template_matching.coco_feature_json` —— 两端目前都**完全不读** `config.py` 的
->   这一项，只有执行器侧用 AST 读 `config_folder`）；`i18n` / `characters` / `effects`
->   各组；"有值时不再弹框"未做 —— 仍会弹输入框，只是默认值变了。
+> - **已完成后续接线**：`templates.cocoAnnotations`（含 `config.py` 的 `template_matching.coco_feature_json`）、`boxes.runtime`、`i18n` / `characters` / `effects` 各组。导出时，两端会在个人与项目约定均未提供枚举路径时探测 `template_tab.label_enum_relative_path`；这个后备发生在导出入口，不由普通设置访问器直接读取。
+> - **不能据此宣称所有交互都免输入**：导出目标、路径修改和覆盖确认仍按当前工作流处理。
 
 ### 执行器（`python/run_executor.py`）
 
@@ -343,9 +345,7 @@ import 得到（只是拿不到新标签），不会报错；而改类名是**�
 | 读 `executor.startupHooks.beforeConfigImport`，在 `import config` **之前**依次调用 | `main()` 中 `config_module = __import__(...)` 之前 |
 | 读 `executor.startupHooks.afterConfigImport`；缺席时保持现有的约定探测 | 现有 `install_project_startup_patches()` 调用点 |
 
-> 这一项**直接补上已确认的缺口**：ok-end-field 的 `pre_config_patch` /
-> `qfluent_mute_promo_patch` 必须在 `import config` 之前跑，而执行器**至今整段跳过**
-> （它们的名字没有通用约定，插件无从推断）。
+> 此链路已实现，补上了原先跳过配置导入前钩子的缺口。ok-end-field 的 `pre_config_patch` / `qfluent_mute_promo_patch` 必须在 `import config` 前运行；插件通过项目声明或安全的静态入口识别执行，不根据业务参数变化增加迁移逻辑。
 
 ### 6.4 截图快捷键（新增，**不进项目配置**）
 
@@ -379,7 +379,7 @@ IntelliJ 各有原生 keymap 编辑器，用户改键位本来就该走那里 �
    **✅ 已修**：两端统一走 `templates.directory` 取值链，消费点全部改为读访问器；
    顺带把 `TemplateAssetDataService.load/cocoPath` 的 `templatesDir: String = "ok_templates"`
    默认值**去掉**了 —— 留一个默认值等于给调用方留一条绕过取值链的静默通道。
-2. **`label_enum_relative_path` 插件完全没读** —— 即便项目声明了，插件也在按名字猜。
+2. **`label_enum_relative_path` 原先未读，现已作为导出路径的后备** —— 主仓 `templateAssetPanel.ts` 和子仓 `TemplateAssetToolWindowFactory.kt` 消费同一个探针字段。
 3. **VS Code 侧无 jsonc 解析器** —— 这是本设计选纯 JSON 的原因之一（见 §4）。
 
 ## 9. 未决事项

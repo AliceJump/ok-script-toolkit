@@ -70,7 +70,7 @@ if (problems.length) {
 // ── 覆盖率：src 下每个 tr('...') 字面量都要在 base bundle 里 ─────────────
 //
 // 只查**字面量**首参：`tr(someVariable)` 静态查不到，不能假装查过。
-// 宿主侧所有面向用户的字符串都必须经 `localization.tr()`（见 AGENT.md 的
+// 宿主侧所有面向用户的字符串都必须经 `localization.tr()`（见 AGENTS.md 的
 // 「不硬编码 i18n 字符串」约定），所以这个正则的覆盖面就是"用户可见文案"。
 const srcDir = path.join(root, 'src');
 const trLiterals = []; // { file, text }

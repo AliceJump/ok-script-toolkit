@@ -16,7 +16,7 @@ tsconfig.json
 scripts/**
 jetbrains/**
 .gitmodules
-RELEASING.md
+RELEASING*.md
 DEVELOPMENT.md
 DEVELOPMENT.en.md
 # 仓库自身的忽略规则对运行时毫无用处，打进 VSIX 只是噪音
@@ -33,7 +33,6 @@ logs/**/*.log
 .vscode/tasks.json
 .vscode/launch.json
 .vscode/ok-lang-hints-*.json
-AGENT.md
 AGENTS.md
 **/agent.md
 **/agents.md
@@ -47,7 +46,7 @@ python/test_*.py
 **/*.bak
 **/*.ok-script-toolkit.tmp
 # 审查/修复计划类的一次性工作目录（verification-<日期> at <时间>/ 等）。
-# 这些是开发过程产物，按 AGENT.md 的打包红线不得进产物。用通配而不是逐个列名 ——
+# 这些是开发过程产物，按 AGENTS.md 的打包红线不得进产物。用通配而不是逐个列名 ——
 # 每次审查都会新建一个带时间戳的目录，逐个列名必然漏（2026-09-20 实测漏了 107 KB）。
 verification-*/
 verification */*
