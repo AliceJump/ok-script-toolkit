@@ -17,7 +17,7 @@
 
 | `outcome` | 含义 | 未解析时的 `action` |
 |---|---|---|
-| `AWAITING_DETECTION` | CodeRabbit 首条意见后没有其他发言 | `REPLY_IF_UNDETECTED` |
+| `AWAITING_DETECTION` | CodeRabbit 首条意见后没有其他发言 | `WAIT_PEER` |
 | `AWAITING_PEER_REPLY` | 其他参与者的最新回复晚于原 reviewer 的回复 | `WAIT_PEER` |
 | `ACCEPTED` | CodeRabbit 确认修复或核对结果 | `WAIT_PEER`，观察实际解析 |
 | `ACCEPTED_OPEN` | 明确确认修复，同时说明平台无法解析 | `REVIEW`，核对原文并报告开放状态，不代为解析 |
@@ -31,7 +31,7 @@
 
 已解析时，不建议重复回复、等额度或人工解析。`KEPT_OPEN`、`FOLLOW_UP`、`NEEDS_REVIEW` 与已解析状态冲突时返回 `REVIEW`，检查原文和代码；其余返回 `NONE`。线程解析不证明代码已修复；旧措辞也不能推翻当前平台状态。
 
-`REPLY_IF_UNDETECTED` 是有条件的建议：先核实该问题已修复，等覆盖当前 head 的审阅完成，再核对线程是否仍未更新。没有新发言本身不能证明漏检或修复，也不是立即补回复的指令。
+`AWAITING_DETECTION` 只描述线程发言状态，不证明问题已修复或 reviewer 已扫描。已在提交中修复的 CodeRabbit 意见不主动回复，等待自动检测；覆盖当前 head 的审阅完成后仍未更新，也只核对代码、继续观察或报告，不补发修复通知。
 
 开放状态本身不能证明 CodeRabbit 拒绝修复；也可能还未扫描、处于限流或平台解析失败。明确不接受时继续修复或补证据；等待扫描或额度时复用等待会话。后续提交按新 head 复核，旧接受或解析不代表新提交已审完。
 

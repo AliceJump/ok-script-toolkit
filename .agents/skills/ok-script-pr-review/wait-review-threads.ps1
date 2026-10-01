@@ -3,7 +3,7 @@ Watches the review threads of one PR and reports, per thread, whether the peer a
 own finding, whether the thread is resolved and by whom, one outcome flag, and the action it implies.
 
 Flags:
-  AWAITING_DETECTION   the peer has not looked at our fix yet; open with no answer from it
+  AWAITING_DETECTION   open with no later discussion; does not prove a fix or review coverage
   AWAITING_PEER_REPLY  we replied; the peer has not answered yet
   ACCEPTED             the peer confirmed the fix (it usually resolves the thread itself)
   ACCEPTED_OPEN        the peer confirmed the fix but could not resolve the thread itself
@@ -17,10 +17,8 @@ Flags:
 
 Actions (what the flag implies for us):
   NONE                 nothing to do
-  REPLY_IF_UNDETECTED  after a review covering this head, verify the fix and inspect the unchanged
-                       thread before replying with the commit and location; silence is not proof
   REPLY                the peer did not accept it: reply with the evidence, or handle the blocker
-  WAIT_PEER            wait for the peer's answer
+  WAIT_PEER            wait for detection, an answer or resolution; do not post fix notifications
   WAIT_QUOTA           the peer is rate limited; wait for the quota
   REVIEW               inspect and report; platform resolution failures do not authorize closing
 
@@ -196,7 +194,7 @@ try {
         $byOutcome[$flag] = @($records | Where-Object { $_.outcome -eq $flag }).Count
     }
     $byAction = [ordered]@{}
-    foreach ($name in @('NONE', 'REPLY_IF_UNDETECTED', 'REPLY', 'WAIT_PEER', 'WAIT_QUOTA', 'REVIEW')) {
+    foreach ($name in @('NONE', 'REPLY', 'WAIT_PEER', 'WAIT_QUOTA', 'REVIEW')) {
         $byAction[$name] = @($records | Where-Object { $_.action -eq $name }).Count
     }
     $result = [pscustomobject]@{

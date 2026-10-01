@@ -283,11 +283,11 @@ foreach ($pair in @(
         @('AWAITING_PEER_REPLY', 'WAIT_PEER'), @('RATE_LIMITED', 'WAIT_QUOTA'),
         @('KEPT_OPEN', 'REPLY'), @('FOLLOW_UP', 'REPLY'),
         @('NEEDS_REVIEW', 'REVIEW'),
-        @('AWAITING_DETECTION', 'REPLY_IF_UNDETECTED'))) {
+        @('AWAITING_DETECTION', 'WAIT_PEER'))) {
     Assert-Equal (Get-CrThreadAction $pair[0]) $pair[1] "action of $($pair[0])"
 }
 Assert-Equal (Get-CrThreadAction 'SOMETHING_NEW') 'REVIEW' 'an unknown flag is never treated as done'
-Assert-Equal (Get-CrThreadOutcome -Comments @($finding)).action 'REPLY_IF_UNDETECTED' 'the outcome carries its action'
+Assert-Equal (Get-CrThreadOutcome -Comments @($finding)).action 'WAIT_PEER' 'no peer update waits for detection without suggesting a fix notification'
 Assert-Equal (Get-CrThreadOutcome -Comments @($finding, $ourReply) -IsResolved $true -ResolvedBy $crBot).action 'NONE' 'a resolved thread asks for nothing'
 
 # The finding author is the peer, not a collective of all bots or all human reviewers.

@@ -385,7 +385,7 @@
         }
       ],
       "expectedOutcome": "AWAITING_DETECTION",
-      "expectedAction": "REPLY_IF_UNDETECTED"
+      "expectedAction": "WAIT_PEER"
     },
     {
       "repo": "AliceJump/ok-script-toolkit-jetbrains",
@@ -472,7 +472,7 @@
         }
       ],
       "expectedOutcome": "AWAITING_DETECTION",
-      "expectedAction": "REPLY_IF_UNDETECTED"
+      "expectedAction": "WAIT_PEER"
     }
   ]
 }
