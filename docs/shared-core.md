@@ -1,5 +1,7 @@
 # VS Code 与 JetBrains 的共用核心（v1.15）
 
+[简体中文](shared-core.md) | [English](shared-core.en.md)
+
 主仓库存放协议与 Python 运行核心；`jetbrains/` 是独立 Git 子仓库，通过构建任务把主仓的 Python 脚本和 JSON Schema 打入插件。两个安装包应携带**字节相同**的运行脚本。
 
 | 职责 | 唯一维护位置 | 两端如何使用 |

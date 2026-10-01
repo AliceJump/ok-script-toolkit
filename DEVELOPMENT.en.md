@@ -1,4 +1,4 @@
-# 开发指南 / Development Guide
+# Development Guide
 
 <div align="center">
 
@@ -6,18 +6,16 @@
 
 </div>
 
-本文档面向扩展开发者，包含项目结构、本地构建安装和发布流程。
-
 This document is for extension developers and covers the project structure, local build/installation, and release workflow.
 
-The shared runtime scripts, protocol, and host boundaries are documented in [Shared core](docs/shared-core.md).
+The shared runtime scripts, protocol, and host boundaries are documented in [Shared core](docs/shared-core.en.md); see [feature parity](docs/feature-parity.en.md) for current capabilities and limits.
 
 ---
 
 ## Project Structure
 
 ```text
-src/                         VS Code extension host TypeScript source (33 modules; entry points and major ones listed)
+src/                         VS Code extension host TypeScript source (entry points and major modules listed, not a complete inventory)
 	projectConfig.ts           Read side of the project convention file ok-script-toolkit.json (locate + cache + personal preference)
 	projectConfigPure.ts       Pure precedence-chain logic (no vscode dependency, unit-testable): parse + precedence + winning layer
 	conventionSources.ts       Data source for the "Project Convention vs My Settings" tracing panel
@@ -62,7 +60,7 @@ media/                        Per-Webview HTML/CSS/JS (loaded by the host via CS
 python/                      Helper scripts shipped with the extension: task discovery, probing & execution (parse_config_tasks.py, probe_task_schemas.py, run_executor.py), plus game window capture & config probing for the template asset panel (capture_game_window.py, probe_window_config.py)
 	python/tests/              Development-time Python regression tests (test_probe_*.py ×5 and test_run_executor_*.py ×4,
 	                           9 in total, all wired into npm test; plus _test_tmp.py, the shared per-suite temp-dir infrastructure);
-	                           excluded from VSIX / JetBrains JAR per AGENT.md packaging rules
+	                           excluded from VSIX / JetBrains JAR per AGENTS.md packaging rules
 jetbrains/                    The JetBrains plugin's **separate public repository** (git submodule), with its own README / CI / release flow
 schemas/                      JSON Schema for ok-script-toolkit.json (editor completion and validation)
 docs/                         Design documents (config-reads overview, convention-file design, global UI design system, copy-pasteable example config)
@@ -118,7 +116,7 @@ The `jetbrains/` directory contains a standalone Kotlin + IntelliJ Platform plug
   Drag **works here** — the two tool windows share the same JVM and use a custom `DataFlavor` to pass paths;
   note that `JPanel` has no built-in auto-drag-out, requiring manual `exportAsDrag` in `mouseDragged`.
 - Follow-up parity work from main-repo v1.9.0 → v1.13.0 (Swing-side spec at
-  [`jetbrains/docs/design-parity.md`](https://github.com/AliceJump/ok-script-toolkit-jetbrains/blob/main/docs/design-parity.md)):
+  [`jetbrains/docs/design-parity.md`](https://github.com/AliceJump/ok-script-toolkit-jetbrains/blob/main/docs/design-parity.en.md)):
   **global config takeover** (probe parses global config groups → parameter snapshots persisted →
   full snapshot injected via `OK_TOOLKIT_GCONFIG` at executor launch → live push via `gparams` while running),
   the health bar and the idle-state **run center** (current task / execution queue / trigger polling),
@@ -131,7 +129,7 @@ cd jetbrains
 ./gradlew test buildPlugin verifyPluginStructure verifyPluginConfiguration
 ```
 
-Use `gradlew.bat` on Windows. The generated ZIP is at `jetbrains/build/distributions/` and can be installed via **Settings / Plugins / Install Plugin from Disk...** in a JetBrains IDE. For per-feature alignment status and remaining gaps, see [`jetbrains/docs/parity-review.md`](https://github.com/AliceJump/ok-script-toolkit-jetbrains/blob/main/docs/parity-review.md) (re-verified line by line against the code on 2026-09-21, baseline v1.8.0).
+Use `gradlew.bat` on Windows. The generated ZIP is at `jetbrains/build/distributions/` and can be installed via **Settings / Plugins / Install Plugin from Disk...** in a JetBrains IDE. For per-feature alignment status and remaining gaps, see [`jetbrains/docs/parity-review.md`](https://github.com/AliceJump/ok-script-toolkit-jetbrains/blob/main/docs/parity-review.en.md) (historical baseline; see [current feature parity](docs/feature-parity.en.md)).
 
 ## Installation
 
@@ -284,4 +282,4 @@ Add each one in the GitHub repo under **Settings → Secrets and variables → A
 
 When using VS Marketplace OIDC, also add `VSCE_USE_OIDC=true` under **Actions → Variables → New repository variable**; only enable after completing Marketplace Trusted Publishing policy.
 
-See [RELEASING.md](RELEASING.md) for full token setup, signing key generation, and step-by-step release instructions.
+See [RELEASING.md](RELEASING.en.md) for full token setup, signing key generation, and step-by-step release instructions.

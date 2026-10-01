@@ -1,13 +1,17 @@
 # ok-script-toolkit · 全局 UI 统一设计规范
 
+[简体中文](design-system.md) | [English](design-system.en.md)
+
 > 本文件是全项目 UI 的唯一权威规范。所有 webview 面板（console / templatePanel /
-> templateAssetPanel / tempScreenshots / annotationPanel / characterManager）必须遵循。
+> templateAssetPanel / tempScreenshots / annotationPanel / characterManager / boxPanel）必须遵循。
 > 实现真源：`media/shared/tokens.css`（Design Tokens）+ `media/shared/controls.css`（共享控件），
 > **页面只负责组合这些类，不得自行重定义视觉规则。**
 
 ## 0. 核心要求
 
 > **不是把每个页面分别做得好看，而是让整个 UI 看起来像由同一套设计系统设计出来的。**
+
+本项目是**开发者 IDE 插件**，体验设计服务于当前本地代码的调试、资源编辑与问题定位。功能范围及优先级遵循 [开发者插件的功能范围与使用体验](developer-tool-scope.md)。技术信息应清楚可达；业务参数删除、转移和历史配置迁移不作为插件必须适配的功能。视觉统一不意味着扩展成普通业务软件的完整配置、账户与恢复流程。
 
 ---
 
@@ -133,6 +137,8 @@ media/shared/controls.css    Button(主/次/迷你/幽灵/图标) · Input · Se
 ---
 
 ## 落地进度
+
+2026-10-01 补充：框面板与框画廊共用 `media/boxPanel`，由 `src/boxPanels.ts` 接入共享层，静态审计已包含此目录。下表与“六个面板”记录的是 2026-09-23 的迁移基线，不能据此漏掉新增面板。
 
 | 阶段 | 内容 | 状态 |
 |---|---|---|

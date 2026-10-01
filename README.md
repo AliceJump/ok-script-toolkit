@@ -8,10 +8,7 @@
 
 **把 ok-script 的语言、OCR、模板、技能和任务数据，直接搬进 VS Code 的开发流程。**
 
-**Bring ok-script's language keys, OCR fixes, templates, skills and task data straight into your VS Code workflow.**
-
 语言键补全 · OCR 修正提示 · 模板浏览 · 任务启动 · 角色技能管理
-Language key completion · OCR fix hints · Template browsing · Task launching · Character skill management
 
 [![VS Code Marketplace](https://img.shields.io/badge/VS%20Code%20Marketplace-ok--script%20Toolkit-007ACC?logo=visualstudiocode&logoColor=white)](https://marketplace.visualstudio.com/items?itemName=AliceJump.ok-script-toolkit)
 [![JetBrains Marketplace](https://img.shields.io/badge/JetBrains%20Marketplace-ok--script%20Toolkit-000000?logo=jetbrains&logoColor=white)](https://plugins.jetbrains.com/plugin/34091-ok-script-toolkit)
@@ -27,8 +24,6 @@ Language key completion · OCR fix hints · Template browsing · Task launching 
 ---
 
 VS Code 扩展，为 ok-script 项目的 Python 开发提供语言键、OCR 修正、模板和技能效果的数据提示，同时内置模板浏览、任务启动和角色技能管理面板，让 ok-script 的语言、OCR、模板、技能和任务数据直接进入开发流程。
-
-A VS Code extension that brings ok-script language keys, OCR fixes, templates, skill effects, and task data directly into your Python development workflow. It also includes built-in template browsing, task launching, and character skill management panels.
 
 > [!TIP]
 > 下面每个功能章节开头的演示图都是可点的——如果动图没加载出来，直接点开链接看。
@@ -50,6 +45,8 @@ A VS Code extension that brings ok-script language keys, OCR fixes, templates, s
 PyCharm / IntelliJ IDEA 用户请装 JetBrains 版：[ok-script Toolkit for JetBrains](https://github.com/AliceJump/ok-script-toolkit-jetbrains)（[Marketplace 页面](https://plugins.jetbrains.com/plugin/34091-ok-script-toolkit)）。
 
 ## 功能
+
+当前两端实现及保留差异见 [功能与文档对齐表](docs/feature-parity.md)。
 
 | 模块 | 一句话说明 |
 |---|---|
@@ -95,6 +92,10 @@ self.wait_click_feature(feature=fL.give_gift, time_out=10)
 ```
 
 悬停 `fL.give_gift` 可查看对应模板裁剪图；输入 `fL.` 可从模板名称列表中选择。
+
+### 框资源
+
+框资源管理复用标注原图与 COCO 编辑器，支持编辑框、从模板生成包围框，并显式发布归一化位置表。框画廊提供裁剪预览、来源定位及 `self.pos` 引用的插入、复制、补全和 Hover。工作文件与运行时文件分开，游戏中的加载由业务项目负责。详见 [框资源设计](docs/box-resources.md)。
 
 ### 临时截图
 

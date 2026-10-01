@@ -1,5 +1,9 @@
 # 框资源设计
 
+[简体中文](box-resources.md) | [English](box-resources.en.md)
+
+2026-10-01 本地状态：两端已有框资源编辑、发布、运行时画廊、补全和来源预览入口，见 [功能对齐表](feature-parity.md)。本文保留数据契约及实现顺序；第 1 节描述的是改造前基础，第 10 节不是当前未完成清单。业务项目 `ScreenPosition` 的实际加载不属于本仓代码验收。
+
 框管理对标现有模板管理，分成两份资源。标注工作副本只给插件编辑。运行时副本是发布后的位置表：插件的框管理和 `self.pos` 补全读它。游戏进程要等业务项目的 `ScreenPosition` 加载这份文件之后才会用到它；ok 框架现在的模板匹配仍然只读 `template_matching.coco_feature_json`。图片、画布和显隐不另起一套。
 
 本文是实现依据。ok-neverness-to-everness（下称 ok-nte）里的真实调用是 `self.pos.screen.main_viewport.to_box()`，不是 `self.pos.main_viewport`，也没有 `screen_pos`。

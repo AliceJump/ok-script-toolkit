@@ -6,11 +6,8 @@
 
 # ok-script Toolkit
 
-**把 ok-script 的语言、OCR、模板、技能和任务数据，直接搬进 VS Code 的开发流程。**
-
 **Bring ok-script's language keys, OCR fixes, templates, skills and task data straight into your VS Code workflow.**
 
-语言键补全 · OCR 修正提示 · 模板浏览 · 任务启动 · 角色技能管理
 Language key completion · OCR fix hints · Template browsing · Task launching · Character skill management
 
 [![VS Code Marketplace](https://img.shields.io/badge/VS%20Code%20Marketplace-ok--script%20Toolkit-007ACC?logo=visualstudiocode&logoColor=white)](https://marketplace.visualstudio.com/items?itemName=AliceJump.ok-script-toolkit)
@@ -25,8 +22,6 @@ Language key completion · OCR fix hints · Template browsing · Task launching 
 </div>
 
 ---
-
-VS Code 扩展，为 ok-script 项目的 Python 开发提供语言键、OCR 修正、模板和技能效果的数据提示，同时内置模板浏览、任务启动和角色技能管理面板，让 ok-script 的语言、OCR、模板、技能和任务数据直接进入开发流程。
 
 A VS Code extension that brings ok-script language keys, OCR fixes, templates, skill effects, and task data directly into your Python development workflow. It also includes built-in template browsing, task launching, and character skill management panels.
 
@@ -50,6 +45,8 @@ Requires VS Code **1.85.0** or later. If the extension doesn't take effect after
 For PyCharm / IntelliJ IDEA users, install the JetBrains version: [ok-script Toolkit for JetBrains](https://github.com/AliceJump/ok-script-toolkit-jetbrains) ([Marketplace page](https://plugins.jetbrains.com/plugin/34091-ok-script-toolkit)).
 
 ## Features
+
+See [feature and documentation parity](docs/feature-parity.en.md) for current host implementations and remaining differences.
 
 | Module | Description |
 |---|---|
@@ -95,6 +92,10 @@ self.wait_click_feature(feature=fL.give_gift, time_out=10)
 ```
 
 Hover over `fL.give_gift` to see the cropped template image; type `fL.` to select from the template name list.
+
+### Box Resources
+
+Box resource management reuses source annotation images and the COCO editor. Edit boxes, generate enclosing boxes from templates, and explicitly publish normalized position tables. The box gallery provides cropped previews, source navigation, and insertion/copy/completion/Hover for `self.pos` references. Working and runtime files are separate; business projects own game loading. See [Box Resource Design](docs/box-resources.en.md).
 
 ### Temp Screenshots
 
@@ -239,10 +240,10 @@ Settings that take part in the precedence chain ↔ the field they map to:
 > The **`okScriptToolkit.showConventionSources`** command ("Project Convention vs My Settings")
 > lists which layer each effective value comes from and lets you revert to the project convention.
 
-See [`docs/project-config.md`](docs/project-config.md) for the full field list and design notes,
+See [`docs/project-config.md`](docs/project-config.en.md) for the full field list and design notes,
 and [`docs/ok-script-toolkit.example.json`](docs/ok-script-toolkit.example.json) for a copy-paste example.
 For **what the plugin actually reads at runtime, what each setting does, and the precedence rules**,
-see [`docs/config-reads.md`](docs/config-reads.md) (six read-path types, per-item purpose, the invariants, and a troubleshooting list).
+see [`docs/config-reads.md`](docs/config-reads.en.md) (six read-path types, per-item purpose, the invariants, and a troubleshooting list).
 
 ### Configuration Example
 
@@ -307,6 +308,6 @@ If you just modified the extension's `package.json` configuration declarations, 
 
 **Related**
 
-[ok-script Toolkit for JetBrains](https://github.com/AliceJump/ok-script-toolkit-jetbrains) · [Development Guide](DEVELOPMENT.en.md) · [Release Process](RELEASING.md)
+[ok-script Toolkit for JetBrains](https://github.com/AliceJump/ok-script-toolkit-jetbrains) · [Development Guide](DEVELOPMENT.en.md) · [Release Process](RELEASING.en.md)
 
 </div>
