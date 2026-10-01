@@ -12,7 +12,7 @@ import { AUTHORING_FILE_NAME, PixelBox } from './boxResourcePure';
 import { probedBoxesJson } from './cocoFeaturePath';
 import { injectWebviewLocalization, tr } from './localization';
 import { boxesRuntimeSetting, templatesDirectory } from './projectConfig';
-import { annotatedImageFile, readImageSize } from './pngCrop';
+import { annotatedImageFile, annotatedImageFilesAsync, readImageSize } from './pngCrop';
 import { getProjectConfig } from './screenshotCapture';
 import { TemplateAssetData } from './templateAssetData';
 import { onAnnotationDataChanged } from './cocoAnnotationData';
@@ -128,8 +128,9 @@ export class BoxGalleryViewProvider implements vscode.WebviewViewProvider {
       if (gen !== this.generation || !view) return;
       const batch = rows.slice(i, i + 8).filter((row) => row.imagePath && row.bbox);
       const thumbs: Array<{ id: string; url: string }> = [];
-      for (const row of batch) {
-        const file = annotatedImageFile(row.imagePath, row.bbox!, this.thumbDir);
+      const files = await annotatedImageFilesAsync(batch.map((row) => ({ imagePath: row.imagePath, bbox: row.bbox! })), this.thumbDir);
+      for (const [index, row] of batch.entries()) {
+        const file = files[index];
         if (gen !== this.generation || !view) return;
         if (!file) continue;
         thumbs.push({ id: row.id, url: view.webview.asWebviewUri(vscode.Uri.file(file)).toString(true) });

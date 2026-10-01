@@ -20,15 +20,19 @@ export function ensureEditorTracker(): void {
 export async function insertIntoPythonEditor(text: string): Promise<void> {
   ensureEditorTracker();
   let editor = lastPythonEditor;
-  if (!editor || editor.document.isClosed) {
+  if (!editor || editor.document.isClosed || !vscode.window.visibleTextEditors.includes(editor)) {
     const act = vscode.window.activeTextEditor;
-    editor = act && !act.document.isClosed && act.document.languageId === 'python' ? act : undefined;
+    editor = act && !act.document.isClosed && act.document.languageId === 'python' ? act
+      : vscode.window.visibleTextEditors.find((visible) => !visible.document.isClosed
+        && visible.document.languageId === 'python' && visible.document === lastPythonEditor?.document);
   }
-  if (!editor) {
-    await vscode.env.clipboard.writeText(text);
-    void vscode.window.showWarningMessage(tr('No Python editor is available; copied instead: {text}', { text }));
-    return;
+  if (editor) {
+    lastPythonEditor = editor;
+    try {
+      if (await editor.insertSnippet(new vscode.SnippetString(text))) return;
+    } catch { /* An editor can disappear while the insertion is in flight. */ }
   }
-  await editor.insertSnippet(new vscode.SnippetString(text));
+  await vscode.env.clipboard.writeText(text);
+  void vscode.window.showWarningMessage(tr('No Python editor is available; copied instead: {text}', { text }));
 }
 

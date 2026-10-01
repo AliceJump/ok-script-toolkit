@@ -70,6 +70,7 @@ const ui = {
   },
   env: { clipboard: { writeText: async text => { ui.copiedText = text; } } },
   window: {
+    visibleTextEditors: [],
     onDidChangeActiveTextEditor: () => ({ dispose() {} }),
     showErrorMessage: text => errors.push(text),
     showInformationMessage: text => infos.push(text),
@@ -93,6 +94,7 @@ function loadController(file, name) {
     if (request === './pngCrop') return {
       ...require('../out/imageHeader'), THUMB_HEIGHT: 84, cropTemplateThumbFileAsync: async () => undefined,
       annotatedImageFile: (imagePath, bbox) => { previewSources.push({ imagePath, bbox }); return path.join(folder, 'preview.png'); },
+      annotatedImageFilesAsync: async requests => requests.map(() => path.join(folder, 'preview.png')),
     };
     if (file === 'boxPanels' && request === './screenshotCapture') return { getProjectConfig: () => ({ projectDir: project }) };
     if (request === './localization') return { tr: text => text };
@@ -144,7 +146,8 @@ const tick = () => new Promise(resolve => setTimeout(resolve, 30));
     assert.deepStrictEqual(previewSources.pop(), { imagePath: image, bbox: [10, 20, 30, 40] }, 'View Original uses box authoring coordinates even when template names differ');
     assert.strictEqual(openedFiles.at(-1).command, 'vscode.open');
     let inserts = 0;
-    ui.window.activeTextEditor = { document: { languageId: 'python' }, insertSnippet: async snippet => { inserts++; ui.insertedText = snippet.value; } };
+    ui.window.activeTextEditor = { document: { languageId: 'python' }, insertSnippet: async snippet => { inserts++; ui.insertedText = snippet.value; return true; } };
+    ui.window.visibleTextEditors = [ui.window.activeTextEditor];
     await boxGallery.onMessage({ type: 'activate', id: 'screen.first', clicks: 2 });
     assert.strictEqual(ui.copiedText, 'self.pos.screen.first');
     assert.strictEqual(inserts, 0, 'double-click copies the path without editing Python');
@@ -154,6 +157,22 @@ const tick = () => new Promise(resolve => setTimeout(resolve, 30));
     ui.window.activeTextEditor = undefined;
     await boxGallery.onMessage({ type: 'activate', id: 'screen.first', clicks: 1 });
     assert.strictEqual(inserts, 2, 'the card still inserts into the recent Python editor after taking focus');
+    const cached = ui.window.visibleTextEditors[0];
+    ui.window.visibleTextEditors = [];
+    ui.copiedText = '';
+    await boxGallery.onMessage({ type: 'activate', id: 'screen.first', clicks: 1 });
+    assert.strictEqual(inserts, 2, 'an open document does not make a hidden editor usable');
+    assert.strictEqual(ui.copiedText, 'self.pos.screen.first.to_box()', 'a stale editor copies instead');
+    const replacement = { document: cached.document, insertSnippet: async () => { inserts++; return true; } };
+    ui.window.visibleTextEditors = [replacement];
+    await boxGallery.onMessage({ type: 'activate', id: 'screen.first', clicks: 1 });
+    assert.strictEqual(inserts, 3, 'reacquires the visible editor instance of the same Python document');
+    for (const fail of [async () => false, async () => { throw new Error('disposed editor'); }]) {
+      replacement.insertSnippet = fail;
+      ui.copiedText = '';
+      await boxGallery.onMessage({ type: 'activate', id: 'screen.first', clicks: 1 });
+      assert.strictEqual(ui.copiedText, 'self.pos.screen.first.to_box()', 'failed insertion takes the copy fallback');
+    }
     const openedCount = openedFiles.length;
     await boxGallery.onMessage({ type: 'open', id: 'screen.runtime_only' });
     assert.strictEqual(openedFiles.length, openedCount, 'boxes without an authoring source cannot open a made-up image');
