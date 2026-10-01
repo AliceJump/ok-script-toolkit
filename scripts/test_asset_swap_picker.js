@@ -56,6 +56,7 @@ html = html
   .replaceAll('__I18N_JSON__', JSON.stringify(dictionary))
   .replaceAll('__SHARED_TOKENS_URI__', '')
   .replaceAll('__SHARED_CONTROLS_URI__', '')
+  .replace('<script src="__SHARED_THUMBNAIL_ACTIONS_URI__"></script>', `<script>${fs.readFileSync(path.join(root, 'media', 'shared', 'thumbnailActions.js'), 'utf8')}</script>`)
   .replace('<link rel="stylesheet" href="__STYLE_URI__">', '')
   .replace('<script src="__APP_SCRIPT_URI__"></script>', `<script>${fs.readFileSync(path.join(componentRoot, 'app.js'), 'utf8')}</script>`);
 
@@ -116,11 +117,11 @@ const TEMPLATES = [
   const cardOf = (name) => document.querySelector(`.card[data-name="${name}"]`);
   check(document.querySelectorAll('.card').length === 3, '三张图各一张卡片');
   check(
-    !!cardOf('1.png') && cardOf('1.png').querySelectorAll('.actions button').length === 2,
-    '卡片操作区有 2 个按钮（⇄ 交换 + X 删除）',
+    !!cardOf('1.png') && cardOf('1.png').querySelectorAll('.actions button').length === 4,
+    '卡片操作区有 4 个按钮（编辑、打开、交换、删除）',
   );
-  const swapBtn = cardOf('1.png').querySelectorAll('.actions button')[0];
-  check(swapBtn.textContent === '⇄', `第一个按钮是交换（实际 "${swapBtn.textContent}"）`);
+  const swapBtn = cardOf('1.png').querySelector('button[data-action="swap"]');
+  check(swapBtn.textContent === '⇄', `交换按钮（实际 "${swapBtn.textContent}"）`);
   check(swapBtn.title === dictionary.assetSwapTooltip, '交换按钮的 tooltip 走文案字典');
 
   /* ── 2. 打开选择器：排除自己、显示尺寸与标注数 ───────────────── */
@@ -190,7 +191,7 @@ const TEMPLATES = [
     data: { type: 'templates', templates: [TEMPLATES[0]] },
   }));
   await new Promise((resolve) => solo.window.setTimeout(resolve, 0));
-  solo.window.document.querySelector('.card .actions button')
+  solo.window.document.querySelector('.card .actions button[data-action="swap"]')
     .dispatchEvent(new solo.window.MouseEvent('click', { bubbles: true }));
   await new Promise((resolve) => solo.window.setTimeout(resolve, 0));
   check(
@@ -215,7 +216,7 @@ const TEMPLATES = [
     const flush2 = () => new Promise((resolve) => w2.setTimeout(resolve, 0));
     const since = (type) => sent.slice(mark).filter((m) => m && m.type === type);
     const openPicker = async (name) => {
-      doc2.querySelector(`.card[data-name="${name}"] .actions button`)
+      doc2.querySelector(`.card[data-name="${name}"] .actions button[data-action="swap"]`)
         .dispatchEvent(new w2.MouseEvent('click', { bubbles: true }));
       await flush2();
     };
@@ -293,7 +294,7 @@ const TEMPLATES = [
       data: { type: 'templates', templates: TEMPLATES },
     }));
     await new Promise((resolve) => broken.window.setTimeout(resolve, 0));
-    broken.window.document.querySelector('.card[data-name="1.png"] .actions button')
+    broken.window.document.querySelector('.card[data-name="1.png"] .actions button[data-action="swap"]')
       .dispatchEvent(new broken.window.MouseEvent('click', { bubbles: true }));
     await new Promise((resolve) => broken.window.setTimeout(resolve, 0));
     const brokenNames = [...broken.window.document.querySelectorAll('#swapList .swap-item')]
@@ -315,7 +316,7 @@ const TEMPLATES = [
     await new Promise((resolve) => w3.setTimeout(resolve, 0));
     w3.dispatchEvent(new w3.MessageEvent('message', { data: { type: 'templates', templates: TEMPLATES } }));
     await new Promise((resolve) => w3.setTimeout(resolve, 0));
-    w3.document.querySelector('.card[data-name="1.png"] .actions button')
+    w3.document.querySelector('.card[data-name="1.png"] .actions button[data-action="swap"]')
       .dispatchEvent(new w3.MouseEvent('click', { bubbles: true }));
     await new Promise((resolve) => w3.setTimeout(resolve, 0));
     w3.dispatchEvent(new w3.MessageEvent('message', {
@@ -340,7 +341,7 @@ const TEMPLATES = [
     await new Promise((resolve) => w4.setTimeout(resolve, 0));
     w4.dispatchEvent(new w4.MessageEvent('message', { data: { type: 'templates', templates: TEMPLATES } }));
     await new Promise((resolve) => w4.setTimeout(resolve, 0));
-    w4.document.querySelector('.card[data-name="1.png"] .actions button')
+    w4.document.querySelector('.card[data-name="1.png"] .actions button[data-action="swap"]')
       .dispatchEvent(new w4.MouseEvent('click', { bubbles: true }));
     await new Promise((resolve) => w4.setTimeout(resolve, 0));
     check(

@@ -58,7 +58,8 @@ export function applySharedAssets(
   ).toString(true);
   return html
     .split('__SHARED_TOKENS_URI__').join(uri('tokens.css'))
-    .split('__SHARED_CONTROLS_URI__').join(uri('controls.css'));
+    .split('__SHARED_CONTROLS_URI__').join(uri('controls.css'))
+    .split('__SHARED_THUMBNAIL_ACTIONS_URI__').join(uri('thumbnailActions.js'));
 }
 
 /**

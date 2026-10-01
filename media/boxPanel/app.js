@@ -18,8 +18,8 @@
     const img = document.createElement('img');
     img.alt = '';
     img.addEventListener('error', () => img.remove());
-    box.textContent = '';
-    box.append(img);
+    box.querySelector('.placeholder')?.remove();
+    box.prepend(img);
     img.src = url;
   }
   window.addEventListener('message', (event) => {
@@ -40,41 +40,35 @@
     (msg.rows || []).forEach((row) => {
       const card = document.createElement('div');
       card.className = 'card asset-card';
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'activate-btn';
-      button.title = row.id;
+      card.title = row.id;
       const box = document.createElement('div');
       box.className = 'thumb-box';
-      box.textContent = '…';
+      const placeholder = document.createElement('span');
+      placeholder.className = 'placeholder';
+      placeholder.textContent = '…';
+      box.append(placeholder);
       const name = document.createElement('div');
       name.className = 'asset-name';
       name.textContent = row.id;
       const count = document.createElement('div');
       count.className = 'asset-count';
       count.textContent = row.label;
-      button.append(box, name, count);
-      card.append(button);
-      if (row.imagePath && row.bbox) {
-        const open = document.createElement('button');
-        open.type = 'button';
-        open.className = 'open-btn';
-        open.textContent = '👁';
-        open.title = t('viewOriginal');
-        open.setAttribute('aria-label', t('viewOriginal'));
-        open.onclick = () => vscode.postMessage({ type: 'open', id: row.id });
-        card.append(open);
-      }
+      const actions = document.createElement('div');
+      actions.className = 'actions thumbnail-actions';
+      actions.append(
+        ThumbnailActions.button('＋', t('insertExpression'), () => vscode.postMessage({ type: 'activate', id: row.id, clicks: 1 })),
+        ThumbnailActions.button('⧉', t('copyExpression'), () => vscode.postMessage({ type: 'activate', id: row.id, clicks: 2 })),
+      );
+      const open = ThumbnailActions.button('👁', t('viewOriginal'), () => vscode.postMessage({ type: 'open', id: row.id }));
+      open.disabled = !(row.imagePath && row.bbox);
+      actions.append(open);
+      box.append(actions);
+      card.append(box, name, count);
       cards.set(row.id, card);
-      let clickTimer = 0;
-      button.onclick = () => {
-        window.clearTimeout(clickTimer);
-        clickTimer = window.setTimeout(() => vscode.postMessage({ type: 'activate', id: row.id, clicks: 1 }), 250);
-      };
-      button.ondblclick = () => {
-        window.clearTimeout(clickTimer);
-        vscode.postMessage({ type: 'activate', id: row.id, clicks: 2 });
-      };
+      ThumbnailActions.bindClicks(card,
+        () => vscode.postMessage({ type: 'activate', id: row.id, clicks: 1 }),
+        () => vscode.postMessage({ type: 'activate', id: row.id, clicks: 2 }),
+      );
       rows.append(card);
     });
     if (!(msg.rows || []).length) {

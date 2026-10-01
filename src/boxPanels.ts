@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
+import { ensureEditorTracker, insertIntoPythonEditor } from './pythonEditor';
 import { AnnotationPanel } from './annotationPanel';
 import {
   boxesForImage,
@@ -59,6 +60,7 @@ export class BoxGalleryViewProvider implements vscode.WebviewViewProvider {
   ) {}
 
   resolveWebviewView(webviewView: vscode.WebviewView): void {
+    ensureEditorTracker();
     this.view = webviewView;
     webviewView.webview.options = {
       enableScripts: true,
@@ -89,15 +91,12 @@ export class BoxGalleryViewProvider implements vscode.WebviewViewProvider {
       return;
     }
     if (msg.type !== 'activate' || !msg.id) return;
-    const text = msg.clicks === 2 ? `self.pos.${msg.id}` : `self.pos.${msg.id}.to_box()`;
-    const editor = vscode.window.activeTextEditor;
-    if (!editor || editor.document.languageId !== 'python') {
-      await vscode.env.clipboard.writeText(text);
+    if (msg.clicks === 2) {
+      await vscode.env.clipboard.writeText(`self.pos.${msg.id}`);
       return;
     }
-    await editor.edit((builder) => {
-      editor.selections.forEach((selection) => builder.insert(selection.active, text));
-    });
+    const text = `self.pos.${msg.id}.to_box()`;
+    await insertIntoPythonEditor(text);
   }
 
   /**

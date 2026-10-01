@@ -51,24 +51,14 @@
     box.appendChild(ph);
 
     const actDiv = document.createElement('div');
-    actDiv.className = 'actions';
-    // 交换标注：与「删除」并列，但排在左边 —— 删除是破坏性的，放最右侧不误触
-    const swapBtn = document.createElement('button');
-    swapBtn.textContent = '⇄';
-    swapBtn.title = t('assetSwapTooltip');
-    swapBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      openSwapPicker(meta);
-    });
-    actDiv.appendChild(swapBtn);
-    const delBtn = document.createElement('button');
-    delBtn.textContent = 'X';
-    delBtn.title = t('assetDeleteTooltip');
-    delBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      vscode.postMessage({ type: 'deleteImage', imagePath: meta.imagePath });
-    });
-    actDiv.appendChild(delBtn);
+    actDiv.className = 'actions thumbnail-actions';
+    actDiv.append(
+      ThumbnailActions.button('✎', t('editAnnotations'), () => vscode.postMessage({ type: 'openAnnotation', imagePath: meta.imagePath })),
+      ThumbnailActions.button('👁', t('openSourceImage'), () => vscode.postMessage({ type: 'openSource', imagePath: meta.imagePath })),
+      ThumbnailActions.button('⇄', t('assetSwapTooltip'), () => openSwapPicker(meta)),
+      ThumbnailActions.button('×', t('assetDeleteTooltip'), () => vscode.postMessage({ type: 'deleteImage', imagePath: meta.imagePath })),
+    );
+    ['edit', 'open', 'swap', 'delete'].forEach((action, index) => { actDiv.children[index].dataset.action = action; });
     box.appendChild(actDiv);
 
     const m = document.createElement('div');

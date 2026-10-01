@@ -68,12 +68,15 @@ const ui = {
     getConfiguration: () => ({ get: (_key, fallback) => fallback, inspect: () => undefined }),
     onDidChangeConfiguration: () => ({ dispose() {} }),
   },
+  env: { clipboard: { writeText: async text => { ui.copiedText = text; } } },
   window: {
+    onDidChangeActiveTextEditor: () => ({ dispose() {} }),
     showErrorMessage: text => errors.push(text),
     showInformationMessage: text => infos.push(text),
     showWarningMessage: async (_text, _options, action) => action,
   },
   Uri: { file: file => ({ fsPath: file }) },
+  SnippetString: class { constructor(value) { this.value = value; } },
   commands: { executeCommand: async (command, uri) => openedFiles.push({ command, uri }) },
 };
 const originalLoad = Module._load;
@@ -140,6 +143,17 @@ const tick = () => new Promise(resolve => setTimeout(resolve, 30));
     await boxGallery.onMessage({ type: 'open', id: 'screen.first' });
     assert.deepStrictEqual(previewSources.pop(), { imagePath: image, bbox: [10, 20, 30, 40] }, 'View Original uses box authoring coordinates even when template names differ');
     assert.strictEqual(openedFiles.at(-1).command, 'vscode.open');
+    let inserts = 0;
+    ui.window.activeTextEditor = { document: { languageId: 'python' }, insertSnippet: async snippet => { inserts++; ui.insertedText = snippet.value; } };
+    await boxGallery.onMessage({ type: 'activate', id: 'screen.first', clicks: 2 });
+    assert.strictEqual(ui.copiedText, 'self.pos.screen.first');
+    assert.strictEqual(inserts, 0, 'double-click copies the path without editing Python');
+    await boxGallery.onMessage({ type: 'activate', id: 'screen.first', clicks: 1 });
+    assert.strictEqual(inserts, 1);
+    assert.strictEqual(ui.insertedText, 'self.pos.screen.first.to_box()');
+    ui.window.activeTextEditor = undefined;
+    await boxGallery.onMessage({ type: 'activate', id: 'screen.first', clicks: 1 });
+    assert.strictEqual(inserts, 2, 'the card still inserts into the recent Python editor after taking focus');
     const openedCount = openedFiles.length;
     await boxGallery.onMessage({ type: 'open', id: 'screen.runtime_only' });
     assert.strictEqual(openedFiles.length, openedCount, 'boxes without an authoring source cannot open a made-up image');
@@ -154,6 +168,11 @@ const tick = () => new Promise(resolve => setTimeout(resolve, 30));
     disposables.push(gallery);
     // No thumbnail URI conversion is needed because this fixture skips thumbnail generation.
     await gallery.update();
+    await gallery.onMessage({ type: 'openSource', imagePath: image });
+    assert.strictEqual(openedFiles.at(-1).uri.fsPath, image);
+    const validSourceCount = openedFiles.length;
+    await gallery.onMessage({ type: 'openSource', imagePath: path.join(project, 'outside.png') });
+    assert.strictEqual(openedFiles.length, validSourceCount, 'source buttons only open images belonging to the gallery');
     const templateEditor = new Controller({
       onDidReceiveMessage: () => ({ dispose() {} }), postMessage: message => { editorMessages.push(message); return Promise.resolve(true); },
     }, { fsPath: root }, templates, folder, () => true, () => {}, false);
