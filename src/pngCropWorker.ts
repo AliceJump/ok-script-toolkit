@@ -13,6 +13,7 @@ import * as path from 'path';
 import * as crypto from 'crypto';
 import * as zlib from 'zlib';
 import { decode as jpegDecode } from 'jpeg-js';
+import { annotatedFileName, renderAnnotatedPixels } from './annotatedImage';
 
 interface PngMeta {
   width: number;
@@ -287,6 +288,7 @@ interface CropTask {
   thumbDir: string;
   /** 主线程传入的原图内容 hash（缺省时本地按同一算法现算） */
   contentHash?: string;
+  annotated?: boolean;
 }
 
 /** 单个 bbox 的裁剪结果 */
@@ -310,76 +312,43 @@ function readThumbDataUrl(filePath: string): string | undefined {
   }
 }
 
-parentPort?.on('message', async (task: CropTask) => {
+parentPort?.on('message', (task: CropTask) => {
   try {
     const results: WorkerCropResult[] = [];
-
-    // ── 1. 先按确定性路径查盘 ──────────────────────────────────────────
-    // 缩略图文件名 = hash(内容 hash + bbox + 目标高度)，与主线程完全一致。
-    // 命中的直接把盘上的 PNG 读回来当 dataUrl，**原图一个字节都不用读**。
-    //
-    // ⚠️ 这里此前**从不查盘** —— 每次会话激活预热都会把全部原图重新解码+重切
-    // 一遍（ok-wuthering-waves 156 张原图 ≈ 8s），磁盘缓存形同只写不读。
-    // 只有 contentHash 已知才能算出确定性文件名；缺省时回退到下面的原逻辑现算。
-    const toCrop: CropTask['bboxes'] = [];
+    let source: Buffer | undefined;
     let contentHash = task.contentHash;
-    if (contentHash) {
-      for (const item of task.bboxes) {
-        const filePath = path.join(
-          task.thumbDir,
-          thumbFileName(contentHash, item.bbox, item.targetHeight),
-        );
-        const cached = readThumbDataUrl(filePath);
-        if (cached) {
-          results.push({ bbox: item.bbox, dataUrl: cached, filePath, fromDisk: true });
-        } else {
-          toCrop.push(item);
-        }
-      }
-      if (toCrop.length === 0) {
-        // 全部命中：连原图都不用读
-        parentPort?.postMessage({ id: task.id, results });
-        return;
-      }
-    }
-
-    // ── 2. 有 miss 才读原图、解码 ─────────────────────────────────────
-    const buf = fs.readFileSync(task.imagePath);
     if (!contentHash) {
-      contentHash = crypto.createHash('sha1').update(buf).digest('hex').slice(0, 16);
+      source = fs.readFileSync(task.imagePath);
+      contentHash = crypto.createHash('sha1').update(source).digest('hex').slice(0, 16);
     }
-
-    const decoded = decodeImage(buf);
-    const imgW = decoded.width;
-    const imgH = decoded.height;
-    if (imgW === 0 || imgH === 0) {
-      parentPort?.postMessage({ id: task.id, results: [], error: 'invalid image' });
-      return;
-    }
-
-    for (const item of toCrop) {
-      const [bx, by, bw, bh] = item.bbox;
-      // clamp 到图片边界
-      const left = Math.max(0, Math.min(bx, imgW));
-      const top = Math.max(0, Math.min(by, imgH));
-      const extractW = Math.max(1, Math.min(bw, imgW - left));
-      const extractH = Math.max(1, Math.min(bh, imgH - top));
-
-      const dataUrl = cropAndEncodeSync(decoded.rgba, imgW, imgH, [left, top, extractW, extractH], item.targetHeight);
-      const pngData = Buffer.from(dataUrl.slice(dataUrl.indexOf(',') + 1), 'base64');
-
-      // 写入缩略图文件
-      const fileName = thumbFileName(contentHash, item.bbox, item.targetHeight);
+    const toCrop: Array<{ item: CropTask['bboxes'][number]; filePath: string }> = [];
+    for (const item of task.bboxes) {
+      const fileName = task.annotated ? annotatedFileName(contentHash, item.bbox)
+        : thumbFileName(contentHash, item.bbox, item.targetHeight);
       const filePath = path.join(task.thumbDir, fileName);
-      fs.mkdirSync(path.dirname(filePath), { recursive: true });
-      fs.writeFileSync(filePath, pngData);
-
-      results.push({ bbox: item.bbox, dataUrl, filePath, fromDisk: false });
+      const cached = readThumbDataUrl(filePath);
+      if (cached) results.push({ bbox: item.bbox, dataUrl: cached, filePath, fromDisk: true });
+      else toCrop.push({ item, filePath });
     }
-
+    if (toCrop.length) {
+      const decoded = decodeImage(source ?? fs.readFileSync(task.imagePath));
+      if (decoded.width === 0 || decoded.height === 0) throw new Error('invalid image');
+      for (const { item, filePath } of toCrop) {
+        let dataUrl: string;
+        if (task.annotated) {
+          const preview = renderAnnotatedPixels(decoded, item.bbox);
+          if (!preview) continue;
+          dataUrl = `data:image/png;base64,${encodePng(preview.width, preview.height, preview.rgba).toString('base64')}`;
+        } else {
+          dataUrl = cropAndEncodeSync(decoded.rgba, decoded.width, decoded.height, item.bbox, item.targetHeight);
+        }
+        fs.mkdirSync(path.dirname(filePath), { recursive: true });
+        fs.writeFileSync(filePath, Buffer.from(dataUrl.slice(dataUrl.indexOf(',') + 1), 'base64'));
+        results.push({ bbox: item.bbox, dataUrl, filePath, fromDisk: false });
+      }
+    }
     parentPort?.postMessage({ id: task.id, results });
   } catch (err) {
-    // 错误经回包传给主线程记录（主线程输出通道），worker 内不再走 console
     parentPort?.postMessage({ id: task.id, results: [], error: String(err) });
   }
 });

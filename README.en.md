@@ -81,7 +81,7 @@ When editing Python code, the extension automatically detects ok-script-specific
 </p>
 
 - **Template panel**: Open via the sidebar icon or `Ctrl+Alt+T` shortcut (requires focus on a Python editor). Displays all workspace templates in a thumbnail grid with real-time name search and filtering.
-- **Quick insert**: Click a card to insert `fL.<template_name>` at the editor cursor, double-click to copy to clipboard, click the thumbnail to open the source image.
+- **Quick insert**: Click a card to insert `fL.<template_name>` at the editor cursor, double-click to copy to clipboard, or use **View Original** to open the source. VS Code template and box galleries use a shared 500 ms card double-click window; clicks beyond that window are independent single clicks. The insert, copy and source buttons act immediately.
 - **Template code hints**: Type `fL.` or `FeatureList.` to complete template names with size info. Hover shows thumbnail preview, dimensions, and source info.
 - You can also open a larger grid view in the editor area via the command **ok-script Toolkit: Open Template Panel in Editor**.
 - Supports both sidebar (template panel and template asset views) and large editor window browsing modes.

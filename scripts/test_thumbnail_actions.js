@@ -44,17 +44,30 @@ for (const panel of ['templatePanel', 'boxPanel']) {
   assert.strictEqual(sent.length, 1);
   assert.strictEqual(panel === 'templatePanel' ? sent[0].type : sent[0].clicks, panel === 'templatePanel' ? 'insert' : 1);
   sent.length = 0;
-  click(1); click(2);
+  click(1); click(2); click(3);
   card.dispatchEvent(new w.MouseEvent('dblclick', { bubbles: true }));
   flush();
   assert.strictEqual(sent.length, 1, 'double-click never inserts before copying');
   assert.strictEqual(panel === 'templatePanel' ? sent[0].type : sent[0].clicks, panel === 'templatePanel' ? 'copy' : 2);
+  sent.length = 0;
+  // Some systems still emit a native double-click after our gesture window expired.
+  // That second click must use the same commit window, never insert and then copy.
+  click(1); flush();
+  click(2);
+  card.dispatchEvent(new w.MouseEvent('dblclick', { bubbles: true }));
+  flush();
+  assert.strictEqual(sent.length, 2, 'expired clicks commit as independent single gestures');
+  assert(sent.every(message => panel === 'templatePanel' ? message.type === 'insert' : message.clicks === 1),
+    'a late native dblclick cannot copy an already committed gesture');
   sent.length = 0;
   click(1); buttons[2].click();
   buttons[2].dispatchEvent(new w.MouseEvent('dblclick', { bubbles: true }));
   flush();
   assert.strictEqual(sent.length, 1, 'source button cancels pending insertion and never copies the card');
   assert.strictEqual(sent[0].type, 'open');
+  sent.length = 0;
+  click(1); flush();
+  assert.strictEqual(sent.length, 1, 'a direct button clears pending gesture state');
   if (panel === 'boxPanel') {
     w.dispatchEvent(new w.MessageEvent('message', { data: { type: 'thumbs', items: [{ id: 'screen.button', url: 'preview.png' }] } }));
     assert.strictEqual(card.querySelectorAll('.thumbnail-actions button').length, 3, 'loading a box image preserves actions');

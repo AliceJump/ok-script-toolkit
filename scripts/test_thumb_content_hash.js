@@ -193,6 +193,30 @@ async function main() {
   const annotatedFile = pngCrop.annotatedImageFile(source, bbox, thumbDir);
   assert.deepStrictEqual(fs.readFileSync(annotatedFile), Buffer.from(previewUrl.split(',')[1], 'base64'), 'viewing and hover use the same rendered PNG');
   assert.strictEqual(pngCrop.annotatedImageFile(source, bbox, thumbDir), annotatedFile);
+  pngCrop.initCropWorkerPool(root, 1);
+  try {
+    const workerDir = path.join(thumbDir, 'worker-annotated');
+    const secondBox = [0, 0, 20, 40];
+    let yielded = false;
+    setImmediate(() => { yielded = true; });
+    const files = await pngCrop.annotatedImageFilesAsync([
+      { imagePath: source, bbox }, { imagePath: source, bbox: secondBox },
+      { imagePath: source, bbox: [800, 0, 2, 2] },
+    ], workerDir);
+    assert(yielded, 'a cache-miss batch lets the extension host service the event loop');
+    assert.strictEqual(path.basename(files[0]), path.basename(annotatedFile), 'worker retains the content hash and bbox cache key');
+    assert.deepStrictEqual(fs.readFileSync(files[0]), fs.readFileSync(annotatedFile), 'worker and synchronous viewer render identical PNGs');
+    assert.deepStrictEqual(fs.readFileSync(files[1]), Buffer.from(pngCrop.annotatedImageToDataUrlCached(source, secondBox).split(',')[1], 'base64'));
+    assert.strictEqual(files[2], undefined, 'an out-of-image box does not abort valid previews');
+    const mtime = fs.statSync(files[0]).mtimeMs;
+    assert.deepStrictEqual(await pngCrop.annotatedImageFilesAsync([{ imagePath: source, bbox }], workerDir), [files[0]]);
+    assert.strictEqual(fs.statSync(files[0]).mtimeMs, mtime, 'cached worker previews are not rewritten');
+    fs.writeFileSync(source, solidPng(800, BLUE));
+    const changed = await pngCrop.annotatedImageFilesAsync([{ imagePath: source, bbox }], workerDir);
+    assert.notStrictEqual(changed[0], files[0], 'the worker detects changed source bytes without the main-thread hash cache');
+    assert.deepStrictEqual(await pngCrop.annotatedImageFilesAsync([{ imagePath: source + '.missing', bbox }], workerDir), [undefined]);
+    fs.writeFileSync(source, solidPng(800, GREEN));
+  } finally { pngCrop.disposeCropWorkerPool(); }
   const edgeUrl = pngCrop.annotatedImageToDataUrlCached(source, [0, 0, 20, 40]);
   const edge = pngCrop.decodeRgba(Buffer.from(edgeUrl.split(',')[1], 'base64'));
   assert.deepStrictEqual([edge.width, edge.height], [220, 240], 'context clips to the source image edge');

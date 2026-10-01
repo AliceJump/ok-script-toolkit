@@ -5,6 +5,7 @@ import * as zlib from 'zlib';
 import { Worker } from 'worker_threads';
 import { decode as jpegDecode } from 'jpeg-js';
 import { findOkTemplateCocoEntry } from './featureData';
+import { annotatedFileName, renderAnnotatedPixels } from './annotatedImage';
 
 /** 模板缩略图统一高度（面板/缓存/worker 共用，消除 key 不匹配） */
 export const THUMB_HEIGHT = 96;
@@ -321,6 +322,7 @@ interface CropTask {
   thumbDir: string;
   /** 原图内容 hash：与主线程共用，保证 worker 落盘文件名与主线程查找的文件名一致 */
   contentHash?: string;
+  annotated?: boolean;
 }
 
 /** worker 回包（单任务与批量共用：单任务 results 只有一个元素） */
@@ -396,6 +398,7 @@ function postTask(state: WorkerState, task: CropTask): void {
       bboxes: task.bboxes,
       thumbDir: task.thumbDir,
       contentHash: task.contentHash,
+      annotated: task.annotated,
     });
     state.busy = true;
     state.inflight.add(task.id);
@@ -442,6 +445,7 @@ function submitBatchToWorker(
   bboxes: Array<{ bbox: [number, number, number, number]; targetHeight: number }>,
   thumbDir: string,
   contentHash?: string,
+  annotated = false,
 ): Promise<Array<{ bbox: [number, number, number, number]; dataUrl: string; filePath: string; fromDisk?: boolean }>> {
   return new Promise((resolve) => {
     if (bboxes.length === 0) { resolve([]); return; }
@@ -466,7 +470,7 @@ function submitBatchToWorker(
     const task: CropTask = {
       id: batchId, imagePath,
       bboxes: bboxes.map((b) => ({ bbox: b.bbox, targetHeight: b.targetHeight })),
-      thumbDir, contentHash,
+      thumbDir, contentHash, annotated,
     };
     const freeWorker = poolWorkers.find((w) => !w.busy);
     if (freeWorker) {
@@ -958,33 +962,6 @@ export function cropTemplateOriginalFile(
  *  原图标注查看（非热路径）
  * ======================================================================== */
 
-function strokeRectInward(
-  rgba: Buffer, imgW: number, imgH: number,
-  x: number, y: number, w: number, h: number, thickness: number,
-  r: number, g: number, b: number,
-): void {
-  const x0 = Math.max(0, x), y0 = Math.max(0, y);
-  const x1 = Math.min(imgW - 1, x + w - 1), y1 = Math.min(imgH - 1, y + h - 1);
-  if (x1 < x0 || y1 < y0) return;
-  for (let py = y0; py <= y1; py++) {
-    for (let px = x0; px <= x1; px++) {
-      if (px < x0 + thickness || px > x1 - thickness || py < y0 + thickness || py > y1 - thickness) {
-        const i = (py * imgW + px) * 4;
-        rgba[i] = r; rgba[i + 1] = g; rgba[i + 2] = b; rgba[i + 3] = 255;
-      }
-    }
-  }
-}
-
-function drawRectOutline(
-  rgba: Buffer, imgW: number, imgH: number,
-  x: number, y: number, w: number, h: number, thickness: number,
-): void {
-  const halo = Math.max(2, thickness >> 1);
-  strokeRectInward(rgba, imgW, imgH, x - halo, y - halo, w + 2 * halo, h + 2 * halo, thickness + halo, 255, 255, 255);
-  strokeRectInward(rgba, imgW, imgH, x, y, w, h, thickness, 255, 40, 40);
-}
-
 /** Shared source crop for box thumbnails, hover and source viewing. */
 export function annotatedImageToDataUrlCached(
   imagePath: string, bbox: [number, number, number, number],
@@ -998,43 +975,9 @@ export function annotatedImageToDataUrlCached(
   try {
     const buf = fs.readFileSync(imagePath);
     const { width, height, rgba } = decodeRgba(buf);
-    const bx = Math.max(0, Math.round(bbox[0]));
-    const by = Math.max(0, Math.round(bbox[1]));
-    const bw = Math.min(width, Math.round(bbox[0] + bbox[2])) - bx;
-    const bh = Math.min(height, Math.round(bbox[1] + bbox[3])) - by;
-    if (bw <= 0 || bh <= 0) return undefined;
-    const pad = 200;
-    const cropX = Math.max(0, bx - pad), cropY = Math.max(0, by - pad);
-    const cropW = Math.min(width, bx + bw + pad) - cropX;
-    const cropH = Math.min(height, by + bh + pad) - cropY;
-
-    // 归一化：缩放到目标分辨率内，保证不同原图输出视觉效果一致
-    const TARGET = 400;
-    const scale = Math.min(1, TARGET / Math.max(cropW, cropH));
-    const outW = Math.max(1, Math.round(cropW * scale));
-    const outH = Math.max(1, Math.round(cropH * scale));
-
-    // 缩放裁剪区域（最近邻）
-    const outRgba = Buffer.alloc(outW * outH * 4);
-    for (let oy = 0; oy < outH; oy++) {
-      const sy = Math.min(Math.round(oy / scale), cropH - 1);
-      const srcRow = ((cropY + sy) * width + cropX) * 4;
-      for (let ox = 0; ox < outW; ox++) {
-        const sx = Math.min(Math.round(ox / scale), cropW - 1);
-        const srcIdx = srcRow + sx * 4;
-        const dstIdx = (oy * outW + ox) * 4;
-        outRgba[dstIdx] = rgba[srcIdx];
-        outRgba[dstIdx + 1] = rgba[srcIdx + 1];
-        outRgba[dstIdx + 2] = rgba[srcIdx + 2];
-        outRgba[dstIdx + 3] = rgba[srcIdx + 3];
-      }
-    }
-
-    const thickness = Math.max(2, Math.round(2 * scale));
-    drawRectOutline(outRgba, outW, outH,
-      Math.round((bx - cropX) * scale), Math.round((by - cropY) * scale),
-      Math.max(1, Math.round(bw * scale)), Math.max(1, Math.round(bh * scale)), thickness);
-    const url = `data:image/png;base64,${encodePng(outW, outH, outRgba).toString('base64')}`;
+    const preview = renderAnnotatedPixels({ width, height, rgba }, bbox);
+    if (!preview) return undefined;
+    const url = `data:image/png;base64,${encodePng(preview.width, preview.height, preview.rgba).toString('base64')}`;
     cacheSet(key, { url, imagePath, source: thumbSourceSubdir(imagePath) });
     return url;
   } catch { return undefined; }
@@ -1053,13 +996,35 @@ export function writeAnnotatedImage(
 }
 
 /** Uses the supplied authoring source directly, without template-name lookup. */
+export async function annotatedImageFilesAsync(
+  requests: Array<{ imagePath: string; bbox: [number, number, number, number] }>, thumbDir: string,
+): Promise<Array<string | undefined>> {
+  const files: Array<string | undefined> = requests.map(() => undefined);
+  if (!poolInitialized) return files;
+  const groups = new Map<string, Array<{ bbox: [number, number, number, number]; index: number }>>();
+  requests.forEach(({ imagePath, bbox }, index) => {
+    if (!bbox.every(Number.isFinite) || bbox[2] <= 0 || bbox[3] <= 0) return;
+    const group = groups.get(imagePath) ?? [];
+    group.push({ bbox, index });
+    groups.set(imagePath, group);
+  });
+  await Promise.all([...groups].map(async ([imagePath, items]) => {
+    // Source reading, hashing and decoding all stay in the worker; decode once per source.
+    const results = await submitBatchToWorker(imagePath,
+      items.map(({ bbox }) => ({ bbox, targetHeight: 400 })), path.join(thumbDir, 'annotated'), undefined, true);
+    const byBox = new Map(results.map((result) => [result.bbox.join(','), result.filePath]));
+    for (const item of items) files[item.index] = byBox.get(item.bbox.join(','));
+  }));
+  return files;
+}
+
+/** Uses the supplied authoring source directly, without template-name lookup. */
 export function annotatedImageFile(
   imagePath: string, bbox: [number, number, number, number], thumbDir: string,
 ): string | undefined {
   const contentHash = imageContentHash(imagePath);
   if (!contentHash) return undefined;
-  const key = crypto.createHash('sha1').update(`v3|${contentHash}|${bbox.join(',')}`).digest('hex').slice(0, 16);
-  const out = path.join(thumbDir, 'annotated', `a2_${key}.png`);
+  const out = path.join(thumbDir, 'annotated', annotatedFileName(contentHash, bbox));
   try { if (fs.existsSync(out) && fs.statSync(out).size > 0) return out; } catch { /* regenerate */ }
   return writeAnnotatedImage(imagePath, bbox, out);
 }
