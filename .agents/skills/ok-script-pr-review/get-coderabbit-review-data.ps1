@@ -1,4 +1,4 @@
-<#
+﻿<#
 Collects every review surface of one PR as JSON, keyed to the current head:
   conversation  issue comments (PR main thread)
   reviews       review records, with coversHead for CodeRabbit review summaries
@@ -39,15 +39,22 @@ function Get-ReviewThreads {
     $moreQuery = "query(`$id:ID!,`$after:String){node(id:`$id){... on PullRequestReviewThread{comments(first:100,after:`$after){pageInfo{hasNextPage endCursor} nodes{$commentFields}}}}}"
     $threads = @()
     $after = $null
+    $threadCursors = New-Object 'System.Collections.Generic.HashSet[string]'
     do {
         $page = (Invoke-CrGraphQl $query @{ owner = $owner; name = $name; number = $PrNumber; after = $after }).repository.pullRequest.reviewThreads
+        if ($null -eq $page) { throw "Cannot read review threads for $Repo#$PrNumber" }
+        Assert-CrPaginationProgress $page.pageInfo $threadCursors "review threads for $Repo#$PrNumber"
         foreach ($thread in @($page.nodes)) {
             $comments = @($thread.comments.nodes)
             $info = $thread.comments.pageInfo
+            $commentCursors = New-Object 'System.Collections.Generic.HashSet[string]'
+            Assert-CrPaginationProgress $info $commentCursors "comments for thread $($thread.id)"
             while ($info.hasNextPage) {
                 $more = (Invoke-CrGraphQl $moreQuery @{ id = $thread.id; after = $info.endCursor }).node.comments
+                if ($null -eq $more) { throw "Cannot read comments for thread $($thread.id)" }
                 $comments += @($more.nodes)
                 $info = $more.pageInfo
+                Assert-CrPaginationProgress $info $commentCursors "comments for thread $($thread.id)"
             }
             $threads += [pscustomobject]@{ thread = $thread; comments = $comments }
         }

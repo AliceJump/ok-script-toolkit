@@ -1,9 +1,9 @@
 ---
 name: ok-script-pr-review
-description: 处理 ok-script-toolkit 主仓及 JetBrains 子仓的 PR 审阅意见。适用于读取 CodeRabbit 或人工 review、核实并处置意见、回复及解析线程、检查双仓 CI 与子模块合并依赖；不用于普通代码修改。
+description: 处理 ok-script-toolkit 主仓及 JetBrains 子仓的 PR 审阅意见。适用于核实并处置意见、检查双仓 CI 与子模块合并依赖，以及维护和验证本技能的查询与等待脚本；不用于普通代码修改。
 ---
 
-# Ok Script Toolkit PR Review
+# Ok Script Toolkit PR 审阅
 
 本技能改编自 ok-end-field 的 `ok-script-pr-review`。这里有两个独立 Git 仓库：
 `AliceJump/ok-script-toolkit` 与 `AliceJump/ok-script-toolkit-jetbrains`（在主仓以
@@ -53,18 +53,53 @@ description: 处理 ok-script-toolkit 主仓及 JetBrains 子仓的 PR 审阅意
 
 - 公开回复、触发评审和解析线程属于 GitHub 写操作；只有用户已授权处理对应 PR review
   时才执行。普通代码任务发现评论时，可先分析并报告，不自行对外发言。
+  维护脚本的请求不授权在抽样 PR 上回复、触发或解析；验证使用只读查询与 mock。
+- **先决定要不要回复，回复不是默认动作**：
+  - **CodeRabbit 意见已在提交中修复 → 不主动回复。** 验证并推送后，等待它自动检测、
+    覆盖当前 head 的审阅和线程更新，不发送「已修复」「已在某提交修复」等通知。
+    人工意见或需要回答具体追问的评论按实际需求说明。
+  - **不采纳或需要暂缓 → 回复。** 写明可核对的依据（代码路径或实际行为），它据此撤回
+    或保持开放。历史次数不是当前处理结果的保证。
+  - **推送后等本轮审阅完成，再复查每条线程。** 若线程仍开放、双方都没有新发言
+    （`AWAITING_DETECTION`），核对代码与当前审阅覆盖并继续观察或报告；不因此补发
+    修复通知。无新发言本身不证明修复或漏检。
+  - 它明确拒绝之后**自己撤回了**就不再重复回复；若平台仍未解析，继续观察到实际解析。
+    **保持开放**且仍有风险的意见仍需处理（合并顺序依赖，或它要求更多改动）。
 - 行内意见回复到对应线程：`POST /repos/<owner>/<repo>/pulls/<n>/comments/<顶层评论ID>/replies`。
   若目标是回复，先沿 `in_reply_to_id` 找顶层评论。不要把行内意见的处置汇总发到 PR 主评论。
-- Review 正文中的 **outside diff** 意见没有行内线程，应在 PR 主评论逐条说明处置与提交。
+- Review 正文中的 **outside diff** 意见没有行内线程，也遵循上述回复规则：已在提交中
+  修复的不主动通知；不采纳、暂缓或需要回答具体追问时，在 PR 主评论说明。
 - 处置回复应在正文开头 `@` 原意见的目标账号：人工 reviewer 使用该条意见的
   `user.login`（不是显示名）；CodeRabbit API 作者虽是 `coderabbitai[bot]`，GitHub
   命令和提及使用 `@coderabbitai`。若回复针对线程中较新的追问，提及那条追问的作者。
   不要猜测不可提及或已删除账号；同一处置只回复并提及一次。普通处置文字不要写成
   `@coderabbitai review` 等独立命令。diff 外意见也按原 review 作者提及。
-- 回复后查询 GraphQL `reviewThreads` 的 `isResolved`。仅在当前代码和验证表明问题已修复
-  或已失效时解析线程；机器人自动解析后无需再操作。暂缓或仍有风险的线程保持开放。
+- **不要自行解析线程**，把它交回对方处理：CodeRabbit 通常在回帖确认后**自行解析**；人工
+  reviewer 由其本人关闭。它也可能不追加回复就直接解析（本仓 PR #18 的
+  `media/annotationPanel/index.html` 与 `src/annotationPanel.ts` 两条即是），所以不要因为它
+  没回帖就自己代劳。复核状态只查询 GraphQL `reviewThreads` 的 `isResolved`；
   `reviewThreads` 与每条线程的 `comments` 都要分别翻页，不能假设首 100 条已覆盖全部。
-- 最终报告每条意见的处置、测试与 CI、仍开放的依赖，并链接两个 PR。
+  `ACCEPTED_OPEN` 表示它确认修复但平台解析失败，保留开放状态并报告，不代为关闭。
+- **CodeRabbit 线程不由我们手动解析，包括限流、无回复或平台解析失败时。** 修复、验证并
+  推送后，由它扫描当前提交并决定接受、撤回或继续提出问题；我们提供代码与验证证据，
+  不把自己判断「已修复」当作它已接受。仍开放可能是等待扫描、限流、平台失败或不接受，
+  要核对原文与当前 head 的审阅覆盖；等待中的线程不反复催问，明确不接受时继续修复或说明。
+  后续提交仍须按新 head 等待复核，历史接受或解析不能证明新提交已审完。
+  不要用 `@coderabbitai resolve` 之类的命令批量解析（本仓历史 PR 从未使用；姊妹仓库
+  `ok-end-field` 用过，CodeRabbit 对它自己的意见会回「Use this command on a human-authored
+  review finding」）。暂缓或仍有风险的线程一律保持开放。
+- 不采纳时的回复形态：`@coderabbitai 不采纳，<可核对的代码路径或实际行为>。`；
+  暂缓或回答具体追问时提供相关依据，不把修复通知作为默认回复。
+- 复查用 `wait-review-threads.ps1`，不要在脚本之外凭印象判断。它按 `peerAnswered`（对方在它
+  首条意见之后是否又发言）、`isResolved`/`resolvedBy` 和 `outcome` 逐条报告，并给出 `action`；
+  `outcome`、结合平台状态的 `action` 与真实样例见
+  [thread-outcomes.md](thread-outcomes.md)。判据只读**可见正文**：`<details>` 块、围栏代码块、
+  内联代码和引用行在匹配前会剥掉，所以对方**引用**含判据词的文本不会被算成它的回答
+  （本技能脚本自身就含这些词）；但复杂 Markdown 或无标记的裸引用仍可能误判，可疑时点 `url` 看原文。
+  `peerAnswered` 是历史发言，不代表回答了最新回复；原 reviewer 由根评论作者确定，不能
+  把所有机器人当同一对方。退出码 0 只说明观察条件满足，不证明 PR 审完或可以合并。
+- 最终报告每条意见的处置、测试与 CI、线程当前状态（等待检测 / 等待对方回复 / 由谁解析）与
+  仍开放的依赖，并链接两个 PR。
 
 ## CodeRabbit 的等待与限流
 
@@ -98,15 +133,22 @@ description: 处理 ok-script-toolkit 主仓及 JetBrains 子仓的 PR 审阅意
 .\.agents\skills\ok-script-pr-review\wait-coderabbit.ps1 -Repo <owner/repo> -PrNumber <n> [-ExpectedHead <sha>] [-NoTrigger] [-StopOnHeadChange]
 # 只查额度：会公开发送 @coderabbitai rate limit（不消耗 review 额度），从不触发 review
 .\.agents\skills\ok-script-pr-review\wait-coderabbit-rate-limit.ps1 -Repo <owner/repo> -PrNumber <n> -ExpectedHead <sha>
+# 线程级：对多个线程循环检测是否有回复、是否解析，输出标准 JSON
+.\.agents\skills\ok-script-pr-review\wait-review-threads.ps1 -Repo <owner/repo> -PrNumber <n> [-ExpectedHead <sha>] [-ThreadId <id>[,<id>]] [-WaitFor <flag>[,<flag>]] [-Once] [-TimeoutSeconds <n>] [-PollSeconds <n>]
 ```
 
 两者最后一行输出 JSON 结果，退出码：`0` REVIEWED/AVAILABLE，`3` DRAFT，`4` CLOSED，
 `5` SKIPPED/REVIEW_FAILED，`6` TIMEOUT/NO_SIGNAL/UNCONFIRMED，`7` 限流未恢复或触发后被限流，
 `8` 已触发但审阅未在时限内到达，`9` 需要触发但指定了 `-NoTrigger`，`11` HEAD_CHANGED，
 `12` 额度查询无回复或回复无法识别，`2` 错误。非 0 结果都要按说明人工核对，不能重试到出现 0。
+`wait-review-threads.ps1` 最后一行是紧凑 JSON；退出码 `0` 观察条件满足（包括零线程）、
+`6` 仍需等待（`-Once` 不是超时）、`4` PR 关闭而停止等待、`11` head 变化且本轮数据丢弃、`2` 错误。
+等待须在用户能从 Codex 侧边查看输出的终端会话后台运行，复用已有进程；不要默认隐藏
+Start-Process，也不要为等待另建定时任务、heartbeat 或 automation，除非用户明确要求安排。
 本机账本默认在 `%LOCALAPPDATA%\ok-script-pr-review\coderabbit-triggers`，按仓库、PR 与 head 记录
 触发，写入先于发送；`-StateDir` 可改位置。修改脚本后运行 `test-coderabbit-helpers.ps1` 与
-`test-coderabbit-wait-mock.ps1`（Windows PowerShell 5.1 与 PowerShell 7 都应通过）。
+`test-coderabbit-wait-mock.ps1`、`test-review-threads-mock.ps1`（Windows PowerShell 5.1 与 PowerShell 7 都应通过）。含非 ASCII
+的脚本必须存为 UTF-8 with BOM：5.1 对无 BOM 的脚本按 ANSI 解码，中文正则会被撕碎。
 
 参考：<https://docs.coderabbit.ai/reference/review-commands>。跨仓分别指定 `-Repo`，
 不得复用另一仓的 PR 号或 head。运行后再核对 CodeRabbit 意见与 CI。

@@ -15,6 +15,24 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  review-scripts:
+    runs-on: windows-latest
+    timeout-minutes: 5
+    strategy:
+      matrix:
+        engine: [powershell, pwsh]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test review helpers and captured thread fixtures
+        shell: pwsh
+        run: ${{ matrix.engine }} -NoProfile -File ./.agents/skills/ok-script-pr-review/test-coderabbit-helpers.ps1
+      - name: Test head and quota waiter scenarios
+        shell: pwsh
+        run: ${{ matrix.engine }} -NoProfile -File ./.agents/skills/ok-script-pr-review/test-coderabbit-wait-mock.ps1
+      - name: Test read-only thread waiter scenarios
+        shell: pwsh
+        run: ${{ matrix.engine }} -NoProfile -File ./.agents/skills/ok-script-pr-review/test-review-threads-mock.ps1
+
   vscode:
     runs-on: ubuntu-24.04
     timeout-minutes: 10

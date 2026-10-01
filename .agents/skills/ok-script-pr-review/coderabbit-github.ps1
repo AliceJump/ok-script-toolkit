@@ -1,4 +1,14 @@
-# GitHub reads/writes for the CodeRabbit scripts. All list endpoints are fully paginated.
+﻿# GitHub reads/writes for the CodeRabbit scripts. All list endpoints are fully paginated.
+
+function Assert-CrPaginationProgress {
+    param([object]$PageInfo, [System.Collections.Generic.HashSet[string]]$Seen, [string]$Surface)
+    if ($null -eq $PageInfo) { throw "Missing pagination info for $Surface" }
+    if (-not $PageInfo.hasNextPage) { return }
+    $cursor = [string]$PageInfo.endCursor
+    if ([string]::IsNullOrWhiteSpace($cursor) -or -not $Seen.Add($cursor)) {
+        throw "Pagination cursor did not advance for $Surface"
+    }
+}
 
 function Invoke-CrGh {
     param([string[]]$GhArgs)
