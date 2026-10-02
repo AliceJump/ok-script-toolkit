@@ -101,9 +101,9 @@ GitHub Secret 支持多行文本，可直接粘贴 PEM/CRT 全文；也可先 Ba
 推荐入口只有一个：
 
 1. 打开父仓库 **Actions → Prepare Release → Run workflow**。
-2. `bump` 选择 `patch` / `minor` / `major`；默认仍为 `minor`。
-3. 一般把 `version` 留空，由工作流自动递增；需要恢复一次未完成的发版时可显式填写 `MAJOR.MINOR.PATCH`。
-4. 如果显式 `version` **等于当前已同步版本**且该 tag 尚不存在，工作流不会再制造版本 PR，而是校验父/子仓版本与 gitlink 后直接补 tag。当前这种“版本已经准备好但 tag 没打”的情况就用这个模式。
+2. 平时**什么都不用改，直接点 Run workflow**：如果当前版本的父/子仓与 gitlink 已同步但 tag 缺失，会先补当前版本 tag；如果当前版本已经有 tag，才按 `bump` 递增，默认 `minor`。
+3. 需要指定下一版时可把 `bump` 改成 `patch` / `minor` / `major`；需要恢复特殊中间状态时，也可以显式填写 `version=MAJOR.MINOR.PATCH`。
+4. 显式 `version` 等于当前版本仍然受支持，作为恢复模式会校验父/子仓版本与 gitlink 后补缺失 tag。
 
 一次按钮会自动完成：
 
