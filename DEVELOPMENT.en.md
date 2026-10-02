@@ -258,7 +258,7 @@ Required repo Secrets:
 | Secret | How to obtain | Required? |
 |---|---|---|
 | `RELEASE_APP_PRIVATE_KEY` | Release GitHub App private key | Required for one-click releases |
-| `VSCE_PAT` | Visual Studio Marketplace publish PAT | Optional; can use OIDC Trusted Publhing instead |
+| `VSCE_PAT` | Visual Studio Marketplace publish PAT | Optional; can use OIDC Trusted Publishing instead |
 | `JETBRAINS_TOKEN` | JetBrains Marketplace author page → My Tokens | Required for JetBrains Marketplace publishing |
 | `JETBRAINS_PRIVATE_KEY` | PEM private key full text or Base64 for JetBrains plugin signing | Required for JetBrains Marketplace publishing |
 | `JETBRAINS_PRIVATE_KEY_PASSWORD` | Password set when generating the private key | Required for JetBrains Marketplace publishing |
