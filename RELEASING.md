@@ -25,7 +25,7 @@ vMAJOR.MINOR.PATCH
 - Actions Variable：`RELEASE_APP_ID`
 - Actions Secret：`RELEASE_APP_PRIVATE_KEY`
 
-GitHub App 至少需要两个仓库的 **Contents: Read and write** 与 **Pull requests: Read and write** 权限，并安装到：
+GitHub App 至少需要两个仓库的 **Contents: Read and write**、**Pull requests: Read and write** 与 **Actions: Read-only** 权限，并安装到：
 
 - `AliceJump/ok-script-toolkit`
 - `AliceJump/ok-script-toolkit-jetbrains`
