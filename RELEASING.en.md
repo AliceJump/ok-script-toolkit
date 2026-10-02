@@ -23,7 +23,7 @@ Configure in the parent repository:
 - Actions Variable: `RELEASE_APP_ID`
 - Actions Secret: `RELEASE_APP_PRIVATE_KEY`
 
-The GitHub App needs at least **Contents: Read and write** and **Pull requests: Read and write** on both:
+The GitHub App needs at least **Contents: Read and write**, **Pull requests: Read and write**, and **Actions: Read-only** on both:
 
 - `AliceJump/ok-script-toolkit`
 - `AliceJump/ok-script-toolkit-jetbrains`
