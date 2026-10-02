@@ -2,7 +2,7 @@
 
 [简体中文](RELEASING.md) | [English](RELEASING.en.md)
 
-发布由父仓库 `AliceJump/ok-script-toolkit` 统一协调。普通提交和手动运行不会发布；只有首次推送匹配版本的标签会运行 Release：
+发布由父仓库 `AliceJump/ok-script-toolkit` 统一协调。普通提交不会发布；手动运行 `Prepare Release` 会完成两仓发版准备并推送版本标签，而真正的构建与市场发布仍由首次推送匹配版本的标签触发：
 
 ```text
 vMAJOR.MINOR.PATCH
