@@ -1,0 +1,125 @@
+name: Prepare Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Version bump when "version" is empty
+        required: true
+        default: minor
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+      version:
+        description: Optional explicit MAJOR.MINOR.PATCH (can equal current version to tag a prepared release)
+        required: false
+        default: ''
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: prepare-release
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Prepare, merge, tag, and publish
+    runs-on: ubuntu-24.04
+    timeout-minutes: 70
+
+    steps:
+      - name: Check out orchestrator
+        uses: actions/checkout@v4
+
+      - name: Validate release bot configuration
+        env:
+          RELEASE_APP_ID: ${{ vars.RELEASE_APP_ID }}
+          RELEASE_APP_PRIVATE_KEY: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "$RELEASE_APP_ID" ] || [ -z "$RELEASE_APP_PRIVATE_KEY" ]; then
+            echo "::error::Configure RELEASE_APP_ID (Actions variable) and RELEASE_APP_PRIVATE_KEY (Actions secret) in the parent repository."
+            exit 1
+          fi
+
+      - name: Create cross-repository release token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: |
+            ok-script-toolkit
+            ok-script-toolkit-jetbrains
+
+      - name: Prepare release PRs, merge, and push tag
+        id: prepare
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PARENT_REPO: ${{ github.repository }}
+          CHILD_REPO: ${{ github.repository_owner }}/ok-script-toolkit-jetbrains
+          BUMP_LEVEL: ${{ inputs.bump }}
+          EXPLICIT_VERSION: ${{ inputs.version }}
+        run: bash scripts/release/orchestrate-release.sh
+
+      - name: Wait for downstream Release workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ steps.prepare.outputs.release_sha }}
+          RELEASE_TAG: ${{ steps.prepare.outputs.tag }}
+        run: |
+          set -euo pipefail
+          run_id=""
+          run_url=""
+          for _ in $(seq 1 30); do
+            row=$(gh run list \
+              --repo "$GITHUB_REPOSITORY" \
+              --workflow release.yml \
+              --event push \
+              --limit 20 \
+              --json databaseId,headSha,url \
+              --jq ".[] | select(.headSha == \"$RELEASE_SHA\") | [.databaseId, .url] | @tsv" \
+              | head -n 1 || true)
+            if [ -n "$row" ]; then
+              IFS=$'\t' read -r run_id run_url <<< "$row"
+              break
+            fi
+            sleep 4
+          done
+
+          if [ -z "$run_id" ]; then
+            echo "::error::Tag $RELEASE_TAG was pushed, but release.yml did not start for $RELEASE_SHA."
+            exit 1
+          fi
+
+          echo "Downstream Release: $run_url"
+          gh run watch "$run_id" --repo "$GITHUB_REPOSITORY" --exit-status
+
+      - name: Release summary
+        if: always()
+        env:
+          VERSION: ${{ steps.prepare.outputs.version }}
+          TAG: ${{ steps.prepare.outputs.tag }}
+          PARENT_PR: ${{ steps.prepare.outputs.parent_pr }}
+          CHILD_PR: ${{ steps.prepare.outputs.child_pr }}
+        run: |
+          {
+            echo "## One-click release"
+            echo
+            if [ -n "$TAG" ]; then
+              echo "- Version: \`$VERSION\`"
+              echo "- Tag: \`$TAG\`"
+            fi
+            if [ -n "$CHILD_PR" ]; then
+              echo "- JetBrains release PR: $CHILD_PR"
+            fi
+            if [ -n "$PARENT_PR" ]; then
+              echo "- Parent release PR: $PARENT_PR"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
