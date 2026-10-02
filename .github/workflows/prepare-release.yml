@@ -57,6 +57,9 @@ jobs:
           repositories: |
             ok-script-toolkit
             ok-script-toolkit-jetbrains
+          permission-actions: read
+          permission-contents: write
+          permission-pull-requests: write
 
       - name: Prepare release PRs, merge, and push tag
         id: prepare
