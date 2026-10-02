@@ -232,7 +232,7 @@ VS Code 的 **Tasks: Run Task** 里同样有这几条（与 CI 的 `jetbrains` j
 
 - Pull Request 和 `main` 推送只运行 `CI`，不会直接发布。
 - **正式入口是父仓库 `Actions → Prepare Release → Run workflow`。** 该工作流负责版本计算、两仓 release PR、squash merge、父仓 gitlink、最终 tag，以及等待后续发布流水线。
-- `Prepare Release` 默认按 `minor` 递增，也可选 `patch` / `major`；`version` 留空时自动计算，显式填写时用于恢复/指定版本。若显式版本等于当前已经同步好的版本且 tag 尚不存在，会直接校验并补 tag。
+- `Prepare Release` 默认无需改参数：若当前父/子仓与 gitlink 已同步但当前版本 tag 缺失，会先补当前 tag；只有当前版本已经有 tag 时才按 `minor` 递增（也可选 `patch` / `major`）。`version` 显式填写仍用于恢复/指定特殊版本。
 - 两个 `main` 的 PR-only ruleset 不会被绕过：JetBrains 与父仓都先建 PR 再 squash merge。跨仓写入与最后的 tag push 使用 GitHub App token（`RELEASE_APP_ID` + `RELEASE_APP_PRIVATE_KEY`）。
 - **真正执行构建和发布的开关仍然是首次推送 `vX.Y.Z` tag。** tag 由 GitHub App 推送，因此会触发现有 `.github/workflows/release.yml`；编排工作流会等待它完成。
 - 标签工作流会重新测试两端，构建 VSIX 和 JetBrains ZIP，在同一个 GitHub Release 中上传两个安装包，然后按已配置的 Secret 发布 Visual Studio Marketplace 与 JetBrains Marketplace。
