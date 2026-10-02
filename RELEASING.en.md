@@ -99,9 +99,9 @@ GitHub Secrets support multi-line text; you can paste PEM/CRT full text directly
 There is one recommended entry point:
 
 1. Open the parent repository and choose **Actions → Prepare Release → Run workflow**.
-2. Select `patch`, `minor`, or `major` for `bump`; the default remains `minor`.
-3. Normally leave `version` empty and let the workflow increment automatically. Use an explicit `MAJOR.MINOR.PATCH` only to resume/recover a partially prepared release.
-4. If explicit `version` **equals the already synchronized current version** and that tag does not exist, the workflow does not create redundant version PRs. It verifies parent/child versions plus the gitlink and directly creates the missing tag.
+2. Normally **change nothing and click Run workflow**. If the parent, child, and gitlink are already synchronized at the current version but its tag is missing, the workflow finishes that prepared release first. If the current version is already tagged, it applies the selected `bump` (default: `minor`).
+3. Choose `patch`, `minor`, or `major` only when you want a specific bump. Use an explicit `version=MAJOR.MINOR.PATCH` to resume an unusual partially prepared state.
+4. An explicit `version` equal to the current version remains supported as a recovery mode: it verifies parent/child versions plus the gitlink and creates the missing tag.
 
 One button performs the full orchestration:
 
