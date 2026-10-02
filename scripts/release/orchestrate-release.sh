@@ -59,11 +59,27 @@ wait_mergeable() {
   die "$repo PR #$pr did not become mergeable (last state: ${state:-unknown})."
 }
 
+wait_pr_checks() {
+  local repo="$1"
+  local pr="$2"
+  local count="0"
+  for _ in $(seq 1 30); do
+    count=$(gh pr view "$pr" --repo "$repo" --json statusCheckRollup --jq '.statusCheckRollup | length')
+    if [ "$count" -gt 0 ]; then
+      gh pr checks "$pr" --repo "$repo" --watch --interval 5
+      return 0
+    fi
+    sleep 2
+  done
+  die "$repo PR #$pr did not report any CI checks."
+}
+
 merge_release_pr() {
   local repo="$1"
   local pr="$2"
   local version="$3"
   wait_mergeable "$repo" "$pr"
+  wait_pr_checks "$repo" "$pr"
   gh pr merge "$pr" \
     --repo "$repo" \
     --squash \
@@ -128,12 +144,70 @@ if [ "$target_version" = "$current_version" ]; then
   fi
   (cd "$PARENT_DIR" && npm run --silent verify:version)
 else
-  (cd "$PARENT_DIR" && node scripts/rele[X\ÙKÜÞ[˜Ë]™\œÚ[Û‹šœÈ‰\™Ù]Ý™\œÚ[ÛˆŠBˆ
-Ù‰T‘S•ÑTˆˆ	‰ˆœH[ˆK\Ú[[™\šYžN™\œÚ[ÛŠB‚ˆÚ[Øœ˜[˜ÚHœ™[X\ÙKÝ‰Ý\™Ù]Ý™\œÚ[ÛŸKIÔ•S—ÒQH‚ˆYˆHÚ]PÈ‰ÒSÑTˆˆY™ˆK\]ZY]KHÜ˜YKœ›Ü\Y\È‘PQQK›Y‘PQQK™[‹›YÈ[‚ˆÚ]PÈ‰ÒSÑTˆˆÚXÚÛÝ]Xˆ‰Ú[Øœ˜[˜Ú‚ˆÚ]PÈ‰ÒSÑTˆˆYÜ˜YKœ›Ü\Y\È‘PQQK›Y‘PQQK™[‹›YˆÚ]PÈ‰ÒSÑTˆˆÛÛ[Z][H˜ÚÜ™J™[X\ÙJNˆ™\\™H‰\™Ù]Ý™\œÚ[Ûˆ‚ˆÚ]PÈ‰ÒSÑTˆˆ\Ú]HÜšYÚ[ˆ‰Ú[Øœ˜[˜Ú‚‚ˆÚ[Ü—Ý\›I
-ÚˆÜ™X]HˆK\™\È‰ÒSÔ‘TÈˆˆKX˜\ÙHXZ[ˆˆKZXY‰Ú[Øœ˜[˜ÚˆˆK]]H˜ÚÜ™J™[X\ÙJNˆ™\\™H‰\™Ù]Ý™\œÚ[ÛˆˆˆKX›ÙH]]ÛX]Y™]œ˜Z[œÈ™\œÚ[Ûˆ[™‘PQQH˜YÙHÞ[˜Ú›Ûš^˜][Ûˆ›Üˆ‰\™Ù]Ý™\œÚ[Û‹ˆŠBˆÚ[ÜH‰ØÚ[Ü—Ý\›ÈÊ‹ßH‚ˆY\™ÙWÜ™[X\ÙWÜˆ‰ÒSÔ‘TÈˆ‰Ú[Üˆˆ‰\™Ù]Ý™\œÚ[Ûˆ‚ˆ[YˆÈ‰Ú[Ý™\œÚ[ÛˆˆOH‰\™Ù]Ý™\œÚ[ÛˆˆNÈ[‚ˆYH’™]œ˜Z[œÈ™\œÚ[Ûˆ™YYÈÈÚ[™ÙHÈ	\™Ù]Ý™\œÚ[Û‹]›È™[X\ÙHY™ˆØ\È›ÙXÙYˆ‚ˆšB‚ˆÚ]PÈ‰ÒSÑTˆˆ™]ÚÜšYÚ[ˆXZ[‚ˆÚ]PÈ‰ÒSÑTˆˆÚXÚÛÝ]PˆXZ[ˆÜšYÚ[‹ÛXZ[‚ˆÈ‰
-ÙY[ˆ	ÜË×œYÚ[•™\œÚ[ÛKËÜ	È‰ÒSÑT‹ÙÜ˜YKœ›Ü\Y\ÈˆXY[ˆJHˆH‰\™Ù]Ý™\œÚ[ÛˆˆHˆYH’™]œ˜Z[œÈXZ[ˆY›Ý™XXÚ™\œÚ[Ûˆ	\™Ù]Ý™\œÚ[Û‹ˆ‚‚ˆ
-Ù‰T‘S•ÑTˆˆ	‰ˆœH[ˆK\Ú[[™\šYžN™\œÚ[ÛŠB‚ˆ\™[Øœ˜[˜ÚHœ™[X\ÙKÝ‰Ý\™Ù]Ý™\œÚ[ÛŸKIÔ•S—ÒQH‚ˆÚ]PÈ‰T‘S•ÑTˆˆÚXÚÛÝ]Xˆ‰\™[Øœ˜[˜Ú‚ˆÚ]PÈ‰T‘S•ÑTˆˆYXÚØYÙKšœÛÛˆXÚØYÙK[ØÚËšœÛÛˆ‘PQQK›Y‘PQQK™[‹›Y™]œ˜Z[œÂˆÚ]PÈ‰T‘S•ÑTˆˆÛÛ[Z][H˜ÚÜ™J™[X\ÙJNˆ™\\™H‰\™Ù]Ý™\œÚ[Ûˆ‚ˆÚ]PÈ‰T‘S•ÑTˆˆ\Ú]HÜšYÚ[ˆ‰\™[Øœ˜[˜Ú‚‚ˆ\™[Ü—Ý\›I
-ÚˆÜ™X]HˆK\™\È‰T‘S•Ô‘TÈˆˆKX˜\ÙHXZ[ˆˆKZXY‰\™[Øœ˜[˜ÚˆˆK]]H˜ÚÜ™J™[X\ÙJNˆ™\\™H‰\™Ù]Ý™\œÚ[ÛˆˆˆKX›ÙH]]ÛX]Y\™[™\œÚ[ÛˆÞ[˜Ú›Ûš^˜][Ûˆ[™™]œ˜Z[œÈÚ][šÈ\]H›Üˆ‰\™Ù]Ý™\œÚ[Û‹ˆŠBˆ\™[ÜH‰Ü\™[Ü—Ý\›ÈÊ‹ßH‚ˆY\™ÙWÜ™[X\ÙWÜˆ‰T‘S•Ô‘TÈˆ‰\™[Üˆˆ‰\™Ù]Ý™\œÚ[Ûˆ‚‚ˆÚ]PÈ‰T‘S•ÑTˆˆ™]ÚÜšYÚ[ˆXZ[‚ˆÚ]PÈ‰T‘S•ÑTˆˆÚXÚÛÝ]PˆXZ[ˆÜšYÚ[‹ÛXZ[‚ˆÚ]PÈ‰T‘S•ÑTˆˆÝX›[Ù[H\]HKZ[š]™]œ˜Z[œÂˆ
-Ù‰T‘S•ÑTˆˆ	‰ˆœH[ˆK\Ú[[™\šYžN™\œÚ[ÛŠB™šB‚œ™[X\ÙWÜÚOI
-Ú]PÈ‰T‘S•ÑTˆˆ™]‹\\œÙHPQ
-B™Ú]PÈ‰T‘S•ÑTˆˆYÈXH‰YÈˆ‰™[X\ÙWÜÚHˆ[H”™[X\ÙH	YÈ‚™Ú]PÈ‰T‘S•ÑTˆˆ\ÚÜšYÚ[ˆ‰YÈ‚‚šYˆÈ[ˆ‰ÑÒUP—ÓÕUU‹_HˆNÈ[‚ˆÂˆXÚÈ™\œÚ[ÛI\™Ù]Ý™\œÚ[Ûˆ‚ˆXÚÈYÏIYÈ‚ˆXÚÈœ™[X\ÙWÜÚOI™[X\ÙWÜÚH‚ˆXÚÈœ\™[ÜI\™[Üˆ‚ˆXÚÈ˜Ú[ÜIÚ[Üˆ‚ˆHˆ‰ÒUP—ÓÕUU‚™šB‚™XÚÈ”™[X\ÙY	YÈOˆ	™[X\ÙWÜÚH‚–È[ˆ‰Ú[ÜˆˆH	‰ˆXÚÈ’™]œ˜Z[œÈŽˆÎ‹ËÙÚ]X‹˜ÛÛKÉÒSÔ‘TËÜ[ÉÚ[Üˆ‚–È[ˆ‰\™[ÜˆˆH	‰ˆXÚÈ”\™[ŽˆÎ‹ËÙÚ]X‹˜ÛÛKÉT‘S•Ô‘TËÜ[É\™[Üˆ‚
+  (cd "$PARENT_DIR" && node scripts/release/sync-version.js "$target_version")
+  (cd "$PARENT_DIR" && npm run --silent verify:version)
+
+  child_branch="release/v${target_version}-${RUN_ID}"
+  if ! git -C "$CHILD_DIR" diff --quiet -- gradle.properties README.md README.en.md; then
+    git -C "$CHILD_DIR" checkout -b "$child_branch"
+    git -C "$CHILD_DIR" add gradle.properties README.md README.en.md
+    git -C "$CHILD_DIR" commit -m "chore(release): prepare v$target_version"
+    git -C "$CHILD_DIR" push -u origin "$child_branch"
+
+    child_pr_url=$(gh pr create \
+      --repo "$CHILD_REPO" \
+      --base main \
+      --head "$child_branch" \
+      --title "chore(release): prepare v$target_version" \
+      --body "Automated JetBrains version and README badge synchronization for v$target_version.")
+    child_pr="${child_pr_url##*/}"
+    merge_release_pr "$CHILD_REPO" "$child_pr" "$target_version"
+  elif [ "$child_version" != "$target_version" ]; then
+    die "JetBrains version needs to change to $target_version, but no release diff was produced."
+  fi
+
+  git -C "$CHILD_DIR" fetch origin main
+  git -C "$CHILD_DIR" checkout -B main origin/main
+  [ "$(sed -n 's/^pluginVersion=//p' "$CHILD_DIR/gradle.properties" | head -n 1)" = "$target_version" ] \
+    || die "JetBrains main did not reach version $target_version."
+
+  (cd "$PARENT_DIR" && npm run --silent verify:version)
+
+  parent_branch="release/v${target_version}-${RUN_ID}"
+  git -C "$PARENT_DIR" checkout -b "$parent_branch"
+  git -C "$PARENT_DIR" add package.json package-lock.json README.md README.en.md jetbrains
+  git -C "$PARENT_DIR" commit -m "chore(release): prepare v$target_version"
+  git -C "$PARENT_DIR" push -u origin "$parent_branch"
+
+  parent_pr_url=$(gh pr create \
+    --repo "$PARENT_REPO" \
+    --base main \
+    --head "$parent_branch" \
+    --title "chore(release): prepare v$target_version" \
+    --body "Automated parent version synchronization and JetBrains gitlink update for v$target_version.")
+  parent_pr="${parent_pr_url##*/}"
+  merge_release_pr "$PARENT_REPO" "$parent_pr" "$target_version"
+
+  git -C "$PARENT_DIR" fetch origin main
+  git -C "$PARENT_DIR" checkout -B main origin/main
+  git -C "$PARENT_DIR" submodule update --init jetbrains
+  (cd "$PARENT_DIR" && npm run --silent verify:version)
+fi
+
+release_sha=$(git -C "$PARENT_DIR" rev-parse HEAD)
+git -C "$PARENT_DIR" tag -a "$tag" "$release_sha" -m "Release $tag"
+git -C "$PARENT_DIR" push origin "$tag"
+
+if [ -n "${GITHUB_OUTPUT:-}" ]; then
+  {
+    echo "version=$target_version"
+    echo "tag=$tag"
+    echo "release_sha=$release_sha"
+    echo "parent_pr=$parent_pr"
+    echo "child_pr=$child_pr"
+  } >> "$GITHUB_OUTPUT"
+fi
+
+echo "Released $tag -> $release_sha"
+[ -n "$child_pr" ] && echo "JetBrains PR: https://github.com/$CHILD_REPO/pull/$child_pr"
+[ -n "$parent_pr" ] && echo "Parent PR: https://github.com/$PARENT_REPO/pull/$parent_pr"
