@@ -2,7 +2,7 @@
 
 [简体中文](RELEASING.md) | [English](RELEASING.en.md)
 
-Releases are coordinated by the parent repository `AliceJump/ok-script-toolkit`. Regular commits and manual runs do not publish; only the first push of a matching version tag triggers a Release:
+Releases are coordinated by the parent repository `AliceJump/ok-script-toolkit`. Regular commits do not publish. A manual `Prepare Release` run prepares both repositories and pushes the version tag; the actual build and Marketplace publishing still start only from the first push of a matching version tag:
 
 ```text
 vMAJOR.MINOR.PATCH
