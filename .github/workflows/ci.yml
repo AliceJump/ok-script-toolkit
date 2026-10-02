@@ -58,6 +58,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Validate release orchestrator syntax
+        run: bash -n scripts/release/orchestrate-release.sh
+
       # 单独一步而不是塞进 `npm test`：语言包对等与代码无关，
       # 失败信息要一眼能看出是「漏翻译」而不是「测试挂了」。
       - name: Verify localization parity
