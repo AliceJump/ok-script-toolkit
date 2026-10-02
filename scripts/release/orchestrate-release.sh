@@ -128,51 +128,12 @@ if [ "$target_version" = "$current_version" ]; then
   fi
   (cd "$PARENT_DIR" && npm run --silent verify:version)
 else
-  (cd "$PARENT_DIR" && node scripts/release/sync-version.js "$target_version")
-  (cd "$PARENT_DIR" && npm run --silent verify:version)
-
-  child_branch="release/v${target_version}-${RUN_ID}"
-  if ! git -C "$CHILD_DIR" diff --quiet -- gradle.properties README.md README.en.md; then
-    git -C "$CHILD_DIR" checkout -b "$child_branch"
-    git -C "$CHILD_DIR" add gradle.properties README.md README.en.md
-    git -C "$CHILD_DIR" commit -m "chore(release): prepare v$target_version"
-    git -C "$CHILD_DIR" push -u origin "$child_branch"
-
-    child_pr_url=$(gh pr create \
-      --repo "$CHILD_REPO" \
-      --base main \
-      --head "$child_branch" \
-      --title "chore(release): prepare v$target_version" \
-      --body "Automated JetBrains version and README badge synchronization for v$target_version.")
-    child_pr="${child_pr_url##*/}"
-    merge_release_pr "$CHILD_REPO" "$child_pr" "$target_version"
-  elif [ "$child_version" != "$target_version" ]; then
-    die "JetBrains version needs to change to $target_version, but no release diff was produced."
-  fi
-
-  git -C "$CHILD_DIR" fetch origin main
-  git -C "$CHILD_DIR" checkout -B main origin/main
-  [ "$(sed -n 's/^pluginVersion=//p' "$CHILD_DIR/gradle.properties" | head -n 1)" = "$target_version" ] \
-    || die "JetBrains main did not reach version $target_version."
-
-  (cd "$PARENT_DIR" && npm run --silent verify:version)
-
-  parent_branch="release/v${target_version}-${RUN_ID}"
-  git -C "$PARENT_DIR" checkout -b "$parent_branch"
-  git -C "$PARENT_DIR" add package.json package-lock.json README.md README.en.md jetbrains
-  git -C "$PARENT_DIR" commit -m "chore(release): prepare v$target_version"
-  git -C "$PARENT_DIR" push -u origin "$parent_branch"
-
-  parent_pr_url=$(gh pr create \
-    --repo "$PARENT_REPO" \
-    --base main \
-    --head "$parent_branch" \
-    --title "chore(release): prepare v$target_version" \
-    --body "Automated parent version synchronization and JetBrains gitlink update for v$target_version.")
-  parent_pr="${parent_pr_url##*/}"
-  merge_release_pr "$PARENT_REPO" "$parent_pr" "$target_version"
-
-  git -C "$PARENT_DIR" fetch origin main
-  git -C "$PARENT_DIR" checkout -B main origin/main
-  git -C "$PARENT_DIR" submodule update --init jetbrains
-  (cd "$PARENT_DIR""bbçÒ'VâÒ×6–ÆVçBfW&–g“§fW'6–öâ¦f §&VÆV6U÷6†ÒB†v—BÔ2"E$TåEôD•""&Wb×'6R„TB¦v—BÔ2"E$TåEôD•""FrÖ"GFr""G&VÆV6U÷6†"ÖÒ%&VÆV6RGFr ¦v—BÔ2"E$TåEôD•""W6‚÷&–v–â"GFr  ¦–b²Öâ"G´t•D…T%ôõUEUC¢×Ò"Ó²F†Và¢°¢V6†ò'fW'6–öãÒGF&vWE÷fW'6–öâ ¢V6†ò'FsÒGFr ¢V6†ò'&VÆV6U÷6†ÒG&VÆV6U÷6† ¢V6†ò'&VçE÷#ÒG&VçE÷" ¢V6†ò&6†–ÆE÷#ÒF6†–ÆE÷" ¢Òãâ"Dt•D…T%ôõUEUB ¦f ¦V6†ò%&VÆV6VBGFrÓâG&VÆV6U÷6† ¥²Öâ"F6†–ÆE÷""ÒbbV6†ò$¦WD'&–ç2#¢‡GG3¢òöv—F‡V"æ6öÒòD4„”ÄEõ$Uò÷VÆÂòF6†–ÆE÷" ¥²Öâ"G&VçE÷""ÒbbV6†ò%&VçB#¢‡GG3¢òöv—F‡V"æ6öÒòE$TåEõ$Uò÷VÆÂòG&VçE÷" 
+  (cd "$PARENT_DIR" && node scripts/rele[X\ÙKÜŞ[˜Ë]™\œÚ[Û‹šœÈ‰\™Ù]İ™\œÚ[ÛˆŠBˆ
+Ù‰T‘S•ÑTˆˆ	‰ˆœH[ˆK\Ú[[™\šYN™\œÚ[ÛŠB‚ˆÚ[Øœ˜[˜ÚHœ™[X\ÙKİ‰İ\™Ù]İ™\œÚ[ÛŸKIÔ•S—ÒQH‚ˆYˆHÚ]PÈ‰ÒSÑTˆˆY™ˆK\]ZY]KHÜ˜YKœ›Ü\Y\È‘PQQK›Y‘PQQK™[‹›YÈ[‚ˆÚ]PÈ‰ÒSÑTˆˆÚXÚÛİ]Xˆ‰Ú[Øœ˜[˜Ú‚ˆÚ]PÈ‰ÒSÑTˆˆYÜ˜YKœ›Ü\Y\È‘PQQK›Y‘PQQK™[‹›YˆÚ]PÈ‰ÒSÑTˆˆÛÛ[Z][H˜ÚÜ™J™[X\ÙJNˆ™\\™H‰\™Ù]İ™\œÚ[Ûˆ‚ˆÚ]PÈ‰ÒSÑTˆˆ\Ú]HÜšYÚ[ˆ‰Ú[Øœ˜[˜Ú‚‚ˆÚ[Ü—İ\›I
+ÚˆÜ™X]HˆK\™\È‰ÒSÔ‘TÈˆˆKX˜\ÙHXZ[ˆˆKZXY‰Ú[Øœ˜[˜ÚˆˆK]]H˜ÚÜ™J™[X\ÙJNˆ™\\™H‰\™Ù]İ™\œÚ[ÛˆˆˆKX›ÙH]]ÛX]Y™]œ˜Z[œÈ™\œÚ[Ûˆ[™‘PQQH˜YÙHŞ[˜Ú›Ûš^˜][Ûˆ›Üˆ‰\™Ù]İ™\œÚ[Û‹ˆŠBˆÚ[ÜH‰ØÚ[Ü—İ\›ÈÊ‹ßH‚ˆY\™ÙWÜ™[X\ÙWÜˆ‰ÒSÔ‘TÈˆ‰Ú[Üˆˆ‰\™Ù]İ™\œÚ[Ûˆ‚ˆ[YˆÈ‰Ú[İ™\œÚ[ÛˆˆOH‰\™Ù]İ™\œÚ[ÛˆˆNÈ[‚ˆYH’™]œ˜Z[œÈ™\œÚ[Ûˆ™YYÈÈÚ[™ÙHÈ	\™Ù]İ™\œÚ[Û‹]›È™[X\ÙHY™ˆØ\È›ÙXÙYˆ‚ˆšB‚ˆÚ]PÈ‰ÒSÑTˆˆ™]ÚÜšYÚ[ˆXZ[‚ˆÚ]PÈ‰ÒSÑTˆˆÚXÚÛİ]PˆXZ[ˆÜšYÚ[‹ÛXZ[‚ˆÈ‰
+ÙY[ˆ	ÜË×œYÚ[•™\œÚ[ÛKËÜ	È‰ÒSÑT‹ÙÜ˜YKœ›Ü\Y\ÈˆXY[ˆJHˆH‰\™Ù]İ™\œÚ[ÛˆˆHˆYH’™]œ˜Z[œÈXZ[ˆY›İ™XXÚ™\œÚ[Ûˆ	\™Ù]İ™\œÚ[Û‹ˆ‚‚ˆ
+Ù‰T‘S•ÑTˆˆ	‰ˆœH[ˆK\Ú[[™\šYN™\œÚ[ÛŠB‚ˆ\™[Øœ˜[˜ÚHœ™[X\ÙKİ‰İ\™Ù]İ™\œÚ[ÛŸKIÔ•S—ÒQH‚ˆÚ]PÈ‰T‘S•ÑTˆˆÚXÚÛİ]Xˆ‰\™[Øœ˜[˜Ú‚ˆÚ]PÈ‰T‘S•ÑTˆˆYXÚØYÙKšœÛÛˆXÚØYÙK[ØÚËšœÛÛˆ‘PQQK›Y‘PQQK™[‹›Y™]œ˜Z[œÂˆÚ]PÈ‰T‘S•ÑTˆˆÛÛ[Z][H˜ÚÜ™J™[X\ÙJNˆ™\\™H‰\™Ù]İ™\œÚ[Ûˆ‚ˆÚ]PÈ‰T‘S•ÑTˆˆ\Ú]HÜšYÚ[ˆ‰\™[Øœ˜[˜Ú‚‚ˆ\™[Ü—İ\›I
+ÚˆÜ™X]HˆK\™\È‰T‘S•Ô‘TÈˆˆKX˜\ÙHXZ[ˆˆKZXY‰\™[Øœ˜[˜ÚˆˆK]]H˜ÚÜ™J™[X\ÙJNˆ™\\™H‰\™Ù]İ™\œÚ[ÛˆˆˆKX›ÙH]]ÛX]Y\™[™\œÚ[ÛˆŞ[˜Ú›Ûš^˜][Ûˆ[™™]œ˜Z[œÈÚ][šÈ\]H›Üˆ‰\™Ù]İ™\œÚ[Û‹ˆŠBˆ\™[ÜH‰Ü\™[Ü—İ\›ÈÊ‹ßH‚ˆY\™ÙWÜ™[X\ÙWÜˆ‰T‘S•Ô‘TÈˆ‰\™[Üˆˆ‰\™Ù]İ™\œÚ[Ûˆ‚‚ˆÚ]PÈ‰T‘S•ÑTˆˆ™]ÚÜšYÚ[ˆXZ[‚ˆÚ]PÈ‰T‘S•ÑTˆˆÚXÚÛİ]PˆXZ[ˆÜšYÚ[‹ÛXZ[‚ˆÚ]PÈ‰T‘S•ÑTˆˆİX›[Ù[H\]HKZ[š]™]œ˜Z[œÂˆ
+Ù‰T‘S•ÑTˆˆ	‰ˆœH[ˆK\Ú[[™\šYN™\œÚ[ÛŠB™šB‚œ™[X\ÙWÜÚOI
+Ú]PÈ‰T‘S•ÑTˆˆ™]‹\\œÙHPQ
+B™Ú]PÈ‰T‘S•ÑTˆˆYÈXH‰YÈˆ‰™[X\ÙWÜÚHˆ[H”™[X\ÙH	YÈ‚™Ú]PÈ‰T‘S•ÑTˆˆ\ÚÜšYÚ[ˆ‰YÈ‚‚šYˆÈ[ˆ‰ÑÒUP—ÓÕUU‹_HˆNÈ[‚ˆÂˆXÚÈ™\œÚ[ÛI\™Ù]İ™\œÚ[Ûˆ‚ˆXÚÈYÏIYÈ‚ˆXÚÈœ™[X\ÙWÜÚOI™[X\ÙWÜÚH‚ˆXÚÈœ\™[ÜI\™[Üˆ‚ˆXÚÈ˜Ú[ÜIÚ[Üˆ‚ˆHˆ‰ÒUP—ÓÕUU‚™šB‚™XÚÈ”™[X\ÙY	YÈOˆ	™[X\ÙWÜÚH‚–È[ˆ‰Ú[ÜˆˆH	‰ˆXÚÈ’™]œ˜Z[œÈˆÎ‹ËÙÚ]X‹˜ÛÛKÉÒSÔ‘TËÜ[ÉÚ[Üˆ‚–È[ˆ‰\™[ÜˆˆH	‰ˆXÚÈ”\™[ˆÎ‹ËÙÚ]X‹˜ÛÛKÉT‘S•Ô‘TËÜ[É\™[Üˆ‚
