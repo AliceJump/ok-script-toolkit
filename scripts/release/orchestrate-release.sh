@@ -59,19 +59,23 @@ wait_mergeable() {
   die "$repo PR #$pr did not become mergeable (last state: ${state:-unknown})."
 }
 
-wait_pr_checks() {
+wait_pr_ci() {
   local repo="$1"
   local pr="$2"
-  local count="0"
-  for _ in $(seq 1 30); do
-    count=$(gh pr view "$pr" --repo "$repo" --json statusCheckRollup --jq '.statusCheckRollup | length')
-    if [ "$count" -gt 0 ]; then
-      gh pr checks "$pr" --repo "$repo" --watch --interval 5
+  local head_sha
+  local run_id=""
+  head_sha=$(gh pr view "$pr" --repo "$repo" --json headRefOid --jq '.headRefOid')
+
+  for _ in $(seq 1 60); do
+    run_id=$(gh run list       --repo "$repo"       --workflow ci.yml       --event pull_request       --limit 50       --json databaseId,headSha       --jq ".[] | select(.headSha == \"$head_sha\") | .databaseId"       | head -n 1 || true)
+    if [ -n "$run_id" ]; then
+      gh run watch "$run_id" --repo "$repo" --exit-status
       return 0
     fi
     sleep 2
   done
-  die "$repo PR #$pr did not report any CI checks."
+
+  die "$repo PR #$pr did not start ci.yml for head $head_sha."
 }
 
 merge_release_pr() {
@@ -79,7 +83,7 @@ merge_release_pr() {
   local pr="$2"
   local version="$3"
   wait_mergeable "$repo" "$pr"
-  wait_pr_checks "$repo" "$pr"
+  wait_pr_ci "$repo" "$pr"
   gh pr merge "$pr" \
     --repo "$repo" \
     --squash \
