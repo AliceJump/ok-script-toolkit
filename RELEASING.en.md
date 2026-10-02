@@ -2,7 +2,7 @@
 
 [简体中文](RELEASING.md) | [English](RELEASING.en.md)
 
-Releases are coordinated by the parent repository `AliceJump/ok-script-toolkit`. Regular commits and manual runs do not publish; only the first push of a matching version tag triggers a Release:
+Releases are coordinated by the parent repository `AliceJump/ok-script-toolkit`. Regular commits do not publish. A manual `Prepare Release` run prepares both repositories and pushes the version tag; the actual build and Marketplace publishing still start only from the first push of a matching version tag:
 
 ```text
 vMAJOR.MINOR.PATCH
@@ -13,6 +13,22 @@ vMAJOR.MINOR.PATCH
 All Secrets are added to the parent repo:
 
 **Settings → Secrets and variables → Actions → New repository secret**
+
+### One-click Release Bot
+
+The `Prepare Release` workflow needs a GitHub App installed on both the parent repository and the JetBrains sub-repository. The same release bot used by other repositories can be reused.
+
+Configure in the parent repository:
+
+- Actions Variable: `RELEASE_APP_ID`
+- Actions Secret: `RELEASE_APP_PRIVATE_KEY`
+
+The GitHub App needs at least **Contents: Read and write** and **Pull requests: Read and write** on both:
+
+- `AliceJump/ok-script-toolkit`
+- `AliceJump/ok-script-toolkit-jetbrains`
+
+No `main` ruleset bypass is required. The workflow creates a release PR in each repository and uses the existing squash-only merge policy; only the final version tag is pushed directly with the App token. That App-authenticated tag push triggers the existing `release.yml` workflow normally.
 
 ### Visual Studio Marketplace
 
@@ -80,60 +96,25 @@ GitHub Secrets support multi-line text; you can paste PEM/CRT full text directly
 
 ## Each Release
 
-> **Prefer the one-shot script**: `npm run release -- --minor` (or `sh scripts/release.sh --minor`;
-> Windows can use `scripts/release.ps1`). It performs every step below automatically — syncing the
-> seven version locations, verifying, committing/pushing sub-repo then parent, and finally tagging.
-> Add `--dry-run` to preview first. The script only runs on the `main` branch
-> (required for both the parent repo and the jetbrains submodule) and refuses
-> otherwise — the release commit lands on whatever branch it runs from (hit on v1.12.0).
-> If releasing manually, follow the order below exactly and
-> **do not skip any step**.
+There is one recommended entry point:
 
-On Windows, `scripts/release.ps1` first stashes uncommitted changes separately in the
-parent and JetBrains repositories, including untracked files but excluding ignored files.
-The release uses committed code; automatic version increments use the version in `HEAD`.
-It attempts to restore this run's stashes and the original staging state afterward,
-without touching existing stashes. Conflicting stashes are retained and their commit IDs
-are printed. Uncommitted version changes left by a failed release are stashed separately;
-successful commits or pushes are not rolled back. PowerShell uses `-DryRun` to preview
-without stashing or releasing. The Shell script still requires clean workspaces.
+1. Open the parent repository and choose **Actions → Prepare Release → Run workflow**.
+2. Select `patch`, `minor`, or `major` for `bump`; the default remains `minor`.
+3. Normally leave `version` empty and let the workflow increment automatically. Use an explicit `MAJOR.MINOR.PATCH` only to resume/recover a partially prepared release.
+4. If explicit `version` **equals the already synchronized current version** and that tag does not exist, the workflow does not create redundant version PRs. It verifies parent/child versions plus the gitlink and directly creates the missing tag.
 
-Run `node scripts/test_release.js` to verify the PowerShell release flow. It requires
-`git`, `node`, and `pwsh`, and uses temporary repositories and local remotes only.
+One button performs the full orchestration:
 
-For example, releasing `0.6.0`:
+1. Read `main` from the parent and JetBrains repositories and resolve the target version.
+2. Reuse `sync-version.js` to update `package.json`, `package-lock.json`, `jetbrains/gradle.properties`, and all four README badges.
+3. When the child needs a version change, create a JetBrains release branch and PR, then squash-merge it under the repository's existing rules.
+4. Update the parent gitlink, create the parent release PR, and squash-merge it under the existing rules.
+5. Run `verify:version` again, then create and push an annotated `vX.Y.Z` tag on the final parent `main`.
+6. The App-authenticated tag push starts the existing `release.yml`. `Prepare Release` locates that downstream run and waits for it, so the one-click workflow's final result reflects build, GitHub Release, and Marketplace publishing.
 
-```bash
-# 1. Sync all seven version locations: package.json, package-lock.json, jetbrains/gradle.properties
-#    and all four README version badges (missing any one causes Release validation failure)
-npm run version:sync -- 0.6.0
+`release.sh` / `release.ps1` are retained as historical/local-flow references, but their old direct-push-to-`main` behavior is rejected by the current PR-only rulesets and is **no longer the production release entry point**.
 
-# 2. Verify
-npm test
-cd jetbrains
-./gradlew test buildPlugin verifyPluginStructure verifyPluginConfiguration
-cd ..
-
-# 3. Commit sub-repo version changes first
-cd jetbrains
-git add .
-git commit -m "chore(release): prepare v0.6.0"
-git push origin main
-cd ..
-
-# 4. Then commit parent repo version, README badge, and new submodule pointer
-#    Note: README.md must be committed together — version:sync modifies its badge,
-#    and verify-version.js checks it in the tag pipeline (a missing commit in 2026-09
-#    caused v1.6.0 validation failure)
-npm run verify:version
-git add package.json package-lock.json README.md jetbrains
-git commit -m "chore(release): prepare v0.6.0"
-git push origin main
-
-# 5. The only release action: create and push a new tag
-git tag -a v0.6.0 -m "Release v0.6.0"
-git push origin v0.6.0
-```
+If orchestration fails after the child was merged but before the parent/tag step, fix the cause and rerun **Prepare Release** with the same explicit `version`. The orchestrator accepts a JetBrains `main` that has already reached the target and continues from there.
 
 Tag release proceeds as:
 

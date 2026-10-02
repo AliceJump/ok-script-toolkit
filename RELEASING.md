@@ -2,7 +2,7 @@
 
 [简体中文](RELEASING.md) | [English](RELEASING.en.md)
 
-发布由父仓库 `AliceJump/ok-script-toolkit` 统一协调。普通提交和手动运行不会发布；只有首次推送匹配版本的标签会运行 Release：
+发布由父仓库 `AliceJump/ok-script-toolkit` 统一协调。普通提交不会发布；手动运行 `Prepare Release` 会完成两仓发版准备并推送版本标签，而真正的构建与市场发布仍由首次推送匹配版本的标签触发：
 
 ```text
 vMAJOR.MINOR.PATCH
@@ -15,6 +15,22 @@ vMAJOR.MINOR.PATCH
 所有 Secret 都添加到父仓库：
 
 **Settings → Secrets and variables → Actions → New repository secret**
+
+### 一键发版机器人
+
+`Prepare Release` 工作流需要一个安装在父仓库和 JetBrains 子仓库上的 GitHub App。可以直接复用其他仓库的 release bot。
+
+父仓库配置：
+
+- Actions Variable：`RELEASE_APP_ID`
+- Actions Secret：`RELEASE_APP_PRIVATE_KEY`
+
+GitHub App 至少需要两个仓库的 **Contents: Read and write** 与 **Pull requests: Read and write** 权限，并安装到：
+
+- `AliceJump/ok-script-toolkit`
+- `AliceJump/ok-script-toolkit-jetbrains`
+
+不需要给 App 配置 `main` ruleset bypass：工作流会在两个仓库分别创建 release PR，并按现有规则使用 squash merge；只有最后的版本 tag 直接由 App token 推送。这样 tag 的 `push` 事件会正常触发现有 `release.yml`。
 
 ### Visual Studio Marketplace
 
@@ -82,55 +98,25 @@ GitHub Secret 支持多行文本，可直接粘贴 PEM/CRT 全文；也可先 Ba
 
 ## 每次发布
 
-> **推荐用一键脚本**：`npm run release -- --minor`（或 `sh scripts/release.sh --minor`，
-> Windows 可用 `scripts/release.ps1`）。它会自动完成下面全部步骤——同步七处版本、
-> 验证、按「先子后父」提交推送、最后打标签推送。加 `--dry-run` 可先预览。
-> 脚本只允许在 main 分支执行（父仓库与 jetbrains 子模块均要求），其他分支会直接
-> 拒绝——发版 commit 会落在执行时所在的分支（v1.12.0 实测踩坑）。
-> 手动发布时请严格按下面顺序，**不要漏掉任何一步**。
+推荐入口只有一个：
 
-Windows 的 `scripts/release.ps1` 会先分别储藏父仓库和 JetBrains 子仓库的未提交改动，
-包含未跟踪文件，忽略文件不纳入储藏。发版只使用已提交代码，自动递增也以 `HEAD` 中的
-版本为基准。结束后会尝试恢复本次储藏及原来的暂存状态，已有 stash 保持不动。
-恢复冲突时保留对应 stash 并打印其提交编号；发版失败留下的未提交版本改动会单独储藏，
-已成功的提交或推送不会自动回滚。PowerShell 预览参数是 `-DryRun`，不会实际储藏或发版；
-Shell 版仍要求工作区干净。
+1. 打开父仓库 **Actions → Prepare Release → Run workflow**。
+2. `bump` 选择 `patch` / `minor` / `major`；默认仍为 `minor`。
+3. 一般把 `version` 留空，由工作流自动递增；需要恢复一次未完成的发版时可显式填写 `MAJOR.MINOR.PATCH`。
+4. 如果显式 `version` **等于当前已同步版本**且该 tag 尚不存在，工作流不会再制造版本 PR，而是校验父/子仓版本与 gitlink 后直接补 tag。当前这种“版本已经准备好但 tag 没打”的情况就用这个模式。
 
-可运行 `node scripts/test_release.js` 验证 PowerShell 发版流程。测试需要 `git`、`node`
-和 `pwsh`，只使用临时仓库及本地远端，不会触发项目的真实发布。
+一次按钮会自动完成：
 
-例如发布 `0.6.0`：
+1. 读取父仓 `main` 和 JetBrains 子仓 `main`，计算目标版本。
+2. 调用现有 `sync-version.js` 同步 `package.json`、`package-lock.json`、`jetbrains/gradle.properties` 与四份 README 徽章。
+3. 如子仓需要改版本，创建 JetBrains release 分支和 PR，按仓库规则 squash merge。
+4. 更新父仓 gitlink；创建父仓 release PR，按仓库规则 squash merge。
+5. 再次运行 `verify:version`，然后给父仓最终 `main` 创建并推送 `vX.Y.Z` annotated tag。
+6. App token 推送 tag 后，现有 `release.yml` 自动开始；`Prepare Release` 会找到这次下游运行并等待它结束，所以按钮这一条 workflow 的最终状态会直接反映构建、GitHub Release 和 Marketplace 发布是否成功。
 
-```bash
-# 1. 同步全部七处版本：package.json、package-lock.json、jetbrains/gradle.properties
-#    以及四个 README 的 version 徽章（少提交任何一处，Release 的 validate 都会失败）
-npm run version:sync -- 0.6.0
+`release.sh` / `release.ps1` 仍保留作历史和本地流程参考，但在当前 `main` 强制 PR 的 ruleset 下，它们直接 push `main` 的旧流程会被拒绝，**不再作为正式发布入口**。
 
-# 2. 验证
-npm test
-cd jetbrains
-./gradlew test buildPlugin verifyPluginStructure verifyPluginConfiguration
-cd ..
-
-# 3. 先提交子仓库版本变更
-cd jetbrains
-git add .
-git commit -m "chore(release): prepare v0.6.0"
-git push origin main
-cd ..
-
-# 4. 再提交父仓库版本、README 徽章和子模块指针
-#    注意 README.md 必须一起提交：version:sync 会改它的徽章，
-#    而 verify-version.js 会在标签流水线里校验它（2026-09 就漏提交过一次，导致 v1.6.0 校验失败）
-npm run verify:version
-git add package.json package-lock.json README.md jetbrains
-git commit -m "chore(release): prepare v0.6.0"
-git push origin main
-
-# 5. 唯一发布动作：创建并推送新标签
-git tag -a v0.6.0 -m "Release v0.6.0"
-git push origin v0.6.0
-```
+如果编排在“子仓已合并、父仓尚未合并”之类的中间状态失败，修复原因后重新运行 **Prepare Release**，并在 `version` 中填同一个目标版本；脚本允许 JetBrains 已经先到达目标版本，并会继续完成父仓和 tag。
 
 标签发布会依次：
 

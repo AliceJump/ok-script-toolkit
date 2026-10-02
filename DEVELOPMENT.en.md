@@ -232,54 +232,38 @@ VS Code's **Tasks: Run Task** offers the same set (aligned with CI's `jetbrains`
 
 ## Automated Release
 
-- Pull Requests and `main` pushes only run `CI`, testing and packaging both VS Code and JetBrains editions without publishing.
-- **The only way to trigger a release is pushing a new `vX.Y.Z` tag**. The workflow provides no manual release and does not auto-release on `main` push.
-- Versions in `package.json`, `package-lock.json`, `jetbrains/gradle.properties`, and all four README badges must be identical; the tag must equal `v<version>`. Missing or uncommitted any one of them fails the Release `validate` job.
-- The tag workflow tests both editions, builds VSIX and JetBrains ZIP, uploads both installers in a single GitHub Release, then publishes to both Marketplaces using the configured Secrets.
-- GitHub Releases use the repo's built-in `GITHUB_TOKEN`; Marketplace secrets are configured in the parent repo `AliceJump/ok-script-toolkit` only — the sub-repo stores no release credentials.
+- Pull Requests and `main` pushes run `CI` only; they do not publish directly.
+- **The production entry point is `Actions → Prepare Release → Run workflow` in the parent repository.** It handles version calculation, release PRs in both repositories, squash merges, the parent gitlink, the final tag, and waiting for the downstream publishing pipeline.
+- `Prepare Release` defaults to a `minor` bump and also offers `patch` / `major`. Leave `version` empty for automatic calculation; use an explicit version to resume or target a specific prepared release. If it equals the already synchronized current version and the tag is still missing, the workflow validates and creates the tag without redundant PRs.
+- The PR-only rulesets on both `main` branches are preserved: JetBrains and parent changes are always merged through release PRs with squash. Cross-repository writes and the final tag push use a GitHub App token (`RELEASE_APP_ID` + `RELEASE_APP_PRIVATE_KEY`).
+- **The actual build/publish trigger remains the first push of a new `vX.Y.Z` tag.** The tag is pushed by the GitHub App, so the existing `.github/workflows/release.yml` starts normally; the orchestrator waits for that downstream run to finish.
+- The tag workflow re-tests both editions, builds VSIX and JetBrains ZIP, attaches both to one GitHub Release, then publishes to Visual Studio Marketplace and JetBrains Marketplace when credentials are configured.
+- GitHub Releases use the repository's built-in `GITHUB_TOKEN`; Marketplace credentials live only in the parent repository.
 
-Release example:
+Additional one-click release configuration:
 
-> You can also run the one-shot script: `npm run release -- --minor` (equivalent to
-> `sh scripts/release.sh --minor`; on Windows use `scripts/release.ps1`). It performs every
-> step below automatically — add `--dry-run` to preview first.
+| Name | Type | Purpose |
+|---|---|---|
+| `RELEASE_APP_ID` | Actions Variable | Creates an installation token that can operate on both repositories |
+| `RELEASE_APP_PRIVATE_KEY` | Actions Secret | GitHub App private key |
 
-```bash
-# Sync versions across all seven places: package.json, package-lock.json, jetbrains/gradle.properties
-# and all four README version badges (missing any one will cause Release validation failure)
-npm run version:sync -- 0.6.0
-npm test
+Install the GitHub App on both `ok-script-toolkit` and `ok-script-toolkit-jetbrains` and grant at least read/write access to Contents and Pull requests.
 
-# Commit and push sub-repo version changes first
-git -C jetbrains add .
-git -C jetbrains commit -m "chore(release): prepare v0.6.0"
-git -C jetbrains push origin main
+The legacy `npm run release`, `scripts/release.sh`, and `scripts/release.ps1` remain as local-flow references, but they push `main` directly and are rejected by the current rulesets. Use `Prepare Release` for production releases.
 
-# Then commit parent repo version, README badge, and new submodule pointer
-# Note: README.md must be committed too — version:sync rewrites its badge, and missing it fails validation
-git add package.json package-lock.json README.md jetbrains
-git commit -m "chore(release): prepare v0.6.0"
-git push origin main
-
-# This is the only step that triggers the release
-git tag -a v0.6.0 -m "Release v0.6.0"
-git push origin v0.6.0
-```
-
-The tag must be newly pushed; do not move, overwrite, or force-push a published tag. If the build fails, fix the code, bump to a new version, and push a new tag — never reuse an old tag.
+Tags are immutable release identifiers: never move, overwrite, or force-push a published tag. If the post-tag build fails, fix the code and release a new version instead of reusing the tag. If failure happens before the tag is created, rerun the orchestrator with the same explicit `version` to resume the two-repository synchronization.
 
 Required repo Secrets:
 
 | Secret | How to obtain | Required? |
 |---|---|---|
+| `RELEASE_APP_PRIVATE_KEY` | Release GitHub App private key | Required for one-click releases |
 | `VSCE_PAT` | Visual Studio Marketplace publish PAT | Optional; can use OIDC Trusted Publishing instead |
 | `JETBRAINS_TOKEN` | JetBrains Marketplace author page → My Tokens | Required for JetBrains Marketplace publishing |
 | `JETBRAINS_PRIVATE_KEY` | PEM private key full text or Base64 for JetBrains plugin signing | Required for JetBrains Marketplace publishing |
 | `JETBRAINS_PRIVATE_KEY_PASSWORD` | Password set when generating the private key | Required for JetBrains Marketplace publishing |
 | `JETBRAINS_CERTIFICATE_CHAIN` | Matching `chain.crt` full text or Base64 | Required for JetBrains Marketplace publishing |
 
-Add each one in the GitHub repo under **Settings → Secrets and variables → Actions → New repository secret**. When a Marketplace Secret is missing, the GitHub Release is still created but the corresponding Marketplace publish is skipped; if the JetBrains Token is set but signing Secrets are incomplete, the workflow fails to avoid uploading an unsigned plugin.
+Configure Secrets under **Settings → Secrets and variables → Actions** and add `RELEASE_APP_ID` under **Variables**. When using VS Marketplace OIDC, also add `VSCE_USE_OIDC=true`.
 
-When using VS Marketplace OIDC, also add `VSCE_USE_OIDC=true` under **Actions → Variables → New repository variable**; only enable after completing Marketplace Trusted Publishing policy.
-
-See [RELEASING.md](RELEASING.en.md) for full token setup, signing key generation, and step-by-step release instructions.
+See [RELEASING.md](RELEASING.en.md) for complete GitHub App, token, signing, and release instructions.

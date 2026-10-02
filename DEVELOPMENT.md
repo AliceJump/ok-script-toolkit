@@ -230,54 +230,40 @@ VS Code 的 **Tasks: Run Task** 里同样有这几条（与 CI 的 `jetbrains` j
 
 ## 自动发布
 
-- Pull Request 和 `main` 推送只运行 `CI`，同时测试并打包 VS Code 与 JetBrains 两端，不会发布。
-- **发布的唯一触发方式是推送一个尚不存在的 `vX.Y.Z` 标签**。工作流不提供手动发布，也不会因 `main` 推送自动发布。
-- `package.json`、`package-lock.json`、`jetbrains/gradle.properties` 与两个 README 的版本徽章必须完全一致；标签必须等于 `v<version>`。少同步或漏提交任何一处，Release 的 `validate` 都会失败。
-- 标签工作流会测试两端，构建 VSIX 和 JetBrains ZIP，在同一个 GitHub Release 中上传两个安装包，然后按已配置的 Secret 发布两个 Marketplace。
-- GitHub Release 使用仓库内置 `GITHUB_TOKEN`；Marketplace 所需 Secret 统一配置在父仓库 `AliceJump/ok-script-toolkit`，子仓库不保存发布凭据。
+- Pull Request 和 `main` 推送只运行 `CI`，不会直接发布。
+- **正式入口是父仓库 `Actions → Prepare Release → Run workflow`。** 该工作流负责版本计算、两仓 release PR、squash merge、父仓 gitlink、最终 tag，以及等待后续发布流水线。
+- `Prepare Release` 默认按 `minor` 递增，也可选 `patch` / `major`；`version` 留空时自动计算，显式填写时用于恢复/指定版本。若显式版本等于当前已经同步好的版本且 tag 尚不存在，会直接校验并补 tag。
+- 两个 `main` 的 PR-only ruleset 不会被绕过：JetBrains 与父仓都先建 PR 再 squash merge。跨仓写入与最后的 tag push 使用 GitHub App token（`RELEASE_APP_ID` + `RELEASE_APP_PRIVATE_KEY`）。
+- **真正执行构建和发布的开关仍然是首次推送 `vX.Y.Z` tag。** tag 由 GitHub App 推送，因此会触发现有 `.github/workflows/release.yml`；编排工作流会等待它完成。
+- 标签工作流会重新测试两端，构建 VSIX 和 JetBrains ZIP，在同一个 GitHub Release 中上传两个安装包，然后按已配置的 Secret 发布 Visual Studio Marketplace 与 JetBrains Marketplace。
+- GitHub Release 使用仓库内置 `GITHUB_TOKEN`；Marketplace 凭据只放父仓，子仓不保存发布 Secret。
 
-发布示例：
+一键发版所需额外配置：
 
-> 也可以直接跑一键脚本：`npm run release -- --minor`（等价 `sh scripts/release.sh --minor`，
-> Windows 用 `scripts/release.ps1`），它会自动完成下面全部步骤；加 `--dry-run` 先预览。
+| 名称 | 类型 | 用途 |
+|---|---|---|
+| `RELEASE_APP_ID` | Actions Variable | 生成可同时操作父/子仓的 GitHub App installation token |
+| `RELEASE_APP_PRIVATE_KEY` | Actions Secret | GitHub App 私钥 |
 
-```bash
-# 一次更新 package.json、package-lock.json 和 JetBrains pluginVersion
-npm run version:sync -- 0.6.0
-npm test
+GitHub App 需要安装到 `ok-script-toolkit` 和 `ok-script-toolkit-jetbrains`，至少授予 Contents 与 Pull requests 的读写权限。
 
-# 先提交并推送子仓库版本
-git -C jetbrains add .
-git -C jetbrains commit -m "chore(release): prepare v0.6.0"
-git -C jetbrains push origin main
+旧的 `npm run release` / `scripts/release.sh` / `scripts/release.ps1` 仍可作为本地流程参考，但它们会直接 push `main`；当前 ruleset 会拒绝这种写入，因此正式发版请使用 `Prepare Release`。
 
-# 再提交父仓库版本、README 徽章和新的子模块指针
-# 注意 README.md 必须一起提交：version:sync 会改它的徽章，漏了就校验失败
-git add package.json package-lock.json README.md jetbrains
-git commit -m "chore(release): prepare v0.6.0"
-git push origin main
-
-# 只有这一步会触发发布
-git tag -a v0.6.0 -m "Release v0.6.0"
-git push origin v0.6.0
-```
-
-标签必须是首次推送的新标签；不要移动、覆盖或强制推送已发布标签。若构建失败，应修复代码、提升为新版本并推送新标签，而不是复用旧标签。
+标签必须是首次推送的新标签；不要移动、覆盖或强制推送已发布标签。若标签后的构建失败，应修复代码并提升为新版本，不复用旧标签。若失败发生在 tag 之前，可用同一个显式 `version` 重跑编排以继续未完成的两仓同步。
 
 需要的仓库 Secrets：
 
 | Secret | 获取方式 | 是否必需 |
 |---|---|---|
+| `RELEASE_APP_PRIVATE_KEY` | Release GitHub App 私钥 | 一键发版必需 |
 | `VSCE_PAT` | Visual Studio Marketplace 发布 PAT | 可选；可改用 OIDC Trusted Publishing |
 | `JETBRAINS_TOKEN` | JetBrains Marketplace 作者页 → My Tokens | 发布 JetBrains Marketplace 时必需 |
 | `JETBRAINS_PRIVATE_KEY` | JetBrains 插件签名用 PEM 私钥全文或 Base64 | JetBrains Marketplace 发布时必需 |
 | `JETBRAINS_PRIVATE_KEY_PASSWORD` | 生成私钥时设置的密码 | JetBrains Marketplace 发布时必需 |
 | `JETBRAINS_CERTIFICATE_CHAIN` | 与私钥配套的 `chain.crt` 全文或 Base64 | JetBrains Marketplace 发布时必需 |
 
-在 GitHub 仓库进入 **Settings → Secrets and variables → Actions → New repository secret**，逐项添加。缺少 Marketplace Secret 时，GitHub Release 仍会创建，对应商店发布会跳过；若设置了 JetBrains Token 但签名 Secret 不完整，工作流会失败以避免上传未签名插件。
+在 GitHub 仓库进入 **Settings → Secrets and variables → Actions** 配置上述 Secret，并在 **Variables** 中添加 `RELEASE_APP_ID`。启用 VS Marketplace OIDC 时另添加 `VSCE_USE_OIDC=true`。
 
-启用 VS Marketplace OIDC 时，另在 **Actions → Variables → New repository variable** 添加 `VSCE_USE_OIDC=true`；只有完成 Marketplace Trusted Publishing policy 后才启用。
-
-完整的 Token 获取、签名密钥生成和逐次发布步骤见 [RELEASING.md](RELEASING.md)。
+完整的 Token、GitHub App、签名密钥和发布说明见 [RELEASING.md](RELEASING.md)。
 
 ---
