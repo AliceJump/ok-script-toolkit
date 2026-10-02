@@ -351,6 +351,28 @@ const FORCE_KILL_DELAY_MS = 12000;
 /** 参数覆盖推送防抖（毫秒）：表单自动保存很频繁，合并后再推给执行器 */
 const PARAMS_PUSH_DEBOUNCE_MS = 400;
 
+/** 已由 Python/framework logger 写出的时间戳不要重复添加。 */
+const OUTPUT_TIMESTAMP_RE = /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(?:[,.]\d+)?(?:\s|$)/;
+
+function padNumber(value: number, width = 2): string {
+  return String(value).padStart(width, '0');
+}
+
+/**
+ * VS Code 普通 OutputChannel 不会替 append/appendLine 内容生成时间戳。
+ * 执行器里的框架日志通常已经带时间；插件自己的状态行 / toolkit 行则没有。
+ * 这里只给缺失时间戳的非空行补本地时间，保持 Python 原始日志不变且避免双时间戳。
+ */
+export function formatConsoleOutputLine(line: string, now = new Date()): string {
+  if (!line || OUTPUT_TIMESTAMP_RE.test(line)) return line;
+  const timestamp = [
+    now.getFullYear(), '-', padNumber(now.getMonth() + 1), '-', padNumber(now.getDate()), ' ',
+    padNumber(now.getHours()), ':', padNumber(now.getMinutes()), ':', padNumber(now.getSeconds()), ',',
+    padNumber(now.getMilliseconds(), 3),
+  ].join('');
+  return `${timestamp} ${line}`;
+}
+
 /**
  * 侧边栏「ok-script 控制台」视图 —— 任务启动器 + 游戏工具箱的统一宿主。
  *
@@ -405,6 +427,9 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
   private overlayActive = false;
   /** stdout 按行扫描的未完结残留（标记行可能跨 chunk 到达） */
   private stdoutRemainder = '';
+  /** 输出展示也按行处理：与 JetBrains bufferedReader().forEachLine 一致，避免 chunk 中途补时间戳。 */
+  private stdoutOutputRemainder = '';
+  private stderrOutputRemainder = '';
   /** stop 之后的强制结束兜底定时器 */
   private forceKillTimer: NodeJS.Timeout | undefined;
   /** 参数覆盖推送防抖定时器 */
@@ -814,7 +839,7 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
     child.once('error', (error) => {
       launchFailed = true;
       const message = error.message || String(error);
-      this.output.appendLine(`[toolkit] account_store ${command[0]} 启动失败：${message}`);
+      this.appendOutputLine(`[toolkit] account_store ${command[0]} 启动失败：${message}`);
       this.view?.webview.postMessage({
         type: 'accountStore',
         data: null,
@@ -827,7 +852,7 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
       if (!parsed?.ok) {
         const error = parsed?.error || `exit code ${child.exitCode}`;
         // 错误详情进输出频道（toast 会消失，频道可回看）
-        this.output.appendLine(`[toolkit] account_store ${command[0]} 失败：${error}`);
+        this.appendOutputLine(`[toolkit] account_store ${command[0]} 失败：${error}`);
         this.view?.webview.postMessage({
           type: 'accountStore',
           data: null,
@@ -1166,6 +1191,34 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
     }
   }
 
+  /** 插件自己生成的单行日志统一补时间；空行继续只作为视觉分隔。 */
+  private appendOutputLine(line: string): void {
+    this.output.appendLine(formatConsoleOutputLine(line));
+  }
+
+  /**
+   * 子进程输出按完整行再写入 OutputChannel。
+   * 这和 JetBrains 端 bufferedReader().forEachLine 的粒度一致，也避免一个时间戳被拆在两个 data chunk 时误判。
+   */
+  private appendOutputChunk(stream: 'stdout' | 'stderr', text: string): void {
+    const previous = stream === 'stdout' ? this.stdoutOutputRemainder : this.stderrOutputRemainder;
+    const lines = (previous + text).split(/\r?\n/);
+    const remainder = lines.pop() ?? '';
+    if (stream === 'stdout') this.stdoutOutputRemainder = remainder;
+    else this.stderrOutputRemainder = remainder;
+    for (const line of lines) this.appendOutputLine(line);
+  }
+
+  /** 进程退出/启动失败时把最后一个没有换行符的日志也写出来。 */
+  private flushOutputRemainders(): void {
+    const pending = [this.stdoutOutputRemainder, this.stderrOutputRemainder];
+    this.stdoutOutputRemainder = '';
+    this.stderrOutputRemainder = '';
+    for (const line of pending) {
+      if (line) this.appendOutputLine(line);
+    }
+  }
+
   // ── 执行器生命周期 ───────────────────────────────────────────────────
 
   /**
@@ -1221,11 +1274,11 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
 
     this.currentProjectDir = projectDir;
     this.output.clear();
-    this.output.appendLine(tr('▶ Starting executor · project: {path}', { path: projectDir }));
-    this.output.appendLine(tr('Python: {path}', { path: pythonPath }));
+    this.appendOutputLine(tr('▶ Starting executor · project: {path}', { path: projectDir }));
+    this.appendOutputLine(tr('Python: {path}', { path: pythonPath }));
     const overrides = this.collectOverrides();
     const overrideCount = Object.keys(overrides).length;
-    if (overrideCount) this.output.appendLine(tr('Parameter overrides: {count}', { count: overrideCount }));
+    if (overrideCount) this.appendOutputLine(tr('Parameter overrides: {count}', { count: overrideCount }));
     this.warnLegacyPerTaskSettings();
     this.output.show(true);
 
@@ -1252,12 +1305,12 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
     this.overlayActive = toolbox.overlay === true;
     if (this.overlayActive) {
       childEnv.OK_TOOLKIT_USE_OVERLAY = '1';
-      this.output.appendLine(tr('▶ Debug overlay: enabled'));
+      this.appendOutputLine(tr('▶ Debug overlay: enabled'));
     }
     if (toolbox.game) {
       // 实际复用由 connect_game.py 写入的 configs/devices.json selected_hwnd 驱动，
       // 这里仅记录连接来源，便于确认执行器与工具箱操作的是同一个窗口。
-      this.output.appendLine(tr('Reusing game connection from toolbox: {title} (PID {pid})', {
+      this.appendOutputLine(tr('Reusing game connection from toolbox: {title} (PID {pid})', {
         title: toolbox.game.title || String(toolbox.game.hwnd),
         pid: toolbox.game.pid,
       }));
@@ -1265,6 +1318,8 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
 
     this.connecting = true;
     this.stdoutRemainder = '';
+    this.stdoutOutputRemainder = '';
+    this.stderrOutputRemainder = '';
     this.snapshot = {};
     const child = cp.spawn(pythonPath, buildExecutorCommand(this.extensionUri, this.configModule), {
       cwd: projectDir,
@@ -1283,15 +1338,15 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
       if (this.executor !== child) return;
       const text = d.toString('utf8');
       this.scanControlMarkers(text);
-      this.output.append(text);
+      this.appendOutputChunk('stdout', text);
     });
     child.stderr?.on('data', (d) => {
-      if (this.executor === child) this.output.append(d.toString('utf8'));
+      if (this.executor === child) this.appendOutputChunk('stderr', d.toString('utf8'));
     });
     child.on('error', (err) => {
       if (this.executor !== child) return;
-      this.output.appendLine('');
-      this.output.appendLine(tr('❌ Failed to start Python process: {error}', { error: err.message }));
+      this.appendOutputLine('');
+      this.appendOutputLine(tr('❌ Failed to start Python process: {error}', { error: err.message }));
       void vscode.window.showErrorMessage(tr('Failed to launch task: {error}', { error: err.message }));
       this.resetExecutorState();
       this.setStatus('error', tr('Failed to launch task: {error}', { error: err.message }));
@@ -1300,8 +1355,8 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
       if (this.executor !== child) return;
       const wasStopping = this.forceKillTimer !== undefined;
       this.resetExecutorState();
-      this.output.appendLine('');
-      this.output.appendLine(code === 0
+      this.appendOutputLine('');
+      this.appendOutputLine(code === 0
         ? tr('✅ Executor closed')
         : tr('❌ Executor exit code: {code}', { code: code ?? 'null' }));
       this.setStatus(code === 0 ? 'ok' : 'error', code === 0
@@ -1348,7 +1403,7 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
       .filter((config) => config?.extraArgs || (config?.env && Object.keys(config.env).length))
       .length;
     if (!affected) return;
-    this.output.appendLine(tr(
+    this.appendOutputLine(tr(
       'Extra arguments or environment variables are configured for {count} task(s); the executor runs every task in one process, so they no longer apply.',
       { count: affected },
     ));
@@ -1360,8 +1415,8 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
       void vscode.window.showWarningMessage(tr('The executor is not running.'));
       return;
     }
-    this.output.appendLine('');
-    this.output.appendLine(tr('⏹ Stopping executor...'));
+    this.appendOutputLine('');
+    this.appendOutputLine(tr('⏹ Stopping executor...'));
     if (!this.writeCommand('stop')) {
       void this.forceKillExecutor();
       return;
@@ -1399,13 +1454,14 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
       }
     } catch (err) {
       const error = err instanceof Error ? err.message : String(err);
-      this.output.appendLine(tr('❌ Failed to stop executor: {error}', { error }));
+      this.appendOutputLine(tr('❌ Failed to stop executor: {error}', { error }));
       void vscode.window.showErrorMessage(tr('❌ Failed to stop executor: {error}', { error }));
     }
   }
 
   /** 清空执行器会话状态（进程已结束或启动失败） */
   private resetExecutorState(): void {
+    this.flushOutputRemainders();
     if (this.forceKillTimer) {
       clearTimeout(this.forceKillTimer);
       this.forceKillTimer = undefined;
@@ -1446,7 +1502,7 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
         error: err instanceof Error ? err.message : String(err),
       });
       void vscode.window.showErrorMessage(message);
-      this.output.appendLine(message);
+      this.appendOutputLine(message);
       return false;
     }
   }
@@ -1492,7 +1548,7 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
    */
   setOverlayEnabled(enabled: boolean): boolean {
     if (!this.isCurrentProjectExecutor()) return false;
-    this.output.appendLine(enabled ? tr('▶ Enabling debug overlay…') : tr('⏹ Disabling debug overlay…'));
+    this.appendOutputLine(enabled ? tr('▶ Enabling debug overlay…') : tr('⏹ Disabling debug overlay…'));
     return this.writeCommand(enabled ? 'overlay_on' : 'overlay_off');
   }
 
@@ -1506,7 +1562,7 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
         this.applySnapshot(line.slice(line.indexOf('OK_TOOLKIT_STATE:') + 'OK_TOOLKIT_STATE:'.length).trim());
       } else if (line.includes('OK_TOOLKIT_EXECUTOR_READY')) {
         this.connecting = false;
-        this.output.appendLine(tr('Executor ready · {count} trigger task(s) enabled', {
+        this.appendOutputLine(tr('Executor ready · {count} trigger task(s) enabled', {
           count: this.enabledTriggers.size,
         }));
         this.pushExecutorState();
@@ -1560,7 +1616,7 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
   private setPaused(paused: boolean): void {
     if (this.snapshot.paused === paused) return;
     this.snapshot = { ...this.snapshot, paused };
-    this.output.appendLine(paused ? tr('⏸ Task paused') : tr('▶ Task resumed'));
+    this.appendOutputLine(paused ? tr('⏸ Task paused') : tr('▶ Task resumed'));
     this.pushExecutorState();
   }
 
@@ -1568,7 +1624,7 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
   private setOverlayActive(active: boolean): void {
     if (this.overlayActive === active) return;
     this.overlayActive = active;
-    this.output.appendLine(active ? tr('▶ Debug overlay: enabled') : tr('⏹ Debug overlay: disabled'));
+    this.appendOutputLine(active ? tr('▶ Debug overlay: enabled') : tr('⏹ Debug overlay: disabled'));
     if (this.executorProjectDir) {
       saveToolboxState(this.executorProjectDir, { overlay: active });
     }
