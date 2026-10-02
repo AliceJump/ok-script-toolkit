@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       bump:
-        description: Version bump when "version" is empty
+        description: Version bump after the current synchronized version is already tagged
         required: true
         default: minor
         type: choice

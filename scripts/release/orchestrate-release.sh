@@ -107,18 +107,31 @@ child_version=$(sed -n 's/^pluginVersion=//p' "$CHILD_DIR/gradle.properties" | h
 [[ "$current_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "Invalid parent version: $current_version"
 [[ "$child_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "Invalid JetBrains version: $child_version"
 
+current_tag="v$current_version"
+current_tag_exists=false
+if git -C "$PARENT_DIR" ls-remote --exit-code --tags origin "refs/tags/$current_tag" >/dev/null 2>&1; then
+  current_tag_exists=true
+fi
+
 if [ -n "$EXPLICIT_VERSION" ]; then
   target_version="$EXPLICIT_VERSION"
 else
   if [ "$child_version" != "$current_version" ]; then
     die "Parent is $current_version but JetBrains main is $child_version. Resume with an explicit version instead of an automatic bump."
   fi
-  IFS=. read -r major minor patch <<< "$current_version"
-  case "$BUMP_LEVEL" in
-    major) target_version="$((major + 1)).0.0" ;;
-    minor) target_version="$major.$((minor + 1)).0" ;;
-    patch) target_version="$major.$minor.$((patch + 1))" ;;
-  esac
+
+  # If both repositories are already synchronized at the current version but its
+  # tag is missing, finish that prepared release instead of skipping a version.
+  if [ "$current_tag_exists" = false ] && [ "$pinned_child" = "$child_main" ]; then
+    target_version="$current_version"
+  else
+    IFS=. read -r major minor patch <<< "$current_version"
+    case "$BUMP_LEVEL" in
+      major) target_version="$((major + 1)).0.0" ;;
+      minor) target_version="$major.$((minor + 1)).0" ;;
+      patch) target_version="$major.$minor.$((patch + 1))" ;;
+    esac
+  fi
 fi
 
 cmp=$(compare_versions "$target_version" "$current_version")
