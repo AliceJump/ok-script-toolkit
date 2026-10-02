@@ -245,7 +245,7 @@ VS Code 的 **Tasks: Run Task** 里同样有这几条（与 CI 的 `jetbrains` j
 | `RELEASE_APP_ID` | Actions Variable | 生成可同时操作父/子仓的 GitHub App installation token |
 | `RELEASE_APP_PRIVATE_KEY` | Actions Secret | GitHub App 私钥 |
 
-GitHub App 需要安装到 `ok-script-toolkit` 和 `ok-script-toolkit-jetbrains`，至少授予 Contents 与 Pull requests 的读写权限。
+GitHub App 需要安装到 `ok-script-toolkit` 和 `ok-script-toolkit-jetbrains`，至少授予 Contents 与 Pull requests 的读写权限，以及 Actions 的只读权限（用于按 PR head 精确等待 `ci.yml`）。
 
 旧的 `npm run release` / `scripts/release.sh` / `scripts/release.ps1` 仍可作为本地流程参考，但它们会直接 push `main`；当前 ruleset 会拒绝这种写入，因此正式发版请使用 `Prepare Release`。
 
