@@ -14,10 +14,19 @@ import {
   unionPixelBoxes,
 } from './boxResourcePure';
 
-export function boxAnnotationData(root: string, directory: string): CocoAnnotationData {
+function loadBoxAnnotationData(root: string, directory: string): {
+  data: CocoAnnotationData;
+  recoveredInvalid: boolean;
+} {
   const data = new CocoAnnotationData(root, directory, AUTHORING_FILE_NAME);
   data.load();
-  return data;
+  const recoveredInvalid = data.readErrors.length > 0 && !data.readErrors.includes('read');
+  if (recoveredInvalid) data.readErrors = [];
+  return { data, recoveredInvalid };
+}
+
+export function boxAnnotationData(root: string, directory: string): CocoAnnotationData {
+  return loadBoxAnnotationData(root, directory).data;
 }
 
 export function readAuthoringFile(root: string, directory: string): AuthoringFile {
@@ -68,12 +77,17 @@ export function restoreAuthoring(
 }
 
 export function removeImageBoxes(root: string, directory: string, name: string): boolean {
-  const data = boxAnnotationData(root, directory);
+  const loaded = loadBoxAnnotationData(root, directory);
+  const data = loaded.data;
   if (data.readErrors.length) return false;
   if (!fs.existsSync(data.annotationFile)) return true;
-  const image = path.join(data.templatesDir, imageFileName(name));
-  if (!data.getSwapImageEntry(image)) return true;
   try {
+    if (loaded.recoveredInvalid) {
+      data.save();
+      return true;
+    }
+    const image = path.join(data.templatesDir, imageFileName(name));
+    if (!data.getSwapImageEntry(image)) return true;
     data.removeImageEntry(image);
     data.save();
     return true;
