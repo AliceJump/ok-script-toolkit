@@ -15,7 +15,8 @@ assert.strictEqual(history.undo('rect'), undefined, 'rect transaction already un
 assert.strictEqual(history.redo('rect').value, 'r1');
 
 history.setSharedHistory(true);
-assert.strictEqual(history.redo('point').value, 'p1');
+assert.strictEqual(history.redo('point').value, 't1', 'shared redo resumes the global chronology, including edits undone while history was isolated');
+assert.strictEqual(history.redo('point').value, 'p1', 'already-redone rect transaction is skipped rather than applied twice');
 assert.strictEqual(history.canUndo('point'), true);
 
 console.log('annotation history tests passed');
