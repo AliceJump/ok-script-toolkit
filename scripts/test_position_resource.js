@@ -86,6 +86,23 @@ function makePublishFixture() {
 
 {
   const { root, directory } = makePublishFixture();
+  try {
+    fs.writeFileSync(path.join(root, directory, 'boxes.json'), '{ invalid json');
+    const collected = publishStore.collectPositionRuntime(root, directory);
+    assert.strictEqual(collected.file.positions.length, 0);
+    assert(collected.errors.some(error => error.startsWith('boxes:')));
+
+    const result = publishStore.publishPositionJson(root, directory);
+    assert.strictEqual(result.ok, false);
+    assert(result.errors.some(error => error.startsWith('boxes:')));
+    assert.strictEqual(fs.existsSync(path.join(root, 'src', 'scene', 'positions.json')), false);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+}
+
+{
+  const { root, directory } = makePublishFixture();
   const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'ok-position-outside-'));
   try {
     fs.mkdirSync(path.join(root, 'src'), { recursive: true });
