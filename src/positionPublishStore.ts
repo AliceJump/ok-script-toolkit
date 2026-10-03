@@ -19,6 +19,17 @@ export const DEFAULT_POSITION_PY_DIR = 'src/scene';
 
 export type PositionPublishFormat = 'json' | 'python';
 
+export interface PositionResourceSelection {
+  rect: boolean;
+  point: boolean;
+}
+
+export interface PositionPublishOptions extends PositionResourceSelection {
+  jsonTarget: string;
+  pythonTargetDir: string;
+  overwriteManual?: boolean;
+}
+
 export interface PositionPublishResult {
   ok: boolean;
   errors: string[];
@@ -35,33 +46,58 @@ function imageKey(name: string): string {
   return path.basename(name).toLowerCase();
 }
 
-export function collectPositionRuntime(root: string, directory: string): { file: RuntimePositionFile; errors: string[] } {
-  const boxErrors = authoringReadErrors(root, directory);
-  if (boxErrors.length) return { file: { version: 2, positions: [] }, errors: boxErrors.map(error => `boxes:${error}`) };
-  const boxes = readAuthoringFile(root, directory);
-  const points = pointAuthoringPositions(root, directory);
-  if (points.errors.length) return { file: { version: 2, positions: [] }, errors: points.errors.map(error => `points:${error}`) };
+export function collectPositionRuntime(
+  root: string,
+  directory: string,
+  selection: PositionResourceSelection,
+): { file: RuntimePositionFile; errors: string[] } {
+  if (!selection.rect && !selection.point) {
+    return { file: { version: 2, positions: [] }, errors: ['selection'] };
+  }
 
   const images = new Map<string, PositionImage>();
-  for (const image of boxes.images) {
-    images.set(imageKey(image.file), { file: path.basename(image.file), width: image.width, height: image.height });
-  }
-  for (const image of points.images) {
-    const key = imageKey(image.file);
-    const existing = images.get(key);
-    if (existing && (existing.width !== image.width || existing.height !== image.height)) {
-      return { file: { version: 2, positions: [] }, errors: [`imageSize:${image.file}`] };
+  const items: PositionAuthoringItem[] = [];
+
+  if (selection.rect) {
+    const boxErrors = authoringReadErrors(root, directory);
+    if (boxErrors.length) {
+      return { file: { version: 2, positions: [] }, errors: boxErrors.map(error => `boxes:${error}`) };
     }
-    images.set(key, { file: path.basename(image.file), width: image.width, height: image.height });
+    const boxes = readAuthoringFile(root, directory);
+    for (const image of boxes.images) {
+      images.set(imageKey(image.file), {
+        file: path.basename(image.file),
+        width: image.width,
+        height: image.height,
+      });
+    }
+    items.push(...boxes.boxes.map(box => ({
+      path: box.path,
+      image: path.basename(box.image),
+      kind: 'rect' as const,
+      rect: { x: box.bbox[0], y: box.bbox[1], w: box.bbox[2], h: box.bbox[3] },
+    })));
   }
 
-  const items: PositionAuthoringItem[] = boxes.boxes.map(box => ({
-    path: box.path,
-    image: path.basename(box.image),
-    kind: 'rect',
-    rect: { x: box.bbox[0], y: box.bbox[1], w: box.bbox[2], h: box.bbox[3] },
-  }));
-  items.push(...points.items.map(item => ({ ...item, image: path.basename(item.image) })));
+  if (selection.point) {
+    const points = pointAuthoringPositions(root, directory);
+    if (points.errors.length) {
+      return { file: { version: 2, positions: [] }, errors: points.errors.map(error => `points:${error}`) };
+    }
+    for (const image of points.images) {
+      const key = imageKey(image.file);
+      const existing = images.get(key);
+      if (existing && (existing.width !== image.width || existing.height !== image.height)) {
+        return { file: { version: 2, positions: [] }, errors: [`imageSize:${image.file}`] };
+      }
+      images.set(key, {
+        file: path.basename(image.file),
+        width: image.width,
+        height: image.height,
+      });
+    }
+    items.push(...points.items.map(item => ({ ...item, image: path.basename(item.image) })));
+  }
 
   return publishPositions(items, [...images.values()]);
 }
@@ -128,9 +164,10 @@ function restoreSnapshot(file: string, snapshot: FileSnapshot): boolean {
 export function publishPositionJson(
   root: string,
   directory: string,
-  relativeTarget = DEFAULT_POSITION_JSON,
+  selection: PositionResourceSelection,
+  relativeTarget: string,
 ): PositionPublishResult {
-  const projected = collectPositionRuntime(root, directory);
+  const projected = collectPositionRuntime(root, directory, selection);
   if (projected.errors.length) return { ok: false, errors: projected.errors, files: [] };
   if (!projected.file.positions.length) return { ok: false, errors: ['empty'], files: [] };
   const target = ensureInsideRoot(root, relativeTarget);
@@ -146,10 +183,11 @@ export function publishPositionJson(
 export function publishPositionPython(
   root: string,
   directory: string,
-  relativeTargetDir = DEFAULT_POSITION_PY_DIR,
+  selection: PositionResourceSelection,
+  relativeTargetDir: string,
   overwriteManual = false,
 ): PositionPublishResult {
-  const projected = collectPositionRuntime(root, directory);
+  const projected = collectPositionRuntime(root, directory, selection);
   if (projected.errors.length) return { ok: false, errors: projected.errors, files: [] };
   if (!projected.file.positions.length) return { ok: false, errors: ['empty'], files: [] };
   const targetDir = ensureInsideRoot(root, relativeTargetDir);
@@ -185,9 +223,10 @@ export function publishPositionsByFormat(
   root: string,
   directory: string,
   format: PositionPublishFormat,
-  overwriteManual = false,
+  options: PositionPublishOptions,
 ): PositionPublishResult {
+  const selection = { rect: options.rect, point: options.point };
   return format === 'python'
-    ? publishPositionPython(root, directory, DEFAULT_POSITION_PY_DIR, overwriteManual)
-    : publishPositionJson(root, directory, DEFAULT_POSITION_JSON);
+    ? publishPositionPython(root, directory, selection, options.pythonTargetDir, options.overwriteManual ?? false)
+    : publishPositionJson(root, directory, selection, options.jsonTarget);
 }
