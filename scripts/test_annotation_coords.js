@@ -182,8 +182,8 @@ function mouse(type, target, x, y, button = 0) {
     'resized box must copy updated XYXY coords, got ' + lastPost('copyText').text);
 
   before = post('copyText').length;
-  mouse('mousedown', canvas, 700, 520);
-  mouse('mouseup', canvas, 700, 520);
+  mouse('mousedown', canvas, 700, 560);
+  mouse('mouseup', canvas, 700, 560);
   await flush();
   assert(post('copyText').length === before, 'clicking empty area must clear the box without copying');
 
@@ -196,8 +196,8 @@ function mouse(type, target, x, y, button = 0) {
 
   assert(post('save').length === 0, 'coord box must never be written to annotations/COCO');
 
-  mouse('mousedown', canvas, 700, 520);
-  mouse('mouseup', canvas, 700, 520);
+  mouse('mousedown', canvas, 700, 560);
+  mouse('mouseup', canvas, 700, 560);
   await flush();
   mouse('mousedown', canvas, 500, 345);
   mouse('mousemove', canvas, 100, 120);
@@ -213,13 +213,12 @@ function mouse(type, target, x, y, button = 0) {
   assert(lastPost('copyText').text === '0.0000, 0.0000, 1.0000, 1.0000',
     'out-of-range selection must clamp to 0..1');
 
-  // User preference: checked means coordinate copy/readout becomes XYWH.
   formatChk.checked = true;
   formatChk.dispatchEvent(new window.Event('change', { bubbles: true }));
   assert(webviewState.coordPreferXywh === true, 'coordinate format preference must persist in webview state');
 
-  mouse('mousedown', canvas, 700, 520);
-  mouse('mouseup', canvas, 700, 520);
+  mouse('mousedown', canvas, 700, 560);
+  mouse('mouseup', canvas, 700, 560);
   await flush();
   mouse('mousedown', canvas, 100, 120);
   mouse('mousemove', canvas, 500, 345);
