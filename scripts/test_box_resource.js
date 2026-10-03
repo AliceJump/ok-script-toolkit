@@ -87,22 +87,28 @@ try {
   assert(store.restoreAuthoring(project, directory, snapshot));
   assert.deepStrictEqual(store.readAuthoringFile(project, directory).boxes.map(box => box.path).sort(), ['panels.allowed', 'screen.first']);
 
-  // Template recovery is read-only and only exposes annotations whose image exists and bbox fits it.
+  // Template recovery is read-only and only exposes annotations whose retained image exists and bbox fits it.
   const templateSource = path.join(folder, 'coco_annotations.json');
   fs.writeFileSync(templateSource, JSON.stringify({
-    images: [{ id: 1, file_name: 'a.png', width: 100, height: 100 }],
+    images: [
+      { id: 1, file_name: 'a.png', width: 100, height: 100 },
+      { id: 2, file_name: 'bad.png', width: 'invalid', height: 100 },
+    ],
     categories: [{ id: 1, name: 'template.valid', supercategory: '' }],
     annotations: [
       { id: 1, image_id: 1, category_id: 1, bbox: [1, 2, 3, 4], area: 12, iscrowd: 0 },
       { id: 2, image_id: 1, category_id: 1, bbox: [90, 90, 20, 20], area: 400, iscrowd: 0 },
       { id: 3, image_id: 999, category_id: 1, bbox: [1, 1, 2, 2], area: 4, iscrowd: 0 },
+      { id: 4, image_id: 2, category_id: 1, bbox: [1, 1, 2, 2], area: 4, iscrowd: 0 },
     ],
   }), 'utf8');
   const templateData = new CocoAnnotationData(project, directory);
   templateData.load();
   assert(templateData.readErrors.length > 0, 'invalid COCO remains invalid and cannot be saved');
+  assert.deepStrictEqual(templateData.data.images.map(image => image.id), [1],
+    'recovery display excludes structurally invalid images');
   assert.deepStrictEqual(templateData.data.annotations.map(annotation => annotation.id), [1],
-    'recovery display filters missing-image and out-of-bounds annotations');
+    'recovery display filters missing-image, filtered-image, and out-of-bounds annotations');
 
   // Unsupported legacy / malformed rect sources remain invalid for read/publish,
   // but edit paths may discard them and overwrite with current COCO data.
