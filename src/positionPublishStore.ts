@@ -46,6 +46,28 @@ function imageKey(name: string): string {
   return path.basename(name).toLowerCase();
 }
 
+/** Conflicts in the single exported PositionMap namespace, regardless of authoring resource kind. */
+export function positionNamespaceConflicts(
+  selectedPaths: readonly string[],
+  otherPaths: readonly string[],
+): string[] {
+  const errors = new Set<string>();
+  for (const selectedRaw of selectedPaths) {
+    const selected = selectedRaw.trim();
+    if (!selected) continue;
+    for (const otherRaw of otherPaths) {
+      const other = otherRaw.trim();
+      if (!other) continue;
+      if (selected === other) {
+        errors.add(`duplicate:${selected}`);
+      } else if (selected.startsWith(`${other}.`) || other.startsWith(`${selected}.`)) {
+        errors.add(`prefix:${selected}`);
+      }
+    }
+  }
+  return [...errors];
+}
+
 export function collectPositionRuntime(
   root: string,
   directory: string,
@@ -97,6 +119,23 @@ export function collectPositionRuntime(
       });
     }
     items.push(...points.items.map(item => ({ ...item, image: path.basename(item.image) })));
+  }
+
+  // A partial export still writes the complete output file. Check the shared namespace against the
+  // unselected catalog when that catalog is readable, but do not let an invalid unselected source
+  // block an intentionally isolated Rect-only / Point-only publish.
+  if (selection.rect !== selection.point) {
+    const selectedPaths = items.map(item => item.path);
+    let otherPaths: string[] = [];
+    if (selection.rect) {
+      const points = pointAuthoringPositions(root, directory);
+      if (!points.errors.length) otherPaths = points.items.map(item => item.path);
+    } else {
+      const boxErrors = authoringReadErrors(root, directory);
+      if (!boxErrors.length) otherPaths = readAuthoringFile(root, directory).boxes.map(box => box.path);
+    }
+    const conflicts = positionNamespaceConflicts(selectedPaths, otherPaths);
+    if (conflicts.length) return { file: { version: 2, positions: [] }, errors: conflicts };
   }
 
   return publishPositions(items, [...images.values()]);
@@ -217,16 +256,4 @@ export function publishPositionPython(
     const restored = restoreSnapshot(ratioFile, ratioBefore) && restoreSnapshot(mapFile, mapBefore);
     return { ok: false, errors: [restored ? 'write' : 'write:rollback'], files: [] };
   }
-}
-
-export function publishPositionsByFormat(
-  root: string,
-  directory: string,
-  format: PositionPublishFormat,
-  options: PositionPublishOptions,
-): PositionPublishResult {
-  const selection = { rect: options.rect, point: options.point };
-  return format === 'python'
-    ? publishPositionPython(root, directory, selection, options.pythonTargetDir, options.overwriteManual ?? false)
-    : publishPositionJson(root, directory, selection, options.jsonTarget);
 }
