@@ -171,10 +171,11 @@ function nameOpenPaste(name) {
   nameOpenPaste('screen.amb_xywh');
   await flush();
 
-  // Only XYXY is valid because XYWH would exceed the normalized image bounds.
-  message({ type: 'clipboardText', text: '0.1, 0.1, 0.9, 0.9' });
+  // Only XYXY is valid: XYWH would extend from 0.2 by 0.9 and exceed the normalized image bounds.
+  message({ type: 'clipboardText', text: '0.2, 0.2, 0.9, 0.9' });
   await flush();
-  assert(Number(document.getElementById('bboxW').value) === 800 && Number(document.getElementById('bboxH').value) === 800,
+  assert(Number(document.getElementById('bboxX').value) === 200 && Number(document.getElementById('bboxY').value) === 200
+    && Number(document.getElementById('bboxW').value) === 700 && Number(document.getElementById('bboxH').value) === 700,
     'XYXY-only tuple is auto-detected even while XYWH is preferred');
   document.getElementById('bboxCancel').click();
   await flush();
