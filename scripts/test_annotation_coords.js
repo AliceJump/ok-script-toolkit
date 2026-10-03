@@ -7,7 +7,7 @@
  *  - HTMLImageElement#src 赋值 → 异步触发 onload（jsdom 不会真正加载图片）
  *  - HTMLImageElement#width/height/complete → 从 src 中解析 "1920x1080"
  *
- * 断言重点是归一化坐标的数值：x,y,tox,toy（4 位小数，clamp 到 0..1）。
+ * 断言重点是归一化坐标的数值：x,y,w,h（4 位小数，clamp 到 0..1）。
  */
 const fs = require('fs');
 const path = require('path');
@@ -166,8 +166,8 @@ function mouse(type, target, x, y, button = 0) {
 
   const copy = lastPost('copyText');
   assert(copy, 'box-select in coord mode must post a copyText message');
-  assert(copy.text === '0.1250, 0.1000, 0.6250, 0.6000',
-    'expected normalized x,y,tox,toy, got ' + copy.text);
+  assert(copy.text === '0.1250, 0.1000, 0.5000, 0.5000',
+    'expected normalized x,y,w,h, got ' + copy.text);
   assert(coordBtn.classList.contains('active'),
     'coord mode must stay active so the box can still be adjusted');
 
@@ -178,7 +178,7 @@ function mouse(type, target, x, y, button = 0) {
   mouse('mouseup', canvas, 350, 260);
   await flush();
   assert(post('copyText').length === before + 1, 'moving the box must copy again');
-  assert(lastPost('copyText').text === '0.1875, 0.1667, 0.6875, 0.6667',
+  assert(lastPost('copyText').text === '0.1875, 0.1667, 0.5000, 0.5000',
     'moved box must copy the updated coords, got ' + lastPost('copyText').text);
 
   /* ---------- 拖动手柄：缩放并重新复制 ---------- */
@@ -188,7 +188,7 @@ function mouse(type, target, x, y, button = 0) {
   mouse('mouseup', canvas, 610, 405);
   await flush();
   assert(post('copyText').length === before + 1, 'resizing the box must copy again');
-  assert(lastPost('copyText').text === '0.1875, 0.1667, 0.7625, 0.7333',
+  assert(lastPost('copyText').text === '0.1875, 0.1667, 0.5750, 0.5667',
     'resized box must copy the updated coords, got ' + lastPost('copyText').text);
 
   /* ---------- 点击非交互部分清除坐标框 ---------- */
@@ -204,7 +204,7 @@ function mouse(type, target, x, y, button = 0) {
   mouse('mousemove', canvas, 500, 345);
   mouse('mouseup', canvas, 500, 345);
   await flush();
-  assert(lastPost('copyText').text === '0.1250, 0.1000, 0.6250, 0.6000',
+  assert(lastPost('copyText').text === '0.1250, 0.1000, 0.5000, 0.5000',
     'a fresh box can be created after clearing, got ' + lastPost('copyText').text);
 
   /* ---------- 坐标框不进入标注数据（不落盘） ---------- */
@@ -219,7 +219,7 @@ function mouse(type, target, x, y, button = 0) {
   mouse('mousemove', canvas, 100, 120);
   mouse('mouseup', canvas, 100, 120);
   await flush();
-  assert(lastPost('copyText').text === '0.1250, 0.1000, 0.6250, 0.6000',
+  assert(lastPost('copyText').text === '0.1250, 0.1000, 0.5000, 0.5000',
     'reverse drag must normalize to the same box, got ' + lastPost('copyText').text);
 
   /* ---------- 越界框选必须 clamp ---------- */
