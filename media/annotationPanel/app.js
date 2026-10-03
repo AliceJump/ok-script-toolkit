@@ -24,6 +24,7 @@
   let offsetY = 0;
   let annotations = [];
   let selectedIdx = -1;
+  const selectedIndices = new Set();
   let hoveredIdx = -1;
   let nextId = 1;
   let listSignature = '';
@@ -31,7 +32,6 @@
   let drawStart = null;
   let drawPreview = null;
   let drawDragging = false;
-  let clipboard = null;
   let coordBox = null;
   let coordDrag = null;
   let lastCoords = '';
@@ -49,7 +49,7 @@
   const hiddenByFileAndMode = new Map();
   const modeCache = { template: [], rect: [], point: [] };
 
-  const savedUi = vscode.getState() || {};
+  const savedUi = (typeof vscode.getState === 'function' && vscode.getState()) || {};
   let sharedHistory = savedUi.sharedHistory !== false;
   const history = {
     nextId: 1,
@@ -78,6 +78,21 @@
 
   function isPositionMode() { return annotationMode === 'rect' || annotationMode === 'point'; }
   function historyKey() { return annotationMode; }
+  function selectedList() { return [...selectedIndices].filter(i => i >= 0 && i < annotations.length).sort((a, b) => a - b); }
+  function hasSelection() { return selectedIndices.size > 0; }
+  function isSelected(index) { return selectedIndices.has(index); }
+  function clearSelection() { selectedIndices.clear(); selectedIdx = -1; listSignature = ''; }
+  function selectOnly(index) {
+    selectedIndices.clear();
+    selectedIdx = index;
+    if (index >= 0) selectedIndices.add(index);
+    listSignature = '';
+  }
+  function toggleSelection(index) {
+    if (selectedIndices.has(index)) selectedIndices.delete(index); else selectedIndices.add(index);
+    selectedIdx = selectedIndices.has(index) ? index : (selectedList().at(-1) ?? -1);
+    listSignature = '';
+  }
 
   function clearHistory() {
     history.globalUndo.length = 0;
@@ -117,9 +132,8 @@
     if (tx.mode === annotationMode) {
       annotations = clone(snapshot);
       nextId = annotations.length ? Math.max(...annotations.map(a => a.id)) + 1 : 1;
-      selectedIdx = -1;
+      clearSelection();
       hoveredIdx = -1;
-      listSignature = '';
       paint();
     }
     vscode.postMessage({ type: 'saveMode', mode: tx.mode, annotations: clone(snapshot) });
@@ -250,12 +264,26 @@
     return { idx: -1, handle: null };
   }
 
+  function modeNames(originalName) {
+    const names = new Set(Object.keys(imageData?.allCategories || {}));
+    for (const ann of annotations) {
+      if (ann.category !== originalName) names.add(String(ann.category).trim());
+    }
+    return names;
+  }
+
   function pathOccupied(value, originalPath) {
-    const occupied = imageData?.positionPaths || {};
     const trimmed = String(value || '').trim();
-    if (originalPath != null && trimmed === String(originalPath).trim()) return undefined;
-    if (occupied[trimmed]) return { code: 'duplicate' };
-    return undefined;
+    return modeNames(originalPath).has(trimmed) ? { code: 'duplicate' } : undefined;
+  }
+
+  function nextUniqueName(value) {
+    const base = String(value || '').trim();
+    const names = modeNames(null);
+    if (!names.has(base)) return base;
+    let suffix = 2;
+    while (names.has(base + suffix)) suffix++;
+    return base + suffix;
   }
 
   function pathProblem(value) {
@@ -283,8 +311,8 @@
   function syncAnnotationList() {
     const rows = document.getElementById('annotationRows');
     const hidden = hiddenSet();
-    const sig = annotationMode + '#' + selectedIdx + '#' + annotations.map(ann => `${ann.id}\t${ann.category}\t${hidden.has(ann.category) ? 0 : 1}`).join('\n');
-    document.getElementById('onlyCurrentBtn').disabled = selectedIdx < 0;
+    const sig = annotationMode + '#' + selectedList().join(',') + '#' + annotations.map(ann => `${ann.id}\t${ann.category}\t${hidden.has(ann.category) ? 0 : 1}`).join('\n');
+    document.getElementById('onlyCurrentBtn').disabled = !hasSelection();
     if (sig === listSignature) return;
     listSignature = sig;
     rows.replaceChildren();
@@ -297,7 +325,7 @@
     }
     annotations.forEach((ann, index) => {
       const row = document.createElement('div');
-      row.className = 'annotation-row' + (index === selectedIdx ? ' is-selected' : '');
+      row.className = 'annotation-row' + (isSelected(index) ? ' is-selected' : '');
       const check = document.createElement('input');
       check.type = 'checkbox';
       check.checked = !hidden.has(ann.category);
@@ -311,7 +339,10 @@
       text.type = 'button';
       text.className = 'annotation-name';
       text.textContent = ann.category;
-      text.onclick = () => { selectedIdx = index; listSignature = ''; paint(); };
+      text.onclick = (event) => {
+        if (event.ctrlKey || event.metaKey || event.shiftKey) toggleSelection(index); else selectOnly(index);
+        paint();
+      };
       row.append(check, text);
       rows.append(row);
     });
@@ -319,7 +350,7 @@
 
   function paintPoint(ann, index) {
     const [wx, wy] = imgToWidget(ann.x, ann.y);
-    const isSel = index === selectedIdx;
+    const isSel = isSelected(index);
     const isHov = index === hoveredIdx;
     const color = isSel ? '#0078d4' : isHov ? '#ffa500' : '#ff3c3c';
     ctx.strokeStyle = color;
@@ -333,7 +364,7 @@
 
   function paintRect(ann, index) {
     const r = annWidgetRect(ann);
-    const isSel = index === selectedIdx;
+    const isSel = isSelected(index);
     const isHov = index === hoveredIdx;
     const color = isSel ? '#0078d4' : isHov ? '#ffa500' : '#ff3c3c';
     ctx.strokeStyle = color;
@@ -409,13 +440,17 @@
   }
 
   function nudgeSelected(dx, dy) {
-    const ann = annotations[selectedIdx];
-    if (!ann || !isShown(ann)) return false;
+    const indices = selectedList();
+    if (!indices.length || !img) return false;
     const before = clone(annotations);
-    const maxX = pointMode ? img?.width ?? ann.x + dx : (img?.width ?? ann.x + ann.w) - ann.w;
-    const maxY = pointMode ? img?.height ?? ann.y + dy : (img?.height ?? ann.y + ann.h) - ann.h;
-    ann.x = Math.round(Math.max(0, Math.min(ann.x + dx, maxX)));
-    ann.y = Math.round(Math.max(0, Math.min(ann.y + dy, maxY)));
+    for (const index of indices) {
+      const ann = annotations[index];
+      if (!ann || !isShown(ann)) continue;
+      const maxX = pointMode ? img.width : img.width - ann.w;
+      const maxY = pointMode ? img.height : img.height - ann.h;
+      ann.x = Math.round(Math.max(0, Math.min(ann.x + dx, maxX)));
+      ann.y = Math.round(Math.max(0, Math.min(ann.y + dy, maxY)));
+    }
     commitHistory(before);
     saveAnnotations();
     paint();
@@ -423,10 +458,11 @@
   }
 
   function deleteSelected() {
-    if (selectedIdx < 0 || !annotations[selectedIdx]) return;
+    const indices = selectedList();
+    if (!indices.length) return;
     const before = clone(annotations);
-    annotations.splice(selectedIdx, 1);
-    selectedIdx = -1;
+    for (const index of [...indices].sort((a, b) => b - a)) annotations.splice(index, 1);
+    clearSelection();
     hoveredIdx = -1;
     commitHistory(before);
     saveAnnotations();
@@ -438,7 +474,7 @@
     drawStart = null;
     drawPreview = null;
     drawDragging = false;
-    if (next !== 'copycoord') { coordBox = null; coordDrag = null; lastCoords = ''; }
+    if (next !== 'copycoord') { coordBox = null; coordDrag = null; lastCoords = ''; document.getElementById('colorInfo').textContent = ''; }
     document.getElementById('drawBtn').classList.toggle('active', next === 'draw');
     document.getElementById('coordBtn').classList.toggle('active', next === 'copycoord');
     document.getElementById('deleteBtn').classList.toggle('active', next === 'delete');
@@ -449,7 +485,7 @@
   function requestAnnotationMode(next) {
     if (next === annotationMode) return;
     setToolMode('none');
-    selectedIdx = -1;
+    clearSelection();
     hoveredIdx = -1;
     annotationMode = next;
     pointMode = next === 'point';
@@ -500,9 +536,8 @@
         return !problem;
       }
       if (!name) { errorEl.textContent = t('categoryRequired'); ok.disabled = true; return false; }
-      const existing = imageData?.allCategories || {};
-      if (name !== category && existing[name]) {
-        errorEl.textContent = t('categoryExists', { file: existing[name] }); ok.disabled = true; return false;
+      if (name !== category && modeNames(category).has(name)) {
+        errorEl.textContent = t('categoryExists', { file: imageData?.allCategories?.[name] || imageData?.filename || '' }); ok.disabled = true; return false;
       }
       errorEl.textContent = '';
       ok.disabled = false;
@@ -513,7 +548,7 @@
     ok.onclick = () => {
       if (!validate()) return;
       modal.classList.remove('visible');
-      callback(catInput.value.trim(), +xInput.value, +yInput.value, pointMode ? 1 : +wInput.value, pointMode ? 1 : +hInput.value);
+      callback(catInput.value.trim(), +xInput.value, +yInput.value, pointMode ? 0 : +wInput.value, pointMode ? 0 : +hInput.value);
     };
     document.getElementById('bboxCancel').onclick = () => { modal.classList.remove('visible'); callback(null); };
   }
@@ -527,8 +562,8 @@
       ann.category = cat;
       ann.x = Math.round(x);
       ann.y = Math.round(y);
-      ann.w = pointMode ? 1 : Math.round(w);
-      ann.h = pointMode ? 1 : Math.round(h);
+      ann.w = pointMode ? 0 : Math.round(w);
+      ann.h = pointMode ? 0 : Math.round(h);
       if (previous !== cat && hiddenSet().has(previous)) { hiddenSet().delete(previous); hiddenSet().add(cat); }
       commitHistory(before);
       saveAnnotations();
@@ -547,6 +582,7 @@
       if (cat) {
         const before = clone(annotations);
         annotations.push({ id: nextId++, category: cat, x: bx, y: by, w: bw, h: bh });
+        selectOnly(annotations.length - 1);
         commitHistory(before);
         saveAnnotations();
       }
@@ -559,10 +595,11 @@
     const [ix, iy] = widgetToImg(px, py);
     const x = Math.round(Math.max(0, Math.min(ix, img?.width ?? ix)));
     const y = Math.round(Math.max(0, Math.min(iy, img?.height ?? iy)));
-    showShapeDialog('', x, y, 1, 1, (cat, bx, by) => {
+    showShapeDialog('', x, y, 0, 0, (cat, bx, by) => {
       if (cat) {
         const before = clone(annotations);
-        annotations.push({ id: nextId++, category: cat, x: Math.round(bx), y: Math.round(by), w: 1, h: 1 });
+        annotations.push({ id: nextId++, category: cat, x: Math.round(bx), y: Math.round(by), w: 0, h: 0 });
+        selectOnly(annotations.length - 1);
         commitHistory(before);
         saveAnnotations();
       }
@@ -595,25 +632,144 @@
     if (!img) return null;
     const [ix1, iy1] = widgetToImg(wx1, wy1);
     const [ix2, iy2] = widgetToImg(wx2, wy2);
-    return {
-      x: clamp01(Math.min(ix1, ix2) / img.width),
-      y: clamp01(Math.min(iy1, iy2) / img.height),
-      tox: clamp01(Math.max(ix1, ix2) / img.width),
-      toy: clamp01(Math.max(iy1, iy2) / img.height),
-    };
+    const x1 = clamp01(Math.min(ix1, ix2) / img.width);
+    const y1 = clamp01(Math.min(iy1, iy2) / img.height);
+    const x2 = clamp01(Math.max(ix1, ix2) / img.width);
+    const y2 = clamp01(Math.max(iy1, iy2) / img.height);
+    return { x: x1, y: y1, w: x2 - x1, h: y2 - y1 };
   }
 
   function formatNormalizedBox(box) {
-    return [box.x, box.y, box.tox, box.toy].map(v => v.toFixed(COORD_DECIMALS)).join(copyCoordsSpace ? ', ' : ',');
+    return [box.x, box.y, box.w, box.h].map(v => v.toFixed(COORD_DECIMALS)).join(copyCoordsSpace ? ', ' : ',');
+  }
+
+  function annotationNormalizedBox(ann) {
+    if (!img) return null;
+    return {
+      x: clamp01(ann.x / img.width),
+      y: clamp01(ann.y / img.height),
+      w: pointMode ? 0 : clamp01(ann.w / img.width),
+      h: pointMode ? 0 : clamp01(ann.h / img.height),
+    };
+  }
+
+  function selectedUnionBox() {
+    if (!img) return null;
+    const indices = selectedList();
+    if (!indices.length) return null;
+    let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
+    for (const index of indices) {
+      const ann = annotations[index];
+      x1 = Math.min(x1, ann.x); y1 = Math.min(y1, ann.y);
+      x2 = Math.max(x2, ann.x + (pointMode ? 0 : ann.w));
+      y2 = Math.max(y2, ann.y + (pointMode ? 0 : ann.h));
+    }
+    return {
+      x: clamp01(x1 / img.width), y: clamp01(y1 / img.height),
+      w: clamp01((x2 - x1) / img.width), h: clamp01((y2 - y1) / img.height),
+    };
+  }
+
+  function copySelectedAnnotations() {
+    const indices = selectedList();
+    if (!indices.length || !img) return false;
+    let text;
+    if (indices.length === 1) {
+      const ann = annotations[indices[0]];
+      const box = annotationNormalizedBox(ann);
+      text = JSON.stringify({ name: ann.category, bbox: [box.x, box.y, box.w, box.h].map(v => Number(v.toFixed(COORD_DECIMALS))) });
+    } else {
+      const box = selectedUnionBox();
+      text = formatNormalizedBox(box);
+    }
+    vscode.postMessage({ type: 'copyText', text });
+    return true;
+  }
+
+  function parseClipboardPayload(text) {
+    const raw = String(text || '').trim();
+    if (!raw) return null;
+    let name;
+    let values;
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) values = parsed;
+      else if (parsed && typeof parsed === 'object' && Array.isArray(parsed.bbox)) {
+        values = parsed.bbox;
+        if (typeof parsed.name === 'string' && parsed.name.trim()) name = parsed.name.trim();
+      }
+    } catch { /* plain four-number format below */ }
+    if (!values) {
+      const plain = raw.replace(/[\[\](){}]/g, ' ').split(/[\s,;]+/).filter(Boolean).map(Number);
+      if (plain.length === 4 && plain.every(Number.isFinite)) values = plain;
+    }
+    if (!Array.isArray(values) || values.length !== 4) return null;
+    const nums = values.map(Number);
+    if (!nums.every(Number.isFinite)) return null;
+    const [x, y, w, h] = nums;
+    const eps = 1e-6;
+    if (x < 0 || y < 0 || w < 0 || h < 0 || x > 1 + eps || y > 1 + eps || w > 1 + eps || h > 1 + eps
+      || x + w > 1 + eps || y + h > 1 + eps) return null;
+    if ((w === 0) !== (h === 0)) return null;
+    return { name, box: { x: clamp01(x), y: clamp01(y), w: clamp01(w), h: clamp01(h) } };
+  }
+
+  function pasteStatus(text) {
+    const info = document.getElementById('colorInfo');
+    if (info) info.textContent = text;
+  }
+
+  function addPastedAnnotation(name, pixel) {
+    const before = clone(annotations);
+    annotations.push({ id: nextId++, category: name, x: pixel.x, y: pixel.y, w: pixel.w, h: pixel.h });
+    selectOnly(annotations.length - 1);
+    commitHistory(before);
+    saveAnnotations();
+    paint();
+  }
+
+  function pasteClipboardText(text) {
+    if (!img || toolMode !== 'none') return;
+    const payload = parseClipboardPayload(text);
+    if (!payload) { pasteStatus('Clipboard is not a normalized x, y, w, h annotation.'); return; }
+    const zeroSize = payload.box.w === 0 && payload.box.h === 0;
+    if (zeroSize && annotationMode !== 'point') {
+      pasteStatus('Zero-size coordinates can only be pasted in Point mode.');
+      return;
+    }
+    if (!zeroSize && annotationMode === 'point') {
+      pasteStatus('Point mode only accepts zero-size coordinates.');
+      return;
+    }
+    const pixel = {
+      x: Math.round(payload.box.x * img.width),
+      y: Math.round(payload.box.y * img.height),
+      w: zeroSize ? 0 : Math.max(1, Math.round(payload.box.w * img.width)),
+      h: zeroSize ? 0 : Math.max(1, Math.round(payload.box.h * img.height)),
+    };
+    if (payload.name) {
+      const unique = nextUniqueName(payload.name);
+      if (isPositionMode() && pathProblem(unique)) {
+        showShapeDialog(unique, pixel.x, pixel.y, pixel.w, pixel.h, (cat, x, y, w, h) => {
+          if (cat) addPastedAnnotation(cat, { x: Math.round(x), y: Math.round(y), w: pointMode ? 0 : Math.round(w), h: pointMode ? 0 : Math.round(h) });
+        });
+        return;
+      }
+      addPastedAnnotation(unique, pixel);
+      return;
+    }
+    showShapeDialog('', pixel.x, pixel.y, pixel.w, pixel.h, (cat, x, y, w, h) => {
+      if (cat) addPastedAnnotation(cat, { x: Math.round(x), y: Math.round(y), w: pointMode ? 0 : Math.round(w), h: pointMode ? 0 : Math.round(h) });
+    });
   }
 
   function finishCoord(px, py) {
     const box = drawStart ? normalizedBox(drawStart.x, drawStart.y, px, py) : null;
     drawStart = null; drawPreview = null; drawDragging = false;
-    if (!box || box.tox - box.x <= 0.002 || box.toy - box.y <= 0.002) { coordBox = null; paint(); return; }
+    if (!box || box.w <= 0.002 || box.h <= 0.002) { coordBox = null; paint(); return; }
     coordBox = {
       x: Math.round(box.x * img.width), y: Math.round(box.y * img.height),
-      w: Math.round((box.tox - box.x) * img.width), h: Math.round((box.toy - box.y) * img.height),
+      w: Math.round(box.w * img.width), h: Math.round(box.h * img.height),
     };
     copyCoordBox(false);
   }
@@ -631,7 +787,7 @@
     if (!coordBox || !img) return;
     lastCoords = formatNormalizedBox({
       x: clamp01(coordBox.x / img.width), y: clamp01(coordBox.y / img.height),
-      tox: clamp01((coordBox.x + coordBox.w) / img.width), toy: clamp01((coordBox.y + coordBox.h) / img.height),
+      w: clamp01(coordBox.w / img.width), h: clamp01(coordBox.h / img.height),
     });
     document.getElementById('colorInfo').textContent = t('coordLabel') + ' ' + lastCoords;
     if (!silent) vscode.postMessage({ type: 'copyText', text: lastCoords });
@@ -693,7 +849,7 @@
     const px = e.clientX - rect.left, py = e.clientY - rect.top;
     if (e.button === 2) {
       const idx = findAnnAt(px, py);
-      if (idx >= 0) { selectedIdx = idx; vscode.postMessage({ type: 'copyColor', category: annotations[idx].category }); paint(); }
+      if (idx >= 0) { selectOnly(idx); vscode.postMessage({ type: 'copyColor', category: annotations[idx].category }); paint(); }
       return;
     }
     if (e.button !== 0) return;
@@ -711,20 +867,29 @@
       return;
     }
     if (toolMode === 'delete') {
-      const idx = findAnnAt(px, py); if (idx >= 0) { selectedIdx = idx; deleteSelected(); }
+      const idx = findAnnAt(px, py); if (idx >= 0) { selectOnly(idx); deleteSelected(); }
+      return;
+    }
+
+    const idx = findAnnAt(px, py);
+    if ((e.ctrlKey || e.metaKey || e.shiftKey) && idx >= 0) {
+      toggleSelection(idx);
+      paint();
       return;
     }
 
     const { idx:hIdx, handle } = findHandleAt(px, py);
     if (handle && hIdx >= 0) {
-      selectedIdx = hIdx; resizing = true; resizeHandle = handle; resizeStartPos = {x:px,y:py}; resizeOrigRect = clone(annotations[hIdx]); paint(); return;
+      selectOnly(hIdx); resizing = true; resizeHandle = handle; resizeStartPos = {x:px,y:py}; resizeOrigRect = clone(annotations[hIdx]); paint(); return;
     }
-    const idx = findAnnAt(px, py);
-    selectedIdx = idx;
     if (idx >= 0) {
+      selectOnly(idx);
       dragging = true; dragStartPos = {x:px,y:py}; dragOrigRect = clone(annotations[idx]);
-    } else if (isZoomed()) {
-      panning = true; panStartPos = {x:px,y:py}; panStartOffset = {x:offsetX,y:offsetY}; canvas.style.cursor = 'grabbing';
+    } else {
+      clearSelection();
+      if (isZoomed()) {
+        panning = true; panStartPos = {x:px,y:py}; panStartOffset = {x:offsetX,y:offsetY}; canvas.style.cursor = 'grabbing';
+      }
     }
     paint();
   });
@@ -735,7 +900,7 @@
     if (idx < 0) return;
     if (dragging && dragOrigRect) Object.assign(annotations[idx], dragOrigRect);
     dragging = false; resizing = false; dragOrigRect = null; resizeOrigRect = null;
-    selectedIdx = idx; paint(); showEditDialog(idx);
+    selectOnly(idx); paint(); showEditDialog(idx);
   });
 
   canvas.addEventListener('mousemove', (e) => {
@@ -758,7 +923,7 @@
     if (toolMode === 'none') {
       const { idx:hIdx, handle } = findHandleAt(px, py);
       if (handle) { hoveredIdx = hIdx; canvas.style.cursor = handleCursor(handle); }
-      else { const idx = findAnnAt(px, py); hoveredIdx = idx; canvas.style.cursor = idx >= 0 ? 'move' : isZoomed() ? 'grab' : 'crosshair'; }
+      else { const hover = findAnnAt(px, py); hoveredIdx = hover; canvas.style.cursor = hover >= 0 ? 'move' : isZoomed() ? 'grab' : 'crosshair'; }
       paint();
     } else if (toolMode === 'delete') {
       hoveredIdx = findAnnAt(px, py); canvas.style.cursor = hoveredIdx >= 0 ? 'pointer' : 'default'; paint();
@@ -801,13 +966,14 @@
   function openGenerateBox() {
     if (annotationMode !== 'template') return;
     const choices = document.getElementById('generateChoices'); choices.replaceChildren();
+    const selected = new Set(selectedList());
     annotations.forEach((ann, index) => {
       const label = document.createElement('label'); label.className = 'annotation-row';
-      const input = document.createElement('input'); input.type = 'checkbox'; input.checked = selectedIdx < 0 || selectedIdx === index; input.dataset.index = String(index);
+      const input = document.createElement('input'); input.type = 'checkbox'; input.checked = selected.size === 0 || selected.has(index); input.dataset.index = String(index);
       const text = document.createElement('span'); text.textContent = ann.category; label.append(input, text); choices.append(label);
     });
-    const selected = annotations[selectedIdx];
-    const seed = selected?.category || annotations[0]?.category || 'region';
+    const seedAnn = annotations[selectedIdx] || annotations[0];
+    const seed = seedAnn?.category || 'region';
     document.getElementById('generatePath').value = 'screen.' + String(seed).replace(/[^A-Za-z0-9_]/g, '_');
     document.getElementById('generateError').textContent = '';
     document.getElementById('generateModal').classList.add('visible');
@@ -827,7 +993,7 @@
     if (target < 0 || target >= imageData.totalImages) return;
     clearHistory();
     setToolMode('none');
-    selectedIdx = -1;
+    clearSelection();
     hoveredIdx = -1;
     vscode.postMessage({ type:'navigate', index:target });
   }
@@ -843,18 +1009,13 @@
     if (matchKeybinding(e, keybindings.modePoint)) { e.preventDefault(); requestAnnotationMode('point'); return; }
     if (matchKeybinding(e, keybindings.undo)) { e.preventDefault(); undo(); return; }
     if (matchKeybinding(e, keybindings.redo)) { e.preventDefault(); redo(); return; }
-    if (matchKeybinding(e, keybindings.copy) && selectedIdx >= 0 && toolMode === 'none') { clipboard = clone(annotations[selectedIdx]); return; }
-    if (matchKeybinding(e, keybindings.paste) && clipboard && toolMode === 'none') {
-      const before = clone(annotations);
-      const copy = { ...clone(clipboard), id: nextId++, x: clipboard.x + 10, y: clipboard.y + 10 };
-      if (img) { copy.x = Math.max(0, Math.min(copy.x, pointMode ? img.width : img.width - copy.w)); copy.y = Math.max(0, Math.min(copy.y, pointMode ? img.height : img.height - copy.h)); }
-      annotations.push(copy); selectedIdx = annotations.length - 1; commitHistory(before); saveAnnotations(); paint(); return;
-    }
+    if (matchKeybinding(e, keybindings.copy) && hasSelection() && toolMode === 'none') { e.preventDefault(); copySelectedAnnotations(); return; }
+    if (matchKeybinding(e, keybindings.paste) && toolMode === 'none') { e.preventDefault(); vscode.postMessage({ type: 'readClipboard' }); return; }
     if (matchKeybinding(e, keybindings.drawBbox)) { setToolMode(toolMode === 'draw' ? 'none' : 'draw'); return; }
     if (matchKeybinding(e, keybindings.copyCoords)) { setToolMode(toolMode === 'copycoord' ? 'none' : 'copycoord'); return; }
     if (matchKeybinding(e, keybindings.deleteMode)) { setToolMode(toolMode === 'delete' ? 'none' : 'delete'); return; }
-    if (matchKeybinding(e, keybindings.deleteSelected) && selectedIdx >= 0 && toolMode === 'none') { deleteSelected(); return; }
-    if (['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key) && selectedIdx >= 0 && toolMode === 'none' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+    if (matchKeybinding(e, keybindings.deleteSelected) && hasSelection() && toolMode === 'none') { deleteSelected(); return; }
+    if (['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key) && hasSelection() && toolMode === 'none' && !e.ctrlKey && !e.metaKey && !e.altKey) {
       const step = e.shiftKey ? 10 : 1;
       const dx = e.key === 'ArrowLeft' ? -step : e.key === 'ArrowRight' ? step : 0;
       const dy = e.key === 'ArrowUp' ? -step : e.key === 'ArrowDown' ? step : 0;
@@ -870,7 +1031,7 @@
   document.getElementById('sharedHistoryChk').checked = sharedHistory;
   document.getElementById('sharedHistoryChk').onchange = (e) => {
     sharedHistory = e.target.checked;
-    vscode.setState({ ...(vscode.getState() || {}), sharedHistory });
+    if (typeof vscode.setState === 'function') vscode.setState({ ...((typeof vscode.getState === 'function' && vscode.getState()) || {}), sharedHistory });
     updateUndoRedoButtons();
   };
   document.getElementById('drawBtn').onclick = () => setToolMode(toolMode === 'draw' ? 'none' : 'draw');
@@ -882,7 +1043,13 @@
   document.getElementById('nextBtn').onclick = () => navigate(1);
   document.getElementById('showAllBtn').onclick = () => { hiddenSet().clear(); listSignature=''; paint(); };
   document.getElementById('hideAllBtn').onclick = () => { const hidden=hiddenSet(); hidden.clear(); annotations.forEach(a=>hidden.add(a.category)); listSignature=''; paint(); };
-  document.getElementById('onlyCurrentBtn').onclick = () => { const hidden=hiddenSet(), current=annotations[selectedIdx]; hidden.clear(); annotations.forEach(a=>{ if (!current || a.category!==current.category) hidden.add(a.category); }); listSignature=''; paint(); };
+  document.getElementById('onlyCurrentBtn').onclick = () => {
+    const hidden = hiddenSet();
+    const categories = new Set(selectedList().map(index => annotations[index]?.category).filter(Boolean));
+    hidden.clear();
+    annotations.forEach(a => { if (!categories.has(a.category)) hidden.add(a.category); });
+    listSignature=''; paint();
+  };
   document.getElementById('generateBoxBtn').onclick = openGenerateBox;
   document.getElementById('generateCancel').onclick = () => document.getElementById('generateModal').classList.remove('visible');
   document.getElementById('generatePath').oninput = refreshGeneratePathState;
@@ -930,6 +1097,10 @@
       if (imageData) imageData.positionPaths = msg.positionPaths || {};
       return;
     }
+    if (msg.type === 'clipboardText') {
+      pasteClipboardText(msg.text || '');
+      return;
+    }
     if (msg.type === 'generateBoxResult') {
       if (msg.ok) document.getElementById('generateModal').classList.remove('visible');
       else document.getElementById('generateError').textContent = pathMessage(msg.error === 'duplicate' ? {code:'duplicate'} : {code:msg.error || 'unknown'});
@@ -949,7 +1120,7 @@
     annotations = clone(msg.annotations || []);
     modeCache[annotationMode] = clone(annotations);
     nextId = annotations.length ? Math.max(...annotations.map(a => a.id)) + 1 : 1;
-    selectedIdx = -1;
+    clearSelection();
     hoveredIdx = -1;
     listSignature = '';
     updateModeUi();
