@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { CocoData, emptyCocoData, writeAnnotationText } from './cocoAnnotationData';
+import { CocoData, writeAnnotationText } from './cocoAnnotationData';
 import { readImageSize } from './imageHeader';
 import { positionPathError, PixelPoint, PositionAuthoringItem, PositionImage } from './positionResourcePure';
 
@@ -140,7 +140,7 @@ function toCoco(file: PointAuthoringFile): CocoData {
     .map((image, index) => ({ id: index + 1, file_name: image.file, width: image.width, height: image.height }));
   const names = [...new Set(file.points.map(point => point.path))].sort((a, b) => a.localeCompare(b));
   const categories = names.map((name, index) => ({ id: index + 1, name, supercategory: name.split('.')[0] || 'point' }));
-  const imageIds = new Map(images.map(image => [image.file.toLowerCase(), image.id]));
+  const imageIds = new Map(images.map(image => [image.file_name.toLowerCase(), image.id]));
   const categoryIds = new Map(categories.map(category => [category.name, category.id]));
   const annotations = [...file.points]
     .sort((a, b) => a.path.localeCompare(b.path))
