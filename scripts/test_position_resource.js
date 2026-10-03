@@ -47,9 +47,9 @@ assert.strictEqual(position.positionPathError('screen'), 'shallow');
 assert.strictEqual(position.positionPathError('screen.bad-name'), 'segment');
 assert.strictEqual(position.positionPathError('screen.class'), 'segment');
 assert.strictEqual(position.positionPathError('screen._parent'), 'segment');
+assert.strictEqual(position.positionPathError('screen.__class__'), 'segment');
+assert.strictEqual(position.positionPathError('screen.__slots__'), 'segment');
 
-// Rect and point authoring files have independent name scopes, but one PositionMap cannot expose
-// two attributes at the same path. That conflict is intentionally deferred to export.
 const collision = position.publishPositions([
   { path: 'screen.same', image: 'screen.png', kind: 'rect', rect: { x: 1, y: 2, w: 3, h: 4 } },
   { path: 'screen.same', image: 'screen.png', kind: 'point', point: { x: 10, y: 20 } },
@@ -57,8 +57,6 @@ const collision = position.publishPositions([
 assert(collision.errors.includes('duplicate:screen.same'));
 assert.strictEqual(collision.file.positions.length, 1);
 
-// Distinct valid paths that used to collapse under PascalCase concatenation must emit distinct
-// Python grouping classes. Exact segment lengths + spelling are part of the generated class name.
 const collisionSafe = position.publishPositions([
   { path: 'a_b.c.first', image: 'screen.png', kind: 'point', point: { x: 100, y: 100 } },
   { path: 'a.b_c.second', image: 'screen.png', kind: 'point', point: { x: 200, y: 200 } },
@@ -86,7 +84,6 @@ function makePublishFixture() {
   return { root, directory };
 }
 
-// A project-relative spelling is not confinement when an existing parent is a symlink/junction.
 {
   const { root, directory } = makePublishFixture();
   const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'ok-position-outside-'));
@@ -103,7 +100,6 @@ function makePublishFixture() {
   }
 }
 
-// Python outputs are a coupled pair: if PositionMap.py cannot be replaced, ScreenRatio.py is restored.
 {
   const { root, directory } = makePublishFixture();
   const scene = path.join(root, 'src', 'scene');
