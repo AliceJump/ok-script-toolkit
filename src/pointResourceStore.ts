@@ -4,6 +4,7 @@ import { CocoData, writeAnnotationText } from './cocoAnnotationData';
 import { readImageSize } from './imageHeader';
 import { positionPathError, PixelPoint, PositionAuthoringItem, PositionImage } from './positionResourcePure';
 
+/** Point authoring uses the same COCO tables as templates/rects, with bbox=[x,y,0,0]. */
 export const POINT_AUTHORING_FILE = 'points.json';
 
 export interface AuthoringPoint {
@@ -72,6 +73,7 @@ function parseLegacy(raw: LegacyPointAuthoringFile): PointReadResult {
   return { file: { images, points }, errors: [], legacy: true };
 }
 
+/** Generic template COCO rejects zero-area boxes; point COCO deliberately accepts only zero-area boxes. */
 function parseCoco(raw: CocoData): PointReadResult {
   if (!raw || !Array.isArray(raw.images) || !Array.isArray(raw.annotations) || !Array.isArray(raw.categories)) {
     return { file: emptyFile(), errors: ['coco'] };
