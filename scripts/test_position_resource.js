@@ -1,5 +1,9 @@
 const assert = require('assert');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
 const position = require('../out/positionResourcePure');
+const publishStore = require('../out/positionPublishStore');
 
 const images = [{ file: 'screen.png', width: 1920, height: 1080 }];
 const published = position.publishPositions([
@@ -41,6 +45,8 @@ assert(ratio.includes('Only a rect ScreenRatio can be converted to a Box'));
 assert.strictEqual(position.positionPathError('screen.main_viewport'), undefined);
 assert.strictEqual(position.positionPathError('screen'), 'shallow');
 assert.strictEqual(position.positionPathError('screen.bad-name'), 'segment');
+assert.strictEqual(position.positionPathError('screen.class'), 'segment');
+assert.strictEqual(position.positionPathError('screen._parent'), 'segment');
 
 // Rect and point authoring files have independent name scopes, but one PositionMap cannot expose
 // two attributes at the same path. That conflict is intentionally deferred to export.
@@ -66,5 +72,70 @@ assert(collisionSafeMap.includes('class Position_1_a:'));
 assert(collisionSafeMap.includes('class Position_3_foo:'));
 assert(collisionSafeMap.includes('class Position_3_Foo:'));
 assert(!collisionSafeMap.includes('class ABCPosition:'));
+
+function makePublishFixture() {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ok-position-publish-'));
+  const directory = 'templates';
+  const templates = path.join(root, directory);
+  fs.mkdirSync(templates, { recursive: true });
+  fs.writeFileSync(path.join(templates, 'points.json'), JSON.stringify({
+    version: 1,
+    images: [{ file: 'screen.png', width: 100, height: 100 }],
+    points: [{ path: 'screen.anchor', image: 'screen.png', x: 50, y: 50 }],
+  }, null, 2));
+  return { root, directory };
+}
+
+// A project-relative spelling is not confinement when an existing parent is a symlink/junction.
+{
+  const { root, directory } = makePublishFixture();
+  const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'ok-position-outside-'));
+  try {
+    fs.mkdirSync(path.join(root, 'src'), { recursive: true });
+    fs.symlinkSync(outside, path.join(root, 'src', 'scene'), process.platform === 'win32' ? 'junction' : 'dir');
+    const result = publishStore.publishPositionJson(root, directory);
+    assert.strictEqual(result.ok, false);
+    assert.deepStrictEqual(result.errors, ['target']);
+    assert.strictEqual(fs.existsSync(path.join(outside, 'positions.json')), false);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+    fs.rmSync(outside, { recursive: true, force: true });
+  }
+}
+
+// Python outputs are a coupled pair: if PositionMap.py cannot be replaced, ScreenRatio.py is restored.
+{
+  const { root, directory } = makePublishFixture();
+  const scene = path.join(root, 'src', 'scene');
+  const ratioFile = path.join(scene, 'ScreenRatio.py');
+  const mapFile = path.join(scene, 'PositionMap.py');
+  fs.mkdirSync(scene, { recursive: true });
+  const oldRatio = `${publishStore.GENERATED_MARKER}\n# old ratio\n`;
+  const oldMap = `${publishStore.GENERATED_MARKER}\n# old map\n`;
+  fs.writeFileSync(ratioFile, oldRatio);
+  fs.writeFileSync(mapFile, oldMap);
+
+  const originalRename = fs.renameSync;
+  let failedMapRename = false;
+  fs.renameSync = function patchedRename(from, to) {
+    if (!failedMapRename && path.basename(String(to)) === 'PositionMap.py') {
+      failedMapRename = true;
+      const error = new Error('forced PositionMap write failure');
+      error.code = 'EIO';
+      throw error;
+    }
+    return originalRename.apply(this, arguments);
+  };
+  try {
+    const result = publishStore.publishPositionPython(root, directory);
+    assert.strictEqual(result.ok, false);
+    assert.deepStrictEqual(result.errors, ['write']);
+    assert.strictEqual(fs.readFileSync(ratioFile, 'utf8'), oldRatio);
+    assert.strictEqual(fs.readFileSync(mapFile, 'utf8'), oldMap);
+  } finally {
+    fs.renameSync = originalRename;
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+}
 
 console.log('position resource tests passed');
