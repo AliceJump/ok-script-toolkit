@@ -22,9 +22,7 @@
   hardForegroundChk.addEventListener('change', () => {
     vscode.setState(Object.assign({}, vscode.getState() || {}, { hardForeground: hardForegroundChk.checked }));
   });
-  const assetMode = (document.getElementById('assetMode')?.textContent || 'annotations').trim();
-  document.getElementById('saveBtn').textContent = assetMode === 'boxes' ? t('publish') : t('saveToAssetsTitle');
-  if (assetMode === 'boxes') document.title = t('boxAssetsTitle');
+  document.getElementById('saveBtn').textContent = t('publish');
 
   function updateCount() {
     const shown = shownCount();
@@ -189,7 +187,6 @@
 
     const thumb = document.createElement('div');
     thumb.className = 'swap-thumb';
-    // dataset.name 是宿主后补缩略图时的挂载点（applyThumb 按名字回填）
     thumb.dataset.name = other.name;
     const ph = document.createElement('span');
     ph.className = 'placeholder';
@@ -226,7 +223,6 @@
   }
 
   document.getElementById('swapCancel').addEventListener('click', closeSwapPicker);
-  // 点遮罩关闭：只在按下遮罩本身时关，避免从列表里拖选时误关
   swapModal.addEventListener('mousedown', (e) => {
     if (e.target === swapModal) closeSwapPicker();
   });
@@ -250,9 +246,6 @@
       case 'templates': {
         grid.innerHTML = ''; cards.clear();
         metas = msg.templates || [];
-        // 图片集合可能已变化 ⇒ 缩略图 URL 缓存整份作废。
-        // ⚠️ 不能只按名字删：模板名就是数字序号、**删除后会被复用**（nextImageName 取第一个空号），
-        // 留着的旧 URL 会让选择器显示上一张同名图的缩略图 —— 看错图就会选错交换目标。
         thumbUrls.clear();
         for (const meta of metas) {
           const card = makeCard(meta);
@@ -274,12 +267,6 @@
   if (dropHint) dropHint.textContent = t('assetDropHint');
   let dragDepth = 0;
 
-  /**
-   * 取出被拖入的临时截图 id，三级通道：
-   * 1. 自定义 MIME（同源 webview 可用）
-   * 2. text/plain —— 跨 origin 时浏览器往往只保留这一个，值就是文件名（文件名即 id）
-   * 3. 都读不到返回 undefined，由宿主用 dragStart 记录的 pending id 兜底
-   */
   const SHOT_ID_RE = /^shot_\d+_\d+\.png$/;
 
   function readTempId(dataTransfer) {
