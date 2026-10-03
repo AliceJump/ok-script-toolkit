@@ -13,7 +13,7 @@ const CRC_TABLE = (() => {
   const table = new Int32Array(256);
   for (let n = 0; n < 256; n++) {
     let c = n;
-    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 8) : c >>> 8;
     table[n] = c;
   }
   return table;
@@ -85,6 +85,40 @@ try {
   assert.deepStrictEqual(store.readAuthoringFile(project, directory).boxes, []);
   assert(store.restoreAuthoring(project, directory, snapshot));
   assert.deepStrictEqual(store.readAuthoringFile(project, directory).boxes.map(box => box.path).sort(), ['panels.allowed', 'screen.first']);
+
+  // Unsupported legacy / malformed rect sources are discarded on the next successful edit.
+  fs.writeFileSync(source, JSON.stringify({ version: 1, boxes: [{ path: 'legacy.box' }] }), 'utf8');
+  assert.deepStrictEqual(store.authoringReadErrors(project, directory), []);
+  assert.strictEqual(store.addBox(project, directory, 'screen.replaced_legacy', 'a.png', { x: 2, y: 3, w: 4, h: 5 }), undefined);
+  let replaced = JSON.parse(fs.readFileSync(source, 'utf8'));
+  assert.deepStrictEqual(replaced.categories.map(item => item.name), ['screen.replaced_legacy']);
+  assert.strictEqual(Object.prototype.hasOwnProperty.call(replaced, 'boxes'), false);
+
+  fs.writeFileSync(source, '{ broken json', 'utf8');
+  assert.deepStrictEqual(store.authoringReadErrors(project, directory), []);
+  assert.strictEqual(store.removeImageBoxes(project, directory, 'a.png'), true);
+  replaced = JSON.parse(fs.readFileSync(source, 'utf8'));
+  assert.deepStrictEqual(replaced, { images: [], annotations: [], categories: [] });
+
+  // Real read failures remain hard failures and must never be treated as an empty file to overwrite.
+  fs.writeFileSync(source, JSON.stringify({ images: [], annotations: [], categories: [] }), 'utf8');
+  const originalRead = fs.readFileSync;
+  fs.readFileSync = function (file) {
+    if (path.resolve(String(file)) === path.resolve(source)) {
+      const error = new Error('permission denied');
+      error.code = 'EACCES';
+      throw error;
+    }
+    return originalRead.apply(this, arguments);
+  };
+  try {
+    assert.deepStrictEqual(store.authoringReadErrors(project, directory), ['read']);
+    assert.strictEqual(store.addBox(project, directory, 'screen.blocked', 'a.png', { x: 1, y: 1, w: 2, h: 2 }), 'parse');
+    assert.strictEqual(store.removeImageBoxes(project, directory, 'a.png'), false);
+  } finally {
+    fs.readFileSync = originalRead;
+  }
+  assert.deepStrictEqual(JSON.parse(fs.readFileSync(source, 'utf8')), { images: [], annotations: [], categories: [] });
 
   assert.strictEqual(pure.boxPathError('panels.point'), undefined);
   assert.deepStrictEqual(
