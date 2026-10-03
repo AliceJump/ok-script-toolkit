@@ -71,6 +71,15 @@ assert(collisionSafeMap.includes('class Position_3_foo:'));
 assert(collisionSafeMap.includes('class Position_3_Foo:'));
 assert(!collisionSafeMap.includes('class ABCPosition:'));
 
+assert.deepStrictEqual(
+  publishStore.positionNamespaceConflicts(['screen.same'], ['screen.same']),
+  ['duplicate:screen.same'],
+);
+assert.deepStrictEqual(
+  publishStore.positionNamespaceConflicts(['screen.group'], ['screen.group.child']),
+  ['prefix:screen.group'],
+);
+
 function pointCoco() {
   return {
     images: [{ id: 1, file_name: 'screen.png', width: 100, height: 100 }],
@@ -128,6 +137,19 @@ function makePublishFixture() {
 
     const none = publishStore.collectPositionRuntime(root, directory, { rect: false, point: false });
     assert.deepStrictEqual(none.errors, ['selection']);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+}
+
+{
+  const { root, directory } = makePublishFixture();
+  try {
+    const points = pointCoco();
+    points.categories[0].name = 'screen.box';
+    fs.writeFileSync(path.join(root, directory, 'points.json'), JSON.stringify(points, null, 2));
+    const rectOnly = publishStore.collectPositionRuntime(root, directory, { rect: true, point: false });
+    assert(rectOnly.errors.includes('duplicate:screen.box'), 'partial publish still checks a readable unselected namespace');
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
