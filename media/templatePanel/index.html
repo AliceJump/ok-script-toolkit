@@ -9,6 +9,12 @@
 </head>
 <body>
   <div class="panel-toolbar toolbar">
+    <div class="resource-mode-switch" role="group" aria-label="Resource type">
+      <button id="templateModeBtn" class="mini-btn active" type="button">Template</button>
+      <button id="rectModeBtn" class="mini-btn" type="button">Box</button>
+      <button id="pointModeBtn" class="mini-btn" type="button">Point</button>
+    </div>
+    <button id="publishPositionsBtn" class="mini-btn" type="button" style="display:none">Publish positions</button>
     <input id="search" type="text" />
     <span id="count"></span>
     <span class="hint"></span>
@@ -17,6 +23,6 @@
   <div id="empty" class="empty" style="display:none"></div>
   <div id="templatePanelI18n" hidden>__I18N_JSON__</div>
   <script src="__SHARED_THUMBNAIL_ACTIONS_URI__"></script>
-<script src="__APP_SCRIPT_URI__"></script>
+  <script src="__APP_SCRIPT_URI__"></script>
 </body>
 </html>

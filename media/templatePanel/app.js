@@ -1,3 +1,4 @@
+(function () {
   const I18N = JSON.parse(document.getElementById('templatePanelI18n')?.textContent || '{}');
   const t = (key, args = {}) => (I18N[key] || key).replace(/\{(\w+)\}/g, (_, name) => String(args[name] ?? '{' + name + '}'));
   const vscode = acquireVsCodeApi();
@@ -5,14 +6,23 @@
   const search = document.getElementById('search');
   const countEl = document.getElementById('count');
   const emptyEl = document.getElementById('empty');
-  const cards = new Map(); // name -> card element
+  const publishBtn = document.getElementById('publishPositionsBtn');
+  const cards = new Map();
   let metas = [];
+  let currentMode = 'template';
   let loadedCount = 0;
   let failedCount = 0;
+
   document.documentElement.lang = navigator.language || 'en';
-  document.title = t('templatesTitle');
+  document.title = 'Resource Preview';
   search.placeholder = t('templatesSearch');
   document.querySelector('.hint').textContent = t('templatesHint');
+
+  function shownCount() {
+    let n = 0;
+    for (const card of cards.values()) if (card.style.display !== 'none') n++;
+    return n;
+  }
 
   function updateCount() {
     const base = t('templatesCount', { shown: shownCount(), total: metas.length });
@@ -24,10 +34,11 @@
     countEl.textContent = base + stat;
   }
 
-  function shownCount() {
-    let n = 0;
-    for (const card of cards.values()) if (card.style.display !== 'none') n++;
-    return n;
+  function updateModeButtons() {
+    document.getElementById('templateModeBtn').classList.toggle('active', currentMode === 'template');
+    document.getElementById('rectModeBtn').classList.toggle('active', currentMode === 'rect');
+    document.getElementById('pointModeBtn').classList.toggle('active', currentMode === 'point');
+    publishBtn.style.display = currentMode === 'template' ? 'none' : '';
   }
 
   function makeCard(meta) {
@@ -47,8 +58,8 @@
     const actions = document.createElement('div');
     actions.className = 'actions thumbnail-actions';
     actions.append(
-      ThumbnailActions.button('＋', t('insertExpression'), () => vscode.postMessage({ type: 'insert', text: meta.name })),
-      ThumbnailActions.button('⧉', t('copyExpression'), () => vscode.postMessage({ type: 'copy', text: meta.name })),
+      ThumbnailActions.button('＋', t('insertExpression'), () => vscode.postMessage({ type: 'insert', expression: meta.expression })),
+      ThumbnailActions.button('⧉', t('copyExpression'), () => vscode.postMessage({ type: 'copy', expression: meta.expression })),
       ThumbnailActions.button('👁', t('viewOriginal'), () => vscode.postMessage({
         type: 'open', imagePath: meta.imagePath, name: meta.name, bbox: JSON.stringify(meta.bbox),
       })),
@@ -60,19 +71,17 @@
     const nm = document.createElement('div');
     nm.className = 'name';
     nm.textContent = meta.name;
-    nm.title = meta.name;
+    nm.title = meta.expression || meta.name;
     const sz = document.createElement('div');
     sz.className = 'size';
-    sz.textContent = meta.width + '×' + meta.height;
-    m.appendChild(nm);
-    m.appendChild(sz);
+    sz.textContent = meta.kind === 'point' ? 'point' : meta.width + '×' + meta.height;
+    m.append(nm, sz);
+    card.append(box, m);
 
-    card.appendChild(box);
-    card.appendChild(m);
-
-    ThumbnailActions.bindClicks(card,
-      () => vscode.postMessage({ type: 'insert', text: meta.name }),
-      () => vscode.postMessage({ type: 'copy', text: meta.name }),
+    ThumbnailActions.bindClicks(
+      card,
+      () => vscode.postMessage({ type: 'insert', expression: meta.expression }),
+      () => vscode.postMessage({ type: 'copy', expression: meta.expression }),
     );
     return card;
   }
@@ -81,7 +90,9 @@
     const q = search.value.trim().toLowerCase();
     let shown = 0;
     for (const [name, card] of cards) {
-      const ok = !q || name.toLowerCase().includes(q);
+      const meta = metas.find(item => item.name === name);
+      const haystack = `${name} ${meta?.expression || ''}`.toLowerCase();
+      const ok = !q || haystack.includes(q);
       card.style.display = ok ? '' : 'none';
       if (ok) shown++;
     }
@@ -90,16 +101,27 @@
     emptyEl.textContent = '';
     if (metas.length === 0) {
       emptyEl.style.display = '';
-      emptyEl.textContent = t('noTemplatesWithHint');
+      emptyEl.textContent = currentMode === 'template' ? t('noTemplatesWithHint') : 'No resources in this mode.';
     } else if (shown === 0) {
       emptyEl.style.display = '';
       emptyEl.textContent = t('noTemplateMatch', { query: search.value.trim() });
     }
   }
 
-  search.addEventListener('input', applyFilter);
+  function resetResources(resources) {
+    grid.innerHTML = '';
+    cards.clear();
+    metas = resources || [];
+    loadedCount = 0;
+    failedCount = 0;
+    for (const meta of metas) {
+      const card = makeCard(meta);
+      cards.set(meta.name, card);
+      grid.appendChild(card);
+    }
+    applyFilter();
+  }
 
-  /** 给卡片挂上缩略图；成功/失败都会更新计数 */
   function attachThumb(name, url) {
     const card = cards.get(name);
     if (!card || card.dataset.thumbDone === '1') return;
@@ -107,7 +129,6 @@
     const img = document.createElement('img');
     img.src = url;
     img.alt = name;
-    // 用内联样式隐藏（内联优先级高于样式表，onload 时才能可靠切回显示）
     img.style.display = 'none';
     img.addEventListener('load', () => {
       loadedCount++;
@@ -120,37 +141,53 @@
       failedCount++;
       const ph = card.querySelector('.placeholder');
       if (ph) { ph.textContent = t('loadFailed'); ph.style.opacity = '.8'; }
-      // 把失败的 URI 记到卡片 tooltip，便于诊断（如 localResourceRoots 未放行）
       card.title += '\n[' + t('thumbnailLoadFailed') + '] ' + url;
       updateCount();
     });
     card.querySelector('.thumb-box').appendChild(img);
   }
 
+  function switchMode(mode) {
+    if (mode === currentMode) return;
+    currentMode = mode;
+    updateModeButtons();
+    resetResources([]);
+    vscode.postMessage({ type: 'switchMode', mode });
+  }
+
+  document.getElementById('templateModeBtn').onclick = () => switchMode('template');
+  document.getElementById('rectModeBtn').onclick = () => switchMode('rect');
+  document.getElementById('pointModeBtn').onclick = () => switchMode('point');
+  publishBtn.onclick = () => vscode.postMessage({ type: 'publish' });
+  search.addEventListener('input', applyFilter);
+
   window.addEventListener('message', (e) => {
     const msg = e.data;
     switch (msg.type) {
-      case 'templates': {
-        grid.innerHTML = '';
-        cards.clear();
-        metas = msg.templates || [];
-        loadedCount = 0;
-        failedCount = 0;
-        for (const meta of metas) {
-          const card = makeCard(meta);
-          cards.set(meta.name, card);
-          grid.appendChild(card);
-        }
-        applyFilter();
+      case 'resources':
+        currentMode = msg.mode || currentMode;
+        updateModeButtons();
+        resetResources(msg.resources || []);
         break;
-      }
-      case 'thumbs': {
-        for (const it of (msg.items || [])) attachThumb(it.name, it.url);
+      case 'templates':
+        // Compatibility with older hosts during extension reloads.
+        currentMode = 'template';
+        updateModeButtons();
+        resetResources((msg.templates || []).map(meta => ({
+          ...meta,
+          kind: 'template',
+          expression: meta.expression || meta.name,
+        })));
         break;
-      }
+      case 'thumbs':
+        if (msg.mode && msg.mode !== currentMode) break;
+        for (const item of (msg.items || [])) attachThumb(item.name, item.url);
+        break;
       default:
         break;
     }
   });
 
+  updateModeButtons();
   vscode.postMessage({ type: 'ready' });
+})();

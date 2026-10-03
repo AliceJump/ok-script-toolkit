@@ -1,6 +1,4 @@
-/* 模板画廊面板（共享层见 media/shared/tokens.css + controls.css）
-   本文件只保留面板特有部分：缩略图 tile、悬浮打开按钮、网格与空态排版。
-   颜色 / 圆角 / 间距 / 字号一律引用共享 token。 */
+/* 资源预览面板（共享层见 media/shared/tokens.css + controls.css） */
 
 :root { --thumb-h: 96px; }
 
@@ -11,6 +9,15 @@ body {
   background: var(--bg-page);
   font-family: var(--font-ui);
   font-size: var(--font-size-root);
+}
+
+.resource-mode-switch {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border: var(--border-width) solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-container);
 }
 
 #search { flex: 1; min-width: 120px; }
@@ -24,8 +31,6 @@ body {
   margin-top: var(--space-xs);
 }
 
-/* 缩略图 tile：视觉底子沿用共享 .card（容器底色 + --radius-lg + 描边），
-   这里只加裁切与交互反馈 */
 .card {
   overflow: hidden;
   cursor: pointer;
@@ -45,7 +50,6 @@ body {
   ) 0 0 / 16px 16px;
 }
 .thumb-box img { max-width: 100%; max-height: 100%; image-rendering: pixelated; }
-
 .placeholder { color: var(--text-muted); font-size: var(--font-xs); }
 
 .meta { padding: 5px 7px 6px; }

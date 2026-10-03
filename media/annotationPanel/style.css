@@ -17,9 +17,45 @@ body {
 .toolbar {
   border-bottom: var(--border-width) solid var(--border);
   flex-shrink: 0;
+  flex-wrap: wrap;
 }
 .toolbar .spacer { flex: 1; }
 .toolbar .info { color: var(--text-muted); font-size: var(--font-xs); white-space: nowrap; }
+
+.annotation-mode-switch {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border: var(--border-width) solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-container);
+}
+
+.annotation-mode-switch .mini-btn {
+  min-width: 58px;
+}
+
+.shared-history-toggle {
+  width: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  white-space: nowrap;
+  color: var(--text-muted);
+  font-size: var(--font-xs);
+  cursor: pointer;
+}
+
+.shared-history-toggle input {
+  margin: 0;
+}
+
+.toolbar-separator {
+  width: 1px;
+  align-self: stretch;
+  background: var(--border);
+  margin: 2px var(--space-xs);
+}
 
 .editor-body {
   flex: 1;
@@ -81,6 +117,11 @@ body {
   font-weight: var(--weight-medium);
 }
 
+@media (max-width: 760px) {
+  .shared-history-toggle span { display: none; }
+  .annotation-mode-switch .mini-btn { min-width: auto; }
+}
+
 @media (max-width: 640px) {
   .editor-body { flex-direction: column; }
   .annotation-list {
@@ -133,7 +174,7 @@ canvas {
   flex-shrink: 0;
 }
 
-/* ── 模态（BBox 输入）────────────────────────────────────────────────── */
+/* ── 模态（BBox / Point 输入）──────────────────────────────────────────── */
 .modal-overlay {
   display: none;
   position: fixed;

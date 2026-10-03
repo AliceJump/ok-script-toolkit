@@ -648,7 +648,7 @@ class AssetGalleryController {
     await this.update();
     // 标注编辑器是常驻面板且逐操作自动落盘：正显示这两张图之一时必须同步，
     // 否则它手里的旧框会在下一次编辑时把交换结果整份写回去。
-    (this.boxes ? AnnotationPanel.currentBoxes : AnnotationPanel.current)?.controller.reloadIfShowing([sourcePath, targetPath]);
+    AnnotationPanel.current?.controller.reloadIfShowing([sourcePath, targetPath]);
     void vscode.window.showInformationMessage(
       tr("Swapped annotations between '{first}' and '{second}'.", { first, second }),
     );

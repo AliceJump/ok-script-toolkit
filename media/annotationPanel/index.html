@@ -9,6 +9,20 @@
 </head>
 <body>
   <div class="panel-toolbar toolbar">
+    <div class="annotation-mode-switch" role="group" aria-label="Annotation mode">
+      <button class="mini-btn" id="templateModeBtn" type="button">Template</button>
+      <button class="mini-btn" id="rectModeBtn" type="button">Box</button>
+      <button class="mini-btn" id="pointModeBtn" type="button">Point</button>
+    </div>
+    <label class="shared-history-toggle" title="Share undo/redo history between template, box and point modes">
+      <input id="sharedHistoryChk" type="checkbox" checked />
+      <span id="sharedHistoryLabel">Shared undo history</span>
+    </label>
+    <label class="shared-history-toggle" title="Unchecked: x1,y1,x2,y2. Checked: x,y,w,h. This also resolves ambiguous unnamed four-number pastes.">
+      <input id="coordPreferXywhChk" type="checkbox" />
+      <span>XYWH</span>
+    </label>
+    <span class="toolbar-separator" aria-hidden="true"></span>
     <button class="mini-btn" id="drawBtn">Draw (R)</button>
     <button class="mini-btn" id="coordBtn">Coords (C)</button>
     <button class="mini-btn" id="deleteBtn">Delete (D)</button>
@@ -40,7 +54,6 @@
     <span id="colorInfo"></span>
   </div>
 
-  <!-- BBox input dialog -->
   <div class="modal-overlay" id="bboxModal">
     <div class="modal">
       <h3 id="bboxTitle">Bounding Box</h3>
@@ -49,10 +62,10 @@
         <input type="text" id="bboxCat" placeholder="Category name" />
       </div>
       <div class="error" id="bboxError"></div>
-      <div class="row"><label>X:</label><input type="number" id="bboxX" min="0" /></div>
-      <div class="row"><label>Y:</label><input type="number" id="bboxY" min="0" /></div>
-      <div class="row"><label id="bboxWLabel">Width:</label><input type="number" id="bboxW" min="1" /></div>
-      <div class="row"><label id="bboxHLabel">Height:</label><input type="number" id="bboxH" min="1" /></div>
+      <div class="row" id="bboxXRow"><label>X:</label><input type="number" id="bboxX" min="0" /></div>
+      <div class="row" id="bboxYRow"><label>Y:</label><input type="number" id="bboxY" min="0" /></div>
+      <div class="row" id="bboxWRow"><label id="bboxWLabel">Width:</label><input type="number" id="bboxW" min="1" /></div>
+      <div class="row" id="bboxHRow"><label id="bboxHLabel">Height:</label><input type="number" id="bboxH" min="1" /></div>
       <div class="actions">
         <button class="mini-btn" id="bboxCancel">Cancel</button>
         <button class="mini-btn mini-btn--primary" id="bboxOk">OK</button>
