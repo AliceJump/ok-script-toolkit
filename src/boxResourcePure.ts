@@ -84,8 +84,14 @@ export function unionPixelBoxes(boxes: readonly PixelBox[]): PixelBox | undefine
   return { x: left, y: top, w: right - left, h: bottom - top };
 }
 
-/** The rect authoring source is current COCO only; no legacy version/boxes/rect forms are accepted. */
-export function parseBoxCoco(text: string) {
+/**
+ * The rect authoring source is current COCO only; the optional callback is retained solely so
+ * existing current-COCO call sites do not need a second parser path. It is never consulted.
+ */
+export function parseBoxCoco(
+  text: string,
+  _sizeOf?: (name: string) => { width: number; height: number } | undefined,
+) {
   return parseCocoData(text);
 }
 
