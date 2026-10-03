@@ -82,6 +82,8 @@ export function publishPositions(
 ): { file: RuntimePositionFile; errors: string[] } {
   const positions: RuntimePosition[] = [];
   const errors: string[] = [];
+  // Authoring names are scoped by resource kind, but one exported PositionMap attribute cannot
+  // represent two values. Keep authoring permissive and report the collision only at export time.
   const seen = new Set<string>();
   const imageByName = new Map(images.map(image => [image.file.toLowerCase(), image]));
 
