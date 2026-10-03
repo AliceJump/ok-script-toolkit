@@ -126,14 +126,12 @@ function message(data) { window.dispatchEvent(new window.MessageEvent('message',
   key('c', { ctrlKey: true });
   assert(posts('copyText').length === copiesBeforeClear, 'empty click clears multi-selection');
 
-  // Named paste auto-renames only inside the current rect namespace.
   message({ type: 'clipboardText', text: '{"name":"screen.a","bbox":[0.7,0.7,0.1,0.1]}' });
   await flush();
   let save = last('save');
   assert(save.annotations.some(a => a.category === 'screen.a2' && a.x === 700 && a.y === 700 && a.w === 100 && a.h === 100),
     'named duplicate gets numeric suffix and pastes immediately');
 
-  // Unnamed paste must ask for a name before writing.
   const saveCount = posts('save').length;
   message({ type: 'clipboardText', text: '0.2, 0.2, 0.1, 0.1' });
   await flush();
@@ -146,18 +144,20 @@ function message(data) { window.dispatchEvent(new window.MessageEvent('message',
   save = last('save');
   assert(save.annotations.some(a => a.category === 'screen.unnamed' && a.w === 100 && a.h === 100), 'named dialog result is pasted');
 
-  // Zero-size payload is a point and is forbidden in the rect/template domains.
   const beforeZeroRect = posts('save').length;
   message({ type: 'clipboardText', text: '0.3, 0.3, 0, 0' });
   await flush();
   assert(posts('save').length === beforeZeroRect, 'zero-size bbox is rejected in rect mode');
   assert(/Point mode/i.test(document.getElementById('colorInfo').textContent), 'zero-size rejection explains point-only rule');
 
-  // Point mode uses the same protocol and same COCO shape, but its own name namespace.
+  // A literal name used in rect mode is legal in point mode; only point names participate in point duplicate checks.
   message({
     type: 'load', annotationMode: 'point', imagePath: 'x/a.png', imageBase64: 'data:image/png;base64,FAKE-1000x1000',
     filename: 'a.png', currentIndex: 0, totalImages: 1, allCategories: {},
-    annotations: [{ id: 1, category: 'screen.a', x: 100, y: 100, w: 0, h: 0 }],
+    annotations: [
+      { id: 1, category: 'screen.a', x: 100, y: 100, w: 0, h: 0 },
+      { id: 2, category: 'screen.b', x: 500, y: 500, w: 0, h: 0 },
+    ],
   });
   await flush();
   message({ type: 'clipboardText', text: '{"name":"screen.a","bbox":[0.4,0.5,0,0]}' });
@@ -165,6 +165,12 @@ function message(data) { window.dispatchEvent(new window.MessageEvent('message',
   save = last('save');
   assert(save.annotations.some(a => a.category === 'screen.a2' && a.x === 400 && a.y === 500 && a.w === 0 && a.h === 0),
     'point duplicate is renamed inside point namespace and remains zero-size');
+
+  // Multi-select applies to points too; copying several points produces their unnamed outer box.
+  mouse('mousedown', 160, 60); mouse('mouseup', 160, 60);
+  mouse('mousedown', 400, 300, { ctrlKey: true }); mouse('mouseup', 400, 300, { ctrlKey: true });
+  key('c', { ctrlKey: true });
+  assert(last('copyText').text === '0.1000, 0.1000, 0.4000, 0.4000', 'multi-point copy emits its outer box without a name');
 
   const beforeAreaPoint = posts('save').length;
   message({ type: 'clipboardText', text: '0.4,0.4,0.1,0.1' });
