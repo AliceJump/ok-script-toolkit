@@ -42,4 +42,13 @@ assert.strictEqual(position.positionPathError('screen.main_viewport'), undefined
 assert.strictEqual(position.positionPathError('screen'), 'shallow');
 assert.strictEqual(position.positionPathError('screen.bad-name'), 'segment');
 
+// Rect and point authoring files have independent name scopes, but one PositionMap cannot expose
+// two attributes at the same path. That conflict is intentionally deferred to export.
+const collision = position.publishPositions([
+  { path: 'screen.same', image: 'screen.png', kind: 'rect', rect: { x: 1, y: 2, w: 3, h: 4 } },
+  { path: 'screen.same', image: 'screen.png', kind: 'point', point: { x: 10, y: 20 } },
+], images);
+assert(collision.errors.includes('duplicate:screen.same'));
+assert.strictEqual(collision.file.positions.length, 1);
+
 console.log('position resource tests passed');
