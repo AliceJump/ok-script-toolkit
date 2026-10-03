@@ -75,10 +75,12 @@ class AnnotationController {
     return undefined;
   }
 
-  private activeSourceFile(): string {
-    const data = this.dataForMode();
+  private sourceFileForMode(mode = this.mode): string {
+    const data = this.dataForMode(mode);
     return data?.annotationFile ?? path.join(this.templateData.templatesDir, POINT_AUTHORING_FILE);
   }
+
+  private activeSourceFile(): string { return this.sourceFileForMode(this.mode); }
 
   private activeSourceMatches(file: string): boolean {
     return sameAnnotationFile(file, this.activeSourceFile());
@@ -225,7 +227,13 @@ class AnnotationController {
         }
         break;
       case 'save':
-        if (this._currentImage && msg.annotations && this.persistAnnotations(this._currentImage, msg.annotations)) {
+        if (this._currentImage && msg.annotations && this.persistAnnotationsForMode(this._currentImage, this.mode, msg.annotations)) {
+          this.onSaved(this._currentImage);
+        }
+        break;
+      case 'saveMode':
+        if (this._currentImage && msg.mode && msg.annotations
+          && this.persistAnnotationsForMode(this._currentImage, msg.mode, msg.annotations)) {
           this.onSaved(this._currentImage);
         }
         break;
@@ -262,10 +270,10 @@ class AnnotationController {
     }
   }
 
-  private persistAnnotations(imagePath: string, annotations: Annotation[]): boolean {
+  private persistAnnotationsForMode(imagePath: string, mode: UnifiedAnnotationMode, annotations: Annotation[]): boolean {
     try {
       this.saving = true;
-      if (this.mode === 'point') {
+      if (mode === 'point') {
         const error = savePointsForImage(
           this.root,
           path.relative(this.root, this.templateData.templatesDir),
@@ -273,21 +281,24 @@ class AnnotationController {
           annotations.map(ann => ({ path: ann.category.trim(), x: ann.x, y: ann.y })),
         );
         if (error) throw new Error(error);
-        try { this.sourceRevision = fs.readFileSync(this.activeSourceFile(), 'utf8'); } catch { this.sourceRevision = undefined; }
+        if (mode === this.mode) {
+          try { this.sourceRevision = fs.readFileSync(this.sourceFileForMode(mode), 'utf8'); }
+          catch { this.sourceRevision = undefined; }
+        }
         return true;
       }
 
-      const data = this.dataForMode()!;
+      const data = this.dataForMode(mode)!;
       data.load();
       const mapped = annotations.map(ann => ({
-        category: this.mode === 'rect' ? ann.category.trim() : ann.category,
+        category: mode === 'rect' ? ann.category.trim() : ann.category,
         x: ann.x, y: ann.y, w: ann.w, h: ann.h,
       }));
-      const namesError = this.mode === 'rect' ? boxNamesError(data, imagePath, mapped.map(ann => ann.category)) : undefined;
+      const namesError = mode === 'rect' ? boxNamesError(data, imagePath, mapped.map(ann => ann.category)) : undefined;
       if (namesError) throw new Error(namesError);
       if (!data.setAnnotationsForImage(imagePath, mapped)) throw new Error('geometry');
       data.save();
-      this.sourceRevision = data.revision;
+      if (mode === this.mode) this.sourceRevision = data.revision;
       return true;
     } catch (error) {
       console.error('[ok-script] save annotations:', error);
