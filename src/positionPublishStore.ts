@@ -257,3 +257,15 @@ export function publishPositionPython(
     return { ok: false, errors: [restored ? 'write' : 'write:rollback'], files: [] };
   }
 }
+
+export function publishPositionsByFormat(
+  root: string,
+  directory: string,
+  format: PositionPublishFormat,
+  options: PositionPublishOptions,
+): PositionPublishResult {
+  const selection = { rect: options.rect, point: options.point };
+  return format === 'python'
+    ? publishPositionPython(root, directory, selection, options.pythonTargetDir, options.overwriteManual ?? false)
+    : publishPositionJson(root, directory, selection, options.jsonTarget);
+}
