@@ -1,8 +1,3 @@
-/**
- * 标注编辑器「框选复制归一化坐标」回归测试。
- *
- * 默认沿用旧习惯 x1,y1,x2,y2；勾选 XYWH 后改为 x,y,w,h。
- */
 const fs = require('fs');
 const path = require('path');
 let jsdom;
@@ -31,6 +26,8 @@ html = html
   .replaceAll('__CSP_NONCE__', 'test')
   .replaceAll('__CSP_SOURCE__', "'self'")
   .replaceAll('__I18N_JSON__', JSON.stringify(dictionary))
+  .replace('<link rel="stylesheet" href="__SHARED_TOKENS_URI__">', '')
+  .replace('<link rel="stylesheet" href="__SHARED_CONTROLS_URI__">', '')
   .replace('<link rel="stylesheet" href="__STYLE_URI__">', '')
   .replace('<script src="__APP_SCRIPT_URI__"></script>', `<script>${fs.readFileSync(path.join(componentRoot, 'app.js'), 'utf8')}</script>`);
 
@@ -63,7 +60,6 @@ const dom = new JSDOM(html, {
       getState: () => webviewState,
       setState: (state) => { webviewState = state || {}; },
     });
-
     window.HTMLCanvasElement.prototype.getContext = function () { return makeContext(); };
     for (const prop of ['clientWidth', 'clientHeight']) {
       Object.defineProperty(window.HTMLElement.prototype, prop, {
@@ -71,7 +67,6 @@ const dom = new JSDOM(html, {
         get() { return prop === 'clientWidth' ? CANVAS_W : CANVAS_H; },
       });
     }
-
     const srcDesc = Object.getOwnPropertyDescriptor(window.HTMLImageElement.prototype, 'src');
     Object.defineProperty(window.HTMLImageElement.prototype, 'src', {
       configurable: true,
@@ -109,23 +104,18 @@ const flush = () => new Promise((resolve) => window.setTimeout(resolve, 0));
 
 function post(type) { return sent.filter((m) => m && m.type === type); }
 function lastPost(type) { const list = post(type); return list[list.length - 1]; }
-
 function mouse(type, target, x, y, button = 0) {
-  target.dispatchEvent(new window.MouseEvent(type, {
-    bubbles: true, cancelable: true, clientX: x, clientY: y, button,
-  }));
+  target.dispatchEvent(new window.MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y, button }));
 }
 
 (async function run() {
   await flush();
-
   const canvas = document.getElementById('canvas');
   const coordBtn = document.getElementById('coordBtn');
   const formatChk = document.getElementById('coordPreferXywhChk');
-
   assert(post('ready').length === 1, 'app.js must announce readiness once');
   assert(coordBtn.textContent === 'Coords (C)', 'coord button must be localized');
-  assert(formatChk && !formatChk.checked, 'XYXY must remain the default coordinate preference');
+  assert(formatChk && !formatChk.checked, 'coordinate format preference defaults to legacy XYXY');
 
   canvas.getBoundingClientRect = () => ({
     left: 0, top: 0, right: CANVAS_W, bottom: CANVAS_H, width: CANVAS_W, height: CANVAS_H,
@@ -178,7 +168,9 @@ function mouse(type, target, x, y, button = 0) {
   mouse('mouseup', canvas, 610, 405);
   await flush();
   assert(post('copyText').length === before + 1, 'resizing the box must copy again');
-  assert(lastPost('copyText').text === '0.1875, 0.1667, 0.7625, 0.7334',
+  // Geometry is quantized to image pixels before normalization, so y2 is 792/1080 = 0.7333…
+  // rather than an arithmetic sum of already-rounded y + h display values.
+  assert(lastPost('copyText').text === '0.1875, 0.1667, 0.7625, 0.7333',
     'resized box must copy updated XYXY coords, got ' + lastPost('copyText').text);
 
   before = post('copyText').length;
