@@ -40,6 +40,13 @@ export interface RuntimePositionFile {
 }
 
 const SEGMENT = /^[A-Za-z_][A-Za-z0-9_]*$/;
+const PYTHON_KEYWORDS = new Set([
+  'False', 'None', 'True', 'and', 'as', 'assert', 'async', 'await', 'break', 'class',
+  'continue', 'def', 'del', 'elif', 'else', 'except', 'finally', 'for', 'from', 'global',
+  'if', 'import', 'in', 'is', 'lambda', 'nonlocal', 'not', 'or', 'pass', 'raise', 'return',
+  'try', 'while', 'with', 'yield',
+]);
+const GENERATED_MEMBER_NAMES = new Set(['__init__', '_parent']);
 const DECIMALS = 6;
 
 export function positionPathError(value: string): 'empty' | 'segment' | 'shallow' | undefined {
@@ -47,7 +54,7 @@ export function positionPathError(value: string): 'empty' | 'segment' | 'shallow
   if (!path) return 'empty';
   const parts = path.split('.');
   if (parts.length < 2) return 'shallow';
-  if (parts.some(part => !SEGMENT.test(part))) return 'segment';
+  if (parts.some(part => !SEGMENT.test(part) || PYTHON_KEYWORDS.has(part) || GENERATED_MEMBER_NAMES.has(part))) return 'segment';
   return undefined;
 }
 
