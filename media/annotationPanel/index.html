@@ -84,6 +84,50 @@
     </div>
   </div>
   <div id="annotationPanelI18n" hidden>__I18N_JSON__</div>
+  <script nonce="__CSP_NONCE__">
+    // Point mode accepts the same normalized bbox clipboard protocol as the other modes.
+    // A non-zero bbox is projected to its center before the main editor handles naming/history/save.
+    (() => {
+      let pointPasteMode = false;
+      const round = value => Number(value.toFixed(6));
+      const parseBox = text => {
+        const raw = String(text || '').trim();
+        if (!raw) return null;
+        let parsed;
+        let values;
+        let kind = 'plain';
+        try {
+          parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) { values = parsed; kind = 'array'; }
+          else if (parsed && typeof parsed === 'object' && Array.isArray(parsed.bbox)) { values = parsed.bbox; kind = 'object'; }
+        } catch { /* plain four-number format below */ }
+        if (!values) {
+          const plain = raw.replace(/[\[\](){}]/g, ' ').split(/[\s,;]+/).filter(Boolean).map(Number);
+          if (plain.length === 4 && plain.every(Number.isFinite)) values = plain;
+        }
+        if (!Array.isArray(values) || values.length !== 4) return null;
+        const [x, y, w, h] = values.map(Number);
+        const eps = 1e-6;
+        if (![x, y, w, h].every(Number.isFinite) || x < 0 || y < 0 || w <= 0 || h <= 0
+          || x > 1 + eps || y > 1 + eps || x + w > 1 + eps || y + h > 1 + eps) return null;
+        return { parsed, kind, bbox: [round(x + w / 2), round(y + h / 2), 0, 0] };
+      };
+      window.addEventListener('message', event => {
+        const msg = event.data;
+        if (!msg || typeof msg !== 'object') return;
+        if ((msg.type === 'config' || msg.type === 'load') && msg.annotationMode) {
+          pointPasteMode = msg.annotationMode === 'point';
+          return;
+        }
+        if (msg.type !== 'clipboardText' || !pointPasteMode || typeof msg.text !== 'string') return;
+        const converted = parseBox(msg.text);
+        if (!converted) return;
+        if (converted.kind === 'object') msg.text = JSON.stringify({ ...converted.parsed, bbox: converted.bbox });
+        else if (converted.kind === 'array') msg.text = JSON.stringify(converted.bbox);
+        else msg.text = converted.bbox.join(', ');
+      }, true);
+    })();
+  </script>
   <script src="__APP_SCRIPT_URI__"></script>
   <script nonce="__CSP_NONCE__">
     document.getElementById('coordBtn')?.addEventListener('click', () => {
