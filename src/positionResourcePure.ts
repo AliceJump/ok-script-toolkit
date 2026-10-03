@@ -142,13 +142,6 @@ function buildTree(positions: readonly RuntimePosition[]): PositionTreeNode {
   return root;
 }
 
-function pascalCase(value: string): string {
-  return value
-    .split(/[^A-Za-z0-9]+/)
-    .filter(Boolean)
-    .map(part => part[0].toUpperCase() + part.slice(1))
-    .join('') || 'Position';
-}
 
 function pyNumber(value: number): string {
   if (Number.isInteger(value)) return value.toFixed(1);
@@ -157,7 +150,7 @@ function pyNumber(value: number): string {
 
 function classNameForPath(parts: string[]): string {
   if (parts.length === 1 && parts[0] === 'screen') return 'ScreenPosition';
-  return parts.map(pascalCase).join('') + 'Position';
+  return 'Position_' + parts.map(part => `${part.length}_${part}`).join('__');
 }
 
 function emitClass(node: PositionTreeNode, parts: string[], out: string[], emitted: Set<string>): string {

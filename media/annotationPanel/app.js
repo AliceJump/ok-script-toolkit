@@ -75,6 +75,41 @@
     modePoint: '3',
   };
   let copyCoordsSpace = true;
+  let modeLoading = false;
+  let pendingMode = null;
+  let coordPreferXywh = savedUi.coordPreferXywh === true;
+  const COORD_EPS = 1e-6;
+
+  function pairedZero(w, h) { return (Math.abs(w) <= COORD_EPS) === (Math.abs(h) <= COORD_EPS); }
+  function asXywh(values) {
+    if (!Array.isArray(values) || values.length !== 4) return null;
+    const [x0, y0, w0, h0] = values.map(Number);
+    if (![x0,y0,w0,h0].every(Number.isFinite) || x0 < -COORD_EPS || y0 < -COORD_EPS || w0 < -COORD_EPS || h0 < -COORD_EPS
+      || x0 > 1 + COORD_EPS || y0 > 1 + COORD_EPS || x0 + w0 > 1 + COORD_EPS || y0 + h0 > 1 + COORD_EPS
+      || !pairedZero(w0, h0)) return null;
+    const x = clamp01(x0), y = clamp01(y0);
+    const w = Math.abs(w0) <= COORD_EPS ? 0 : Math.min(clamp01(w0), 1 - x);
+    const h = Math.abs(h0) <= COORD_EPS ? 0 : Math.min(clamp01(h0), 1 - y);
+    return { x, y, w, h };
+  }
+  function asXyxy(values) {
+    if (!Array.isArray(values) || values.length !== 4) return null;
+    const [x10, y10, x20, y20] = values.map(Number);
+    if (![x10,y10,x20,y20].every(Number.isFinite) || x10 < -COORD_EPS || y10 < -COORD_EPS || x20 < -COORD_EPS || y20 < -COORD_EPS
+      || x10 > 1 + COORD_EPS || y10 > 1 + COORD_EPS || x20 > 1 + COORD_EPS || y20 > 1 + COORD_EPS
+      || x20 + COORD_EPS < x10 || y20 + COORD_EPS < y10) return null;
+    const x1 = clamp01(x10), y1 = clamp01(y10), x2 = clamp01(x20), y2 = clamp01(y20);
+    const w = Math.max(0, x2 - x1), h = Math.max(0, y2 - y1);
+    if (!pairedZero(w, h)) return null;
+    return { x: x1, y: y1, w: Math.abs(w) <= COORD_EPS ? 0 : w, h: Math.abs(h) <= COORD_EPS ? 0 : h };
+  }
+  function interpretBareCoordinates(values) {
+    const xywh = asXywh(values), xyxy = asXyxy(values);
+    if (xywh && !xyxy) return xywh;
+    if (xyxy && !xywh) return xyxy;
+    if (xywh && xyxy) return coordPreferXywh ? xywh : xyxy;
+    return null;
+  }
 
   function isPositionMode() { return annotationMode === 'rect' || annotationMode === 'point'; }
   function historyKey() { return annotationMode; }
@@ -106,8 +141,9 @@
   }
 
   function commitHistory(before) {
+    if (modeLoading) return false;
     const after = clone(annotations);
-    if (JSON.stringify(before) === JSON.stringify(after)) return;
+    if (JSON.stringify(before) === JSON.stringify(after)) return false;
     const tx = { id: history.nextId++, mode: historyKey(), before, after, applied: true };
     history.globalUndo.push(tx);
     history.byMode[tx.mode].push(tx);
@@ -117,6 +153,7 @@
     history.redoByMode[tx.mode].length = 0;
     modeCache[tx.mode] = clone(after);
     updateUndoRedoButtons();
+    return true;
   }
 
   function popMatching(stack, predicate) {
@@ -140,6 +177,7 @@
   }
 
   function undo() {
+    if (modeLoading) return;
     const source = sharedHistory ? history.globalUndo : history.byMode[annotationMode];
     const tx = popMatching(source, item => item.applied && (sharedHistory || item.mode === annotationMode));
     if (!tx) return;
@@ -151,6 +189,7 @@
   }
 
   function redo() {
+    if (modeLoading) return;
     const source = sharedHistory ? history.globalRedo : history.redoByMode[annotationMode];
     const tx = popMatching(source, item => !item.applied && (sharedHistory || item.mode === annotationMode));
     if (!tx) return;
@@ -435,11 +474,13 @@
   }
 
   function saveAnnotations(mode = annotationMode, data = annotations) {
+    if (modeLoading) return;
     modeCache[mode] = clone(data);
     vscode.postMessage({ type: mode === annotationMode ? 'save' : 'saveMode', mode, annotations: clone(data) });
   }
 
   function nudgeSelected(dx, dy) {
+    if (modeLoading) return false;
     const indices = selectedList();
     if (!indices.length || !img) return false;
     const before = clone(annotations);
@@ -451,13 +492,14 @@
       ann.x = Math.round(Math.max(0, Math.min(ann.x + dx, maxX)));
       ann.y = Math.round(Math.max(0, Math.min(ann.y + dy, maxY)));
     }
-    commitHistory(before);
+    if (!commitHistory(before)) { paint(); return false; }
     saveAnnotations();
     paint();
     return true;
   }
 
   function deleteSelected() {
+    if (modeLoading) return;
     const indices = selectedList();
     if (!indices.length) return;
     const before = clone(annotations);
@@ -483,14 +525,20 @@
   }
 
   function requestAnnotationMode(next) {
-    if (next === annotationMode) return;
+    if (next === annotationMode && !modeLoading) return;
     setToolMode('none');
     clearSelection();
     hoveredIdx = -1;
+    pendingMode = next;
+    modeLoading = true;
     annotationMode = next;
     pointMode = next === 'point';
     boxMode = next === 'rect';
+    annotations = [];
+    nextId = 1;
+    listSignature = '';
     updateModeUi();
+    paint();
     vscode.postMessage({ type: 'switchAnnotationMode', mode: next });
   }
 
@@ -572,6 +620,7 @@
   }
 
   function finishRect(px, py) {
+    if (modeLoading) return;
     const [ix1, iy1] = widgetToImg(drawStart.x, drawStart.y);
     const [ix2, iy2] = widgetToImg(px, py);
     const x = Math.round(Math.min(ix1, ix2)), y = Math.round(Math.min(iy1, iy2));
@@ -592,6 +641,7 @@
   }
 
   function finishPoint(px, py) {
+    if (modeLoading) return;
     const [ix, iy] = widgetToImg(px, py);
     const x = Math.round(Math.max(0, Math.min(ix, img?.width ?? ix)));
     const y = Math.round(Math.max(0, Math.min(iy, img?.height ?? iy)));
@@ -640,7 +690,10 @@
   }
 
   function formatNormalizedBox(box) {
-    return [box.x, box.y, box.w, box.h].map(v => v.toFixed(COORD_DECIMALS)).join(copyCoordsSpace ? ', ' : ',');
+    const values = coordPreferXywh
+      ? [box.x, box.y, box.w, box.h]
+      : [box.x, box.y, box.x + box.w, box.y + box.h];
+    return values.map(v => v.toFixed(COORD_DECIMALS)).join(copyCoordsSpace ? ', ' : ',');
   }
 
   function annotationNormalizedBox(ann) {
@@ -690,28 +743,22 @@
     const raw = String(text || '').trim();
     if (!raw) return null;
     let name;
-    let values;
-    try {
-      const parsed = JSON.parse(raw);
+    let box;
+    let parsed;
+    try { parsed = JSON.parse(raw); } catch { parsed = undefined; }
+    if (parsed && !Array.isArray(parsed) && typeof parsed === 'object' && Array.isArray(parsed.bbox)) {
+      box = asXywh(parsed.bbox);
+      if (typeof parsed.name === 'string' && parsed.name.trim()) name = parsed.name.trim();
+    } else {
+      let values;
       if (Array.isArray(parsed)) values = parsed;
-      else if (parsed && typeof parsed === 'object' && Array.isArray(parsed.bbox)) {
-        values = parsed.bbox;
-        if (typeof parsed.name === 'string' && parsed.name.trim()) name = parsed.name.trim();
+      else if (parsed === undefined) {
+        const plain = raw.replace(/[\[\](){}]/g, ' ').split(/[\s,;]+/).filter(Boolean).map(Number);
+        if (plain.length === 4 && plain.every(Number.isFinite)) values = plain;
       }
-    } catch { /* plain four-number format below */ }
-    if (!values) {
-      const plain = raw.replace(/[\[\](){}]/g, ' ').split(/[\s,;]+/).filter(Boolean).map(Number);
-      if (plain.length === 4 && plain.every(Number.isFinite)) values = plain;
+      box = interpretBareCoordinates(values);
     }
-    if (!Array.isArray(values) || values.length !== 4) return null;
-    const nums = values.map(Number);
-    if (!nums.every(Number.isFinite)) return null;
-    const [x, y, w, h] = nums;
-    const eps = 1e-6;
-    if (x < 0 || y < 0 || w < 0 || h < 0 || x > 1 + eps || y > 1 + eps || w > 1 + eps || h > 1 + eps
-      || x + w > 1 + eps || y + h > 1 + eps) return null;
-    if ((w === 0) !== (h === 0)) return null;
-    return { name, box: { x: clamp01(x), y: clamp01(y), w: clamp01(w), h: clamp01(h) } };
+    return box ? { name, box } : null;
   }
 
   function pasteStatus(text) {
@@ -720,6 +767,7 @@
   }
 
   function addPastedAnnotation(name, pixel) {
+    if (modeLoading) return;
     const before = clone(annotations);
     annotations.push({ id: nextId++, category: name, x: pixel.x, y: pixel.y, w: pixel.w, h: pixel.h });
     selectOnly(annotations.length - 1);
@@ -729,23 +777,24 @@
   }
 
   function pasteClipboardText(text) {
-    if (!img || toolMode !== 'none') return;
+    if (!img || toolMode !== 'none' || modeLoading) return;
     const payload = parseClipboardPayload(text);
-    if (!payload) { pasteStatus('Clipboard is not a normalized x, y, w, h annotation.'); return; }
+    if (!payload) { pasteStatus('Clipboard is not a valid normalized coordinate tuple.'); return; }
     const zeroSize = payload.box.w === 0 && payload.box.h === 0;
     if (zeroSize && annotationMode !== 'point') {
       pasteStatus('Zero-size coordinates can only be pasted in Point mode.');
       return;
     }
+    let box = payload.box;
     if (!zeroSize && annotationMode === 'point') {
-      pasteStatus('Point mode only accepts zero-size coordinates.');
-      return;
+      box = { x: box.x + box.w / 2, y: box.y + box.h / 2, w: 0, h: 0 };
     }
+    const finalZeroSize = box.w === 0 && box.h === 0;
     const pixel = {
-      x: Math.round(payload.box.x * img.width),
-      y: Math.round(payload.box.y * img.height),
-      w: zeroSize ? 0 : Math.max(1, Math.round(payload.box.w * img.width)),
-      h: zeroSize ? 0 : Math.max(1, Math.round(payload.box.h * img.height)),
+      x: Math.round(box.x * img.width),
+      y: Math.round(box.y * img.height),
+      w: finalZeroSize ? 0 : Math.max(1, Math.round(box.w * img.width)),
+      h: finalZeroSize ? 0 : Math.max(1, Math.round(box.h * img.height)),
     };
     if (payload.name) {
       const unique = nextUniqueName(payload.name);
@@ -944,12 +993,12 @@
     if (dragging && selectedIdx >= 0) {
       const before = annotations.map((ann, i) => i === selectedIdx ? dragOrigRect : ann);
       dragging = false; dragStartPos = null; dragOrigRect = null;
-      commitHistory(clone(before)); saveAnnotations(); paint();
+      if (commitHistory(clone(before))) saveAnnotations(); paint();
     }
     if (resizing && selectedIdx >= 0) {
       const before = annotations.map((ann, i) => i === selectedIdx ? resizeOrigRect : ann);
       resizing = false; resizeHandle = null; resizeOrigRect = null; resizeStartPos = null;
-      commitHistory(clone(before)); saveAnnotations(); paint();
+      if (commitHistory(clone(before))) saveAnnotations(); paint();
     }
     if (panning) { panning = false; panStartPos = null; panStartOffset = null; }
   });
@@ -1009,8 +1058,8 @@
     if (matchKeybinding(e, keybindings.modePoint)) { e.preventDefault(); requestAnnotationMode('point'); return; }
     if (matchKeybinding(e, keybindings.undo)) { e.preventDefault(); undo(); return; }
     if (matchKeybinding(e, keybindings.redo)) { e.preventDefault(); redo(); return; }
-    if (matchKeybinding(e, keybindings.copy) && hasSelection() && toolMode === 'none') { e.preventDefault(); copySelectedAnnotations(); return; }
-    if (matchKeybinding(e, keybindings.paste) && toolMode === 'none') { e.preventDefault(); vscode.postMessage({ type: 'readClipboard' }); return; }
+    if (!modeLoading && matchKeybinding(e, keybindings.copy) && hasSelection() && toolMode === 'none') { e.preventDefault(); copySelectedAnnotations(); return; }
+    if (!modeLoading && matchKeybinding(e, keybindings.paste) && toolMode === 'none') { e.preventDefault(); vscode.postMessage({ type: 'readClipboard' }); return; }
     if (matchKeybinding(e, keybindings.drawBbox)) { setToolMode(toolMode === 'draw' ? 'none' : 'draw'); return; }
     if (matchKeybinding(e, keybindings.copyCoords)) { setToolMode(toolMode === 'copycoord' ? 'none' : 'copycoord'); return; }
     if (matchKeybinding(e, keybindings.deleteMode)) { setToolMode(toolMode === 'delete' ? 'none' : 'delete'); return; }
@@ -1033,6 +1082,14 @@
     sharedHistory = e.target.checked;
     if (typeof vscode.setState === 'function') vscode.setState({ ...((typeof vscode.getState === 'function' && vscode.getState()) || {}), sharedHistory });
     updateUndoRedoButtons();
+  };
+  const coordPreferXywhChk = document.getElementById('coordPreferXywhChk');
+  coordPreferXywhChk.checked = coordPreferXywh;
+  coordPreferXywhChk.onchange = (e) => {
+    coordPreferXywh = e.target.checked;
+    if (typeof vscode.setState === 'function') vscode.setState({ ...((typeof vscode.getState === 'function' && vscode.getState()) || {}), coordPreferXywh });
+    if (coordBox) copyCoordBox(true);
+    paint();
   };
   document.getElementById('drawBtn').onclick = () => setToolMode(toolMode === 'draw' ? 'none' : 'draw');
   document.getElementById('coordBtn').onclick = () => setToolMode(toolMode === 'copycoord' ? 'none' : 'copycoord');
@@ -1109,6 +1166,8 @@
     if (msg.type !== 'load') return;
 
     const incomingMode = msg.annotationMode || annotationMode;
+    if (pendingMode && incomingMode !== pendingMode) return;
+    if (pendingMode === incomingMode) { pendingMode = null; modeLoading = false; }
     const newImageKey = msg.filename || '';
     const imageChanged = currentImageKey && currentImageKey !== newImageKey;
     if (imageChanged) clearHistory();

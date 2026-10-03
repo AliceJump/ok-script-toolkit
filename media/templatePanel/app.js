@@ -180,6 +180,7 @@
         })));
         break;
       case 'thumbs':
+        if (msg.mode && msg.mode !== currentMode) break;
         for (const item of (msg.items || [])) attachThumb(item.name, item.url);
         break;
       default:

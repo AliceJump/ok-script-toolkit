@@ -3,7 +3,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { ensureEditorTracker, insertIntoPythonEditor } from './pythonEditor';
 import { FeatureData } from './featureData';
-import { cropTemplateThumbFileAsync, openAnnotatedImage, THUMB_HEIGHT } from './pngCrop';
+import { annotatedImageFile, cropTemplateThumbFileAsync, openAnnotatedImage, THUMB_HEIGHT } from './pngCrop';
 import { featureAliases } from './providers';
 import { injectWebviewLocalization, tr } from './localization';
 import { applySharedAssets, getNonce } from './webviewHtml';
@@ -154,7 +154,7 @@ class GalleryController {
         if (!file) continue;
         items.push({ name: meta.name, url: this.webview.asWebviewUri(vscode.Uri.file(file)).toString(true) });
       }
-      if (items.length) await this.webview.postMessage({ type: 'thumbs', items });
+      if (items.length) await this.webview.postMessage({ type: 'thumbs', mode: this.mode, items });
       if (gen !== this.generation || this.disposed) return;
       await new Promise<void>((resolve) => setImmediate(resolve));
     }
@@ -196,7 +196,7 @@ class GalleryController {
         break;
       case 'open':
         if (typeof msg.imagePath === 'string' && typeof msg.bbox === 'string' && typeof msg.name === 'string') {
-          await this.openOriginalWithMarker(msg.imagePath, msg.name, msg.bbox);
+          await this.openOriginalWithMarker(msg.imagePath, msg.name, msg.bbox, this.mode);
         }
         break;
       default:
@@ -237,7 +237,7 @@ class GalleryController {
     void vscode.window.showInformationMessage(`Published positions: ${files}`);
   }
 
-  private async openOriginalWithMarker(imagePath: string, name: string, bboxJson: string): Promise<void> {
+  private async openOriginalWithMarker(imagePath: string, name: string, bboxJson: string, mode: ResourcePreviewMode): Promise<void> {
     let bbox: [number, number, number, number] | undefined;
     try {
       const arr = JSON.parse(bboxJson);
@@ -249,7 +249,9 @@ class GalleryController {
     try {
       const file = await vscode.window.withProgress(
         { location: vscode.ProgressLocation.Notification, title: tr('ok-script-toolkit: Generating source image annotation…') },
-        async () => openAnnotatedImage(imagePath, name, bbox!, this.thumbDir, this.features.root),
+        async () => mode === 'template'
+          ? openAnnotatedImage(imagePath, name, bbox!, this.thumbDir, this.features.root)
+          : annotatedImageFile(imagePath, bbox!, this.thumbDir),
       );
       if (!file) {
         void vscode.window.showWarningMessage(tr('Failed to generate annotated image: source image could not be decoded or was missing'));
