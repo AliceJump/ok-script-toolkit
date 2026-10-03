@@ -125,18 +125,6 @@
       }
     },
 
-    "boxes": {
-      "type": "object",
-      "additionalProperties": false,
-      "description": "框资源。标注工作文件固定是 `<templates.directory>/boxes.json`，不由本组控制。本组只声明游戏和补全读取的那份运行时位置表。见 docs/box-resources.md。",
-      "properties": {
-        "runtime": {
-          "type": "string",
-          "description": "运行时框文件，相对项目根。业务项目的 ScreenPosition 加载它，插件的框管理和补全也读它。\n\n⚠️ 别和 `<模板目录>/boxes.json` 搞混。那是框资源管理的标注工作文件，路径由 `templates.directory` 派生。\n\n没有对应的 IDE 设置。取值链：本字段 → config.py 顶层 `boxes_json` → `src/scene/boxes.json`。通常不必写。"
-        }
-      }
-    },
-
     "effects": {
       "type": "object",
       "additionalProperties": false,
