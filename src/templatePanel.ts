@@ -132,33 +132,40 @@ class GalleryController {
       .sort((a, b) => a.name.localeCompare(b.name));
   }
 
-  private metas(): ResourceMeta[] {
-    if (this.mode === 'rect') return this.rectMetas();
-    if (this.mode === 'point') return this.pointMetas();
+  private metas(mode: ResourcePreviewMode = this.mode): ResourceMeta[] {
+    if (mode === 'rect') return this.rectMetas();
+    if (mode === 'point') return this.pointMetas();
     return this.templateMetas();
   }
 
   async update(): Promise<void> {
     if (this.disposed || !this.isVisible()) return;
     const gen = ++this.generation;
-    const metas = this.metas();
-    await this.webview.postMessage({ type: 'resources', mode: this.mode, resources: metas });
-    if (gen !== this.generation) return;
+    const mode = this.mode;
+    const metas = this.metas(mode);
+    await this.webview.postMessage({ type: 'resources', mode, resources: metas });
+    if (gen !== this.generation || this.disposed || mode !== this.mode) return;
 
     const batchSize = 6;
     for (let i = 0; i < metas.length; i += batchSize) {
-      if (gen !== this.generation || this.disposed) return;
+      if (gen !== this.generation || this.disposed || mode !== this.mode) return;
       const items: { name: string; url: string }[] = [];
       for (const meta of metas.slice(i, i + batchSize)) {
         const file = await cropTemplateThumbFileAsync(meta.imagePath, meta.bbox, this.thumbDir, THUMB_HEIGHT);
+        if (gen !== this.generation || this.disposed || mode !== this.mode) return;
         if (!file) continue;
         items.push({ name: meta.name, url: this.webview.asWebviewUri(vscode.Uri.file(file)).toString(true) });
       }
-      if (items.length) await this.webview.postMessage({ type: 'thumbs', mode: this.mode, items });
-      if (gen !== this.generation || this.disposed) return;
+      if (items.length) {
+        if (gen !== this.generation || this.disposed || mode !== this.mode) return;
+        await this.webview.postMessage({ type: 'thumbs', mode, items });
+      }
+      if (gen !== this.generation || this.disposed || mode !== this.mode) return;
       await new Promise<void>((resolve) => setImmediate(resolve));
     }
-    if (gen === this.generation && !this.disposed) void this.webview.postMessage({ type: 'thumbDone' });
+    if (gen === this.generation && !this.disposed && mode === this.mode) {
+      void this.webview.postMessage({ type: 'thumbDone', mode });
+    }
   }
 
   private async onMessage(msg: {
@@ -195,8 +202,9 @@ class GalleryController {
         }
         break;
       case 'open':
-        if (typeof msg.imagePath === 'string' && typeof msg.bbox === 'string' && typeof msg.name === 'string') {
-          await this.openOriginalWithMarker(msg.imagePath, msg.name, msg.bbox, this.mode);
+        if (typeof msg.name === 'string') {
+          const meta = this.metas(this.mode).find(item => item.name === msg.name);
+          if (meta) await this.openOriginalWithMarker(meta);
         }
         break;
       default:
@@ -237,21 +245,13 @@ class GalleryController {
     void vscode.window.showInformationMessage(`Published positions: ${files}`);
   }
 
-  private async openOriginalWithMarker(imagePath: string, name: string, bboxJson: string, mode: ResourcePreviewMode): Promise<void> {
-    let bbox: [number, number, number, number] | undefined;
-    try {
-      const arr = JSON.parse(bboxJson);
-      if (Array.isArray(arr) && arr.length >= 4 && arr.every((n) => typeof n === 'number')) {
-        bbox = [Math.round(arr[0]), Math.round(arr[1]), Math.round(arr[2]), Math.round(arr[3])];
-      }
-    } catch { /* invalid bbox */ }
-    if (!bbox) return;
+  private async openOriginalWithMarker(meta: ResourceMeta): Promise<void> {
     try {
       const file = await vscode.window.withProgress(
         { location: vscode.ProgressLocation.Notification, title: tr('ok-script-toolkit: Generating source image annotation…') },
-        async () => mode === 'template'
-          ? openAnnotatedImage(imagePath, name, bbox!, this.thumbDir, this.features.root)
-          : annotatedImageFile(imagePath, bbox!, this.thumbDir),
+        async () => meta.kind === 'template'
+          ? openAnnotatedImage(meta.imagePath, meta.name, meta.bbox, this.thumbDir, this.features.root)
+          : annotatedImageFile(meta.imagePath, meta.bbox, this.thumbDir),
       );
       if (!file) {
         void vscode.window.showWarningMessage(tr('Failed to generate annotated image: source image could not be decoded or was missing'));
