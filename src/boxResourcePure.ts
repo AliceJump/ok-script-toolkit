@@ -1,6 +1,6 @@
 /** Box authoring helpers. Runtime publication is handled exclusively by the unified position resource. */
 import * as path from 'path';
-import { CocoData, parseCocoData } from './cocoAnnotationData';
+import { CocoData } from './cocoAnnotationData';
 import { pixelBboxError, roundPixelBbox } from './annotationGeometry';
 export { pixelBboxError, roundPixelBbox } from './annotationGeometry';
 
@@ -82,17 +82,6 @@ export function unionPixelBoxes(boxes: readonly PixelBox[]): PixelBox | undefine
     bottom = Math.max(bottom, box.y + box.h);
   }
   return { x: left, y: top, w: right - left, h: bottom - top };
-}
-
-/**
- * The rect authoring source is current COCO only; the optional callback is retained solely so
- * existing current-COCO call sites do not need a second parser path. It is never consulted.
- */
-export function parseBoxCoco(
-  text: string,
-  _sizeOf?: (name: string) => { width: number; height: number } | undefined,
-) {
-  return parseCocoData(text);
 }
 
 /** Read-only authoring projection used by resource preview and unified position publish. */
