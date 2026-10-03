@@ -22,7 +22,7 @@ import { templatesCocoAnnotationsSetting } from './projectConfig';
 import { getProjectConfig, probeWindowConfig } from './screenshotCapture';
 
 /** 探到的值 + 它是为哪个项目根探的（换项目后必须重探，否则会套用上一个项目的路径）。 */
-let probed: { rootDir: string; value?: string; boxes?: string } | undefined;
+let probed: { rootDir: string; value?: string } | undefined;
 /** 并发去重：激活与配置变更可能同时触发，别拉起两个 Python 进程。 */
 let inFlight: Promise<void> | undefined;
 
@@ -37,7 +37,7 @@ export function refreshCocoFeaturePath(rootDir?: string): Promise<void> {
     try {
       const { pythonPath } = getProjectConfig();
       const config = dir ? await probeWindowConfig(dir, pythonPath) : undefined;
-      probed = { rootDir: dir, value: config?.cocoFeatureJson, boxes: config?.boxesJson };
+      probed = { rootDir: dir, value: config?.cocoFeatureJson };
     } catch {
       probed = { rootDir: dir };
     } finally {
@@ -62,11 +62,6 @@ export function clearCocoFeaturePathCache(): void {
 export function probedCocoFeatureJson(rootDir: string): string | undefined {
   if (!rootDir || !probed || probed.rootDir !== rootDir) return undefined;
   return probed.value;
-}
-
-export function probedBoxesJson(rootDir: string): string | undefined {
-  if (!rootDir || !probed || probed.rootDir !== rootDir) return undefined;
-  return probed.boxes;
 }
 
 /**

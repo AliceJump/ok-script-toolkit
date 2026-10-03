@@ -1,4 +1,4 @@
-/** Run both gallery scripts and asset cards to verify their shared interaction contract. */
+/** Run the unified resource preview and asset cards to verify their shared interaction contract. */
 const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
@@ -29,53 +29,73 @@ function gallery(panel, message) {
   return { dom, w, sent, flush: () => { for (const [id, fn] of [...timers]) { timers.delete(id); fn(); } } };
 }
 
-for (const panel of ['templatePanel', 'boxPanel']) {
-  const message = panel === 'templatePanel'
-    ? { type: 'templates', templates: [{ name: 'button', width: 20, height: 30, bbox: [1, 2, 20, 30], imagePath: 'source.png' }] }
-    : { type: 'rows', rows: [{ id: 'screen.button', label: 'self.pos.screen.button.to_box()', bbox: [1, 2, 20, 30], imagePath: 'source.png' }] };
-  const { dom, w, sent, flush } = gallery(panel, message);
+const previewCases = [
+  {
+    mode: 'template',
+    resource: {
+      name: 'button', width: 20, height: 30, bbox: [1, 2, 20, 30], imagePath: 'source.png',
+      kind: 'template', expression: 'fL.button',
+    },
+  },
+  {
+    mode: 'rect',
+    resource: {
+      name: 'screen.button', width: 20, height: 30, bbox: [1, 2, 10, 12], imagePath: 'source.png',
+      kind: 'rect', expression: 'self.pos.screen.button.to_box()',
+    },
+  },
+  {
+    mode: 'point',
+    resource: {
+      name: 'screen.anchor', width: 20, height: 30, bbox: [2, 3, 8, 8], imagePath: 'source.png',
+      kind: 'point', expression: 'self.pos.screen.anchor',
+    },
+  },
+];
+
+for (const { mode, resource } of previewCases) {
+  const { dom, w, sent, flush } = gallery('templatePanel', {
+    type: 'resources', mode, resources: [resource],
+  });
   const card = w.document.querySelector('.card');
   const buttons = [...card.querySelectorAll('.thumbnail-actions button')];
-  assert.strictEqual(buttons.length, 3, `${panel} exposes insert, copy and view`);
+  assert.strictEqual(buttons.length, 3, `${mode} preview exposes insert, copy and view`);
   assert(buttons.every(button => button.title && button.getAttribute('aria-label') === button.title));
+
   const click = detail => card.dispatchEvent(new w.MouseEvent('click', { bubbles: true, detail }));
   click(1);
   flush();
   assert.strictEqual(sent.length, 1);
-  assert.strictEqual(panel === 'templatePanel' ? sent[0].type : sent[0].clicks, panel === 'templatePanel' ? 'insert' : 1);
+  assert.strictEqual(sent[0].type, 'insert');
+  assert.strictEqual(sent[0].expression, resource.expression);
+
   sent.length = 0;
   click(1); click(2); click(3);
   card.dispatchEvent(new w.MouseEvent('dblclick', { bubbles: true }));
   flush();
   assert.strictEqual(sent.length, 1, 'double-click never inserts before copying');
-  assert.strictEqual(panel === 'templatePanel' ? sent[0].type : sent[0].clicks, panel === 'templatePanel' ? 'copy' : 2);
+  assert.strictEqual(sent[0].type, 'copy');
+  assert.strictEqual(sent[0].expression, resource.expression);
+
   sent.length = 0;
-  // Some systems still emit a native double-click after our gesture window expired.
-  // That second click must use the same commit window, never insert and then copy.
+  // A native double-click arriving after the gesture window cannot turn an already committed click into a copy.
   click(1); flush();
   click(2);
   card.dispatchEvent(new w.MouseEvent('dblclick', { bubbles: true }));
   flush();
   assert.strictEqual(sent.length, 2, 'expired clicks commit as independent single gestures');
-  assert(sent.every(message => panel === 'templatePanel' ? message.type === 'insert' : message.clicks === 1),
-    'a late native dblclick cannot copy an already committed gesture');
+  assert(sent.every(message => message.type === 'insert'), 'a late native dblclick cannot copy an already committed gesture');
+
   sent.length = 0;
   click(1); buttons[2].click();
   buttons[2].dispatchEvent(new w.MouseEvent('dblclick', { bubbles: true }));
   flush();
   assert.strictEqual(sent.length, 1, 'source button cancels pending insertion and never copies the card');
   assert.strictEqual(sent[0].type, 'open');
+
   sent.length = 0;
   click(1); flush();
   assert.strictEqual(sent.length, 1, 'a direct button clears pending gesture state');
-  if (panel === 'boxPanel') {
-    w.dispatchEvent(new w.MessageEvent('message', { data: { type: 'thumbs', items: [{ id: 'screen.button', url: 'preview.png' }] } }));
-    assert.strictEqual(card.querySelectorAll('.thumbnail-actions button').length, 3, 'loading a box image preserves actions');
-    w.dispatchEvent(new w.MessageEvent('message', { data: { type: 'rows', rows: [{ id: 'screen.runtime', label: 'to_box()' }] } }));
-    const open = w.document.querySelectorAll('.thumbnail-actions button')[2];
-    assert(open.disabled);
-    sent.length = 0; open.click(); assert.strictEqual(sent.length, 0);
-  }
   dom.window.close();
 }
 
@@ -90,4 +110,4 @@ card.querySelector('[data-action="open"]').click();
 assert.deepStrictEqual(sent.pop(), { type: 'openSource', imagePath: 'source.png' });
 assert.strictEqual(sent.length, 0, 'direct asset actions never trigger a second card action');
 dom.window.close();
-console.log('thumbnail action parity: buttons, single/double clicks, isolation and source-less state OK');
+console.log('thumbnail action parity: unified template/rect/point preview and asset actions OK');

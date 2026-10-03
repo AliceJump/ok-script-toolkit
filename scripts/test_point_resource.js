@@ -41,39 +41,56 @@ const image = path.join(folder, 'a.png');
 writePng(image, 100, 80);
 const pointFile = path.join(folder, 'points.json');
 
-// Legacy point source stays readable, but the first successful write migrates it to COCO.
+// Point authoring is COCO-only. A point is represented by a zero-size bbox [x,y,0,0].
 fs.writeFileSync(pointFile, JSON.stringify({
-  version: 1,
-  images: [{ file: 'a.png', width: 100, height: 80 }],
-  points: [{ path: 'screen.legacy', image: 'a.png', x: 10, y: 20 }],
+  images: [{ id: 1, file_name: 'a.png', width: 100, height: 80 }],
+  categories: [{ id: 1, name: 'screen.existing', supercategory: 'screen' }],
+  annotations: [{ id: 1, image_id: 1, category_id: 1, bbox: [10, 20, 0, 0], area: 0, iscrowd: 0 }],
 }));
 let read = points.readPoints(project, directory);
 assert.deepStrictEqual(read.errors, []);
-assert.strictEqual(read.legacy, true);
-assert.deepStrictEqual(read.file.points, [{ path: 'screen.legacy', image: 'a.png', x: 10, y: 20 }]);
+assert.deepStrictEqual(read.file.points, [{ path: 'screen.existing', image: 'a.png', x: 10, y: 20 }]);
 
 assert.strictEqual(points.savePointsForImage(project, directory, image, [
-  { path: 'screen.legacy', x: 10, y: 20 },
+  { path: 'screen.existing', x: 10, y: 20 },
   { path: 'screen.new', x: 30, y: 40 },
 ]), undefined);
 const raw = JSON.parse(fs.readFileSync(pointFile, 'utf8'));
 assert.deepStrictEqual(Object.keys(raw).sort(), ['annotations', 'categories', 'images']);
 assert(!('version' in raw) && !('points' in raw));
-assert(raw.annotations.every(ann => ann.bbox[2] === 0 && ann.bbox[3] === 0 && ann.area === 0), 'all points are fake zero-size COCO bboxes');
+assert(raw.annotations.every(ann => ann.bbox[2] === 0 && ann.bbox[3] === 0 && ann.area === 0), 'all points use zero-size COCO bboxes');
 const names = new Map(raw.categories.map(category => [category.id, category.name]));
 const byName = new Map(raw.annotations.map(ann => [names.get(ann.category_id), ann.bbox]));
-assert.deepStrictEqual(byName.get('screen.legacy'), [10,20,0,0]);
+assert.deepStrictEqual(byName.get('screen.existing'), [10,20,0,0]);
 assert.deepStrictEqual(byName.get('screen.new'), [30,40,0,0]);
 
 read = points.readPoints(project, directory);
 assert.deepStrictEqual(read.errors, []);
-assert.strictEqual(read.legacy, undefined);
 assert.strictEqual(read.file.points.length, 2);
-assert.deepStrictEqual(points.pointPathOccupancy(project, directory), { 'screen.legacy': 'a.png', 'screen.new': 'a.png' });
+assert.deepStrictEqual(points.pointPathOccupancy(project, directory), { 'screen.existing': 'a.png', 'screen.new': 'a.png' });
 
-// The point source is strict about the point-only special geometry.
+// The point source is strict about point-only geometry.
 raw.annotations[0].bbox[2] = 1;
 fs.writeFileSync(pointFile, JSON.stringify(raw));
 assert(points.readPoints(project, directory).errors.includes('pointGeometry'));
 
-console.log('point resource COCO tests passed');
+// Legacy point v1 is intentionally rejected and never migrated implicitly.
+const legacyProject = fs.mkdtempSync(path.join(os.tmpdir(), 'ok-point-legacy-'));
+const legacyFolder = path.join(legacyProject, directory);
+fs.mkdirSync(legacyFolder);
+const legacyImage = path.join(legacyFolder, 'a.png');
+writePng(legacyImage, 100, 80);
+const legacyFile = path.join(legacyFolder, 'points.json');
+const legacyText = JSON.stringify({
+  version: 1,
+  images: [{ file: 'a.png', width: 100, height: 80 }],
+  points: [{ path: 'screen.old', image: 'a.png', x: 10, y: 20 }],
+});
+fs.writeFileSync(legacyFile, legacyText);
+assert(points.readPoints(legacyProject, directory).errors.length > 0);
+assert.strictEqual(points.savePointsForImage(legacyProject, directory, legacyImage, [{ path: 'screen.new', x: 1, y: 2 }]), 'parse');
+assert.strictEqual(fs.readFileSync(legacyFile, 'utf8'), legacyText);
+
+fs.rmSync(project, { recursive: true, force: true });
+fs.rmSync(legacyProject, { recursive: true, force: true });
+console.log('point resource COCO-only tests passed');

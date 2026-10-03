@@ -19,16 +19,9 @@ interface PointAuthoringFile {
   points: AuthoringPoint[];
 }
 
-interface LegacyPointAuthoringFile {
-  version: number;
-  images: PositionImage[];
-  points: AuthoringPoint[];
-}
-
 export interface PointReadResult {
   file: PointAuthoringFile;
   errors: string[];
-  legacy?: boolean;
 }
 
 function emptyFile(): PointAuthoringFile {
@@ -37,40 +30,6 @@ function emptyFile(): PointAuthoringFile {
 
 function sourceFile(root: string, directory: string): string {
   return path.join(path.resolve(root, directory), POINT_AUTHORING_FILE);
-}
-
-function parseLegacy(raw: LegacyPointAuthoringFile): PointReadResult {
-  if (raw.version !== 1 || !Array.isArray(raw.images) || !Array.isArray(raw.points)) {
-    return { file: emptyFile(), errors: ['schema'] };
-  }
-  const imageNames = new Set<string>();
-  const images: PositionImage[] = [];
-  for (const image of raw.images) {
-    if (!image || typeof image.file !== 'string' || !image.file || !Number.isFinite(image.width) || !Number.isFinite(image.height)
-      || image.width <= 0 || image.height <= 0 || imageNames.has(image.file.toLowerCase())) {
-      return { file: emptyFile(), errors: ['image'] };
-    }
-    imageNames.add(image.file.toLowerCase());
-    images.push({ file: image.file, width: image.width, height: image.height });
-  }
-  const paths = new Set<string>();
-  const points: AuthoringPoint[] = [];
-  for (const point of raw.points) {
-    const name = point?.path?.trim();
-    if (!point || typeof name !== 'string' || positionPathError(name)
-      || typeof point.image !== 'string' || !point.image
-      || !Number.isFinite(point.x) || !Number.isFinite(point.y)
-      || paths.has(name)) {
-      return { file: emptyFile(), errors: ['point'] };
-    }
-    const image = images.find(item => item.file.toLowerCase() === point.image.toLowerCase());
-    if (!image || point.x < 0 || point.y < 0 || point.x > image.width || point.y > image.height) {
-      return { file: emptyFile(), errors: ['point'] };
-    }
-    paths.add(name);
-    points.push({ path: name, image: point.image, x: point.x, y: point.y });
-  }
-  return { file: { images, points }, errors: [], legacy: true };
 }
 
 /** Generic template COCO rejects zero-area boxes; point COCO deliberately accepts only zero-area boxes. */
@@ -129,8 +88,6 @@ function parse(text: string): PointReadResult {
   let raw: unknown;
   try { raw = JSON.parse(text); } catch { return { file: emptyFile(), errors: ['json'] }; }
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { file: emptyFile(), errors: ['root'] };
-  const record = raw as Record<string, unknown>;
-  if ('version' in record && 'points' in record) return parseLegacy(raw as LegacyPointAuthoringFile);
   return parseCoco(raw as CocoData);
 }
 

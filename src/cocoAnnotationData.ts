@@ -113,14 +113,20 @@ function templateDisplayData(text: string): CocoData {
   try {
     const raw = JSON.parse(text);
     if (!raw || !['images', 'annotations', 'categories'].every(key => Array.isArray(raw[key]))) return emptyCocoData();
+    const images = raw.images.filter((image: CocoImage) => image && Number.isInteger(image.id)
+      && typeof image.file_name === 'string' && Number.isFinite(image.width) && Number.isFinite(image.height));
+    const categories = raw.categories.filter((category: CocoCategory) => category && Number.isInteger(category.id)
+      && typeof category.name === 'string');
     return {
-      images: raw.images.filter((image: CocoImage) => image && Number.isInteger(image.id)
-        && typeof image.file_name === 'string' && Number.isFinite(image.width) && Number.isFinite(image.height)),
-      categories: raw.categories.filter((category: CocoCategory) => category && Number.isInteger(category.id)
-        && typeof category.name === 'string'),
-      annotations: raw.annotations.filter((annotation: CocoAnnotation) => annotation
-        && [annotation.id, annotation.image_id, annotation.category_id].every(Number.isInteger)
-        && Array.isArray(annotation.bbox) && annotation.bbox.length === 4 && annotation.bbox.every(Number.isFinite)),
+      images,
+      categories,
+      annotations: raw.annotations.filter((annotation: CocoAnnotation) => {
+        const image = images.find((item: CocoImage) => item.id === annotation?.image_id);
+        return annotation
+          && [annotation.id, annotation.image_id, annotation.category_id].every(Number.isInteger)
+          && Array.isArray(annotation.bbox) && annotation.bbox.length === 4 && annotation.bbox.every(Number.isFinite)
+          && image !== undefined && !pixelBboxError(annotation.bbox, image);
+      }),
     };
   } catch { return emptyCocoData(); }
 }
