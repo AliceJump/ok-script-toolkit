@@ -173,9 +173,27 @@ function message(data) { window.dispatchEvent(new window.MessageEvent('message',
   assert(last('copyText').text === '0.1000, 0.1000, 0.4000, 0.4000', 'multi-point copy emits its outer box without a name');
 
   const beforeAreaPoint = posts('save').length;
-  message({ type: 'clipboardText', text: '0.4,0.4,0.1,0.1' });
+  message({ type: 'clipboardText', text: '{"name":"screen.centered","bbox":[0.4,0.4,0.2,0.1]}' });
   await flush();
-  assert(posts('save').length === beforeAreaPoint, 'non-zero area cannot be pasted into point mode');
+  save = last('save');
+  assert(posts('save').length === beforeAreaPoint + 1, 'named box paste is accepted in point mode');
+  assert(save.annotations.some(a => a.category === 'screen.centered' && a.x === 500 && a.y === 450 && a.w === 0 && a.h === 0),
+    'point mode projects a pasted box to its normalized center');
+
+  const beforeUnnamedAreaPoint = posts('save').length;
+  message({ type: 'clipboardText', text: '0.2,0.3,0.2,0.2' });
+  await flush();
+  assert(document.getElementById('bboxModal').classList.contains('visible'), 'unnamed box paste in point mode still asks for a name');
+  assert(posts('save').length === beforeUnnamedAreaPoint, 'unnamed point conversion does not save before naming');
+  assert(Number(document.getElementById('bboxX').value) === 300 && Number(document.getElementById('bboxY').value) === 400,
+    'unnamed box is converted to its center before the naming dialog');
+  document.getElementById('bboxCat').value = 'screen.centered_unnamed';
+  document.getElementById('bboxCat').dispatchEvent(new window.Event('input', { bubbles: true }));
+  document.getElementById('bboxOk').click();
+  await flush();
+  save = last('save');
+  assert(save.annotations.some(a => a.category === 'screen.centered_unnamed' && a.x === 300 && a.y === 400 && a.w === 0 && a.h === 0),
+    'named result of an unnamed box paste is stored as a point at the center');
 
   console.log('annotation clipboard tests passed');
 })().catch(error => {
