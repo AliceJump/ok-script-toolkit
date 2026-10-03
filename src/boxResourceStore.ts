@@ -14,19 +14,24 @@ import {
   unionPixelBoxes,
 } from './boxResourcePure';
 
-function loadBoxAnnotationData(root: string, directory: string): {
+function loadBoxAnnotationData(root: string, directory: string): CocoAnnotationData {
+  const data = new CocoAnnotationData(root, directory, AUTHORING_FILE_NAME);
+  data.load();
+  return data;
+}
+
+function loadEditableBoxAnnotationData(root: string, directory: string): {
   data: CocoAnnotationData;
   recoveredInvalid: boolean;
 } {
-  const data = new CocoAnnotationData(root, directory, AUTHORING_FILE_NAME);
-  data.load();
+  const data = loadBoxAnnotationData(root, directory);
   const recoveredInvalid = data.readErrors.length > 0 && !data.readErrors.includes('read');
   if (recoveredInvalid) data.readErrors = [];
   return { data, recoveredInvalid };
 }
 
 export function boxAnnotationData(root: string, directory: string): CocoAnnotationData {
-  return loadBoxAnnotationData(root, directory).data;
+  return loadBoxAnnotationData(root, directory);
 }
 
 export function readAuthoringFile(root: string, directory: string): AuthoringFile {
@@ -77,7 +82,7 @@ export function restoreAuthoring(
 }
 
 export function removeImageBoxes(root: string, directory: string, name: string): boolean {
-  const loaded = loadBoxAnnotationData(root, directory);
+  const loaded = loadEditableBoxAnnotationData(root, directory);
   const data = loaded.data;
   if (data.readErrors.length) return false;
   if (!fs.existsSync(data.annotationFile)) return true;
@@ -125,7 +130,7 @@ export function addBox(
   imageName: string,
   box: PixelBox,
 ): string | undefined {
-  const data = boxAnnotationData(root, directory);
+  const data = loadEditableBoxAnnotationData(root, directory).data;
   if (data.readErrors.length) return 'parse';
   const image = path.join(data.templatesDir, imageFileName(imageName));
   if (!data.resolveImageSize(image)) return 'image';
