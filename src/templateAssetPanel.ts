@@ -289,6 +289,16 @@ class AssetGalleryController {
   }
 
   private async handlePublishPositions(selection: { rect: boolean; point: boolean }): Promise<void> {
+    if (selection.rect !== selection.point) {
+      const publishSelected = 'Publish selected positions';
+      const confirm = await vscode.window.showWarningMessage(
+        'Publishing only the selected position type replaces the complete Position output and removes unselected positions.',
+        { modal: true },
+        publishSelected,
+      );
+      if (confirm !== publishSelected) return;
+    }
+
     const choice = await vscode.window.showQuickPick(
       [
         { label: 'JSON', description: DEFAULT_POSITION_JSON, format: 'json' as PositionPublishFormat },
