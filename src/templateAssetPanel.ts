@@ -3,18 +3,14 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { TemplateAssetData } from './templateAssetData';
 import { AnnotationPanel } from './annotationPanel';
-import { openBoxEditor } from './boxPanels';
-import { authoringReadErrors, publishRuntime, readAuthoringFile, readRuntimeFile, runtimeOnlyPaths, runtimeReadErrors } from './boxResourceStore';
-import { probedBoxesJson } from './cocoFeaturePath';
 import { cropTemplateThumbFileAsync, THUMB_HEIGHT } from './pngCrop';
 import { injectWebviewLocalization, tr } from './localization';
 import { TempScreenshotStore } from './tempScreenshotStore';
 import { captureGameWindow, getProjectConfig, probeWindowConfig } from './screenshotCapture';
 import { takePendingDrag } from './tempDrag';
-import { boxesRuntimeSetting, currentWorkspaceFolderUri, ideSetting, labelEnumClassName, labelEnumPathInputError, labelEnumPathSetting, normalizeLabelEnumPathInput, setIdeSetting, templatesDirectory } from './projectConfig';
+import { ideSetting, labelEnumClassName, labelEnumPathInputError, labelEnumPathSetting, normalizeLabelEnumPathInput, setIdeSetting, templatesDirectory } from './projectConfig';
 import { labelEnumRenameImpact, labelEnumRenameMessage, referencingFiles, writableClassName } from './labelEnumGuard';
 import { derivedEnumPath, isPathInsideRoot, needsEnumPathPrompt, SaveTarget, saveToAssetsItems } from './saveToAssetsPure';
-import { AUTHORING_FILE_NAME } from './boxResourcePure';
 import { onAnnotationDataChanged, sameAnnotationFile } from './cocoAnnotationData';
 import { isSameSize, scaleBoxes, SwapBox } from './annotationSwapPure';
 import { applySharedAssets, getNonce } from './webviewHtml';
@@ -71,7 +67,6 @@ class AssetGalleryController {
   /** 上次刷新时 authoring 是否不可读（用于只在状态翻转时弹一次提示） */
   private lastReadErrors = false;
   private readonly disposables: vscode.Disposable[] = [];
-  private readonly sourceData: TemplateAssetData;
 
   constructor(
     private readonly webview: vscode.Webview,
@@ -80,10 +75,7 @@ class AssetGalleryController {
     private readonly isVisible: () => boolean,
     private readonly extensionUri: vscode.Uri,
     private readonly tempStore?: TempScreenshotStore,
-    private readonly boxes = false,
   ) {
-    this.sourceData = data;
-    if (boxes) this.data = new TemplateAssetData(data.root, AUTHORING_FILE_NAME);
     liveControllers.add(this);
     this.disposables.push(onAnnotationDataChanged(file => {
       if (sameAnnotationFile(file, this.data.annotationFile)) void this.update();
@@ -94,25 +86,20 @@ class AssetGalleryController {
   }
 
   attachHtml(): void {
-    this.webview.html = assetGalleryHtml(this.webview, this.extensionUri, this.boxes ? 'boxes' : 'annotations');
+    this.webview.html = assetGalleryHtml(this.webview, this.extensionUri);
   }
 
   async update(): Promise<void> {
     if (this.disposed || !this.isVisible()) return;
     const gen = ++this.generation;
 
-    if (this.boxes && (this.data.root !== this.sourceData.root || this.data.templatesDir !== this.sourceData.templatesDir)) {
-      this.data.setRoot(this.sourceData.root);
-    }
     this.data.load();
     const imageFiles = this.data.listImages();
 
     // 构建元数据
     const authoringErrors = this.data.readErrors;
     if (authoringErrors.length && !this.lastReadErrors) {
-      void vscode.window.showErrorMessage(this.boxes
-        ? tr('Could not read the box resource file. Box overlays are hidden until it is fixed.')
-        : tr('The annotation source is invalid. Fix the source file before saving or exporting.'));
+      void vscode.window.showErrorMessage(tr('The annotation source is invalid. Fix the source file before saving or exporting.'));
     }
     this.lastReadErrors = authoringErrors.length > 0;
     const metas = imageFiles.map((imgPath) => {
@@ -198,13 +185,9 @@ class AssetGalleryController {
       case 'openAnnotation': {
         if (msg.imagePath) {
           const imageList = this.data.listImages();
-          if (this.boxes) {
-            openBoxEditor(this.extensionUri, this.data, msg.imagePath, this.thumbDir);
-          } else {
-            AnnotationPanel.show(this.extensionUri, this.data, this.thumbDir, msg.imagePath, imageList, () => {
-              void this.update();
-            });
-          }
+          AnnotationPanel.show(this.extensionUri, this.data, this.thumbDir, msg.imagePath, imageList, () => {
+            void this.update();
+          });
         }
         break;
       }
@@ -220,8 +203,7 @@ class AssetGalleryController {
         break;
       }
       case 'saveToAssets': {
-        if (this.boxes) await this.publishBoxes();
-        else await this.handleSaveToAssets();
+        await this.handleSaveToAssets();
         break;
       }
       case 'deleteImage': {
@@ -654,50 +636,6 @@ class AssetGalleryController {
     );
   }
 
-  private async publishBoxes(): Promise<void> {
-    const root = this.data.root;
-    if (!root) return;
-    const templates = templatesDirectory(root);
-    const authoringErrors = authoringReadErrors(root, templates);
-    if (authoringErrors.length) {
-      void vscode.window.showErrorMessage(tr('Could not save the box resource.'));
-      return;
-    }
-    const declared = boxesRuntimeSetting(root);
-    const fromConfig = probedBoxesJson(root);
-    const authoring = readAuthoringFile(root, templates);
-    const runtime = readRuntimeFile(root, declared, fromConfig);
-    if (!authoring.boxes.length) {
-      void vscode.window.showInformationMessage(tr('No box annotations to publish.'));
-      return;
-    }
-    if (runtimeReadErrors(root, declared, fromConfig).length) {
-      void vscode.window.showErrorMessage(tr('Could not save the box resource.'));
-      return;
-    }
-    const dropped = runtimeOnlyPaths(authoring, runtime);
-    if (dropped.length) {
-      const answer = await vscode.window.showWarningMessage(dropped.join('\n'), { modal: true }, tr('Publish'));
-      if (answer !== tr('Publish')) return;
-    }
-    const result = publishRuntime(root, templates, declared, fromConfig);
-    if (!result.ok) {
-      // 发布失败要说清原因：最多见的是"框的原图读不出尺寸，Pixel 转 normalized 无从做起"。
-      const sizeMissing = result.errors
-        .filter((item) => item.startsWith('size:'))
-        .map((item) => item.slice('size:'.length));
-      if (sizeMissing.length) {
-        void vscode.window.showErrorMessage(tr('Boxes without an image size were not published: {paths}.', {
-          paths: sizeMissing.join(', '),
-        }));
-        return;
-      }
-      void vscode.window.showErrorMessage(tr('Could not save the box resource.'));
-      return;
-    }
-    await this.update();
-  }
-
   /** 读某张图的标注，转成 `SwapBox` 形状（纯逻辑与数据层共用的入参） */
   private boxesOf(imagePath: string): SwapBox[] {
     return this.data.getAnnotationsForImage(imagePath, true).map((ann) => ({
@@ -762,36 +700,6 @@ class AssetGalleryController {
 }
 
 /* ---------------- 侧边栏视图 ---------------- */
-
-export class BoxAssetViewProvider implements vscode.WebviewViewProvider {
-  public static readonly viewType = 'okScriptToolkit.boxAssets';
-
-  constructor(
-    private readonly data: TemplateAssetData,
-    private readonly thumbDir: string,
-    private readonly extensionUri: vscode.Uri,
-    private readonly tempStore?: TempScreenshotStore,
-  ) { }
-
-  resolveWebviewView(view: vscode.WebviewView): void {
-    view.webview.options = {
-      enableScripts: true,
-      localResourceRoots: [vscode.Uri.file(this.thumbDir), this.extensionUri],
-    };
-    const controller = new AssetGalleryController(
-      view.webview,
-      this.data,
-      this.thumbDir,
-      () => view.visible,
-      this.extensionUri,
-      this.tempStore,
-      true,
-    );
-    controller.attachHtml();
-    view.onDidChangeVisibility(() => { if (view.visible) void controller.update(); });
-    view.onDidDispose(() => controller.dispose());
-  }
-}
 
 export class TemplateAssetViewProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'okScriptToolkit.templateAssets';
@@ -885,7 +793,7 @@ export class TemplateAssetPanel {
   }
 }
 
-function assetGalleryHtml(webview: vscode.Webview, extensionUri: vscode.Uri, mode = 'annotations'): string {
+function assetGalleryHtml(webview: vscode.Webview, extensionUri: vscode.Uri): string {
   const file = path.join(extensionUri.fsPath, 'media', 'templateAssetPanel', 'index.html');
   const nonce = getNonce();
   const resource = (name: string) => webview.asWebviewUri(
@@ -897,6 +805,6 @@ function assetGalleryHtml(webview: vscode.Webview, extensionUri: vscode.Uri, mod
       .split('__CSP_SOURCE__').join(webview.cspSource)
       .split('__STYLE_URI__').join(resource('style.css'))
       .split('__APP_SCRIPT_URI__').join(resource('app.js'))
-      .split('__ASSET_MODE__').join(mode),
+      .split('__ASSET_MODE__').join('annotations'),
   ));
 }
