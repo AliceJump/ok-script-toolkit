@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { readAuthoringFile } from './boxResourceStore';
+import { authoringReadErrors, readAuthoringFile } from './boxResourceStore';
 import { pointAuthoringPositions } from './pointResourceStore';
 import {
   PositionAuthoringItem,
@@ -36,6 +36,8 @@ function imageKey(name: string): string {
 }
 
 export function collectPositionRuntime(root: string, directory: string): { file: RuntimePositionFile; errors: string[] } {
+  const boxErrors = authoringReadErrors(root, directory);
+  if (boxErrors.length) return { file: { version: 2, positions: [] }, errors: boxErrors.map(error => `boxes:${error}`) };
   const boxes = readAuthoringFile(root, directory);
   const points = pointAuthoringPositions(root, directory);
   if (points.errors.length) return { file: { version: 2, positions: [] }, errors: points.errors.map(error => `points:${error}`) };
