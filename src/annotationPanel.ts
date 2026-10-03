@@ -102,7 +102,10 @@ class AnnotationController {
 
   reloadIfShowing(imagePaths: readonly string[]): void {
     if (this.disposed || !this._currentImage || !imagePaths.includes(this._currentImage)) return;
-    void this.loadImage(this._currentImage);
+    // The durable source changed outside this editor session. Recreate the Webview so
+    // stale undo/redo snapshots cannot write pre-reload annotations back to disk.
+    this.generation++;
+    this.attachHtml();
   }
 
   attachHtml(): void {
