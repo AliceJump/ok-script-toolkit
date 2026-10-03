@@ -5,135 +5,60 @@
   const canvas = document.getElementById('canvas');
   const ctx = canvas.getContext('2d');
   const emptyMsg = document.getElementById('emptyMsg');
-
-  // Localize UI elements
-  document.getElementById('bboxCatLabel').textContent = t('categoryLabel');
-  document.getElementById('bboxCat').placeholder = t('categoryLabel');
-  document.getElementById('bboxWLabel').textContent = t('widthLabel');
-  document.getElementById('bboxHLabel').textContent = t('heightLabel');
-  document.getElementById('bboxCancel').textContent = t('cancel');
-  document.getElementById('bboxTitle').textContent = t('newBboxTitle');
-  document.getElementById('drawBtn').textContent = t('drawBbox');
-  document.getElementById('drawBtn').title = t('drawBboxTooltip');
-  document.getElementById('coordBtn').textContent = t('copyCoords');
-  document.getElementById('coordBtn').title = t('copyCoordsTooltip');
-  document.getElementById('deleteBtn').textContent = t('deleteMode');
-  document.getElementById('deleteBtn').title = t('deleteBboxTooltip');
-  document.getElementById('prevBtn').title = t('prevImage');
-  document.getElementById('nextBtn').title = t('nextImage');
-  document.getElementById('emptyMsg').textContent = t('noImageLoaded');
-  document.getElementById('annotationListTitle').textContent = t('annotationListTitle');
-  document.getElementById('showAllBtn').textContent = t('showAllAnnotations');
-  document.getElementById('hideAllBtn').textContent = t('hideAllAnnotations');
-  document.getElementById('onlyCurrentBtn').textContent = t('showOnlyCurrent');
-  const generateBoxBtn = document.getElementById('generateBoxBtn');
-  if (generateBoxBtn) generateBoxBtn.textContent = t('generateBox');
-  const generateTitle = document.getElementById('generateTitle');
-  if (generateTitle) generateTitle.textContent = t('generateBoxTitle');
-  const generatePathLabel = document.getElementById('generatePathLabel');
-  if (generatePathLabel) generatePathLabel.textContent = t('generatePath');
-  const generateCancel = document.getElementById('generateCancel');
-  if (generateCancel) generateCancel.textContent = t('cancel');
-  const generateOk = document.getElementById('generateOk');
-  if (generateOk) generateOk.textContent = t('ok');
-
-  // 归一化坐标（x,y,tox,toy）保留的小数位
+  const POINT_RADIUS = 6;
+  const MAX_UNDO = 100;
   const COORD_DECIMALS = 4;
+  const clone = (value) => JSON.parse(JSON.stringify(value));
   const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
 
-  /* ── 框路径规则 ───────────────────────────────────────────────
-   * 规则本体在扩展侧（`boxResourcePure.boxPathError`），这里只接收它随 `config`
-   * 下发的**同一份**段名正则与保留根，用于「生成框」对话框的即时校验：不合法就
-   * 在输入框下面标红，并且不给保存。以前这里没有校验、宿主只回一个错误码，界面
-   * 上原样显示 `duplicate`/`shallow`，用户不知道"至少要两段、每段是 Python 标识符"。
-   */
-  let boxPathRule = null;
-
-  // 全局重复：path 已被哪张图占用（宿主随 load 下发 boxPaths：path → 图片文件名）。
-  // originalPath 是本条编辑前的旧 path：保持不变时放行，换成别的占用 path 才算重复。
-  // 注意不要拿"占用表的值（图片名）"来当排除参数 —— 排除的判据是原始 path 本身。
-  function boxPathOccupied(value, originalPath) {
-    const occupied = imageData?.boxPaths || {};
-    const trimmed = String(value || '').trim();
-    if (originalPath != null && trimmed === String(originalPath).trim()) return undefined;
-    if (occupied[trimmed]) return { code: 'duplicate' };
-    return undefined;
-  }
-
-  function boxPathProblem(value) {
-    const raw = String(value || '').trim();
-    if (!raw) return { code: 'empty' };
-    const segments = raw.split('.');
-    if (segments.length < 2) return { code: 'shallow', bad: raw };
-    if (!boxPathRule || !boxPathRule.segment) return { code: 'rule' };
-    const segment = new RegExp(boxPathRule.segment);
-    const bad = segments.find((item) => !segment.test(item));
-    if (bad !== undefined) return { code: 'segment', bad };
-    if ((boxPathRule.reservedRoots || []).indexOf(segments[0]) >= 0) return { code: 'reserved', bad: segments[0] };
-    return undefined;
-  }
-
-  function boxPathMessage(problem) {
-    if (!problem) return '';
-    if (problem.code === 'empty') return t('boxPathRequired');
-    if (problem.code === 'shallow') return t('boxPathTwoSegments', { path: problem.bad || '' });
-    if (problem.code === 'segment') return t('boxPathBadSegment', { segment: problem.bad || '' });
-    if (problem.code === 'reserved') return t('boxPathReserved', { root: problem.bad || '' });
-    if (problem.code === 'rule') return t('boxPathRuleMissing');
-    if (problem.code === 'duplicate') return t('boxPathExists');
-    return t('generateBoxFailed');
-  }
-
-  /** 输入框的即时校验：返回 undefined 表示可以保存。 */
-  function refreshGeneratePathState() {
-    const input = document.getElementById('generatePath');
-    const error = document.getElementById('generateError');
-    const ok = document.getElementById('generateOk');
-    if (!input) return undefined;
-    // 「生成框」创建的是一条新框：规则之外，任何已占用的 path 都算重复。
-    const problem = boxPathProblem(input.value) || boxPathOccupied(input.value, null);
-    if (error) error.textContent = problem ? boxPathMessage(problem) : '';
-    input.classList.toggle('input-invalid', !!problem && String(input.value || '').trim().length > 0);
-    if (ok) ok.disabled = !!problem;
-    return problem;
-  }
-
-  // 状态
-  let imageData = null;   // { imagePath, imageBase64, annotations, allCategories, filename }
+  let imageData = null;
+  let annotationMode = 'template';
+  let pointMode = false;
   let boxMode = false;
-  let img = null;         // HTMLImageElement
-  let scale = 1.0;
-  let fitScale = 1.0;
-  let offsetX = 0, offsetY = 0;
-
-  // 标注
+  let boxPathRule = null;
+  let img = null;
+  let imgData = null;
+  let scale = 1;
+  let fitScale = 1;
+  let offsetX = 0;
+  let offsetY = 0;
   let annotations = [];
-  /** 按图片文件名记住隐藏的分类。不进保存消息，撤销也不恢复。 */
-  const hiddenByFile = new Map();
-  let listSignature = '';
-  let nextId = 1;
   let selectedIdx = -1;
   let hoveredIdx = -1;
+  let nextId = 1;
+  let listSignature = '';
+  let toolMode = 'none';
+  let drawStart = null;
+  let drawPreview = null;
+  let drawDragging = false;
+  let clipboard = null;
+  let coordBox = null;
+  let coordDrag = null;
+  let lastCoords = '';
+  let dragging = false;
+  let dragStartPos = null;
+  let dragOrigRect = null;
+  let resizing = false;
+  let resizeHandle = null;
+  let resizeStartPos = null;
+  let resizeOrigRect = null;
+  let panning = false;
+  let panStartPos = null;
+  let panStartOffset = null;
+  let currentImageKey = '';
+  const hiddenByFileAndMode = new Map();
+  const modeCache = { template: [], rect: [], point: [] };
 
-  // 模式: none, draw, delete, copycoord
-  let mode = 'none';
-  let drawStart = null;   // widget coords
-  let drawPreview = null;  // widget coords
-  let drawDragging = false; // true when mouse is held down in draw mode
-  let clipboard = null;    // copied bbox for Ctrl+C/V
-  let lastCoords = '';     // 最近一次复制的归一化坐标
+  const savedUi = vscode.getState() || {};
+  let sharedHistory = savedUi.sharedHistory !== false;
+  const history = {
+    nextId: 1,
+    globalUndo: [],
+    globalRedo: [],
+    byMode: { template: [], rect: [], point: [] },
+    redoByMode: { template: [], rect: [], point: [] },
+  };
 
-  // 坐标复制模式的临时框：只用于取坐标，不进 annotations、不落盘，
-  // 创建与每次调整结束都会重新复制归一化坐标；点击非交互区域即清除
-  let coordBox = null;     // {x,y,w,h} 图像坐标
-  let coordDrag = null;    // {kind:'move'|'resize', handle, startPos, origRect}
-
-  // 撤销/重做
-  let undoStack = [];
-  let redoStack = [];
-  const MAX_UNDO = 100;
-
-  // 可配置快捷键 (从扩展设置读取)
   let keybindings = {
     drawBbox: 'r',
     copyCoords: 'c',
@@ -144,122 +69,145 @@
     paste: 'ctrl+v',
     deleteSelected: 'Delete',
     prevImage: 'ArrowLeft',
-    nextImage: 'ArrowRight'
+    nextImage: 'ArrowRight',
+    modeTemplate: '1',
+    modeRect: '2',
+    modePoint: '3',
   };
-
-  // 复制坐标时逗号后加空格（个人偏好，application 作用域；由扩展端经 config 消息下发）
   let copyCoordsSpace = true;
 
-  function parseKeybinding(kb) {
-    const parts = kb.toLowerCase().split('+');
-    const key = parts.pop();
-    const needCtrl = parts.includes('ctrl');
-    const needShift = parts.includes('shift');
-    const needAlt = parts.includes('alt');
-    const needMeta = parts.includes('meta') || parts.includes('cmd');
-    return { key, needCtrl, needShift, needAlt, needMeta };
+  function isPositionMode() { return annotationMode === 'rect' || annotationMode === 'point'; }
+  function historyKey() { return annotationMode; }
+
+  function clearHistory() {
+    history.globalUndo.length = 0;
+    history.globalRedo.length = 0;
+    for (const mode of ['template', 'rect', 'point']) {
+      history.byMode[mode].length = 0;
+      history.redoByMode[mode].length = 0;
+      modeCache[mode] = [];
+    }
+    history.nextId = 1;
   }
 
-  function matchKeybinding(e, bindingStr) {
-    const kb = parseKeybinding(bindingStr);
-    const keyMatch = e.key.toLowerCase() === kb.key || e.code.toLowerCase() === kb.key;
-    return keyMatch &&
-           !!(e.ctrlKey || e.metaKey) === kb.needCtrl &&
-           !!e.shiftKey === kb.needShift &&
-           !!e.altKey === kb.needAlt;
-  }
-
-  function pushUndo() {
-    undoStack.push(JSON.parse(JSON.stringify(annotations)));
-    if (undoStack.length > MAX_UNDO) undoStack.shift();
-    redoStack = [];
-  }
-
-  function undo() {
-    if (!undoStack.length) return;
-    redoStack.push(JSON.parse(JSON.stringify(annotations)));
-    annotations = undoStack.pop();
-    nextId = annotations.length ? Math.max(...annotations.map(a => a.id)) + 1 : 1;
-    selectedIdx = -1; hoveredIdx = -1;
-    saveAnnotations(); paint();
-  }
-
-  function redo() {
-    if (!redoStack.length) return;
-    undoStack.push(JSON.parse(JSON.stringify(annotations)));
-    annotations = redoStack.pop();
-    nextId = annotations.length ? Math.max(...annotations.map(a => a.id)) + 1 : 1;
-    selectedIdx = -1; hoveredIdx = -1;
-    saveAnnotations(); paint();
-  }
-
-  function updateUndoRedoButtons() {
-    const undoBtn = document.getElementById('undoBtn');
-    const redoBtn = document.getElementById('redoBtn');
-    if (undoBtn) { undoBtn.disabled = !undoStack.length; undoBtn.title = t('undo') + ' (' + keybindings.undo + ')'; }
-    if (redoBtn) { redoBtn.disabled = !redoStack.length; redoBtn.title = t('redo') + ' (' + keybindings.redo + ')'; }
-  }
-
-  function updateButtonTexts() {
-    const drawBtn = document.getElementById('drawBtn');
-    const coordBtn = document.getElementById('coordBtn');
-    const deleteBtn = document.getElementById('deleteBtn');
-    if (drawBtn) { drawBtn.textContent = t('drawBbox'); drawBtn.title = t('drawBboxTooltip'); }
-    if (coordBtn) { coordBtn.textContent = t('copyCoords'); coordBtn.title = t('copyCoordsTooltip') + ' (' + keybindings.copyCoords + ')'; }
-    if (deleteBtn) { deleteBtn.textContent = t('deleteMode'); deleteBtn.title = t('deleteBboxTooltip'); }
-    const listTitle = document.getElementById('annotationListTitle');
-    const showAllBtn = document.getElementById('showAllBtn');
-    const hideAllBtn = document.getElementById('hideAllBtn');
-    const onlyCurrentBtn = document.getElementById('onlyCurrentBtn');
-    if (listTitle) listTitle.textContent = t('annotationListTitle');
-    if (showAllBtn) showAllBtn.textContent = t('showAllAnnotations');
-    if (hideAllBtn) hideAllBtn.textContent = t('hideAllAnnotations');
-    if (onlyCurrentBtn) onlyCurrentBtn.textContent = t('showOnlyCurrent');
-    const generateBoxBtn = document.getElementById('generateBoxBtn');
-    if (generateBoxBtn) generateBoxBtn.textContent = t('generateBox');
+  function commitHistory(before) {
+    const after = clone(annotations);
+    if (JSON.stringify(before) === JSON.stringify(after)) return;
+    const tx = { id: history.nextId++, mode: historyKey(), before, after, applied: true };
+    history.globalUndo.push(tx);
+    history.byMode[tx.mode].push(tx);
+    if (history.globalUndo.length > MAX_UNDO) history.globalUndo.shift();
+    if (history.byMode[tx.mode].length > MAX_UNDO) history.byMode[tx.mode].shift();
+    history.globalRedo.length = 0;
+    history.redoByMode[tx.mode].length = 0;
+    modeCache[tx.mode] = clone(after);
     updateUndoRedoButtons();
   }
 
-  // 拖拽
-  let dragging = false;
-  let dragStartPos = null;
-  let dragOrigRect = null;
-
-  // 缩放调整
-  let resizing = false;
-  let resizeHandle = null;
-  let resizeStartPos = null;
-  let resizeOrigRect = null;
-
-  // 平移
-  let panning = false;
-  let panStartPos = null;
-  let panStartOffset = null;
-
-  // 缩放
-  const EDGE_MARGIN = 8;
-
-  // 颜色信息
-  let currentColorText = '';
-
-  /* ---------- 坐标转换 ---------- */
-  function imgToWidget(ix, iy) {
-    return [ix * scale + offsetX, iy * scale + offsetY];
+  function popMatching(stack, predicate) {
+    while (stack.length) {
+      const item = stack.pop();
+      if (predicate(item)) return item;
+    }
+    return null;
   }
-  function widgetToImg(wx, wy) {
-    return [(wx - offsetX) / scale, (wy - offsetY) / scale];
+
+  function applyHistorySnapshot(tx, snapshot) {
+    modeCache[tx.mode] = clone(snapshot);
+    if (tx.mode === annotationMode) {
+      annotations = clone(snapshot);
+      nextId = annotations.length ? Math.max(...annotations.map(a => a.id)) + 1 : 1;
+      selectedIdx = -1;
+      hoveredIdx = -1;
+      listSignature = '';
+      paint();
+    }
+    vscode.postMessage({ type: 'saveMode', mode: tx.mode, annotations: clone(snapshot) });
   }
+
+  function undo() {
+    const source = sharedHistory ? history.globalUndo : history.byMode[annotationMode];
+    const tx = popMatching(source, item => item.applied && (sharedHistory || item.mode === annotationMode));
+    if (!tx) return;
+    tx.applied = false;
+    history.globalRedo.push(tx);
+    history.redoByMode[tx.mode].push(tx);
+    applyHistorySnapshot(tx, tx.before);
+    updateUndoRedoButtons();
+  }
+
+  function redo() {
+    const source = sharedHistory ? history.globalRedo : history.redoByMode[annotationMode];
+    const tx = popMatching(source, item => !item.applied && (sharedHistory || item.mode === annotationMode));
+    if (!tx) return;
+    tx.applied = true;
+    history.globalUndo.push(tx);
+    history.byMode[tx.mode].push(tx);
+    applyHistorySnapshot(tx, tx.after);
+    updateUndoRedoButtons();
+  }
+
+  function canUndo() {
+    const source = sharedHistory ? history.globalUndo : history.byMode[annotationMode];
+    return source.some(item => item.applied && (sharedHistory || item.mode === annotationMode));
+  }
+
+  function canRedo() {
+    const source = sharedHistory ? history.globalRedo : history.redoByMode[annotationMode];
+    return source.some(item => !item.applied && (sharedHistory || item.mode === annotationMode));
+  }
+
+  function updateUndoRedoButtons() {
+    document.getElementById('undoBtn').disabled = !canUndo();
+    document.getElementById('redoBtn').disabled = !canRedo();
+    document.getElementById('undoBtn').title = t('undo') + ' (' + keybindings.undo + ')';
+    document.getElementById('redoBtn').title = t('redo') + ' (' + keybindings.redo + ')';
+  }
+
+  function parseKeybinding(kb) {
+    const parts = String(kb || '').toLowerCase().split('+');
+    const key = parts.pop();
+    return {
+      key,
+      needCtrl: parts.includes('ctrl'),
+      needShift: parts.includes('shift'),
+      needAlt: parts.includes('alt'),
+      needMeta: parts.includes('meta') || parts.includes('cmd'),
+    };
+  }
+
+  function matchKeybinding(e, bindingStr) {
+    if (!bindingStr) return false;
+    const kb = parseKeybinding(bindingStr);
+    const keyMatch = e.key.toLowerCase() === kb.key || e.code.toLowerCase() === kb.key;
+    return keyMatch &&
+      !!(e.ctrlKey || e.metaKey) === kb.needCtrl &&
+      !!e.shiftKey === kb.needShift &&
+      !!e.altKey === kb.needAlt;
+  }
+
+  function hiddenSet() {
+    const key = (imageData?.filename || '') + '|' + annotationMode;
+    if (!hiddenByFileAndMode.has(key)) hiddenByFileAndMode.set(key, new Set());
+    return hiddenByFileAndMode.get(key);
+  }
+
+  function isShown(ann) { return !hiddenSet().has(ann.category); }
+
+  function imgToWidget(ix, iy) { return [ix * scale + offsetX, iy * scale + offsetY]; }
+  function widgetToImg(wx, wy) { return [(wx - offsetX) / scale, (wy - offsetY) / scale]; }
+
   function annWidgetRect(ann) {
     const [wx, wy] = imgToWidget(ann.x, ann.y);
+    if (pointMode) return { x: wx - POINT_RADIUS, y: wy - POINT_RADIUS, w: POINT_RADIUS * 2, h: POINT_RADIUS * 2 };
     return { x: wx, y: wy, w: ann.w * scale, h: ann.h * scale };
   }
-  function rectContains(r, px, py) {
-    return px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h;
-  }
 
-  /* ---------- 缩放控制检测 ---------- */
+  function rectContains(r, px, py) { return px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h; }
+
   function detectHandle(px, py, r) {
-    const m = EDGE_MARGIN;
+    if (pointMode) return null;
+    const m = 8;
     const nearL = Math.abs(px - r.x) <= m && py >= r.y - m && py <= r.y + r.h + m;
     const nearR = Math.abs(px - (r.x + r.w)) <= m && py >= r.y - m && py <= r.y + r.h + m;
     const nearT = Math.abs(py - r.y) <= m && px >= r.x - m && px <= r.x + r.w + m;
@@ -274,6 +222,7 @@
     if (nearR) return 'right';
     return null;
   }
+
   function handleCursor(h) {
     if (h === 'tl' || h === 'br') return 'nwse-resize';
     if (h === 'tr' || h === 'bl') return 'nesw-resize';
@@ -282,16 +231,6 @@
     return 'default';
   }
 
-  /* ---------- 查找标注 ---------- */
-  function hiddenSet() {
-    const key = imageData && imageData.filename;
-    if (!key) return new Set();
-    if (!hiddenByFile.has(key)) hiddenByFile.set(key, new Set());
-    return hiddenByFile.get(key);
-  }
-  function isShown(ann) {
-    return !hiddenSet().has(ann.category);
-  }
   function findAnnAt(px, py) {
     for (let i = annotations.length - 1; i >= 0; i--) {
       if (!isShown(annotations[i])) continue;
@@ -300,25 +239,55 @@
     }
     return -1;
   }
+
   function findHandleAt(px, py) {
+    if (pointMode) return { idx: -1, handle: null };
     for (let i = annotations.length - 1; i >= 0; i--) {
       if (!isShown(annotations[i])) continue;
-      const r = annWidgetRect(annotations[i]);
-      const h = detectHandle(px, py, r);
+      const h = detectHandle(px, py, annWidgetRect(annotations[i]));
       if (h) return { idx: i, handle: h };
     }
     return { idx: -1, handle: null };
   }
+
+  function pathOccupied(value, originalPath) {
+    const occupied = imageData?.positionPaths || {};
+    const trimmed = String(value || '').trim();
+    if (originalPath != null && trimmed === String(originalPath).trim()) return undefined;
+    if (occupied[trimmed]) return { code: 'duplicate' };
+    return undefined;
+  }
+
+  function pathProblem(value) {
+    const raw = String(value || '').trim();
+    if (!raw) return { code: 'empty' };
+    const parts = raw.split('.');
+    if (parts.length < 2) return { code: 'shallow', bad: raw };
+    if (!boxPathRule?.segment) return { code: 'rule' };
+    const segment = new RegExp(boxPathRule.segment);
+    const bad = parts.find(part => !segment.test(part));
+    if (bad !== undefined) return { code: 'segment', bad };
+    return undefined;
+  }
+
+  function pathMessage(problem) {
+    if (!problem) return '';
+    if (problem.code === 'empty') return t('boxPathRequired');
+    if (problem.code === 'shallow') return t('boxPathTwoSegments', { path: problem.bad || '' });
+    if (problem.code === 'segment') return t('boxPathBadSegment', { segment: problem.bad || '' });
+    if (problem.code === 'duplicate') return t('boxPathExists');
+    if (problem.code === 'rule') return t('boxPathRuleMissing');
+    return t('generateBoxFailed');
+  }
+
   function syncAnnotationList() {
     const rows = document.getElementById('annotationRows');
-    const onlyCurrentBtn = document.getElementById('onlyCurrentBtn');
-    if (!rows) return;
     const hidden = hiddenSet();
-    const sig = annotations.map((ann) => ann.id + '\t' + ann.category + '\t' + (hidden.has(ann.category) ? '0' : '1')).join('\n') + '#' + selectedIdx;
-    if (onlyCurrentBtn) onlyCurrentBtn.disabled = selectedIdx < 0;
+    const sig = annotationMode + '#' + selectedIdx + '#' + annotations.map(ann => `${ann.id}\t${ann.category}\t${hidden.has(ann.category) ? 0 : 1}`).join('\n');
+    document.getElementById('onlyCurrentBtn').disabled = selectedIdx < 0;
     if (sig === listSignature) return;
     listSignature = sig;
-    while (rows.firstChild) rows.removeChild(rows.firstChild);
+    rows.replaceChildren();
     if (!annotations.length) {
       const empty = document.createElement('div');
       empty.className = 'panel-hint';
@@ -329,171 +298,92 @@
     annotations.forEach((ann, index) => {
       const row = document.createElement('div');
       row.className = 'annotation-row' + (index === selectedIdx ? ' is-selected' : '');
-      const input = document.createElement('input');
-      input.type = 'checkbox';
-      input.checked = !hidden.has(ann.category);
-      input.addEventListener('click', (event) => event.stopPropagation());
-      input.addEventListener('change', () => {
-        if (input.checked) hidden.delete(ann.category);
-        else hidden.add(ann.category);
+      const check = document.createElement('input');
+      check.type = 'checkbox';
+      check.checked = !hidden.has(ann.category);
+      check.onclick = (event) => event.stopPropagation();
+      check.onchange = () => {
+        if (check.checked) hidden.delete(ann.category); else hidden.add(ann.category);
         listSignature = '';
         paint();
-      });
+      };
       const text = document.createElement('button');
       text.type = 'button';
       text.className = 'annotation-name';
       text.textContent = ann.category;
-      text.addEventListener('click', () => {
-        selectedIdx = index;
-        listSignature = '';
-        paint();
-      });
-      row.append(input, text);
+      text.onclick = () => { selectedIdx = index; listSignature = ''; paint(); };
+      row.append(check, text);
       rows.append(row);
     });
   }
-  function nudgeSelected(dx, dy) {
-    const ann = annotations[selectedIdx];
-    if (!ann || !isShown(ann)) return false;
-    let nx = ann.x + dx;
-    let ny = ann.y + dy;
-    if (img) {
-      nx = Math.max(0, Math.min(nx, img.width - ann.w));
-      ny = Math.max(0, Math.min(ny, img.height - ann.h));
-    }
-    if (nx === ann.x && ny === ann.y) return true;
-    pushUndo();
-    ann.x = nx;
-    ann.y = ny;
-    saveAnnotations();
-    paint();
-    updateUndoRedoButtons();
-    return true;
-  }
-  function openGenerateBox() {
-    const choices = document.getElementById('generateChoices');
-    const error = document.getElementById('generateError');
-    const pathInput = document.getElementById('generatePath');
-    if (!choices || !pathInput) return;
-    while (choices.firstChild) choices.removeChild(choices.firstChild);
-    if (error) error.textContent = '';
-    const selected = annotations[selectedIdx];
-    annotations.forEach((ann, index) => {
-      const label = document.createElement('label');
-      label.className = 'annotation-row';
-      const input = document.createElement('input');
-      input.type = 'checkbox';
-      input.checked = !selected || index === selectedIdx;
-      input.dataset.index = String(index);
-      const text = document.createElement('span');
-      text.textContent = ann.category;
-      label.append(input, text);
-      choices.append(label);
-    });
-    const seed = selected ? selected.category : (annotations[0] ? annotations[0].category : 'region');
-    pathInput.value = 'screen.' + String(seed).replace(/[^A-Za-z0-9_]/g, '_');
-    pathInput.placeholder = t('generatePathPlaceholder');
-    refreshGeneratePathState();
-    pathInput.oninput = refreshGeneratePathState;
-    document.getElementById('generateModal').classList.add('visible');
-  }
-  function showAllAnnotations() {
-    hiddenSet().clear();
-    listSignature = '';
-    paint();
-  }
-  function hideAllAnnotations() {
-    const hidden = hiddenSet();
-    hidden.clear();
-    annotations.forEach((ann) => hidden.add(ann.category));
-    listSignature = '';
-    paint();
-  }
-  function showOnlyCurrent() {
-    const hidden = hiddenSet();
-    const current = annotations[selectedIdx];
-    hidden.clear();
-    annotations.forEach((ann) => {
-      if (!current || ann.category !== current.category) hidden.add(ann.category);
-    });
-    listSignature = '';
-    paint();
+
+  function paintPoint(ann, index) {
+    const [wx, wy] = imgToWidget(ann.x, ann.y);
+    const isSel = index === selectedIdx;
+    const isHov = index === hoveredIdx;
+    const color = isSel ? '#0078d4' : isHov ? '#ffa500' : '#ff3c3c';
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color;
+    ctx.lineWidth = isSel ? 2.5 : 2;
+    ctx.beginPath(); ctx.arc(wx, wy, 4, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(wx - 9, wy); ctx.lineTo(wx + 9, wy); ctx.moveTo(wx, wy - 9); ctx.lineTo(wx, wy + 9); ctx.stroke();
+    ctx.font = 'bold 11px sans-serif';
+    ctx.fillText(ann.category, wx + 8, wy - 8);
   }
 
-  /* ---------- 绘制 ---------- */
+  function paintRect(ann, index) {
+    const r = annWidgetRect(ann);
+    const isSel = index === selectedIdx;
+    const isHov = index === hoveredIdx;
+    const color = isSel ? '#0078d4' : isHov ? '#ffa500' : '#ff3c3c';
+    ctx.strokeStyle = color;
+    ctx.fillStyle = isSel ? 'rgba(0,120,212,0.15)' : isHov ? 'rgba(255,165,0,0.12)' : 'rgba(255,60,60,0.08)';
+    ctx.lineWidth = isSel ? 2.5 : 2;
+    ctx.fillRect(r.x, r.y, r.w, r.h);
+    ctx.strokeRect(r.x, r.y, r.w, r.h);
+    if (isHov) {
+      ctx.fillStyle = '#00c800';
+      for (const [hx, hy] of [[r.x,r.y],[r.x+r.w,r.y],[r.x,r.y+r.h],[r.x+r.w,r.y+r.h]]) {
+        ctx.beginPath(); ctx.arc(hx, hy, 4, 0, Math.PI * 2); ctx.fill();
+      }
+    }
+    ctx.fillStyle = color;
+    ctx.font = 'bold 11px sans-serif';
+    ctx.fillText(ann.category, r.x + 2, r.y - 4);
+  }
+
   function paint() {
     if (!canvas.width || !canvas.height) return;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    const dark = getComputedStyle(document.body).getPropertyValue('color').includes('255') ||
-                 document.body.classList.contains('vscode-dark');
-    ctx.fillStyle = dark ? '#1e1e1e' : '#f5f5f5';
+    ctx.fillStyle = '#1e1e1e';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    if (img) {
-      ctx.drawImage(img, offsetX, offsetY, img.width * scale, img.height * scale);
-    }
-
+    if (img) ctx.drawImage(img, offsetX, offsetY, img.width * scale, img.height * scale);
     syncAnnotationList();
-
-    // 画标注
-    annotations.forEach((ann, i) => {
+    annotations.forEach((ann, index) => {
       if (!isShown(ann)) return;
-      const isSel = i === selectedIdx;
-      const isHov = i === hoveredIdx;
-      const r = annWidgetRect(ann);
-
-      let strokeColor = isSel ? '#0078d4' : isHov ? '#ffa500' : '#ff3c3c';
-      let fillColor = isSel ? 'rgba(0,120,212,0.15)' : isHov ? 'rgba(255,165,0,0.12)' : 'rgba(255,60,60,0.08)';
-
-      ctx.strokeStyle = strokeColor;
-      ctx.lineWidth = isSel ? 2.5 : 2;
-      ctx.fillStyle = fillColor;
-      ctx.fillRect(r.x, r.y, r.w, r.h);
-      ctx.strokeRect(r.x, r.y, r.w, r.h);
-
-      // 高亮控制点
-      if (isHov) {
-        ctx.fillStyle = '#00c800';
-        const corners = { tl: [r.x, r.y], tr: [r.x + r.w, r.y], bl: [r.x, r.y + r.h], br: [r.x + r.w, r.y + r.h] };
-        for (const [k, v] of Object.entries(corners)) {
-          ctx.beginPath();
-          ctx.arc(v[0], v[1], 4, 0, Math.PI * 2);
-          ctx.fill();
-        }
-      }
-
-      // 标签
-      ctx.fillStyle = strokeColor;
-      ctx.font = 'bold 11px sans-serif';
-      ctx.fillText(ann.category, r.x + 2, r.y - 4);
+      if (pointMode) paintPoint(ann, index); else paintRect(ann, index);
     });
-
-    // 画预览（画框模式 / 坐标复制模式）
-    if ((mode === 'draw' || mode === 'copycoord') && drawStart && drawPreview) {
+    if ((toolMode === 'draw' || toolMode === 'copycoord') && !pointMode && drawStart && drawPreview) {
       const [ix1, iy1] = widgetToImg(drawStart.x, drawStart.y);
       const [ix2, iy2] = widgetToImg(drawPreview.x, drawPreview.y);
       const px = Math.min(ix1, ix2), py = Math.min(iy1, iy2);
       const pw = Math.abs(ix2 - ix1), ph = Math.abs(iy2 - iy1);
       const [wx, wy] = imgToWidget(px, py);
-      const isCoord = mode === 'copycoord';
-      ctx.strokeStyle = isCoord ? '#e8a33d' : '#00c800';
-      ctx.lineWidth = 2;
+      ctx.strokeStyle = toolMode === 'copycoord' ? '#e8a33d' : '#00c800';
+      ctx.fillStyle = toolMode === 'copycoord' ? 'rgba(232,163,61,0.12)' : 'rgba(0,200,0,0.1)';
       ctx.setLineDash([6, 3]);
-      ctx.fillStyle = isCoord ? 'rgba(232,163,61,0.12)' : 'rgba(0,200,0,0.1)';
       ctx.fillRect(wx, wy, pw * scale, ph * scale);
       ctx.strokeRect(wx, wy, pw * scale, ph * scale);
       ctx.setLineDash([]);
     }
-
-    // 坐标复制模式的可调框（画在最上层，便于看到手柄与读数）
-    if (mode === 'copycoord') paintCoordBox(ctx);
+    if (toolMode === 'copycoord') paintCoordBox();
   }
 
-  /* ---------- 缩放/适配 ---------- */
   function recalcFit() {
     if (!img) { fitScale = 1; return; }
     fitScale = Math.min(canvas.width / img.width, canvas.height / img.height);
   }
+
   function recalcOffset() {
     if (!img) { offsetX = 0; offsetY = 0; return; }
     const sw = img.width * scale, sh = img.height * scale;
@@ -502,11 +392,9 @@
     if (sh <= canvas.height) offsetY = (canvas.height - sh) / 2;
     else offsetY = Math.min(0, Math.max(canvas.height - sh, offsetY));
   }
-  function isZoomed() {
-    return img && (img.width * scale > canvas.width || img.height * scale > canvas.height);
-  }
 
-  /* ---------- resize ---------- */
+  function isZoomed() { return img && (img.width * scale > canvas.width || img.height * scale > canvas.height); }
+
   function resize() {
     const wrap = canvas.parentElement;
     canvas.width = wrap.clientWidth;
@@ -515,551 +403,73 @@
     paint();
   }
 
-  /* ---------- 鼠标事件 ---------- */
-  canvas.addEventListener('mousedown', (e) => {
-    const rect = canvas.getBoundingClientRect();
-    const px = e.clientX - rect.left, py = e.clientY - rect.top;
+  function saveAnnotations(mode = annotationMode, data = annotations) {
+    modeCache[mode] = clone(data);
+    vscode.postMessage({ type: mode === annotationMode ? 'save' : 'saveMode', mode, annotations: clone(data) });
+  }
 
-    if (e.button === 2) { // 右键
-      const idx = findAnnAt(px, py);
-      if (idx >= 0) {
-        selectedIdx = idx;
-        vscode.postMessage({ type: 'copyColor', category: annotations[idx].category });
-        paint();
-      }
-      return;
-    }
-    if (e.button !== 0) return;
-
-    if (mode === 'copycoord') {
-      // 坐标框已存在时，优先命中手柄或框体（与标注框一致的可调交互）
-      const handle = findCoordHandleAt(px, py);
-      if (handle) {
-        coordDrag = {
-          kind: 'resize',
-          handle: handle,
-          startPos: { x: px, y: py },
-          origRect: { x: coordBox.x, y: coordBox.y, w: coordBox.w, h: coordBox.h },
-        };
-        canvas.style.cursor = handleCursor(handle);
-        return;
-      }
-      if (coordContains(px, py)) {
-        coordDrag = {
-          kind: 'move',
-          handle: null,
-          startPos: { x: px, y: py },
-          origRect: { x: coordBox.x, y: coordBox.y, w: coordBox.w, h: coordBox.h },
-        };
-        canvas.style.cursor = 'move';
-        return;
-      }
-      // 其余位置：起手画新框（松手后若没拖动则视为点击空白，清除坐标框）
-      drawStart = { x: px, y: py };
-      drawDragging = true;
-      return;
-    }
-    if (mode === 'draw') {
-      if (!drawStart) {
-        drawStart = { x: px, y: py };
-        drawDragging = true;
-      } else {
-        finishDraw(px, py);
-      }
-      return;
-    }
-    if (mode === 'delete') {
-      const idx = findAnnAt(px, py);
-      if (idx >= 0) { selectedIdx = idx; deleteSelected(); }
-      return;
-    }
-
-    // 普通模式：先检测缩放控制点
-    const { idx: hIdx, handle } = findHandleAt(px, py);
-    if (handle && hIdx >= 0) {
-      selectedIdx = hIdx;
-      pushUndo();
-      resizing = true;
-      resizeHandle = handle;
-      resizeStartPos = { x: px, y: py };
-      const ann = annotations[hIdx];
-      resizeOrigRect = { x: ann.x, y: ann.y, w: ann.w, h: ann.h };
-      paint();
-      return;
-    }
-
-    // 检测选择/拖拽
-    const idx = findAnnAt(px, py);
-    selectedIdx = idx;
-    if (idx >= 0) {
-      pushUndo();
-      dragging = true;
-      dragStartPos = { x: px, y: py };
-      const ann = annotations[idx];
-      dragOrigRect = { x: ann.x, y: ann.y, w: ann.w, h: ann.h };
-    } else if (isZoomed()) {
-      panning = true;
-      panStartPos = { x: px, y: py };
-      panStartOffset = { x: offsetX, y: offsetY };
-      canvas.style.cursor = 'grabbing';
-    }
-    paint();
-  });
-
-  canvas.addEventListener('dblclick', (e) => {
-    const rect = canvas.getBoundingClientRect();
-    const px = e.clientX - rect.left, py = e.clientY - rect.top;
-    const idx = findAnnAt(px, py);
-    if (idx >= 0) {
-      selectedIdx = idx;
-      // 恢复拖拽原始位置
-      if (dragging && dragOrigRect) {
-        annotations[idx].x = dragOrigRect.x;
-        annotations[idx].y = dragOrigRect.y;
-      }
-      dragging = false; dragStartPos = null; dragOrigRect = null;
-      resizing = false; resizeStartPos = null; resizeOrigRect = null; resizeHandle = null;
-      // 双击不产生位移，回退 mousedown 时的 pushUndo
-      if (undoStack.length > 0) undoStack.pop();
-      paint();
-      showEditDialog(idx);
-    }
-  });
-
-  canvas.addEventListener('mousemove', (e) => {
-    const rect = canvas.getBoundingClientRect();
-    const px = e.clientX - rect.left, py = e.clientY - rect.top;
-
-    // 调整坐标框：过程中只刷新读数，松手时才复制
-    if (coordDrag) {
-      applyCoordDrag(px, py);
-      copyCoordBox(true);
-      return;
-    }
-    if (mode === 'draw' && drawStart) {
-      drawPreview = { x: px, y: py };
-      paint();
-      return;
-    }
-    if (mode === 'copycoord' && drawStart) {
-      drawPreview = { x: px, y: py };
-      updateCoordPreview();
-      paint();
-      return;
-    }
-    if (resizing && selectedIdx >= 0 && resizeStartPos) {
-      doResize(px, py);
-      paint();
-      return;
-    }
-    if (dragging && selectedIdx >= 0 && dragStartPos) {
-      const dxW = px - dragStartPos.x, dyW = px - dragStartPos.y;
-      const dxI = dxW / scale, dyI = (py - dragStartPos.y) / scale;
-      const ann = annotations[selectedIdx];
-      let nx = dragOrigRect.x + dxI, ny = dragOrigRect.y + dyI;
-      if (img) {
-        nx = Math.max(0, Math.min(nx, img.width - ann.w));
-        ny = Math.max(0, Math.min(ny, img.height - ann.h));
-      }
-      ann.x = Math.round(nx);
-      ann.y = Math.round(ny);
-      paint();
-      return;
-    }
-    if (panning && panStartPos) {
-      offsetX = panStartOffset.x + (px - panStartPos.x);
-      offsetY = panStartOffset.y + (py - panStartPos.y);
-      recalcOffset();
-      paint();
-      return;
-    }
-
-    // Hover 检测
-    if (mode === 'none') {
-      const { idx: hIdx, handle } = findHandleAt(px, py);
-      if (handle && hIdx >= 0) {
-        hoveredIdx = hIdx;
-        canvas.style.cursor = handleCursor(handle);
-      } else {
-        const aIdx = findAnnAt(px, py);
-        hoveredIdx = aIdx;
-        if (aIdx >= 0) canvas.style.cursor = 'move';
-        else if (isZoomed()) canvas.style.cursor = 'grab';
-        else canvas.style.cursor = 'crosshair';
-      }
-      paint();
-    } else if (mode === 'copycoord') {
-      // 与标注框一致：悬停手柄/框体时给出对应光标
-      const h = findCoordHandleAt(px, py);
-      canvas.style.cursor = h ? handleCursor(h)
-        : coordContains(px, py) ? 'move' : 'crosshair';
-      paint();
-    } else if (mode === 'draw') {
-      canvas.style.cursor = 'crosshair';
-    } else if (mode === 'delete') {
-      const aIdx = findAnnAt(px, py);
-      hoveredIdx = aIdx;
-      canvas.style.cursor = aIdx >= 0 ? 'pointer' : 'default';
-      paint();
-    }
-
-    // 更新颜色信息
-    updateColorAt(px, py);
-  });
-
-  canvas.addEventListener('mouseup', (e) => {
-    const rect = canvas.getBoundingClientRect();
-    const px = e.clientX - rect.left, py = e.clientY - rect.top;
-
-    // 结束坐标框的移动/缩放：有变化才复制
-    if (coordDrag) {
-      const orig = coordDrag.origRect;
-      const changed = !coordBox ||
-        coordBox.x !== orig.x || coordBox.y !== orig.y ||
-        coordBox.w !== orig.w || coordBox.h !== orig.h;
-      coordDrag = null;
-      if (changed) copyCoordBox();
-      canvas.style.cursor = 'crosshair';
-      return;
-    }
-
-    if ((mode === 'draw' || mode === 'copycoord') && drawDragging && drawStart) {
-      const dx = px - drawStart.x, dy = py - drawStart.y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      drawDragging = false;
-      if (dist > 5) {
-        // Dragged far enough: finish as drag-to-draw
-        if (mode === 'draw') finishDraw(px, py);
-        else finishCoord(px, py);
-        return;
-      }
-      if (mode === 'draw') {
-        // If barely moved, keep drawStart for click-two-points (second click)
-        return;
-      }
-      // 坐标模式下几乎没移动 = 点了图片的非交互部分：清除坐标框
-      drawStart = null;
-      drawPreview = null;
-      clearCoordBox();
-      return;
-    }
-    drawDragging = false;
-    if (dragging) {
-      const moved = dragOrigRect &&
-        (annotations[selectedIdx].x !== dragOrigRect.x ||
-         annotations[selectedIdx].y !== dragOrigRect.y);
-      dragging = false; dragStartPos = null; dragOrigRect = null;
-      if (moved) {
-        saveAnnotations();
-        updateUndoRedoButtons();
-      } else {
-        // 无实际移动，回退 pushUndo
-        undoStack.pop();
-      }
-    }
-    if (resizing) {
-      const changed = resizeOrigRect &&
-        (annotations[selectedIdx].x !== resizeOrigRect.x ||
-         annotations[selectedIdx].y !== resizeOrigRect.y ||
-         annotations[selectedIdx].w !== resizeOrigRect.w ||
-         annotations[selectedIdx].h !== resizeOrigRect.h);
-      resizing = false; resizeStartPos = null; resizeOrigRect = null; resizeHandle = null;
-      if (changed) {
-        saveAnnotations();
-        updateUndoRedoButtons();
-      } else {
-        undoStack.pop();
-      }
-    }
-    if (panning) {
-      panning = false; panStartPos = null; panStartOffset = null;
-      canvas.style.cursor = isZoomed() ? 'grab' : 'crosshair';
-    }
-  });
-
-  canvas.addEventListener('wheel', (e) => {
-    if (!img) return;
-    const rect = canvas.getBoundingClientRect();
-    const px = e.clientX - rect.left, py = e.clientY - rect.top;
-    const [ix, iy] = widgetToImg(px, py);
-    const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
-    let ns = scale * factor;
-    ns = Math.max(fitScale, Math.min(50, ns));
-    scale = ns;
-    offsetX = px - ix * scale;
-    offsetY = py - iy * scale;
-    recalcOffset();
-    e.preventDefault();
-    paint();
-  }, { passive: false });
-
-  /* ---------- resize 逻辑 ---------- */
-  function doResize(px, py) {
+  function nudgeSelected(dx, dy) {
     const ann = annotations[selectedIdx];
-    const orig = resizeOrigRect;
-    const dxI = (px - resizeStartPos.x) / scale;
-    const dyI = (py - resizeStartPos.y) / scale;
-    let nx = orig.x, ny = orig.y, nw = orig.w, nh = orig.h;
-    const h = resizeHandle;
-    if (h === 'left' || h === 'tl' || h === 'bl') { nx = orig.x + dxI; nw = orig.w - dxI; }
-    if (h === 'right' || h === 'tr' || h === 'br') { nw = orig.w + dxI; }
-    if (h === 'top' || h === 'tl' || h === 'tr') { ny = orig.y + dyI; nh = orig.h - dyI; }
-    if (h === 'bottom' || h === 'bl' || h === 'br') { nh = orig.h + dyI; }
-    const minS = 5;
-    if (nw < minS) { if (h.includes('left')) nx = orig.x + orig.w - minS; nw = minS; }
-    if (nh < minS) { if (h.includes('top')) ny = orig.y + orig.h - minS; nh = minS; }
-    if (img) {
-      nx = Math.max(0, nx); ny = Math.max(0, ny);
-      if (nx + nw > img.width) nw = img.width - nx;
-      if (ny + nh > img.height) nh = img.height - ny;
-    }
-    ann.x = Math.round(nx); ann.y = Math.round(ny);
-    ann.w = Math.round(nw); ann.h = Math.round(nh);
-  }
-
-  /* ---------- 画框完成 ---------- */
-  function finishDraw(px, py) {
-    const [ix1, iy1] = widgetToImg(drawStart.x, drawStart.y);
-    const [ix2, iy2] = widgetToImg(px, py);
-    const x = Math.round(Math.min(ix1, ix2)), y = Math.round(Math.min(iy1, iy2));
-    const w = Math.round(Math.abs(ix2 - ix1)), h = Math.round(Math.abs(iy2 - iy1));
-    drawStart = null; drawPreview = null;
-    if (w < 3 || h < 3) { paint(); return; }
-    showBBoxDialog('', x, y, w, h, (cat, bx, by, bw, bh) => {
-      if (cat) {
-        pushUndo();
-        annotations.push({ id: nextId++, category: cat, x: bx, y: by, w: bw, h: bh });
-        saveAnnotations();
-        paint();
-        updateUndoRedoButtons();
-      }
-      setMode('none');
-    });
-  }
-
-  /* ---------- 归一化坐标复制 ---------- */
-
-  /** 由两个 widget 坐标点算出归一化框坐标 [x, y, tox, toy]（均已 clamp 到 0..1）。 */
-  function normalizedBox(wx1, wy1, wx2, wy2) {
-    if (!img) return null;
-    const [ix1, iy1] = widgetToImg(wx1, wy1);
-    const [ix2, iy2] = widgetToImg(wx2, wy2);
-    const l = Math.min(ix1, ix2), t = Math.min(iy1, iy2);
-    const r = Math.max(ix1, ix2), b = Math.max(iy1, iy2);
-    return {
-      x: clamp01(l / img.width),
-      y: clamp01(t / img.height),
-      tox: clamp01(r / img.width),
-      toy: clamp01(b / img.height),
-    };
-  }
-
-  function formatNormalizedBox(box) {
-    return [box.x, box.y, box.tox, box.toy].map((v) => v.toFixed(COORD_DECIMALS))
-      .join(copyCoordsSpace ? ', ' : ',');
-  }
-
-  /** 拖拽过程中在颜色栏实时显示即将复制的坐标。 */
-  function updateCoordPreview() {
-    const box = drawStart && drawPreview
-      ? normalizedBox(drawStart.x, drawStart.y, drawPreview.x, drawPreview.y)
-      : null;
-    if (!box) return;
-    const info = document.getElementById('colorInfo');
-    if (info) info.textContent = t('coordLabel') + ' ' + formatNormalizedBox(box);
-  }
-
-  /** 完成框选：建立可继续调整的坐标框，并复制归一化坐标 x,y,tox,toy 到剪贴板。 */
-  function finishCoord(px, py) {
-    const box = drawStart ? normalizedBox(drawStart.x, drawStart.y, px, py) : null;
-    drawStart = null; drawPreview = null; drawDragging = false;
-    if (!box) { clearCoordBox(); return; }
-    // 过滤误触（两个方向都太小）
-    if (box.tox - box.x <= 0.002 || box.toy - box.y <= 0.002) { clearCoordBox(); return; }
-
-    // 归一化 → 图像坐标，之后所有调整都在这个框上进行
-    coordBox = normalizedToImageRect(box);
-    copyCoordBox();
-  }
-
-  /* ---------- 可调节的坐标框（只用于取坐标，不进入 annotations、不落盘） ---------- */
-
-  const COORD_HANDLES = ['tl', 't', 'tr', 'r', 'br', 'b', 'bl', 'l'];
-
-  /** 归一化坐标 → 图像坐标矩形 */
-  function normalizedToImageRect(box) {
-    const [x1, y1] = [box.x * img.width, box.y * img.height];
-    const [x2, y2] = [box.tox * img.width, box.toy * img.height];
-    return {
-      x: Math.round(Math.min(x1, x2)),
-      y: Math.round(Math.min(y1, y2)),
-      w: Math.round(Math.abs(x2 - x1)),
-      h: Math.round(Math.abs(y2 - y1)),
-    };
-  }
-
-  /** 坐标框在 widget 坐标系下的矩形 */
-  function coordWidgetRect() {
-    if (!coordBox) return null;
-    const [wx, wy] = imgToWidget(coordBox.x, coordBox.y);
-    return { x: wx, y: wy, w: coordBox.w * scale, h: coordBox.h * scale };
-  }
-
-  function coordContains(px, py) {
-    const r = coordWidgetRect();
-    return !!r && rectContains(r, px, py);
-  }
-
-  /** 命中坐标框的哪个缩放手柄 */
-  function findCoordHandleAt(px, py) {
-    const r = coordWidgetRect();
-    if (!r) return null;
-    return detectHandle(px, py, r);
-  }
-
-  /**
-   * 刷新坐标读数并（默认）写入剪贴板。创建与每次调整结束都会调用；
-   * 拖动过程中传 silent=true 只更新显示，避免每帧发消息刷屏。
-   */
-  function copyCoordBox(silent) {
-    if (!coordBox || !img) return;
-    lastCoords = formatNormalizedBox({
-      x: clamp01(coordBox.x / img.width),
-      y: clamp01(coordBox.y / img.height),
-      tox: clamp01((coordBox.x + coordBox.w) / img.width),
-      toy: clamp01((coordBox.y + coordBox.h) / img.height),
-    });
-    const info = document.getElementById('colorInfo');
-    if (info) info.textContent = t('coordLabel') + ' ' + lastCoords;
-    if (!silent) vscode.postMessage({ type: 'copyText', text: lastCoords });
+    if (!ann || !isShown(ann)) return false;
+    const before = clone(annotations);
+    const maxX = pointMode ? img?.width ?? ann.x + dx : (img?.width ?? ann.x + ann.w) - ann.w;
+    const maxY = pointMode ? img?.height ?? ann.y + dy : (img?.height ?? ann.y + ann.h) - ann.h;
+    ann.x = Math.round(Math.max(0, Math.min(ann.x + dx, maxX)));
+    ann.y = Math.round(Math.max(0, Math.min(ann.y + dy, maxY)));
+    commitHistory(before);
+    saveAnnotations();
     paint();
+    return true;
   }
 
-  function clearCoordBox() {
-    coordBox = null;
-    coordDrag = null;
-    const info = document.getElementById('colorInfo');
-    if (info) info.textContent = ' ';
-    paint();
-  }
-
-  /** 按当前拖拽（移动或缩放）算出新的图像坐标矩形 */
-  function applyCoordDrag(px, py) {
-    const d = coordDrag;
-    if (!d || !img) return;
-    const dxI = (px - d.startPos.x) / scale;
-    const dyI = (py - d.startPos.y) / scale;
-    const o = d.origRect;
-    let nx = o.x, ny = o.y, nw = o.w, nh = o.h;
-    const h = d.handle;
-    if (d.kind === 'move') {
-      nx = o.x + dxI;
-      ny = o.y + dyI;
-    } else {
-      // 手柄名是 tl/tr/bl/br/top/bottom/left/right，必须精确匹配
-      // （不能写 includes('right')，'br' 并不包含 'right'）
-      const atLeft = h === 'left' || h === 'tl' || h === 'bl';
-      const atRight = h === 'right' || h === 'tr' || h === 'br';
-      const atTop = h === 'top' || h === 'tl' || h === 'tr';
-      const atBottom = h === 'bottom' || h === 'bl' || h === 'br';
-      if (atLeft) { nx = o.x + dxI; nw = o.w - dxI; }
-      if (atRight) { nw = o.w + dxI; }
-      if (atTop) { ny = o.y + dyI; nh = o.h - dyI; }
-      if (atBottom) { nh = o.h + dyI; }
-      const minS = 5;
-      if (nw < minS) { if (atLeft) nx = o.x + o.w - minS; nw = minS; }
-      if (nh < minS) { if (atTop) ny = o.y + o.h - minS; nh = minS; }
-    }
-    nx = Math.max(0, Math.min(nx, img.width - Math.max(1, nw)));
-    ny = Math.max(0, Math.min(ny, img.height - Math.max(1, nh)));
-    nw = Math.max(1, Math.min(nw, img.width - nx));
-    nh = Math.max(1, Math.min(nh, img.height - ny));
-    coordBox = {
-      x: Math.round(nx), y: Math.round(ny),
-      w: Math.round(nw), h: Math.round(nh),
-    };
-  }
-
-  /** 绘制坐标框：框体 + 8 向手柄 + 归一化坐标文本 */
-  function paintCoordBox(ctx) {
-    if (!coordBox) return;
-    const r = coordWidgetRect();
-    if (!r) return;
-    ctx.strokeStyle = '#e8a33d';
-    ctx.lineWidth = 2;
-    ctx.fillStyle = 'rgba(232,163,61,0.12)';
-    ctx.fillRect(r.x, r.y, r.w, r.h);
-    ctx.strokeRect(r.x, r.y, r.w, r.h);
-
-    // 手柄：四角 + 四边中点，与标注框的手柄视觉一致
-    const mid = (a, b) => a + (b - a) / 2;
-    const pts = {
-      tl: [r.x, r.y],
-      t: [mid(r.x, r.x + r.w), r.y],
-      tr: [r.x + r.w, r.y],
-      r: [r.x + r.w, mid(r.y, r.y + r.h)],
-      br: [r.x + r.w, r.y + r.h],
-      b: [mid(r.x, r.x + r.w), r.y + r.h],
-      bl: [r.x, r.y + r.h],
-      l: [r.x, mid(r.y, r.y + r.h)],
-    };
-    ctx.fillStyle = '#00c800';
-    for (const key of COORD_HANDLES) {
-      const [hx, hy] = pts[key];
-      ctx.beginPath();
-      ctx.arc(hx, hy, 4, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
-    // 框上方显示当前归一化坐标，调整时可直接读数对比
-    if (lastCoords) {
-      ctx.fillStyle = '#e8a33d';
-      ctx.font = 'bold 11px sans-serif';
-      const labelY = r.y - 6;
-      ctx.fillText(lastCoords, r.x + 1, labelY < 12 ? r.y + 14 : labelY);
-    }
-  }
-
-  /* ---------- 删除 ---------- */
   function deleteSelected() {
-    const ann = annotations[selectedIdx];
-    if (!ann || !isShown(ann)) return;
-    pushUndo();
+    if (selectedIdx < 0 || !annotations[selectedIdx]) return;
+    const before = clone(annotations);
     annotations.splice(selectedIdx, 1);
     selectedIdx = -1;
     hoveredIdx = -1;
+    commitHistory(before);
     saveAnnotations();
     paint();
+  }
+
+  function setToolMode(next) {
+    toolMode = next;
+    drawStart = null;
+    drawPreview = null;
+    drawDragging = false;
+    if (next !== 'copycoord') { coordBox = null; coordDrag = null; lastCoords = ''; }
+    document.getElementById('drawBtn').classList.toggle('active', next === 'draw');
+    document.getElementById('coordBtn').classList.toggle('active', next === 'copycoord');
+    document.getElementById('deleteBtn').classList.toggle('active', next === 'delete');
+    canvas.style.cursor = next === 'draw' || next === 'copycoord' ? 'crosshair' : next === 'delete' ? 'default' : (isZoomed() ? 'grab' : 'crosshair');
+    paint();
+  }
+
+  function requestAnnotationMode(next) {
+    if (next === annotationMode) return;
+    setToolMode('none');
+    selectedIdx = -1;
+    hoveredIdx = -1;
+    annotationMode = next;
+    pointMode = next === 'point';
+    boxMode = next === 'rect';
+    updateModeUi();
+    vscode.postMessage({ type: 'switchAnnotationMode', mode: next });
+  }
+
+  function updateModeUi() {
+    document.getElementById('templateModeBtn').classList.toggle('active', annotationMode === 'template');
+    document.getElementById('rectModeBtn').classList.toggle('active', annotationMode === 'rect');
+    document.getElementById('pointModeBtn').classList.toggle('active', annotationMode === 'point');
+    document.getElementById('generateBoxBtn').style.display = annotationMode === 'template' ? '' : 'none';
+    document.getElementById('drawBtn').textContent = pointMode ? 'Point (' + keybindings.drawBbox.toUpperCase() + ')' : t('drawBbox');
+    document.getElementById('bboxWRow').style.display = pointMode ? 'none' : '';
+    document.getElementById('bboxHRow').style.display = pointMode ? 'none' : '';
     updateUndoRedoButtons();
   }
 
-  /* ---------- 保存标注 ---------- */
-  function saveAnnotations() {
-    vscode.postMessage({ type: 'save', annotations });
-  }
-
-  /* ---------- 模式切换 ---------- */
-  function setMode(m) {
-    mode = m;
-    drawStart = null; drawPreview = null; drawDragging = false;
-    // 坐标框只在坐标模式内存在，切换走即丢弃（它不落盘，无需保留）
-    if (m !== 'copycoord' && (coordBox || coordDrag)) {
-      coordBox = null;
-      coordDrag = null;
-      const info = document.getElementById('colorInfo');
-      if (info) info.textContent = ' ';
-    }
-    document.getElementById('drawBtn').classList.toggle('active', m === 'draw');
-    document.getElementById('coordBtn').classList.toggle('active', m === 'copycoord');
-    document.getElementById('deleteBtn').classList.toggle('active', m === 'delete');
-    if (m === 'draw' || m === 'copycoord') canvas.style.cursor = 'crosshair';
-    else if (m === 'delete') canvas.style.cursor = 'default';
-    else canvas.style.cursor = isZoomed() ? 'grab' : 'crosshair';
-    paint();
-  }
-
-  /* ---------- BBox 对话框 ---------- */
-  function showBBoxDialog(category, x, y, w, h, callback) {
+  function showShapeDialog(category, x, y, w, h, callback) {
     const modal = document.getElementById('bboxModal');
     const catInput = document.getElementById('bboxCat');
     const errorEl = document.getElementById('bboxError');
@@ -1067,294 +477,504 @@
     const yInput = document.getElementById('bboxY');
     const wInput = document.getElementById('bboxW');
     const hInput = document.getElementById('bboxH');
-    const bboxOkBtn = document.getElementById('bboxOk');
-    document.getElementById('bboxTitle').textContent = category ? t('editBboxTitle') : t('newBboxTitle');
+    const ok = document.getElementById('bboxOk');
+    document.getElementById('bboxTitle').textContent = category ? (pointMode ? 'Edit point' : t('editBboxTitle')) : (pointMode ? 'New point' : t('newBboxTitle'));
     catInput.value = category;
-    // 框模式里这个名字是框路径：给同一条规则的提示
-    catInput.placeholder = boxMode ? t('generatePathPlaceholder') : '';
-    xInput.value = x; yInput.value = y; wInput.value = w; hInput.value = h;
+    catInput.placeholder = isPositionMode() ? t('generatePathPlaceholder') : t('categoryLabel');
+    xInput.value = x;
+    yInput.value = y;
+    wInput.value = w;
+    hInput.value = h;
+    document.getElementById('bboxWRow').style.display = pointMode ? 'none' : '';
+    document.getElementById('bboxHRow').style.display = pointMode ? 'none' : '';
     errorEl.textContent = '';
     modal.classList.add('visible');
     catInput.focus();
 
     function validate() {
       const name = catInput.value.trim();
-      if (boxMode) {
-        // 框路径：规则 + 全局占用（允许保持本条自己的原名）。非法时禁用确定。
-        const problem = boxPathProblem(name) || boxPathOccupied(name, category);
-        if (problem) {
-          errorEl.textContent = boxPathMessage(problem);
-          bboxOkBtn.disabled = true;
-          return false;
-        }
-        errorEl.textContent = '';
-        bboxOkBtn.disabled = false;
-        return true;
+      if (isPositionMode()) {
+        const problem = pathProblem(name) || pathOccupied(name, category);
+        errorEl.textContent = problem ? pathMessage(problem) : '';
+        ok.disabled = !!problem;
+        return !problem;
       }
-      if (!name) { errorEl.textContent = t('categoryRequired'); return false; }
+      if (!name) { errorEl.textContent = t('categoryRequired'); ok.disabled = true; return false; }
       const existing = imageData?.allCategories || {};
       if (name !== category && existing[name]) {
-        errorEl.textContent = t('categoryExists', { file: existing[name] });
-        return false;
+        errorEl.textContent = t('categoryExists', { file: existing[name] }); ok.disabled = true; return false;
       }
       errorEl.textContent = '';
+      ok.disabled = false;
       return true;
     }
     catInput.oninput = validate;
-    if (boxMode) validate();
-
-    document.getElementById('bboxOk').onclick = () => {
+    validate();
+    ok.onclick = () => {
       if (!validate()) return;
       modal.classList.remove('visible');
-      callback(catInput.value.trim(), +xInput.value, +yInput.value, +wInput.value, +hInput.value);
+      callback(catInput.value.trim(), +xInput.value, +yInput.value, pointMode ? 1 : +wInput.value, pointMode ? 1 : +hInput.value);
     };
-    document.getElementById('bboxCancel').onclick = () => {
-      modal.classList.remove('visible');
-      callback(null);
-    };
+    document.getElementById('bboxCancel').onclick = () => { modal.classList.remove('visible'); callback(null); };
   }
 
   function showEditDialog(idx) {
     const ann = annotations[idx];
-    showBBoxDialog(ann.category, ann.x, ann.y, ann.w, ann.h, (cat, x, y, w, h) => {
-      if (cat) {
-        pushUndo();
-        const previous = ann.category;
-        ann.category = cat; ann.x = x; ann.y = y; ann.w = w; ann.h = h;
-        if (previous !== cat && hiddenSet().has(previous)) {
-          hiddenSet().delete(previous);
-          hiddenSet().add(cat);
-        }
-        saveAnnotations(); paint();
-        updateUndoRedoButtons();
-      }
+    showShapeDialog(ann.category, ann.x, ann.y, ann.w, ann.h, (cat, x, y, w, h) => {
+      if (!cat) return;
+      const before = clone(annotations);
+      const previous = ann.category;
+      ann.category = cat;
+      ann.x = Math.round(x);
+      ann.y = Math.round(y);
+      ann.w = pointMode ? 1 : Math.round(w);
+      ann.h = pointMode ? 1 : Math.round(h);
+      if (previous !== cat && hiddenSet().has(previous)) { hiddenSet().delete(previous); hiddenSet().add(cat); }
+      commitHistory(before);
+      saveAnnotations();
+      paint();
     });
   }
 
-  /* ---------- 颜色信息 ---------- */
-  function updateColorAt(px, py) {
-    if (!img) return;
+  function finishRect(px, py) {
+    const [ix1, iy1] = widgetToImg(drawStart.x, drawStart.y);
+    const [ix2, iy2] = widgetToImg(px, py);
+    const x = Math.round(Math.min(ix1, ix2)), y = Math.round(Math.min(iy1, iy2));
+    const w = Math.round(Math.abs(ix2 - ix1)), h = Math.round(Math.abs(iy2 - iy1));
+    drawStart = null; drawPreview = null;
+    if (w < 3 || h < 3) { paint(); return; }
+    showShapeDialog('', x, y, w, h, (cat, bx, by, bw, bh) => {
+      if (cat) {
+        const before = clone(annotations);
+        annotations.push({ id: nextId++, category: cat, x: bx, y: by, w: bw, h: bh });
+        commitHistory(before);
+        saveAnnotations();
+      }
+      setToolMode('none');
+      paint();
+    });
+  }
+
+  function finishPoint(px, py) {
     const [ix, iy] = widgetToImg(px, py);
-    const iix = Math.round(ix), iiy = Math.round(iy);
+    const x = Math.round(Math.max(0, Math.min(ix, img?.width ?? ix)));
+    const y = Math.round(Math.max(0, Math.min(iy, img?.height ?? iy)));
+    showShapeDialog('', x, y, 1, 1, (cat, bx, by) => {
+      if (cat) {
+        const before = clone(annotations);
+        annotations.push({ id: nextId++, category: cat, x: Math.round(bx), y: Math.round(by), w: 1, h: 1 });
+        commitHistory(before);
+        saveAnnotations();
+      }
+      setToolMode('none');
+      paint();
+    });
+  }
+
+  function doResize(px, py) {
+    if (pointMode) return;
+    const ann = annotations[selectedIdx];
+    const orig = resizeOrigRect;
+    const dx = (px - resizeStartPos.x) / scale;
+    const dy = (py - resizeStartPos.y) / scale;
+    let nx = orig.x, ny = orig.y, nw = orig.w, nh = orig.h;
+    const h = resizeHandle;
+    if (['left','tl','bl'].includes(h)) { nx = orig.x + dx; nw = orig.w - dx; }
+    if (['right','tr','br'].includes(h)) nw = orig.w + dx;
+    if (['top','tl','tr'].includes(h)) { ny = orig.y + dy; nh = orig.h - dy; }
+    if (['bottom','bl','br'].includes(h)) nh = orig.h + dy;
+    nw = Math.max(5, nw); nh = Math.max(5, nh);
+    if (img) {
+      nx = Math.max(0, nx); ny = Math.max(0, ny);
+      nw = Math.min(nw, img.width - nx); nh = Math.min(nh, img.height - ny);
+    }
+    ann.x = Math.round(nx); ann.y = Math.round(ny); ann.w = Math.round(nw); ann.h = Math.round(nh);
+  }
+
+  function normalizedBox(wx1, wy1, wx2, wy2) {
+    if (!img) return null;
+    const [ix1, iy1] = widgetToImg(wx1, wy1);
+    const [ix2, iy2] = widgetToImg(wx2, wy2);
+    return {
+      x: clamp01(Math.min(ix1, ix2) / img.width),
+      y: clamp01(Math.min(iy1, iy2) / img.height),
+      tox: clamp01(Math.max(ix1, ix2) / img.width),
+      toy: clamp01(Math.max(iy1, iy2) / img.height),
+    };
+  }
+
+  function formatNormalizedBox(box) {
+    return [box.x, box.y, box.tox, box.toy].map(v => v.toFixed(COORD_DECIMALS)).join(copyCoordsSpace ? ', ' : ',');
+  }
+
+  function finishCoord(px, py) {
+    const box = drawStart ? normalizedBox(drawStart.x, drawStart.y, px, py) : null;
+    drawStart = null; drawPreview = null; drawDragging = false;
+    if (!box || box.tox - box.x <= 0.002 || box.toy - box.y <= 0.002) { coordBox = null; paint(); return; }
+    coordBox = {
+      x: Math.round(box.x * img.width), y: Math.round(box.y * img.height),
+      w: Math.round((box.tox - box.x) * img.width), h: Math.round((box.toy - box.y) * img.height),
+    };
+    copyCoordBox(false);
+  }
+
+  function coordWidgetRect() {
+    if (!coordBox) return null;
+    const [wx, wy] = imgToWidget(coordBox.x, coordBox.y);
+    return { x: wx, y: wy, w: coordBox.w * scale, h: coordBox.h * scale };
+  }
+
+  function coordContains(px, py) { const r = coordWidgetRect(); return !!r && rectContains(r, px, py); }
+  function findCoordHandleAt(px, py) { const r = coordWidgetRect(); return r ? detectHandle(px, py, r) : null; }
+
+  function copyCoordBox(silent) {
+    if (!coordBox || !img) return;
+    lastCoords = formatNormalizedBox({
+      x: clamp01(coordBox.x / img.width), y: clamp01(coordBox.y / img.height),
+      tox: clamp01((coordBox.x + coordBox.w) / img.width), toy: clamp01((coordBox.y + coordBox.h) / img.height),
+    });
+    document.getElementById('colorInfo').textContent = t('coordLabel') + ' ' + lastCoords;
+    if (!silent) vscode.postMessage({ type: 'copyText', text: lastCoords });
+    paint();
+  }
+
+  function applyCoordDrag(px, py) {
+    const d = coordDrag;
+    if (!d || !img) return;
+    const dx = (px - d.startPos.x) / scale, dy = (py - d.startPos.y) / scale;
+    const o = d.origRect;
+    let nx = o.x, ny = o.y, nw = o.w, nh = o.h;
+    if (d.kind === 'move') { nx += dx; ny += dy; }
+    else {
+      const h = d.handle;
+      const left = ['left','tl','bl'].includes(h), right = ['right','tr','br'].includes(h);
+      const top = ['top','tl','tr'].includes(h), bottom = ['bottom','bl','br'].includes(h);
+      if (left) { nx += dx; nw -= dx; } if (right) nw += dx;
+      if (top) { ny += dy; nh -= dy; } if (bottom) nh += dy;
+      nw = Math.max(5, nw); nh = Math.max(5, nh);
+    }
+    nx = Math.max(0, Math.min(nx, img.width - Math.max(1, nw)));
+    ny = Math.max(0, Math.min(ny, img.height - Math.max(1, nh)));
+    nw = Math.max(1, Math.min(nw, img.width - nx)); nh = Math.max(1, Math.min(nh, img.height - ny));
+    coordBox = { x: Math.round(nx), y: Math.round(ny), w: Math.round(nw), h: Math.round(nh) };
+  }
+
+  function paintCoordBox() {
+    const r = coordWidgetRect();
+    if (!r) return;
+    ctx.strokeStyle = '#e8a33d'; ctx.fillStyle = 'rgba(232,163,61,0.12)'; ctx.lineWidth = 2;
+    ctx.fillRect(r.x, r.y, r.w, r.h); ctx.strokeRect(r.x, r.y, r.w, r.h);
+    ctx.fillStyle = '#00c800';
+    for (const [hx,hy] of [[r.x,r.y],[r.x+r.w,r.y],[r.x,r.y+r.h],[r.x+r.w,r.y+r.h]]) { ctx.beginPath(); ctx.arc(hx,hy,4,0,Math.PI*2); ctx.fill(); }
+    if (lastCoords) { ctx.fillStyle = '#e8a33d'; ctx.font = 'bold 11px sans-serif'; ctx.fillText(lastCoords, r.x + 1, r.y > 14 ? r.y - 6 : r.y + 14); }
+  }
+
+  function loadImgData() {
+    if (!img?.complete) { imgData = null; return; }
+    const c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
+    const cx = c.getContext('2d'); cx.drawImage(img, 0, 0); imgData = cx.getImageData(0, 0, img.width, img.height);
+  }
+
+  function updateColorAt(px, py) {
+    if (!img || !imgData || toolMode === 'copycoord') return;
+    const [ix, iy] = widgetToImg(px, py);
+    const x = Math.round(ix), y = Math.round(iy);
     const info = document.getElementById('colorInfo');
     const swatch = document.getElementById('swatch');
-    if (iix < 0 || iiy < 0 || iix >= img.width || iiy >= img.height || !imgData) {
-      info.textContent = 'Abs: (' + iix + ', ' + iiy + ')';
-      swatch.style.background = 'transparent';
-      return;
-    }
-    const idx = (iiy * img.width + iix) * 4;
-    const r = imgData.data[idx], g = imgData.data[idx + 1], b = imgData.data[idx + 2];
-    const relX = (ix / img.width).toFixed(3), relY = (iy / img.height).toFixed(3);
-    info.textContent = 'R:' + r + ' G:' + g + ' B:' + b + '  Abs:(' + iix + ',' + iiy + ') Rel:(' + relX + ',' + relY + ')';
-    swatch.style.background = 'rgb(' + r + ',' + g + ',' + b + ')';
+    if (x < 0 || y < 0 || x >= img.width || y >= img.height) { info.textContent = `Abs: (${x}, ${y})`; swatch.style.background = 'transparent'; return; }
+    const i = (y * img.width + x) * 4;
+    const r = imgData.data[i], g = imgData.data[i+1], b = imgData.data[i+2];
+    info.textContent = `R:${r} G:${g} B:${b}  Abs:(${x},${y}) Rel:(${(ix/img.width).toFixed(3)},${(iy/img.height).toFixed(3)})`;
+    swatch.style.background = `rgb(${r},${g},${b})`;
   }
 
-  let imgData = null;
-  function loadImgData() {
-    if (!img || !img.complete) { imgData = null; return; }
-    const c = document.createElement('canvas');
-    c.width = img.width; c.height = img.height;
-    const cx = c.getContext('2d');
-    cx.drawImage(img, 0, 0);
-    imgData = cx.getImageData(0, 0, img.width, img.height);
-  }
+  canvas.addEventListener('mousedown', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const px = e.clientX - rect.left, py = e.clientY - rect.top;
+    if (e.button === 2) {
+      const idx = findAnnAt(px, py);
+      if (idx >= 0) { selectedIdx = idx; vscode.postMessage({ type: 'copyColor', category: annotations[idx].category }); paint(); }
+      return;
+    }
+    if (e.button !== 0) return;
 
-  /* ---------- 键盘事件 ---------- */
-  document.addEventListener('keydown', (e) => {
-    if (document.getElementById('bboxModal').classList.contains('visible')) return;
-
-    // 「生成框」对话框里回车 = 点确定。走的是同一个处理函数：路径不合法时按钮是
-    // 禁用的，click() 不会有任何动作，所以回车也拦得住。
-    if (e.key === 'Enter' && document.getElementById('generateModal').classList.contains('visible')) {
-      e.preventDefault();
-      document.getElementById('generateOk').click();
+    if (toolMode === 'copycoord') {
+      const handle = findCoordHandleAt(px, py);
+      if (handle) { coordDrag = { kind:'resize', handle, startPos:{x:px,y:py}, origRect:clone(coordBox) }; return; }
+      if (coordContains(px, py)) { coordDrag = { kind:'move', handle:null, startPos:{x:px,y:py}, origRect:clone(coordBox) }; return; }
+      drawStart = { x:px, y:py }; drawDragging = true; return;
+    }
+    if (toolMode === 'draw') {
+      if (pointMode) { finishPoint(px, py); return; }
+      if (!drawStart) { drawStart = { x:px, y:py }; drawDragging = true; }
+      else finishRect(px, py);
+      return;
+    }
+    if (toolMode === 'delete') {
+      const idx = findAnnAt(px, py); if (idx >= 0) { selectedIdx = idx; deleteSelected(); }
       return;
     }
 
-    // 撤销
-    if (matchKeybinding(e, keybindings.undo)) {
-      e.preventDefault(); undo(); updateUndoRedoButtons(); return;
+    const { idx:hIdx, handle } = findHandleAt(px, py);
+    if (handle && hIdx >= 0) {
+      selectedIdx = hIdx; resizing = true; resizeHandle = handle; resizeStartPos = {x:px,y:py}; resizeOrigRect = clone(annotations[hIdx]); paint(); return;
     }
-    // 重做
-    if (matchKeybinding(e, keybindings.redo)) {
-      e.preventDefault(); redo(); updateUndoRedoButtons(); return;
+    const idx = findAnnAt(px, py);
+    selectedIdx = idx;
+    if (idx >= 0) {
+      dragging = true; dragStartPos = {x:px,y:py}; dragOrigRect = clone(annotations[idx]);
+    } else if (isZoomed()) {
+      panning = true; panStartPos = {x:px,y:py}; panStartOffset = {x:offsetX,y:offsetY}; canvas.style.cursor = 'grabbing';
     }
-    // 复制
-    if (matchKeybinding(e, keybindings.copy) && selectedIdx >= 0 && mode === 'none') {
-      const ann = annotations[selectedIdx];
-      clipboard = { category: ann.category, x: ann.x, y: ann.y, w: ann.w, h: ann.h };
-      return;
-    }
-    // 粘贴
-    if (matchKeybinding(e, keybindings.paste) && clipboard && mode === 'none') {
-      const offset = 10;
-      pushUndo();
-      const newAnn = {
-        id: nextId++,
-        category: clipboard.category,
-        x: clipboard.x + offset,
-        y: clipboard.y + offset,
-        w: clipboard.w,
-        h: clipboard.h
-      };
-      if (img) {
-        newAnn.x = Math.min(newAnn.x, img.width - newAnn.w);
-        newAnn.y = Math.min(newAnn.y, img.height - newAnn.h);
-        newAnn.x = Math.max(0, newAnn.x);
-        newAnn.y = Math.max(0, newAnn.y);
-      }
-      annotations.push(newAnn);
-      selectedIdx = annotations.length - 1;
-      saveAnnotations(); paint();
-      updateUndoRedoButtons();
-      return;
-    }
-    // 画框模式
-    if (matchKeybinding(e, keybindings.drawBbox) && !e.ctrlKey && !e.metaKey && !e.altKey) {
-      setMode(mode === 'draw' ? 'none' : 'draw');
-    } else if (matchKeybinding(e, keybindings.copyCoords) && !e.ctrlKey && !e.metaKey && !e.altKey) {
-      // 归一化坐标复制模式
-      setMode(mode === 'copycoord' ? 'none' : 'copycoord');
-    } else if (matchKeybinding(e, keybindings.deleteMode) && !e.ctrlKey && !e.metaKey && !e.altKey) {
-      // 删除模式
-      setMode(mode === 'delete' ? 'none' : 'delete');
-    } else if (matchKeybinding(e, keybindings.deleteSelected) && selectedIdx >= 0 && mode === 'none') {
-      // 删除选中
-      deleteSelected();
-    } else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'ArrowUp' || e.key === 'ArrowDown') {
-      if (selectedIdx >= 0 && mode === 'none' && !e.ctrlKey && !e.metaKey && !e.altKey) {
-        const step = e.shiftKey ? 10 : 1;
-        const dx = e.key === 'ArrowLeft' ? -step : e.key === 'ArrowRight' ? step : 0;
-        const dy = e.key === 'ArrowUp' ? -step : e.key === 'ArrowDown' ? step : 0;
-        if (nudgeSelected(dx, dy)) {
-          e.preventDefault();
-          return;
-        }
-      }
-      if (matchKeybinding(e, keybindings.prevImage)) navigate(-1);
-      else if (matchKeybinding(e, keybindings.nextImage)) navigate(1);
-    }
+    paint();
   });
 
-  /* ---------- 导航 ---------- */
-  function navigate(delta) {
-    if (!imageData) return;
-    const newIdx = imageData.currentIndex + delta;
-    if (newIdx < 0 || newIdx >= imageData.totalImages) return;
-    setMode('none');
-    selectedIdx = -1; hoveredIdx = -1;
-    vscode.postMessage({ type: 'navigate', index: newIdx });
-  }
+  canvas.addEventListener('dblclick', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const idx = findAnnAt(e.clientX - rect.left, e.clientY - rect.top);
+    if (idx < 0) return;
+    if (dragging && dragOrigRect) Object.assign(annotations[idx], dragOrigRect);
+    dragging = false; resizing = false; dragOrigRect = null; resizeOrigRect = null;
+    selectedIdx = idx; paint(); showEditDialog(idx);
+  });
 
-  /* ---------- 按钮事件 ---------- */
-  document.getElementById('drawBtn').onclick = () => setMode(mode === 'draw' ? 'none' : 'draw');
-  document.getElementById('coordBtn').onclick = () => setMode(mode === 'copycoord' ? 'none' : 'copycoord');
-  document.getElementById('deleteBtn').onclick = () => setMode(mode === 'delete' ? 'none' : 'delete');
-  document.getElementById('undoBtn').onclick = () => { undo(); updateUndoRedoButtons(); };
-  document.getElementById('redoBtn').onclick = () => { redo(); updateUndoRedoButtons(); };
-  document.getElementById('prevBtn').onclick = () => navigate(-1);
-  document.getElementById('nextBtn').onclick = () => navigate(1);
-  document.getElementById('generateBoxBtn').onclick = () => openGenerateBox();
-  document.getElementById('generateCancel').onclick = () => {
-    document.getElementById('generateModal').classList.remove('visible');
-  };
-  document.getElementById('generateOk').onclick = () => {
-    const chosen = [];
-    document.querySelectorAll('#generateChoices input').forEach((input) => {
-      if (input.checked) chosen.push(annotations[Number(input.dataset.index)]);
-    });
-    // 路径规则不满足时直接拦住：不合法的输入框不接受保存。
-    if (refreshGeneratePathState()) return;
-    const error = document.getElementById('generateError');
-    if (!chosen.length) {
-      if (error) error.textContent = t('generateNeedSelection');
+  canvas.addEventListener('mousemove', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const px = e.clientX - rect.left, py = e.clientY - rect.top;
+    if (coordDrag) { applyCoordDrag(px, py); copyCoordBox(true); return; }
+    if ((toolMode === 'draw' || toolMode === 'copycoord') && !pointMode && drawStart) { drawPreview = {x:px,y:py}; paint(); return; }
+    if (resizing && selectedIdx >= 0) { doResize(px, py); paint(); return; }
+    if (dragging && selectedIdx >= 0) {
+      const ann = annotations[selectedIdx];
+      const dx = (px - dragStartPos.x) / scale, dy = (py - dragStartPos.y) / scale;
+      const maxX = pointMode ? img.width : img.width - ann.w;
+      const maxY = pointMode ? img.height : img.height - ann.h;
+      ann.x = Math.round(Math.max(0, Math.min(dragOrigRect.x + dx, maxX)));
+      ann.y = Math.round(Math.max(0, Math.min(dragOrigRect.y + dy, maxY)));
+      paint(); return;
+    }
+    if (panning) { offsetX = panStartOffset.x + (px - panStartPos.x); offsetY = panStartOffset.y + (py - panStartPos.y); recalcOffset(); paint(); return; }
+
+    if (toolMode === 'none') {
+      const { idx:hIdx, handle } = findHandleAt(px, py);
+      if (handle) { hoveredIdx = hIdx; canvas.style.cursor = handleCursor(handle); }
+      else { const idx = findAnnAt(px, py); hoveredIdx = idx; canvas.style.cursor = idx >= 0 ? 'move' : isZoomed() ? 'grab' : 'crosshair'; }
+      paint();
+    } else if (toolMode === 'delete') {
+      hoveredIdx = findAnnAt(px, py); canvas.style.cursor = hoveredIdx >= 0 ? 'pointer' : 'default'; paint();
+    } else canvas.style.cursor = 'crosshair';
+    updateColorAt(px, py);
+  });
+
+  canvas.addEventListener('mouseup', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const px = e.clientX - rect.left, py = e.clientY - rect.top;
+    if (coordDrag) { const before = coordDrag.origRect; applyCoordDrag(px, py); coordDrag = null; if (JSON.stringify(before) !== JSON.stringify(coordBox)) copyCoordBox(false); return; }
+    if ((toolMode === 'draw' || toolMode === 'copycoord') && !pointMode && drawDragging && drawStart) {
+      const dist = Math.hypot(px - drawStart.x, py - drawStart.y); drawDragging = false;
+      if (dist > 5) { if (toolMode === 'draw') finishRect(px, py); else finishCoord(px, py); return; }
+      if (toolMode === 'copycoord') { drawStart = null; drawPreview = null; coordBox = null; paint(); }
       return;
     }
-    vscode.postMessage({
-      type: 'generateBox',
-      path: document.getElementById('generatePath').value.trim(),
-      boxes: chosen.map((ann) => ({ x: ann.x, y: ann.y, w: ann.w, h: ann.h })),
-    });
-  };
-  document.getElementById('showAllBtn').onclick = () => showAllAnnotations();
-  document.getElementById('hideAllBtn').onclick = () => hideAllAnnotations();
-  document.getElementById('onlyCurrentBtn').onclick = () => showOnlyCurrent();
+    if (dragging && selectedIdx >= 0) {
+      const before = annotations.map((ann, i) => i === selectedIdx ? dragOrigRect : ann);
+      dragging = false; dragStartPos = null; dragOrigRect = null;
+      commitHistory(clone(before)); saveAnnotations(); paint();
+    }
+    if (resizing && selectedIdx >= 0) {
+      const before = annotations.map((ann, i) => i === selectedIdx ? resizeOrigRect : ann);
+      resizing = false; resizeHandle = null; resizeOrigRect = null; resizeStartPos = null;
+      commitHistory(clone(before)); saveAnnotations(); paint();
+    }
+    if (panning) { panning = false; panStartPos = null; panStartOffset = null; }
+  });
 
-  /* ---------- 接收消息 ---------- */
+  canvas.addEventListener('wheel', (e) => {
+    if (!img) return;
+    const rect = canvas.getBoundingClientRect();
+    const px = e.clientX - rect.left, py = e.clientY - rect.top;
+    const [ix, iy] = widgetToImg(px, py);
+    scale = Math.max(fitScale, Math.min(50, scale * (e.deltaY < 0 ? 1.1 : 1 / 1.1)));
+    offsetX = px - ix * scale; offsetY = py - iy * scale; recalcOffset(); e.preventDefault(); paint();
+  }, { passive:false });
+
+  function openGenerateBox() {
+    if (annotationMode !== 'template') return;
+    const choices = document.getElementById('generateChoices'); choices.replaceChildren();
+    annotations.forEach((ann, index) => {
+      const label = document.createElement('label'); label.className = 'annotation-row';
+      const input = document.createElement('input'); input.type = 'checkbox'; input.checked = selectedIdx < 0 || selectedIdx === index; input.dataset.index = String(index);
+      const text = document.createElement('span'); text.textContent = ann.category; label.append(input, text); choices.append(label);
+    });
+    const selected = annotations[selectedIdx];
+    const seed = selected?.category || annotations[0]?.category || 'region';
+    document.getElementById('generatePath').value = 'screen.' + String(seed).replace(/[^A-Za-z0-9_]/g, '_');
+    document.getElementById('generateError').textContent = '';
+    document.getElementById('generateModal').classList.add('visible');
+  }
+
+  function refreshGeneratePathState() {
+    const input = document.getElementById('generatePath');
+    const problem = pathProblem(input.value) || pathOccupied(input.value, null);
+    document.getElementById('generateError').textContent = problem ? pathMessage(problem) : '';
+    document.getElementById('generateOk').disabled = !!problem;
+    return problem;
+  }
+
+  function navigate(delta) {
+    if (!imageData) return;
+    const target = imageData.currentIndex + delta;
+    if (target < 0 || target >= imageData.totalImages) return;
+    clearHistory();
+    setToolMode('none');
+    selectedIdx = -1;
+    hoveredIdx = -1;
+    vscode.postMessage({ type:'navigate', index:target });
+  }
+
+  document.addEventListener('keydown', (e) => {
+    if (document.getElementById('bboxModal').classList.contains('visible')) return;
+    if (document.getElementById('generateModal').classList.contains('visible')) {
+      if (e.key === 'Enter') { e.preventDefault(); document.getElementById('generateOk').click(); }
+      return;
+    }
+    if (matchKeybinding(e, keybindings.modeTemplate)) { e.preventDefault(); requestAnnotationMode('template'); return; }
+    if (matchKeybinding(e, keybindings.modeRect)) { e.preventDefault(); requestAnnotationMode('rect'); return; }
+    if (matchKeybinding(e, keybindings.modePoint)) { e.preventDefault(); requestAnnotationMode('point'); return; }
+    if (matchKeybinding(e, keybindings.undo)) { e.preventDefault(); undo(); return; }
+    if (matchKeybinding(e, keybindings.redo)) { e.preventDefault(); redo(); return; }
+    if (matchKeybinding(e, keybindings.copy) && selectedIdx >= 0 && toolMode === 'none') { clipboard = clone(annotations[selectedIdx]); return; }
+    if (matchKeybinding(e, keybindings.paste) && clipboard && toolMode === 'none') {
+      const before = clone(annotations);
+      const copy = { ...clone(clipboard), id: nextId++, x: clipboard.x + 10, y: clipboard.y + 10 };
+      if (img) { copy.x = Math.max(0, Math.min(copy.x, pointMode ? img.width : img.width - copy.w)); copy.y = Math.max(0, Math.min(copy.y, pointMode ? img.height : img.height - copy.h)); }
+      annotations.push(copy); selectedIdx = annotations.length - 1; commitHistory(before); saveAnnotations(); paint(); return;
+    }
+    if (matchKeybinding(e, keybindings.drawBbox)) { setToolMode(toolMode === 'draw' ? 'none' : 'draw'); return; }
+    if (matchKeybinding(e, keybindings.copyCoords)) { setToolMode(toolMode === 'copycoord' ? 'none' : 'copycoord'); return; }
+    if (matchKeybinding(e, keybindings.deleteMode)) { setToolMode(toolMode === 'delete' ? 'none' : 'delete'); return; }
+    if (matchKeybinding(e, keybindings.deleteSelected) && selectedIdx >= 0 && toolMode === 'none') { deleteSelected(); return; }
+    if (['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key) && selectedIdx >= 0 && toolMode === 'none' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      const step = e.shiftKey ? 10 : 1;
+      const dx = e.key === 'ArrowLeft' ? -step : e.key === 'ArrowRight' ? step : 0;
+      const dy = e.key === 'ArrowUp' ? -step : e.key === 'ArrowDown' ? step : 0;
+      if (nudgeSelected(dx, dy)) { e.preventDefault(); return; }
+    }
+    if (matchKeybinding(e, keybindings.prevImage)) navigate(-1);
+    else if (matchKeybinding(e, keybindings.nextImage)) navigate(1);
+  });
+
+  document.getElementById('templateModeBtn').onclick = () => requestAnnotationMode('template');
+  document.getElementById('rectModeBtn').onclick = () => requestAnnotationMode('rect');
+  document.getElementById('pointModeBtn').onclick = () => requestAnnotationMode('point');
+  document.getElementById('sharedHistoryChk').checked = sharedHistory;
+  document.getElementById('sharedHistoryChk').onchange = (e) => {
+    sharedHistory = e.target.checked;
+    vscode.setState({ ...(vscode.getState() || {}), sharedHistory });
+    updateUndoRedoButtons();
+  };
+  document.getElementById('drawBtn').onclick = () => setToolMode(toolMode === 'draw' ? 'none' : 'draw');
+  document.getElementById('coordBtn').onclick = () => setToolMode(toolMode === 'copycoord' ? 'none' : 'copycoord');
+  document.getElementById('deleteBtn').onclick = () => setToolMode(toolMode === 'delete' ? 'none' : 'delete');
+  document.getElementById('undoBtn').onclick = undo;
+  document.getElementById('redoBtn').onclick = redo;
+  document.getElementById('prevBtn').onclick = () => navigate(-1);
+  document.getElementById('nextBtn').onclick = () => navigate(1);
+  document.getElementById('showAllBtn').onclick = () => { hiddenSet().clear(); listSignature=''; paint(); };
+  document.getElementById('hideAllBtn').onclick = () => { const hidden=hiddenSet(); hidden.clear(); annotations.forEach(a=>hidden.add(a.category)); listSignature=''; paint(); };
+  document.getElementById('onlyCurrentBtn').onclick = () => { const hidden=hiddenSet(), current=annotations[selectedIdx]; hidden.clear(); annotations.forEach(a=>{ if (!current || a.category!==current.category) hidden.add(a.category); }); listSignature=''; paint(); };
+  document.getElementById('generateBoxBtn').onclick = openGenerateBox;
+  document.getElementById('generateCancel').onclick = () => document.getElementById('generateModal').classList.remove('visible');
+  document.getElementById('generatePath').oninput = refreshGeneratePathState;
+  document.getElementById('generateOk').onclick = () => {
+    if (refreshGeneratePathState()) return;
+    const chosen = [];
+    document.querySelectorAll('#generateChoices input').forEach(input => { if (input.checked) chosen.push(annotations[Number(input.dataset.index)]); });
+    if (!chosen.length) { document.getElementById('generateError').textContent = t('generateNeedSelection'); return; }
+    vscode.postMessage({ type:'generateBox', path:document.getElementById('generatePath').value.trim(), boxes:chosen.map(a=>({x:a.x,y:a.y,w:a.w,h:a.h})) });
+  };
+
+  function updateStaticText() {
+    document.getElementById('bboxCatLabel').textContent = t('categoryLabel');
+    document.getElementById('bboxCancel').textContent = t('cancel');
+    document.getElementById('coordBtn').textContent = t('copyCoords');
+    document.getElementById('deleteBtn').textContent = t('deleteMode');
+    document.getElementById('annotationListTitle').textContent = t('annotationListTitle');
+    document.getElementById('showAllBtn').textContent = t('showAllAnnotations');
+    document.getElementById('hideAllBtn').textContent = t('hideAllAnnotations');
+    document.getElementById('onlyCurrentBtn').textContent = t('showOnlyCurrent');
+    document.getElementById('generateBoxBtn').textContent = t('generateBox');
+    document.getElementById('generateTitle').textContent = t('generateBoxTitle');
+    document.getElementById('generatePathLabel').textContent = t('generatePath');
+    document.getElementById('generateCancel').textContent = t('cancel');
+    document.getElementById('generateOk').textContent = t('ok');
+    document.getElementById('prevBtn').title = t('prevImage');
+    document.getElementById('nextBtn').title = t('nextImage');
+    document.getElementById('emptyMsg').textContent = t('noImageLoaded');
+    updateModeUi();
+  }
+
   window.addEventListener('message', (e) => {
     const msg = e.data;
     if (msg.type === 'config') {
-      // 接收扩展端配置：快捷键 + 坐标分隔偏好
-      if (msg.keybindings) {
-        Object.assign(keybindings, msg.keybindings);
-      }
-      if (typeof msg.copyCoordsSpace === 'boolean') {
-        copyCoordsSpace = msg.copyCoordsSpace;
-      }
-      boxMode = msg.boxMode === true;
-      // 框路径的段名规则：以后若要改文法，只需要改 `boxResourcePure`，这里不用改。
+      if (msg.keybindings) Object.assign(keybindings, msg.keybindings);
+      if (typeof msg.copyCoordsSpace === 'boolean') copyCoordsSpace = msg.copyCoordsSpace;
       if (msg.boxPathRule) boxPathRule = msg.boxPathRule;
-      refreshGeneratePathState();
-      const generateBoxBtn = document.getElementById('generateBoxBtn');
-      if (generateBoxBtn) generateBoxBtn.style.display = boxMode ? 'none' : '';
-      updateButtonTexts();
+      if (msg.annotationMode) annotationMode = msg.annotationMode;
+      pointMode = annotationMode === 'point';
+      boxMode = annotationMode === 'rect';
+      updateStaticText();
       return;
     }
-    if (msg.type === 'boxPaths') {
-      if (imageData) imageData.boxPaths = msg.boxPaths || {};
-      refreshGeneratePathState();
+    if (msg.type === 'positionPaths') {
+      if (imageData) imageData.positionPaths = msg.positionPaths || {};
       return;
     }
     if (msg.type === 'generateBoxResult') {
-      const error = document.getElementById('generateError');
-      if (msg.ok) {
-        document.getElementById('generateModal').classList.remove('visible');
-        return;
-      }
-      // 宿主只回一个错误码（`duplicate`/`write`…）。直接显示它就是"看不懂"的来源：
-      // 路径类先按输入框现在的原文重判一次，给出同一套带解释的文案，其余落到一句人话。
-      const local = refreshGeneratePathState();
-      const problem = msg.error === 'duplicate' ? { code: 'duplicate' } : (local || { code: msg.error || 'unknown' });
-      if (error) error.textContent = boxPathMessage(problem);
+      if (msg.ok) document.getElementById('generateModal').classList.remove('visible');
+      else document.getElementById('generateError').textContent = pathMessage(msg.error === 'duplicate' ? {code:'duplicate'} : {code:msg.error || 'unknown'});
       return;
     }
-    if (msg.type === 'load') {
-      imageData = msg;
-      annotations = msg.annotations || [];
-      nextId = annotations.length ? Math.max(...annotations.map(a => a.id)) + 1 : 1;
-      selectedIdx = -1; hoveredIdx = -1;
-      listSignature = '';
-      undoStack = []; redoStack = [];
+    if (msg.type !== 'load') return;
 
-      if (msg.imageBase64) {
-        img = new Image();
-        img.onload = () => {
-          emptyMsg.style.display = 'none';
-          canvas.style.display = 'block';
-          recalcFit(); scale = fitScale; recalcOffset();
-          loadImgData();
-          paint();
-        };
-        img.src = msg.imageBase64;
-      } else {
-        img = null; imgData = null;
-        canvas.style.display = 'none';
-        emptyMsg.style.display = 'flex';
-        syncAnnotationList();
-      }
+    const incomingMode = msg.annotationMode || annotationMode;
+    const newImageKey = msg.filename || '';
+    const imageChanged = currentImageKey && currentImageKey !== newImageKey;
+    if (imageChanged) clearHistory();
+    currentImageKey = newImageKey;
+    annotationMode = incomingMode;
+    pointMode = incomingMode === 'point';
+    boxMode = incomingMode === 'rect';
+    imageData = msg;
+    annotations = clone(msg.annotations || []);
+    modeCache[annotationMode] = clone(annotations);
+    nextId = annotations.length ? Math.max(...annotations.map(a => a.id)) + 1 : 1;
+    selectedIdx = -1;
+    hoveredIdx = -1;
+    listSignature = '';
+    updateModeUi();
 
-      // 更新导航
-      document.getElementById('navInfo').textContent =
-        msg.filename + ' (' + (msg.currentIndex + 1) + '/' + msg.totalImages + ')';
-      document.getElementById('prevBtn').disabled = msg.currentIndex <= 0;
-      document.getElementById('nextBtn').disabled = msg.currentIndex >= msg.totalImages - 1;
-      updateUndoRedoButtons();
+    const needImageLoad = !img || imageChanged;
+    if (msg.imageBase64 && needImageLoad) {
+      img = new Image();
+      img.onload = () => {
+        emptyMsg.style.display = 'none'; canvas.style.display = 'block';
+        recalcFit(); scale = fitScale; recalcOffset(); loadImgData(); paint();
+      };
+      img.src = msg.imageBase64;
+    } else if (msg.imageBase64 && img) {
+      emptyMsg.style.display = 'none'; canvas.style.display = 'block'; paint();
+    } else {
+      img = null; imgData = null; canvas.style.display = 'none'; emptyMsg.style.display = 'flex'; syncAnnotationList();
     }
+    document.getElementById('navInfo').textContent = `${msg.filename} (${msg.currentIndex + 1}/${msg.totalImages})`;
+    document.getElementById('prevBtn').disabled = msg.currentIndex <= 0;
+    document.getElementById('nextBtn').disabled = msg.currentIndex >= msg.totalImages - 1;
+    updateUndoRedoButtons();
   });
 
-  /* ---------- 初始化 ---------- */
   window.addEventListener('resize', resize);
   resize();
-  vscode.postMessage({ type: 'ready' });
+  updateStaticText();
+  vscode.postMessage({ type:'ready' });
 })();
