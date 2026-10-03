@@ -91,8 +91,9 @@ try {
     pure.unionPixelBoxes([{ x: 1, y: 2, w: 3, h: 4 }, { x: 0, y: 1, w: 2, h: 2 }]),
     { x: 0, y: 1, w: 4, h: 5 },
   );
+  assert(pure.parseBoxCoco(JSON.stringify({ version: 1, boxes: [] })).errors.length > 0,
+    'legacy version/boxes schemas are rejected instead of migrated');
 
-  assert.strictEqual('parseBoxCoco' in pure, false, 'legacy box parser shim stays deleted');
   assert.strictEqual('publishRuntime' in store, false, 'legacy box runtime publisher stays deleted');
   assert.strictEqual('readRuntimeFile' in store, false, 'legacy box runtime reader stays deleted');
   assert.strictEqual('runtimeOnlyPaths' in store, false, 'legacy runtime reconciliation stays deleted');
