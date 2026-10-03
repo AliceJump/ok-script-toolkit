@@ -41,6 +41,7 @@ html = html
   .replace('<script src="__APP_SCRIPT_URI__"></script>', `<script>${fs.readFileSync(path.join(componentRoot, 'app.js'), 'utf8')}</script>`);
 
 const sent = [];
+let webviewState = {};
 const virtualConsole = new VirtualConsole();
 virtualConsole.on('jsdomError', (error) => { throw error; });
 
@@ -52,6 +53,7 @@ function makeContext() {
   return {
     clearRect: noop, fillRect: noop, strokeRect: noop, beginPath: noop, arc: noop,
     fill: noop, fillText: noop, drawImage: noop, setLineDash: noop,
+    moveTo: noop, lineTo: noop, stroke: noop,
     getImageData: () => ({ data: new Uint8ClampedArray(4) }),
     fillStyle: '', strokeStyle: '', lineWidth: 1, font: '',
   };
@@ -62,7 +64,11 @@ const dom = new JSDOM(html, {
   pretendToBeVisual: true,
   virtualConsole,
   beforeParse(window) {
-    window.acquireVsCodeApi = () => ({ postMessage: (message) => sent.push(message) });
+    window.acquireVsCodeApi = () => ({
+      postMessage: (message) => sent.push(message),
+      getState: () => webviewState,
+      setState: (state) => { webviewState = state || {}; },
+    });
 
     // 固定画布尺寸（jsdom 不做布局）
     window.HTMLCanvasElement.prototype.getContext = function () { return makeContext(); };
@@ -162,12 +168,10 @@ function mouse(type, target, x, y, button = 0) {
   assert(copy, 'box-select in coord mode must post a copyText message');
   assert(copy.text === '0.1250, 0.1000, 0.6250, 0.6000',
     'expected normalized x,y,tox,toy, got ' + copy.text);
-  // 框留在画布上供继续调整，所以坐标模式不会自动退出
   assert(coordBtn.classList.contains('active'),
     'coord mode must stay active so the box can still be adjusted');
 
   /* ---------- 拖动框体：整体移动并重新复制 ---------- */
-  // 当前框屏幕矩形 (100,120)-(500,345)，(300,230) 落在框内
   let before = post('copyText').length;
   mouse('mousedown', canvas, 300, 230);
   mouse('mousemove', canvas, 350, 260);
@@ -178,19 +182,16 @@ function mouse(type, target, x, y, button = 0) {
     'moved box must copy the updated coords, got ' + lastPost('copyText').text);
 
   /* ---------- 拖动手柄：缩放并重新复制 ---------- */
-  // 移动后框为图像 (360,180,960,540)，屏幕 (150,150)-(550,375)；右下角即 br 手柄
   before = post('copyText').length;
   mouse('mousedown', canvas, 550, 375);
   mouse('mousemove', canvas, 610, 405);
   mouse('mouseup', canvas, 610, 405);
   await flush();
   assert(post('copyText').length === before + 1, 'resizing the box must copy again');
-  // dx=60,dy=30 → 图像 +144,+72 → 宽 1104 高 612
   assert(lastPost('copyText').text === '0.1875, 0.1667, 0.7625, 0.7333',
     'resized box must copy the updated coords, got ' + lastPost('copyText').text);
 
   /* ---------- 点击非交互部分清除坐标框 ---------- */
-  // (700, 520) 在框与所有手柄之外
   before = post('copyText').length;
   mouse('mousedown', canvas, 700, 520);
   mouse('mouseup', canvas, 700, 520);
@@ -211,7 +212,6 @@ function mouse(type, target, x, y, button = 0) {
   assert(saved.length === 0, 'coord box must never be written to annotations/COCO');
 
   /* ---------- 反向框选（从右下拖到左上）必须得到相同结果 ---------- */
-  // 先清框：否则从右下角起手会命中已有框的 br 手柄，变成缩放而不是新建
   mouse('mousedown', canvas, 700, 520);
   mouse('mouseup', canvas, 700, 520);
   await flush();
