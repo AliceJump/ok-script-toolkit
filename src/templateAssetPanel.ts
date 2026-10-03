@@ -14,6 +14,13 @@ import { derivedEnumPath, isPathInsideRoot, needsEnumPathPrompt, SaveTarget, sav
 import { onAnnotationDataChanged, sameAnnotationFile } from './cocoAnnotationData';
 import { isSameSize, scaleBoxes, SwapBox } from './annotationSwapPure';
 import { applySharedAssets, getNonce } from './webviewHtml';
+import {
+  DEFAULT_POSITION_JSON,
+  DEFAULT_POSITION_PY_DIR,
+  PositionPublishFormat,
+  PositionPublishOptions,
+  publishPositionsByFormat,
+} from './positionPublishStore';
 
 /* ---------------- 控制器 ---------------- */
 
@@ -96,7 +103,6 @@ class AssetGalleryController {
     this.data.load();
     const imageFiles = this.data.listImages();
 
-    // 构建元数据
     const authoringErrors = this.data.readErrors;
     if (authoringErrors.length && !this.lastReadErrors) {
       void vscode.window.showErrorMessage(tr('The annotation source is invalid. Fix the source file before saving or exporting.'));
@@ -111,8 +117,6 @@ class AssetGalleryController {
         width: size.width,
         height: size.height,
         categories: cats,
-        // 交换目标选择器要显示"这张图上有几个框"，而分类名是去重后的
-        // （同一张图上两个同名按钮共用一个分类）⇒ 数量必须单独给。
         annotations: this.data.getAnnotationsForImage(imgPath, true).length,
       };
     });
@@ -120,7 +124,6 @@ class AssetGalleryController {
     await this.webview.postMessage({ type: 'templates', templates: metas });
     if (gen !== this.generation) return;
 
-    // 分批推送缩略图
     const batchSize = 8;
     for (let i = 0; i < metas.length; i += batchSize) {
       if (gen !== this.generation || this.disposed) return;
@@ -133,17 +136,6 @@ class AssetGalleryController {
     }
   }
 
-  /**
-   * 裁剪并推送一批缩略图。
-   *
-   * 网格的批量推送与「交换标注」目标选择器的**按需补推共用这一条管线**：同一个裁剪函数、
-   * 同一种 `thumbs` 消息、webview 侧同一个 URL 缓存 ⇒ 选择器里的缩略图和网格里的是
-   * **同一张图**（同 bbox、同高度），不会出现两套尺寸、两份生成。
-   *
-   * 为什么需要按需补推这个入口：上面那轮批量推送是**异步分批**的，用户完全可能在推完
-   * 之前就打开了选择器；而裁剪失败的那几张更是整轮都不会再推。
-   */
-  /** 用这张文件自己的尺寸。不能拿同名不同后缀的标注记录来顶。 */
   private imagePixelSize(imagePath: string): { width: number; height: number } {
     return this.data.resolveImageSize(imagePath) ?? { width: 0, height: 0 };
   }
@@ -198,12 +190,11 @@ class AssetGalleryController {
         break;
       }
       case 'screenshot': {
-        // 从剪贴板粘贴截图
         await this.handleScreenshot(msg.hardForeground);
         break;
       }
       case 'saveToAssets': {
-        await this.handleSaveToAssets();
+        await this.handlePublish();
         break;
       }
       case 'deleteImage': {
@@ -219,8 +210,6 @@ class AssetGalleryController {
         break;
       }
       case 'requestThumbs': {
-        // 选择器打开时发现有几张还没有缩略图 URL ⇒ 现裁现推。
-        // ⚠️ webview 传来的路径**不能直接拿去读盘**：只认当前模板目录里真实存在的图。
         const requested = Array.isArray(msg.imagePaths) ? msg.imagePaths : [];
         if (requested.length > 0) {
           const allowed = new Set(this.data.listImages());
@@ -233,7 +222,6 @@ class AssetGalleryController {
         break;
       }
       case 'dropTemp': {
-        // 优先使用 dataTransfer 里携带的 id；跨 origin 读不到时回退到宿主中继
         const id = msg.tempId || takePendingDrag();
         if (id) await this.handleDropTemp(id);
         break;
@@ -243,18 +231,6 @@ class AssetGalleryController {
 
   /* ---------- 截图处理 ---------- */
 
-  /**
-   * 截图落盘并刷新素材列表。
-   *
-   * **public 是刻意的**：快捷键命令（`okScriptToolkit.screenshotToTemplate`）要复用它 ——
-   * 截图实现只此一处，命令只负责"打开面板 + 调这里"，绝不另造一套，
-   * 否则两条路径的截图行为（落盘位置、列表刷新）迟早漂移。
-   *
-   * **不写 COCO**：截图只把 PNG 放进模板目录。`coco_annotations.json` 的 images 由
-   * **标注保存流程**按需补登记（`setAnnotationsForImage` → `ensureSwapImage`）——
-   * 否则每截一张图（哪怕根本没标框）都会往标注文件里塞一条空记录，
-   * 让"截了但没标"的图污染标注数据。
-   */
   async handleScreenshot(hardForeground?: boolean): Promise<void> {
     const folder = vscode.workspace.workspaceFolders?.[0];
     if (!folder) {
@@ -266,7 +242,6 @@ class AssetGalleryController {
     const outputDir = path.join(projectRoot, templatesDirectory(projectRoot));
     fs.mkdirSync(outputDir, { recursive: true });
 
-    // Generate filename with timestamp
     const now = new Date();
     const ts = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}`;
     const outputPath = path.join(outputDir, `screenshot_${ts}.png`);
@@ -281,12 +256,85 @@ class AssetGalleryController {
       return;
     }
 
-    // 截图只落盘 + 刷新列表；COCO 图片登记属于标注保存流程，这里不碰。
     void vscode.window.showInformationMessage(tr('Screenshot saved: {name}', { name: path.basename(outputPath) }));
     await this.update();
   }
 
-  /* ---------- 保存到 assets ---------- */
+  /* ---------- 统一发布 ---------- */
+
+  private async handlePublish(): Promise<void> {
+    const resources = await vscode.window.showQuickPick(
+      [
+        { label: 'Template', resource: 'template' as const, picked: true },
+        { label: 'Rect', resource: 'rect' as const, picked: true },
+        { label: 'Point', resource: 'point' as const, picked: true },
+      ],
+      {
+        canPickMany: true,
+        placeHolder: 'Select resources to publish',
+      },
+    );
+    if (!resources?.length) return;
+
+    const selected = new Set(resources.map(item => item.resource));
+    if (selected.has('template')) {
+      await this.handleSaveToAssets();
+    }
+    if (selected.has('rect') || selected.has('point')) {
+      await this.handlePublishPositions({
+        rect: selected.has('rect'),
+        point: selected.has('point'),
+      });
+    }
+  }
+
+  private async handlePublishPositions(selection: { rect: boolean; point: boolean }): Promise<void> {
+    const choice = await vscode.window.showQuickPick(
+      [
+        { label: 'JSON', description: DEFAULT_POSITION_JSON, format: 'json' as PositionPublishFormat },
+        {
+          label: 'Python data + parser',
+          description: `${DEFAULT_POSITION_PY_DIR}/ScreenRatio.py + PositionMap.py`,
+          format: 'python' as PositionPublishFormat,
+        },
+      ],
+      { placeHolder: 'Position export format' },
+    );
+    if (!choice) return;
+
+    const root = this.data.root;
+    const directory = templatesDirectory(root);
+    const options: PositionPublishOptions = {
+      ...selection,
+      jsonTarget: DEFAULT_POSITION_JSON,
+      pythonTargetDir: DEFAULT_POSITION_PY_DIR,
+    };
+    let result = publishPositionsByFormat(root, directory, choice.format, options);
+    if (!result.ok && result.errors.includes('manual') && result.protectedFiles?.length) {
+      const names = result.protectedFiles.map(file => path.relative(root, file)).join('\n');
+      const overwrite = await vscode.window.showWarningMessage(
+        `These Python files were not generated by ok-script-toolkit and would be overwritten:\n${names}`,
+        { modal: true },
+        'Overwrite',
+      );
+      if (overwrite !== 'Overwrite') return;
+      result = publishPositionsByFormat(root, directory, choice.format, {
+        ...options,
+        overwriteManual: true,
+      });
+    }
+
+    if (!result.ok) {
+      const detail = result.errors.join(', ') || 'unknown';
+      void vscode.window.showErrorMessage(`Could not publish positions: ${detail}`);
+      return;
+    }
+    const files = result.files.map(file => path.relative(root, file).replace(/\\/g, '/')).join(', ');
+    void vscode.window.showInformationMessage(`Published positions: ${files}`);
+  }
+
+  /* ---------- Template 发布 ---------- */
+
   private async handleSaveToAssets(): Promise<void> {
     if (this.data.readErrors.length) {
       void vscode.window.showErrorMessage(tr('The annotation source is invalid. Fix the source file before saving or exporting.'));
@@ -303,23 +351,6 @@ class AssetGalleryController {
       { label: 'ok_tasks/assets', description: tr('saveToAssetsCustomScripts'), folder: path.join(projectRoot, 'ok_tasks', 'assets') },
     ];
 
-    // 枚举路径 / 类名的取值链：**IDE 设置 > 项目约定 > 兜底**。
-    // 个人偏好排最高是用户定的：项目文件是"团队开箱默认"，我改过就用我的。
-    // 路径留空即跳过生成枚举。
-    //
-    // 注意路径必须走 `labelEnumPathSetting` 而不是直接拿 `labelEnum.path` —— 后者是**模块路径**
-    // （`src/data/FeatureList`，不带 .py，与 config.py 的 label_enum_relative_path 同形），
-    // 而对话框里要的是**文件路径**；取值链里统一补后缀（见 `normalizeLabelEnumFile`）。
-    //
-    // 个人偏好以前存在 `context.globalState` 里，已**废弃**：它是全局的（A 项目填过的值
-    // 会带到 B 项目，而消费点按当前工作区拼绝对路径 → 静默造出错误目录树），
-    // 而且不在设置界面、不在溯源面板。现在写进 IDE 设置（工作区文件夹级），可见可改可恢复。
-    //
-    // ⚠️ 写设置必须 **await**。`setIdeSetting` 是异步的，`void` 掉之后紧接着的
-    // `confirmLabelEnumRename` 会读到**旧值** —— 用户在对话框里改了类名、守卫却拿旧名字
-    // 去比对，于是漏报"这次会改掉项目里 N 处 import"。
-    //
-    // ⚠️ 枚举路径/类名的读写**必须绑定当前工作区文件夹 URI**，防止 A 项目的值串到 B 项目。
     const folderUri = folder.uri;
     const rememberEnumPath = (value: string) => setIdeSetting('labelEnumPath', value, folderUri);
     const rememberEnumName = (value: string) => setIdeSetting('labelEnumName', value, folderUri);
@@ -329,22 +360,16 @@ class AssetGalleryController {
         : undefined;
     let enumPath = labelEnumPathSetting(folderUri, this.data.root);
     if (!enumPath && this.data.root) {
-      // config.py supplies the same module path used by the project's own
-      // template tab (for example NTE's src/Labels). Keep the personal and
-      // project convention layers above this discovered default.
       const { pythonPath } = getProjectConfig();
       const discovered = (await probeWindowConfig(this.data.root, pythonPath))?.labelEnumRelativePath;
       if (discovered) {
         try { enumPath = normalizeLabelEnumPathInput(discovered); } catch { /* invalid project path */ }
       }
     }
-    /** 我**设过**的类名（空 = 没设过）。列表里显示这个而不是解析后的值 —— 见 `saveToAssetsPure` */
     let enumName = ideSetting<string>('labelEnumName', folderUri) ?? '';
 
-    // 目标选择与两项枚举设置共用一轮循环：改完任一项都要回到目标选择，所以列表每次都重新构造。
     let targetFolder = '';
     let targetLabel = '';
-    /** 用户是否已经在「改路径」里做过决定 —— 决定过就不再追问，哪怕他清空了 */
     let enumPathDecided = false;
     for (;;) {
       const quickPickItems = saveToAssetsItems({
@@ -355,10 +380,6 @@ class AssetGalleryController {
           path: tr('Enum file path'),
           name: tr('Enum class name'),
           notSet: tr('Not set — click to set'),
-          // ⚠️ 这里说的是**我这一层没设过**时会怎样，不是"由文件名推导"：
-          // 取值链是「个人偏好 > 项目约定 `labelEnum.name` > 文件名」，留空后**先**落到
-          // 项目约定，只有项目也没声明才用文件名。写成"由文件名推导"会让配置了
-          // `labelEnum.name` 的项目里的用户以为自己在改成文件名推导。
           derived: tr('Not set — follows the project convention'),
         },
       }).map((item) => item.separator
@@ -378,12 +399,10 @@ class AssetGalleryController {
       if (pick.edit === 'enumName') {
         const edited = await vscode.window.showInputBox({
           prompt: tr('LabelEnum class name (leave empty to follow the project convention)'),
-          // 提示里给出**当前生效**的类名（可能是项目约定或文件名推导出来的），
-          // 输入框本身留空 = 撤销我的设置。这样"看得到现在的值"与"能清掉覆盖"同时成立。
           placeHolder: enumPath ? labelEnumClassName(path.join(projectRoot, enumPath)) : '',
           value: enumName,
         });
-        if (edited === undefined) continue; // 取消 → 回到列表
+        if (edited === undefined) continue;
         enumName = edited.trim();
         await rememberEnumName(enumName);
         continue;
@@ -394,18 +413,12 @@ class AssetGalleryController {
         value: enumPath,
         validateInput: validateEnumPathInput,
       });
-      if (edited === undefined) continue; // 取消改路径 → 回到目标选择
-      // ⚠️ 必须归一化再消费：用户很可能填的是模块路径（`src/data/feature_list`，与 config.py
-      // 的 label_enum_relative_path 同形），直接拼绝对路径会生成一个**没有扩展名**的文件。
+      if (edited === undefined) continue;
       enumPath = normalizeLabelEnumPathInput(edited);
       enumPathDecided = true;
       await rememberEnumPath(enumPath);
     }
 
-    // 已经有生效路径时**不再弹输入框**（每次保存都要按一次回车是纯噪音）。
-    // 唯一"没定过"的情形是首次使用 —— 那时必须问：留空即"不生成枚举"。
-    // 预填 `<目标目录>/LabelEnum.py`（此时目标已经选好了）：不预填的话默认选项就变成
-    // "不生成枚举"，而按回车本该得到一个合法的、写在项目里的路径。
     if (needsEnumPathPrompt(enumPath, enumPathDecided)) {
       const edited = await vscode.window.showInputBox({
         prompt: tr('LabelEnum.py file path (relative to workspace root, leave empty to skip)'),
@@ -419,16 +432,12 @@ class AssetGalleryController {
     }
 
     const generateEnum = enumPath.length > 0;
-    // 将相对路径解析为绝对路径
     const absEnumPath = generateEnum ? path.join(projectRoot, enumPath) : undefined;
     if (absEnumPath && !isPathInsideRoot(projectRoot, absEnumPath)) {
       void vscode.window.showErrorMessage(tr('Enum file path must be relative and stay within the workspace root.'));
       return;
     }
 
-    // 覆盖已有枚举文件、且**类名会变**时先问一句。这是唯一一处"个人覆盖能把项目弄坏"
-    // 的地方：项目的代码按类名 import（`from src.data.feature_list import FeatureList`），
-    // 改名之后那些 import 全部 ImportError，而保存成功的提示照样会弹出来。
     if (absEnumPath && !(await this.confirmLabelEnumRename(absEnumPath, folderUri))) return;
 
     try {
@@ -445,7 +454,6 @@ class AssetGalleryController {
             generateEnum,
             absEnumPath,
             (done, total) => {
-              // page 渲染在 worker 池并行，完成顺序可能乱序，done 单调递增
               progress.report({ message: tr('Packing pages {done}/{total}…', { done, total }) });
             },
             token,
@@ -463,26 +471,13 @@ class AssetGalleryController {
     }
   }
 
-  /**
-   * 覆盖已有枚举文件、且**类名会变**时先问一句。
-   *
-   * 为什么这道闸在 UI 层而不是 `TemplateAssetData.generateLabelEnum` 里：那是个同步的
-   * 数据写入，里面弹模态框会让它没法被测、也把 UI 决策塞进了数据层。判据本身是纯函数
-   * （`labelEnumGuard.ts`），IO 与弹窗留在这里。
-   *
-   * 返回 `false` = 用户选择放弃这次保存（**整个**保存，不只是枚举 —— 半保存状态更难解释）。
-   *
-   * 失败一律放行：读不了文件、扫不了项目都只影响"提示的完整度"，不能反过来阻断保存。
-   */
   private async confirmLabelEnumRename(absEnumPath: string, folderUri: vscode.Uri): Promise<boolean> {
     let existingSource: string | undefined;
     try {
       existingSource = fs.readFileSync(absEnumPath, 'utf-8');
     } catch {
-      return true; // 文件不存在 → 全新生成，没有旧名字可废
+      return true;
     }
-    // 用**将要写入的那个类名**（`writableClassName` 会把非法标识符退回兜底名）去比 ——
-    // 直接拿用户填的原始值比，会为"填了个非法名字、实际什么都没变"的情况报警。
     const newClassName = writableClassName(labelEnumClassName(absEnumPath, this.data.root, folderUri));
     const impact = labelEnumRenameImpact({ existingSource, newClassName });
     if (!impact) return true;
@@ -521,21 +516,8 @@ class AssetGalleryController {
 
   /* ---------- 交换两张图的标注 ---------- */
 
-  /**
-   * 把两张图的标注集合**整套互换**（素材面板卡片上的 ⇄ 入口）。
-   *
-   * 尺寸不同时按比例映射（判据与数值都在 `annotationSwapPure`），并且**在确认框里
-   * 把这件事说出来**：缩放会改变框的真实像素尺寸，而模板裁剪是按像素取的，
-   * 用户有权在写盘之前知道"这次不只是搬家"。
-   *
-   * 落盘由 `swapAnnotationsForImages` 一次完成。这个操作在 VS Code 侧
-   * **不可撤销**（直接保存 JSON、不经过编辑器，Ctrl+Z 管不到），
-   * 所以必须整体成功或整体不动 —— 半交换的 coco 比不交换更难收拾。
-   */
   private async handleSwapAnnotations(sourcePath: string, targetPath: string): Promise<void> {
-
     if (!sourcePath || !targetPath || sourcePath === targetPath) return;
-    // Webview 消息携带的路径须来自当前模板集，再读取图片或 COCO 数据。
     const allowed = new Set(this.data.listImages());
     if (!allowed.has(sourcePath) || !allowed.has(targetPath)) {
       void vscode.window.showErrorMessage(tr('Failed to swap annotations.'));
@@ -557,7 +539,6 @@ class AssetGalleryController {
 
     const sourceBoxes = this.boxesOf(sourcePath);
     const targetBoxes = this.boxesOf(targetPath);
-    // 两边都空 ⇒ 交换是个空操作。这里直接说清楚，而不是弹一个 "0 ⇄ 0" 的确认框。
     if (sourceBoxes.length === 0 && targetBoxes.length === 0) {
       void vscode.window.showInformationMessage(tr('Neither image has annotations, nothing to swap.'));
       return;
@@ -589,7 +570,6 @@ class AssetGalleryController {
     );
     if (choice !== swap) return;
 
-    // The modal yields to the editor: another edit can replace either snapshot before we save.
     this.data.load();
     const currentImages = new Set(this.data.listImages());
     if (!currentImages.has(sourcePath) || !currentImages.has(targetPath)) {
@@ -613,7 +593,6 @@ class AssetGalleryController {
       ok = this.data.swapAnnotationsForImages(
         sourcePath,
         targetPath,
-        // 参数顺序是"写到哪张图"：B 的框（按 A 的尺寸映射后）写进 A，反之亦然
         scaleBoxes(targetBoxes, targetSize, sourceSize),
         scaleBoxes(sourceBoxes, sourceSize, targetSize),
         sourceSize,
@@ -628,15 +607,12 @@ class AssetGalleryController {
       return;
     }
     await this.update();
-    // 标注编辑器是常驻面板且逐操作自动落盘：正显示这两张图之一时必须同步，
-    // 否则它手里的旧框会在下一次编辑时把交换结果整份写回去。
     AnnotationPanel.current?.controller.reloadIfShowing([sourcePath, targetPath]);
     void vscode.window.showInformationMessage(
       tr("Swapped annotations between '{first}' and '{second}'.", { first, second }),
     );
   }
 
-  /** 读某张图的标注，转成 `SwapBox` 形状（纯逻辑与数据层共用的入参） */
   private boxesOf(imagePath: string): SwapBox[] {
     return this.data.getAnnotationsForImage(imagePath, true).map((ann) => ({
       category: ann.categoryName,
@@ -653,11 +629,7 @@ class AssetGalleryController {
       canSelectFiles: true,
       canSelectFolders: false,
       canSelectMany: true,
-      // 裁剪/打包管线支持 PNG/JPEG/BMP（纯 JS 解码），其他格式（如 webp）缺
-      // 少可靠解码器，产出的标注与缩略图会是坏的，这里直接限制可选类型
       filters: { [tr('importImagesFilter')]: ['png', 'jpg', 'jpeg', 'bmp'] },
-      // 目录名可配，所以标题必须带上实际值 —— 否则目录改成 my_templates 后
-      // 对话框还在说"导入到 ok_templates"，用户在找一个不存在的目录。
       title: tr('Import images to {dir}', { dir: templatesDirectory(this.data.root) }),
     });
     if (!uris || uris.length === 0) return;
@@ -762,12 +734,6 @@ export class TemplateAssetPanel {
     TemplateAssetPanel.current = new TemplateAssetPanel(panel, controller);
   }
 
-  /**
-   * 打开面板并**立即触发它的截图动作**（快捷键入口）。
-   *
-   * 复用面板自己的 [AssetGalleryController.handleScreenshot] —— 不新增截图实现。
-   * 面板已开着时 `show()` 只 reveal，随后照样截图，行为一致。
-   */
   static showScreenshot(
     data: TemplateAssetData,
     thumbDir: string,
