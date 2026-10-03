@@ -85,7 +85,10 @@ export function unionPixelBoxes(boxes: readonly PixelBox[]): PixelBox | undefine
 }
 
 /** Rect authoring uses the current COCO schema only. */
-export function parseBoxCoco(text: string) {
+export function parseBoxCoco(
+  text: string,
+  _unusedImageSizeResolver?: (name: string) => unknown,
+) {
   return parseCocoData(text);
 }
 
