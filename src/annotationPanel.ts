@@ -182,8 +182,8 @@ class AnnotationController {
         category: point.path,
         x: point.x,
         y: point.y,
-        w: 1,
-        h: 1,
+        w: 0,
+        h: 0,
       }));
       allCategories = pointPathOccupancy(this.root, this.templateData.templatesDir);
       for (const point of points) delete allCategories[point.path];
@@ -278,6 +278,11 @@ class AnnotationController {
           void vscode.window.showInformationMessage(tr('Copied: {text}', { text: msg.text }));
         }
         break;
+      case 'readClipboard': {
+        const text = await vscode.env.clipboard.readText();
+        void this.webview.postMessage({ type: 'clipboardText', text });
+        break;
+      }
     }
   }
 
