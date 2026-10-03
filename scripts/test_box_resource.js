@@ -86,16 +86,17 @@ try {
   assert(store.restoreAuthoring(project, directory, snapshot));
   assert.deepStrictEqual(store.readAuthoringFile(project, directory).boxes.map(box => box.path).sort(), ['panels.allowed', 'screen.first']);
 
-  // Unsupported legacy / malformed rect sources are discarded on the next successful edit.
+  // Unsupported legacy / malformed rect sources remain invalid for read/publish,
+  // but edit paths may discard them and overwrite with current COCO data.
   fs.writeFileSync(source, JSON.stringify({ version: 1, boxes: [{ path: 'legacy.box' }] }), 'utf8');
-  assert.deepStrictEqual(store.authoringReadErrors(project, directory), []);
+  assert(store.authoringReadErrors(project, directory).length > 0);
   assert.strictEqual(store.addBox(project, directory, 'screen.replaced_legacy', 'a.png', { x: 2, y: 3, w: 4, h: 5 }), undefined);
   let replaced = JSON.parse(fs.readFileSync(source, 'utf8'));
   assert.deepStrictEqual(replaced.categories.map(item => item.name), ['screen.replaced_legacy']);
   assert.strictEqual(Object.prototype.hasOwnProperty.call(replaced, 'boxes'), false);
 
   fs.writeFileSync(source, '{ broken json', 'utf8');
-  assert.deepStrictEqual(store.authoringReadErrors(project, directory), []);
+  assert(store.authoringReadErrors(project, directory).includes('json'));
   assert.strictEqual(store.removeImageBoxes(project, directory, 'a.png'), true);
   replaced = JSON.parse(fs.readFileSync(source, 'utf8'));
   assert.deepStrictEqual(replaced, { images: [], annotations: [], categories: [] });
