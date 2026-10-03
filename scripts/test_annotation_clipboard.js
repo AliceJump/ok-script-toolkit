@@ -94,9 +94,17 @@ function key(key, init = {}) {
   document.dispatchEvent(new window.KeyboardEvent('keydown', { bubbles: true, cancelable: true, key, ...init }));
 }
 function message(data) { window.dispatchEvent(new window.MessageEvent('message', { data })); }
+function nameOpenPaste(name) {
+  document.getElementById('bboxCat').value = name;
+  document.getElementById('bboxCat').dispatchEvent(new window.Event('input', { bubbles: true }));
+  document.getElementById('bboxOk').click();
+}
 
 (async () => {
   await flush();
+  const formatChk = document.getElementById('coordPreferXywhChk');
+  assert(formatChk && !formatChk.checked, 'bare coordinate preference defaults to XYXY');
+
   message({ type: 'config', annotationMode: 'rect', boxPathRule: { segment: '^[A-Za-z_][A-Za-z0-9_]*$' }, keybindings: {
     copy: 'ctrl+c', paste: 'ctrl+v', modeTemplate: '1', modeRect: '2', modePoint: '3',
     undo: 'ctrl+z', redo: 'ctrl+y', drawBbox: 'r', copyCoords: 'c', deleteMode: 'd',
@@ -112,14 +120,15 @@ function message(data) { window.dispatchEvent(new window.MessageEvent('message',
   });
   await flush(); await flush();
 
-  // 1000x1000 fits at 0.6 with horizontal offset 100.
+  // Single selection is explicit plugin JSON and is always XYWH regardless of preference.
   mouse('mousedown', 220, 120); mouse('mouseup', 220, 120);
   key('c', { ctrlKey: true });
-  assert(last('copyText').text === '{"name":"screen.a","bbox":[0.1,0.1,0.2,0.2]}', 'single copy keeps name + normalized x/y/w/h');
+  assert(last('copyText').text === '{"name":"screen.a","bbox":[0.1,0.1,0.2,0.2]}', 'single copy keeps explicit named XYWH');
 
+  // Unnamed copies follow the user's raw four-number preference so they round-trip through ambiguous paste.
   mouse('mousedown', 430, 330, { ctrlKey: true }); mouse('mouseup', 430, 330, { ctrlKey: true });
   key('c', { ctrlKey: true });
-  assert(last('copyText').text === '0.1000, 0.1000, 0.5000, 0.5000', 'multi-copy emits unnamed outer union');
+  assert(last('copyText').text === '0.1000, 0.1000, 0.6000, 0.6000', 'default multi-copy emits unnamed XYXY outer union');
 
   const copiesBeforeClear = posts('copyText').length;
   mouse('mousedown', 650, 500); mouse('mouseup', 650, 500);
@@ -130,27 +139,65 @@ function message(data) { window.dispatchEvent(new window.MessageEvent('message',
   await flush();
   let save = last('save');
   assert(save.annotations.some(a => a.category === 'screen.a2' && a.x === 700 && a.y === 700 && a.w === 100 && a.h === 100),
-    'named duplicate gets numeric suffix and pastes immediately');
+    'named bbox is explicit XYWH and duplicate gets numeric suffix');
 
+  // Only XYWH is valid here because interpreting c,d as x2,y2 would reverse both axes.
   const saveCount = posts('save').length;
   message({ type: 'clipboardText', text: '0.2, 0.2, 0.1, 0.1' });
   await flush();
   assert(document.getElementById('bboxModal').classList.contains('visible'), 'unnamed paste opens the naming dialog');
   assert(posts('save').length === saveCount, 'unnamed paste does not write before naming');
-  document.getElementById('bboxCat').value = 'screen.unnamed';
-  document.getElementById('bboxCat').dispatchEvent(new window.Event('input', { bubbles: true }));
-  document.getElementById('bboxOk').click();
+  assert(Number(document.getElementById('bboxW').value) === 100 && Number(document.getElementById('bboxH').value) === 100,
+    'XYWH-only tuple is auto-detected independent of preference');
+  nameOpenPaste('screen.unnamed');
   await flush();
-  save = last('save');
-  assert(save.annotations.some(a => a.category === 'screen.unnamed' && a.w === 100 && a.h === 100), 'named dialog result is pasted');
+
+  // Ambiguous tuple: both XYWH and XYXY are valid. Default preference is XYXY.
+  message({ type: 'clipboardText', text: '0.1, 0.1, 0.2, 0.2' });
+  await flush();
+  assert(Number(document.getElementById('bboxX').value) === 100 && Number(document.getElementById('bboxY').value) === 100
+    && Number(document.getElementById('bboxW').value) === 100 && Number(document.getElementById('bboxH').value) === 100,
+    'ambiguous tuple defaults to XYXY');
+  nameOpenPaste('screen.amb_xyxy');
+  await flush();
+
+  formatChk.checked = true;
+  formatChk.dispatchEvent(new window.Event('change', { bubbles: true }));
+  assert(webviewState.coordPreferXywh === true, 'XYWH preference is persisted');
+  message({ type: 'clipboardText', text: '0.1, 0.1, 0.2, 0.2' });
+  await flush();
+  assert(Number(document.getElementById('bboxW').value) === 200 && Number(document.getElementById('bboxH').value) === 200,
+    'same ambiguous tuple follows XYWH when checked');
+  nameOpenPaste('screen.amb_xywh');
+  await flush();
+
+  // Only XYXY is valid because XYWH would exceed the normalized image bounds.
+  message({ type: 'clipboardText', text: '0.1, 0.1, 0.9, 0.9' });
+  await flush();
+  assert(Number(document.getElementById('bboxW').value) === 800 && Number(document.getElementById('bboxH').value) === 800,
+    'XYXY-only tuple is auto-detected even while XYWH is preferred');
+  document.getElementById('bboxCancel').click();
+  await flush();
+
+  // Only XYWH is valid because XYXY would have x2/y2 before x1/y1.
+  message({ type: 'clipboardText', text: '0.8, 0.8, 0.1, 0.1' });
+  await flush();
+  assert(Number(document.getElementById('bboxX').value) === 800 && Number(document.getElementById('bboxY').value) === 800
+    && Number(document.getElementById('bboxW').value) === 100 && Number(document.getElementById('bboxH').value) === 100,
+    'XYWH-only tuple remains auto-detected while XYWH is preferred');
+  document.getElementById('bboxCancel').click();
+  await flush();
+
+  // Restore default preference before point-mode copy assertions.
+  formatChk.checked = false;
+  formatChk.dispatchEvent(new window.Event('change', { bubbles: true }));
 
   const beforeZeroRect = posts('save').length;
   message({ type: 'clipboardText', text: '0.3, 0.3, 0, 0' });
   await flush();
-  assert(posts('save').length === beforeZeroRect, 'zero-size bbox is rejected in rect mode');
+  assert(posts('save').length === beforeZeroRect, 'zero-size XYWH point is rejected in rect mode');
   assert(/Point mode/i.test(document.getElementById('colorInfo').textContent), 'zero-size rejection explains point-only rule');
 
-  // A literal name used in rect mode is legal in point mode; only point names participate in point duplicate checks.
   message({
     type: 'load', annotationMode: 'point', imagePath: 'x/a.png', imageBase64: 'data:image/png;base64,FAKE-1000x1000',
     filename: 'a.png', currentIndex: 0, totalImages: 1, allCategories: {},
@@ -166,11 +213,10 @@ function message(data) { window.dispatchEvent(new window.MessageEvent('message',
   assert(save.annotations.some(a => a.category === 'screen.a2' && a.x === 400 && a.y === 500 && a.w === 0 && a.h === 0),
     'point duplicate is renamed inside point namespace and remains zero-size');
 
-  // Multi-select applies to points too; copying several points produces their unnamed outer box.
   mouse('mousedown', 160, 60); mouse('mouseup', 160, 60);
   mouse('mousedown', 400, 300, { ctrlKey: true }); mouse('mouseup', 400, 300, { ctrlKey: true });
   key('c', { ctrlKey: true });
-  assert(last('copyText').text === '0.1000, 0.1000, 0.4000, 0.4000', 'multi-point copy emits its outer box without a name');
+  assert(last('copyText').text === '0.1000, 0.1000, 0.5000, 0.5000', 'multi-point copy follows default XYXY preference');
 
   const beforeAreaPoint = posts('save').length;
   message({ type: 'clipboardText', text: '{"name":"screen.centered","bbox":[0.4,0.4,0.2,0.1]}' });
@@ -178,18 +224,17 @@ function message(data) { window.dispatchEvent(new window.MessageEvent('message',
   save = last('save');
   assert(posts('save').length === beforeAreaPoint + 1, 'named box paste is accepted in point mode');
   assert(save.annotations.some(a => a.category === 'screen.centered' && a.x === 500 && a.y === 450 && a.w === 0 && a.h === 0),
-    'point mode projects a pasted box to its normalized center');
+    'point mode projects explicit XYWH bbox to its center');
 
+  // This tuple is only valid as XYWH; point mode therefore projects its center regardless of the XYXY preference.
   const beforeUnnamedAreaPoint = posts('save').length;
   message({ type: 'clipboardText', text: '0.2,0.3,0.2,0.2' });
   await flush();
   assert(document.getElementById('bboxModal').classList.contains('visible'), 'unnamed box paste in point mode still asks for a name');
   assert(posts('save').length === beforeUnnamedAreaPoint, 'unnamed point conversion does not save before naming');
   assert(Number(document.getElementById('bboxX').value) === 300 && Number(document.getElementById('bboxY').value) === 400,
-    'unnamed box is converted to its center before the naming dialog');
-  document.getElementById('bboxCat').value = 'screen.centered_unnamed';
-  document.getElementById('bboxCat').dispatchEvent(new window.Event('input', { bubbles: true }));
-  document.getElementById('bboxOk').click();
+    'XYWH-only box is converted to its center before the naming dialog');
+  nameOpenPaste('screen.centered_unnamed');
   await flush();
   save = last('save');
   assert(save.annotations.some(a => a.category === 'screen.centered_unnamed' && a.x === 300 && a.y === 400 && a.w === 0 && a.h === 0),
