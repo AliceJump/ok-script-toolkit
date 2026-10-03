@@ -21,6 +21,12 @@ interface Annotation {
   h: number;
 }
 
+function normalizeAnnotationMode(value: UnifiedAnnotationMode | boolean): UnifiedAnnotationMode {
+  if (value === true) return 'rect';
+  if (value === false) return 'template';
+  return value;
+}
+
 class AnnotationController {
   private generation = 0;
   private disposed = false;
@@ -40,9 +46,9 @@ class AnnotationController {
     private readonly thumbDir: string,
     private readonly isVisible: () => boolean,
     private readonly onSaved: (imagePath: string) => void,
-    initialMode: UnifiedAnnotationMode,
+    initialMode: UnifiedAnnotationMode | boolean,
   ) {
-    this.mode = initialMode;
+    this.mode = normalizeAnnotationMode(initialMode);
     this.templateData = new TemplateAssetData(sourceData.root, 'coco_annotations.json');
     this.boxData = new TemplateAssetData(sourceData.root, AUTHORING_FILE_NAME);
     this.disposables.push(
@@ -54,7 +60,10 @@ class AnnotationController {
           try { revision = fs.readFileSync(file, 'utf8'); } catch { /* deleted or unreadable source */ }
           if (revision !== this.sourceRevision) this.reloadIfShowing([this._currentImage]);
         } else if (this.isPositionSource(file)) {
-          void this.webview.postMessage({ type: 'positionPaths', positionPaths: this.positionOccupancy() });
+          const positionPaths = this.positionOccupancy();
+          void this.webview.postMessage({ type: 'positionPaths', positionPaths });
+          // Transitional alias for already-open pre-unification webviews/tests.
+          void this.webview.postMessage({ type: 'boxPaths', boxPaths: positionPaths });
         }
       }),
       vscode.workspace.onDidChangeConfiguration((e) => {
@@ -119,8 +128,8 @@ class AnnotationController {
     });
   }
 
-  open(imagePath: string, imageList: string[], mode?: UnifiedAnnotationMode): void {
-    if (mode) this.mode = mode;
+  open(imagePath: string, imageList: string[], mode?: UnifiedAnnotationMode | boolean): void {
+    if (mode !== undefined) this.mode = normalizeAnnotationMode(mode);
     this._imageList = [...imageList];
     this._currentImage = imagePath;
     this.sendConfig();
@@ -180,13 +189,15 @@ class AnnotationController {
       for (const point of points) delete allCategories[point.path];
     }
 
+    const positionPaths = this.positionOccupancy();
     await this.webview.postMessage({
       type: 'load',
       imagePath,
       imageBase64,
       annotations,
       allCategories,
-      positionPaths: this.positionOccupancy(),
+      positionPaths,
+      boxPaths: positionPaths,
       annotationMode: this.mode,
       pointMode: this.mode === 'point',
       currentIndex: this._imageList.indexOf(imagePath),
