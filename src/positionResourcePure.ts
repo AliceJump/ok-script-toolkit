@@ -47,6 +47,7 @@ const PYTHON_KEYWORDS = new Set([
   'try', 'while', 'with', 'yield',
 ]);
 const GENERATED_MEMBER_NAMES = new Set(['__init__', '_parent']);
+const DUNDER_MEMBER = /^__.*__$/;
 const DECIMALS = 6;
 
 export function positionPathError(value: string): 'empty' | 'segment' | 'shallow' | undefined {
@@ -54,7 +55,7 @@ export function positionPathError(value: string): 'empty' | 'segment' | 'shallow
   if (!path) return 'empty';
   const parts = path.split('.');
   if (parts.length < 2) return 'shallow';
-  if (parts.some(part => !SEGMENT.test(part) || PYTHON_KEYWORDS.has(part) || GENERATED_MEMBER_NAMES.has(part))) return 'segment';
+  if (parts.some(part => !SEGMENT.test(part) || PYTHON_KEYWORDS.has(part) || GENERATED_MEMBER_NAMES.has(part) || DUNDER_MEMBER.test(part))) return 'segment';
   return undefined;
 }
 
@@ -148,7 +149,6 @@ function buildTree(positions: readonly RuntimePosition[]): PositionTreeNode {
   }
   return root;
 }
-
 
 function pyNumber(value: number): string {
   if (Number.isInteger(value)) return value.toFixed(1);
