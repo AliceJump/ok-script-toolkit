@@ -26,6 +26,11 @@ export interface PositionPublishResult {
   protectedFiles?: string[];
 }
 
+interface FileSnapshot {
+  exists: boolean;
+  text?: string;
+}
+
 function imageKey(name: string): string {
   return path.basename(name).toLowerCase();
 }
@@ -59,10 +64,34 @@ export function collectPositionRuntime(root: string, directory: string): { file:
   return publishPositions(items, [...images.values()]);
 }
 
+function isInside(base: string, candidate: string): boolean {
+  const rel = path.relative(base, candidate);
+  return rel === '' || (rel !== '..' && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel));
+}
+
+function realpath(file: string): string {
+  return fs.realpathSync.native ? fs.realpathSync.native(file) : fs.realpathSync(file);
+}
+
+/** Lexical containment is not enough: reject existing symlink/junction ancestors that resolve outside the project. */
 function ensureInsideRoot(root: string, relative: string): string | undefined {
-  const target = path.resolve(root, relative);
-  const rel = path.relative(path.resolve(root), target);
-  if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) return undefined;
+  const resolvedRoot = path.resolve(root);
+  const target = path.resolve(resolvedRoot, relative);
+  if (!isInside(resolvedRoot, target) || target === resolvedRoot) return undefined;
+
+  let realRoot: string;
+  try { realRoot = realpath(resolvedRoot); } catch { return undefined; }
+
+  let existing = target;
+  while (!fs.existsSync(existing)) {
+    const parent = path.dirname(existing);
+    if (parent === existing) return undefined;
+    existing = parent;
+  }
+
+  let realExisting: string;
+  try { realExisting = realpath(existing); } catch { return undefined; }
+  if (!isInside(realRoot, realExisting)) return undefined;
   return target;
 }
 
@@ -77,6 +106,21 @@ function isGeneratedPython(file: string): boolean {
 
 function atomicWrite(file: string, text: string): void {
   writeAnnotationText(file, text, false);
+}
+
+function snapshotText(file: string): FileSnapshot {
+  if (!fs.existsSync(file)) return { exists: false };
+  return { exists: true, text: fs.readFileSync(file, 'utf8') };
+}
+
+function restoreSnapshot(file: string, snapshot: FileSnapshot): boolean {
+  try {
+    if (snapshot.exists) atomicWrite(file, snapshot.text ?? '');
+    else fs.rmSync(file, { force: true });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export function publishPositionJson(
@@ -114,13 +158,24 @@ export function publishPositionPython(
   if (protectedFiles.length && !overwriteManual) {
     return { ok: false, errors: ['manual'], files: [], protectedFiles };
   }
+
+  let ratioBefore: FileSnapshot;
+  let mapBefore: FileSnapshot;
+  try {
+    ratioBefore = snapshotText(ratioFile);
+    mapBefore = snapshotText(mapFile);
+  } catch {
+    return { ok: false, errors: ['write'], files: [] };
+  }
+
   try {
     fs.mkdirSync(targetDir, { recursive: true });
     atomicWrite(ratioFile, serializeScreenRatioPython());
     atomicWrite(mapFile, serializePositionMapPython(projected.file));
     return { ok: true, errors: [], files: [ratioFile, mapFile] };
   } catch {
-    return { ok: false, errors: ['write'], files: [] };
+    const restored = restoreSnapshot(ratioFile, ratioBefore) && restoreSnapshot(mapFile, mapBefore);
+    return { ok: false, errors: [restored ? 'write' : 'write:rollback'], files: [] };
   }
 }
 
