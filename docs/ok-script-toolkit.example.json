@@ -24,10 +24,6 @@
     "cocoAnnotations": "assets/coco_annotations.json"
   },
 
-  "boxes": {
-    "runtime": "src/scene/boxes.json"
-  },
-
   "i18n": {
     "enabled": true,
     "langDirectory": "assets/lang",
