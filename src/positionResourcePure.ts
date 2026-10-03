@@ -90,6 +90,8 @@ export function publishPositions(
     const pathError = positionPathError(path);
     if (pathError) { errors.push(`${pathError}:${path}`); continue; }
     if (seen.has(path)) { errors.push(`duplicate:${path}`); continue; }
+    const prefixConflict = [...seen].find(existing => existing.startsWith(path + '.') || path.startsWith(existing + '.'));
+    if (prefixConflict) { errors.push(`prefix:${path}`); continue; }
     seen.add(path);
 
     const image = imageByName.get(item.image.toLowerCase());
@@ -160,23 +162,24 @@ function emitClass(node: PositionTreeNode, parts: string[], out: string[], emitt
   const className = classNameForPath(parts);
   if (emitted.has(className)) return className;
 
-  for (const [name, child] of [...node.children.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+  const children = [...node.children.entries()].sort(([a], [b]) => a.localeCompare(b));
+  for (const [name, child] of children) {
     if (child.children.size) emitClass(child, [...parts, name], out, emitted);
   }
 
   emitted.add(className);
   out.push(`class ${className}:`);
-  let bodyCount = 0;
-  for (const [name, child] of [...node.children.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+  for (const [name, child] of children) {
     if (!child.coordinates) continue;
     out.push(`    ${name} = ScreenRatio(${child.coordinates.map(pyNumber).join(', ')})`);
-    bodyCount++;
   }
   out.push('');
   out.push('    def __init__(self, parent):');
   out.push('        self._parent = parent');
-  bodyCount++;
-  if (!bodyCount) out.push('        pass');
+  for (const [name, child] of children) {
+    if (!child.children.size) continue;
+    out.push(`        self.${name} = ${classNameForPath([...parts, name])}(parent)`);
+  }
   out.push('');
   out.push('');
   return className;
