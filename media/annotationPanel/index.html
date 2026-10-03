@@ -85,5 +85,14 @@
   </div>
   <div id="annotationPanelI18n" hidden>__I18N_JSON__</div>
   <script src="__APP_SCRIPT_URI__"></script>
+  <script nonce="__CSP_NONCE__">
+    document.getElementById('coordBtn')?.addEventListener('click', () => {
+      const button = document.getElementById('coordBtn');
+      if (!button?.classList.contains('active')) {
+        const info = document.getElementById('colorInfo');
+        if (info) info.textContent = '';
+      }
+    });
+  </script>
 </body>
 </html>
