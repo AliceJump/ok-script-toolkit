@@ -1,10 +1,11 @@
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 let jsdom;
 try {
   jsdom = require('jsdom');
 } catch {
-  const jsdomRoot = process.env.OK_LANG_HINTS_JSDOM_ROOT || path.join(process.env.TEMP, 'ok-script-toolkit-jsdom');
+  const jsdomRoot = process.env.OK_LANG_HINTS_JSDOM_ROOT || path.join(os.tmpdir(), 'ok-script-toolkit-jsdom');
   jsdom = require(path.join(jsdomRoot, 'node_modules', 'jsdom'));
 }
 const { JSDOM, VirtualConsole } = jsdom;
@@ -105,7 +106,6 @@ function load(mode, annotations) {
     },
   });
 
-  // Build one transaction in Rect and one in Point by driving the real clipboard handler.
   load('rect', []);
   await flush(); await flush();
   message({ type: 'clipboardText', text: '{"name":"screen.rect_one","bbox":[0.1,0.1,0.2,0.2]}' });
@@ -120,7 +120,6 @@ function load(mode, annotations) {
   const pointOne = last('save').annotations;
   assert(pointOne.length === 1 && pointOne[0].w === 0 && pointOne[0].h === 0, 'point paste creates a real editor transaction');
 
-  // Shared history is default: undo follows actual chronology even across inactive modes.
   key('z', { ctrlKey: true });
   await flush();
   let saveMode = last('saveMode');
@@ -139,7 +138,6 @@ function load(mode, annotations) {
   saveMode = last('saveMode');
   assert(saveMode.mode === 'point' && saveMode.annotations.length === 1, 'shared redo restores point without applying any transaction twice');
 
-  // Independent mode: only the current mode's history is eligible.
   const shared = document.getElementById('sharedHistoryChk');
   shared.checked = false;
   shared.dispatchEvent(new window.Event('change', { bubbles: true }));
@@ -167,8 +165,6 @@ function load(mode, annotations) {
   saveMode = last('saveMode');
   assert(saveMode.mode === 'rect' && saveMode.annotations.length === 1, 'independent undo stays inside Rect');
 
-  // Mode-switch barrier: after requesting Point, old Rect data cannot be edited/saved while the
-  // host is still asynchronously loading Point. A stale Rect response must not unlock editing.
   load('rect', rectOne);
   await flush();
   const beforeSwitchWrites = writes().length;
@@ -178,13 +174,13 @@ function load(mode, annotations) {
   await flush();
   assert(writes().length === beforeSwitchWrites, 'paste is blocked while requested mode is loading');
 
-  load('rect', rectOne); // stale response for the previous mode
+  load('rect', rectOne);
   await flush();
   message({ type: 'clipboardText', text: '{"name":"screen.still_blocked","bbox":[0.2,0.2,0,0]}' });
   await flush();
   assert(writes().length === beforeSwitchWrites, 'stale load is ignored and does not unlock editing');
 
-  load('point', pointOne); // matching response unlocks the editor
+  load('point', pointOne);
   await flush();
   message({ type: 'clipboardText', text: '{"name":"screen.after_load","bbox":[0.2,0.2,0,0]}' });
   await flush();
