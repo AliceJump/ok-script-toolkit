@@ -56,7 +56,7 @@ export function positionPublishTargetInputError(
   return undefined;
 }
 
-/** Edit or clear a Project/Personal override, then return to the caller's publish menu. */
+/** Edit or clear a Project/Workspace/Personal override, then return to the caller's publish menu. */
 export async function editPositionPublishTarget(
   kind: PositionPublishTargetKind,
   folderUri: vscode.Uri,
@@ -64,11 +64,17 @@ export async function editPositionPublishTarget(
 ): Promise<void> {
   const current = positionPublishTargetSetting(kind, folderUri);
   const cfg = vscode.workspace.getConfiguration('okScriptToolkit', folderUri);
-  const items: Array<vscode.QuickPickItem & { action?: 'project' | 'personal' | 'resetProject' | 'resetPersonal' }> = [
+  type Action = 'project' | 'workspace' | 'personal' | 'resetProject' | 'resetWorkspace' | 'resetPersonal';
+  const items: Array<vscode.QuickPickItem & { action?: Action }> = [
     {
       label: 'Set for this project',
       description: 'Project override — highest priority',
       action: 'project',
+    },
+    {
+      label: 'Set for this workspace',
+      description: 'Used when this project has no folder-specific override',
+      action: 'workspace',
     },
     {
       label: 'Set personal default',
@@ -76,7 +82,7 @@ export async function editPositionPublishTarget(
       action: 'personal',
     },
   ];
-  if (current.projectValue || current.personalValue) {
+  if (current.projectValue || current.workspaceValue || current.personalValue) {
     items.push({ label: '', kind: vscode.QuickPickItemKind.Separator });
   }
   if (current.projectValue) {
@@ -84,6 +90,13 @@ export async function editPositionPublishTarget(
       label: 'Reset project override',
       description: 'Fall back to Workspace → Personal → Default',
       action: 'resetProject',
+    });
+  }
+  if (current.workspaceValue) {
+    items.push({
+      label: 'Reset workspace override',
+      description: 'Fall back to Personal → Default when no project override exists',
+      action: 'resetWorkspace',
     });
   }
   if (current.personalValue) {
@@ -102,6 +115,10 @@ export async function editPositionPublishTarget(
     await cfg.update(current.key, undefined, vscode.ConfigurationTarget.WorkspaceFolder);
     return;
   }
+  if (action.action === 'resetWorkspace') {
+    await cfg.update(current.key, undefined, vscode.ConfigurationTarget.Workspace);
+    return;
+  }
   if (action.action === 'resetPersonal') {
     await cfg.update(current.key, undefined, vscode.ConfigurationTarget.Global);
     return;
@@ -116,9 +133,10 @@ export async function editPositionPublishTarget(
   });
   if (edited === undefined) return;
   const normalized = edited.trim().replace(/\\/g, '/');
-  await cfg.update(
-    current.key,
-    normalized,
-    action.action === 'project' ? vscode.ConfigurationTarget.WorkspaceFolder : vscode.ConfigurationTarget.Global,
-  );
+  const target = action.action === 'project'
+    ? vscode.ConfigurationTarget.WorkspaceFolder
+    : action.action === 'workspace'
+      ? vscode.ConfigurationTarget.Workspace
+      : vscode.ConfigurationTarget.Global;
+  await cfg.update(current.key, normalized, target);
 }
