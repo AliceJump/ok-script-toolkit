@@ -242,13 +242,13 @@
           "type": "string",
           "default": "src/scene/positions.json",
           "scope": "resource",
-          "markdownDescription": "Project-relative output path for Position JSON publishing. Project and workspace values override your personal setting; otherwise the built-in default is used."
+          "markdownDescription": "Project-relative output path for Position JSON publishing. Precedence: your IDE preference → `ok-script-toolkit.json` project convention → built-in default."
         },
         "okScriptToolkit.positionPythonDirectory": {
           "type": "string",
           "default": "src/scene",
           "scope": "resource",
-          "markdownDescription": "Project-relative directory for generated `ScreenRatio.py` and `PositionMap.py`. Project and workspace values override your personal setting; otherwise the built-in default is used."
+          "markdownDescription": "Project-relative directory for generated `ScreenRatio.py` and `PositionMap.py`. Precedence: your IDE preference → `ok-script-toolkit.json` project convention → built-in default."
         },
         "okScriptToolkit.effectsFile": {
           "type": "string",
