@@ -244,8 +244,9 @@ export function publishPositionPython(
   if (!projected.file.positions.length) return { ok: false, errors: ['empty'], files: [] };
   const targetDir = ensureInsideRoot(root, relativeTargetDir);
   if (!targetDir) return { ok: false, errors: ['target'], files: [] };
-  const ratioFile = path.join(targetDir, 'ScreenRatio.py');
-  const mapFile = path.join(targetDir, 'PositionMap.py');
+  const ratioFile = ensureInsideRoot(root, path.join(relativeTargetDir, 'ScreenRatio.py'));
+  const mapFile = ensureInsideRoot(root, path.join(relativeTargetDir, 'PositionMap.py'));
+  if (!ratioFile || !mapFile) return { ok: false, errors: ['target'], files: [] };
   const protectedFiles = [ratioFile, mapFile].filter(file => !isGeneratedPython(file));
   if (protectedFiles.length && !overwriteManual) {
     return { ok: false, errors: ['manual'], files: [], protectedFiles };
