@@ -181,6 +181,15 @@ function isGeneratedPython(file: string): boolean {
   }
 }
 
+/**
+ * Preserve the historical default JSON replacement behavior, but require explicit confirmation
+ * before a configurable JSON target replaces an existing project file.
+ */
+export function positionJsonRequiresOverwriteConfirmation(relativeTarget: string, exists: boolean): boolean {
+  const normalized = relativeTarget.replace(/\\/g, '/').replace(/^(?:\.?\/)+/, '').replace(/\/+$/, '');
+  return exists && normalized !== DEFAULT_POSITION_JSON;
+}
+
 function atomicWrite(file: string, text: string): void {
   writeAnnotationText(file, text, false);
 }
@@ -205,12 +214,16 @@ export function publishPositionJson(
   directory: string,
   selection: PositionResourceSelection,
   relativeTarget: string,
+  overwriteExisting = false,
 ): PositionPublishResult {
   const projected = collectPositionRuntime(root, directory, selection);
   if (projected.errors.length) return { ok: false, errors: projected.errors, files: [] };
   if (!projected.file.positions.length) return { ok: false, errors: ['empty'], files: [] };
   const target = ensureInsideRoot(root, relativeTarget);
   if (!target) return { ok: false, errors: ['target'], files: [] };
+  if (positionJsonRequiresOverwriteConfirmation(relativeTarget, fs.isFileSync(target)) && !overwriteExisting) {
+    return { ok: false, errors: ['manual'], files: [], protectedFiles: [target] };
+  }
   try {
     atomicWrite(target, serializePositionJson(projected.file));
     return { ok: true, errors: [], files: [target] };
@@ -267,5 +280,5 @@ export function publishPositionsByFormat(
   const selection = { rect: options.rect, point: options.point };
   return format === 'python'
     ? publishPositionPython(root, directory, selection, options.pythonTargetDir, options.overwriteManual ?? false)
-    : publishPositionJson(root, directory, selection, options.jsonTarget);
+    : publishPositionJson(root, directory, selection, options.jsonTarget, options.overwriteManual ?? false);
 }
