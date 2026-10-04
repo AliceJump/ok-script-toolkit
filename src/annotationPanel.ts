@@ -8,8 +8,8 @@ import { onAnnotationDataChanged, sameAnnotationFile } from './cocoAnnotationDat
 import { readImageSize } from './pngCrop';
 import { injectWebviewLocalization, tr } from './localization';
 import { applySharedAssets, getNonce } from './webviewHtml';
-import { POINT_AUTHORING_FILE, pointPathOccupancy, pointsForImage, readPoints, savePointsForImage } from './pointResourceStore';
-import { AnnotationConflict, MergeAnnotation, mergeAnnotations } from './annotationMergePure';
+import { POINT_AUTHORING_FILE, pointPathOccupancy, readPoints, savePointsForImage } from './pointResourceStore';
+import { MergeAnnotation, mergeAnnotations } from './annotationMergePure';
 
 export type UnifiedAnnotationMode = 'template' | 'rect' | 'point';
 
@@ -80,7 +80,7 @@ class AnnotationController {
           const revision = this.readSourceRevision(changedMode);
           if (revision !== this.sourceRevisions[changedMode]) {
             this.pendingExternal.add(changedMode);
-            if (changedMode === this.mode && this.isVisible()) this.showExternalChangeNotice(changedMode);
+            if (changedMode === this.mode && this.isVisible()) this.showExternalChangeNotice();
           }
         }
         if (this.isPositionSource(file)) {
@@ -122,17 +122,11 @@ class AnnotationController {
     return data?.annotationFile ?? path.join(this.templateData.templatesDir, POINT_AUTHORING_FILE);
   }
 
-  private activeSourceFile(): string { return this.sourceFileForMode(this.mode); }
-
   private modeForSource(file: string): UnifiedAnnotationMode | undefined {
     for (const mode of ['template', 'rect', 'point'] as const) {
       if (sameAnnotationFile(file, this.sourceFileForMode(mode))) return mode;
     }
     return undefined;
-  }
-
-  private activeSourceMatches(file: string): boolean {
-    return sameAnnotationFile(file, this.activeSourceFile());
   }
 
   private isPositionSource(file: string): boolean {
@@ -191,11 +185,8 @@ class AnnotationController {
     };
   }
 
-  private showExternalChangeNotice(mode: UnifiedAnnotationMode): void {
-    const label = mode === 'template' ? 'Template' : mode === 'rect' ? 'Box' : 'Point';
-    void vscode.window.showWarningMessage(
-      tr('{mode} annotations changed outside the editor. Your next save will merge both versions.', { mode: label }),
-    );
+  private showExternalChangeNotice(): void {
+    void vscode.window.showWarningMessage(tr('Annotations changed while confirming. Retry the swap.'));
   }
 
   reloadIfShowing(imagePaths: readonly string[]): void {
@@ -355,32 +346,6 @@ class AnnotationController {
     }
   }
 
-  private conflictIdentityMatch(mode: UnifiedAnnotationMode, left: Annotation, right: Annotation): boolean {
-    if (mode === 'template') return left.id === right.id || left.category === right.category;
-    return left.category.trim() === right.category.trim();
-  }
-
-  private useExternalConflictCandidates(
-    mode: UnifiedAnnotationMode,
-    merged: readonly Annotation[],
-    conflicts: readonly AnnotationConflict[],
-  ): Annotation[] {
-    const resolved = cloneAnnotations(merged);
-    for (const conflict of conflicts) {
-      if (conflict.local) {
-        const index = resolved.findIndex(item => this.conflictIdentityMatch(mode, item, conflict.local as Annotation));
-        if (index >= 0) resolved.splice(index, 1);
-      }
-      if (conflict.external) {
-        const external = { ...conflict.external } as Annotation;
-        const existing = resolved.findIndex(item => this.conflictIdentityMatch(mode, item, external));
-        if (existing >= 0) resolved[existing] = external;
-        else resolved.push(external);
-      }
-    }
-    return resolved;
-  }
-
   private async mergeExternalBeforeSave(
     imagePath: string,
     mode: UnifiedAnnotationMode,
@@ -393,9 +358,7 @@ class AnnotationController {
 
     const external = this.snapshotForMode(imagePath, mode);
     if (external.errors.length) {
-      void vscode.window.showErrorMessage(
-        tr('The externally changed annotation file is not valid. Your editor copy was kept and nothing was overwritten.'),
-      );
+      void vscode.window.showErrorMessage(tr('Could not save annotations.'));
       this.pendingExternal.add(mode);
       return undefined;
     }
@@ -406,23 +369,19 @@ class AnnotationController {
     }
 
     const result = mergeAnnotations(mode, this.baseSnapshots[mode], local, external.annotations);
-    let annotations = result.merged as Annotation[];
     if (result.conflicts.length) {
-      const choice = await vscode.window.showWarningMessage(
-        tr('The annotation file changed externally and {count} conflict(s) need a choice. Both versions are still preserved.', {
-          count: String(result.conflicts.length),
-        }),
-        { modal: true },
-        tr('Keep editor conflicts'),
-        tr('Use external conflicts'),
-      );
-      if (!choice) {
-        this.pendingExternal.add(mode);
-        return undefined;
-      }
-      if (choice === tr('Use external conflicts')) {
-        annotations = this.useExternalConflictCandidates(mode, annotations, result.conflicts);
-      }
+      this.pendingExternal.add(mode);
+      await this.webview.postMessage({
+        type: 'annotationConflicts',
+        annotationMode: mode,
+        base: cloneAnnotations(this.baseSnapshots[mode]),
+        local: cloneAnnotations(local),
+        external: cloneAnnotations(external.annotations),
+        merged: cloneAnnotations(result.merged as Annotation[]),
+        conflicts: result.conflicts,
+      });
+      this.showExternalChangeNotice();
+      return undefined;
     }
 
     // The external snapshot becomes the new merge base. A later save still
@@ -430,7 +389,7 @@ class AnnotationController {
     this.baseSnapshots[mode] = cloneAnnotations(external.annotations);
     this.sourceRevisions[mode] = external.revision;
     this.pendingExternal.delete(mode);
-    return { annotations, mergedExternal: true };
+    return { annotations: cloneAnnotations(result.merged as Annotation[]), mergedExternal: true };
   }
 
   private async persistAnnotationsForMode(
