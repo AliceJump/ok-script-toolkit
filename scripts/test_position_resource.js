@@ -343,6 +343,13 @@ function makePublishFixture() {
   assert(host.includes("selected.has('template')"));
   assert(host.includes("rect: selected.has('rect')"));
   assert(host.includes("point: selected.has('point')"));
+  assert(host.includes("positionPublishTargetSetting('json', folderUri, root)"));
+  const prepareTemplate = host.indexOf('await this.prepareTemplatePublish()');
+  const preparePosition = host.indexOf('await this.preparePositionPublish(positionSelection)');
+  const executePosition = host.indexOf('await this.executePositionPublish(positionPlan)');
+  const executeTemplate = host.indexOf('await this.executeTemplatePublish(templatePlan)');
+  assert(prepareTemplate >= 0 && preparePosition > prepareTemplate, 'unified publish gathers Template then Position plans before execution');
+  assert(executePosition > preparePosition && executeTemplate > executePosition, 'unified publish executes only after both plans are gathered');
   assert(assetHtml.includes('id="saveBtn">Publish</button>'));
   assert(!previewHtml.includes('Publish positions'));
   assert(!previewHtml.includes('publishPositionsBtn'));
