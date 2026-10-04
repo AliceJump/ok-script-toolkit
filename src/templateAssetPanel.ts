@@ -300,12 +300,12 @@ class AssetGalleryController {
     const root = this.data.root || folder.uri.fsPath;
     const folderUri = folder.uri;
     let format: PositionPublishFormat | undefined;
-    let jsonTarget = positionPublishTargetSetting('json', folderUri);
-    let pythonTarget = positionPublishTargetSetting('python', folderUri);
+    let jsonTarget = positionPublishTargetSetting('json', folderUri, root);
+    let pythonTarget = positionPublishTargetSetting('python', folderUri, root);
 
     for (;;) {
-      jsonTarget = positionPublishTargetSetting('json', folderUri);
-      pythonTarget = positionPublishTargetSetting('python', folderUri);
+      jsonTarget = positionPublishTargetSetting('json', folderUri, root);
+      pythonTarget = positionPublishTargetSetting('python', folderUri, root);
       const pythonDir = pythonTarget.value.replace(/\/+$/, '');
       const items: Array<vscode.QuickPickItem & {
         format?: PositionPublishFormat;
