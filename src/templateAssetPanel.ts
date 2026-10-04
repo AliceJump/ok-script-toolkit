@@ -25,6 +25,21 @@ import {
   positionPublishTargetSetting,
 } from './positionPublishSettings';
 
+interface PositionPublishPlan {
+  root: string;
+  format: PositionPublishFormat;
+  options: PositionPublishOptions;
+}
+
+interface TemplatePublishPlan {
+  projectRoot: string;
+  folderUri: vscode.Uri;
+  targetFolder: string;
+  targetLabel: string;
+  generateEnum: boolean;
+  absEnumPath?: string;
+}
+
 /* ---------------- 控制器 ---------------- */
 
 const liveControllers = new Set<AssetGalleryController>();
@@ -280,22 +295,36 @@ class AssetGalleryController {
     if (!resources?.length) return;
 
     const selected = new Set(resources.map(item => item.resource));
-    if (selected.has('template')) {
-      await this.handleSaveToAssets();
-    }
-    if (selected.has('rect') || selected.has('point')) {
-      await this.handlePublishPositions({
-        rect: selected.has('rect'),
-        point: selected.has('point'),
-      });
-    }
+    const wantsTemplate = selected.has('template');
+    const positionSelection = {
+      rect: selected.has('rect'),
+      point: selected.has('point'),
+    };
+    const wantsPosition = positionSelection.rect || positionSelection.point;
+
+    // Gather every user decision first. Cancelling the second resource configuration must not leave
+    // the first resource already published.
+    const templatePlan = wantsTemplate ? await this.prepareTemplatePublish() : undefined;
+    if (wantsTemplate && !templatePlan) return;
+    const positionPlan = wantsPosition ? await this.preparePositionPublish(positionSelection) : undefined;
+    if (wantsPosition && !positionPlan) return;
+
+    if (positionPlan && !(await this.executePositionPublish(positionPlan))) return;
+    if (templatePlan) await this.executeTemplatePublish(templatePlan);
   }
 
   private async handlePublishPositions(selection: { rect: boolean; point: boolean }): Promise<void> {
+    const plan = await this.preparePositionPublish(selection);
+    if (plan) await this.executePositionPublish(plan);
+  }
+
+  private async preparePositionPublish(
+    selection: { rect: boolean; point: boolean },
+  ): Promise<PositionPublishPlan | undefined> {
     const folder = vscode.workspace.workspaceFolders?.[0];
     if (!folder) {
       void vscode.window.showWarningMessage(tr('No workspace folder open.'));
-      return;
+      return undefined;
     }
     const root = this.data.root || folder.uri.fsPath;
     const folderUri = folder.uri;
@@ -336,7 +365,7 @@ class AssetGalleryController {
       const choice = await vscode.window.showQuickPick(items, {
         placeHolder: 'Position export format — paths can be configured below',
       });
-      if (!choice) return;
+      if (!choice) return undefined;
       if (choice.edit) {
         await editPositionPublishTarget(choice.edit, folderUri, root);
         continue;
@@ -353,26 +382,34 @@ class AssetGalleryController {
         { modal: true },
         publishSelected,
       );
-      if (confirm !== publishSelected) return;
+      if (confirm !== publishSelected) return undefined;
     }
+    if (!format) return undefined;
 
-    const directory = templatesDirectory(root);
-    const options: PositionPublishOptions = {
-      ...selection,
-      jsonTarget: jsonTarget.value,
-      pythonTargetDir: pythonTarget.value,
+    return {
+      root,
+      format,
+      options: {
+        ...selection,
+        jsonTarget: jsonTarget.value,
+        pythonTargetDir: pythonTarget.value,
+      },
     };
-    let result = publishPositionsByFormat(root, directory, format, options);
+  }
+
+  private async executePositionPublish(plan: PositionPublishPlan): Promise<boolean> {
+    const directory = templatesDirectory(plan.root);
+    let result = publishPositionsByFormat(plan.root, directory, plan.format, plan.options);
     if (!result.ok && result.errors.includes('manual') && result.protectedFiles?.length) {
-      const names = result.protectedFiles.map(file => path.relative(root, file)).join('\n');
+      const names = result.protectedFiles.map(file => path.relative(plan.root, file)).join('\n');
       const overwrite = await vscode.window.showWarningMessage(
         `These existing files require explicit overwrite confirmation:\n${names}`,
         { modal: true },
         'Overwrite',
       );
-      if (overwrite !== 'Overwrite') return;
-      result = publishPositionsByFormat(root, directory, format, {
-        ...options,
+      if (overwrite !== 'Overwrite') return false;
+      result = publishPositionsByFormat(plan.root, directory, plan.format, {
+        ...plan.options,
         overwriteManual: true,
       });
     }
@@ -380,23 +417,29 @@ class AssetGalleryController {
     if (!result.ok) {
       const detail = result.errors.join(', ') || 'unknown';
       void vscode.window.showErrorMessage(`Could not publish positions: ${detail}`);
-      return;
+      return false;
     }
-    const files = result.files.map(file => path.relative(root, file).replace(/\\/g, '/')).join(', ');
+    const files = result.files.map(file => path.relative(plan.root, file).replace(/\\/g, '/')).join(', ');
     void vscode.window.showInformationMessage(`Published positions: ${files}`);
+    return true;
   }
 
   /* ---------- Template 发布 ---------- */
 
   private async handleSaveToAssets(): Promise<void> {
+    const plan = await this.prepareTemplatePublish();
+    if (plan) await this.executeTemplatePublish(plan);
+  }
+
+  private async prepareTemplatePublish(): Promise<TemplatePublishPlan | undefined> {
     if (this.data.readErrors.length) {
       void vscode.window.showErrorMessage(tr('The annotation source is invalid. Fix the source file before saving or exporting.'));
-      return;
+      return undefined;
     }
     const folder = vscode.workspace.workspaceFolders?.[0];
     if (!folder) {
       void vscode.window.showWarningMessage(tr('No workspace folder open.'));
-      return;
+      return undefined;
     }
     const projectRoot = this.data.root || folder.uri.fsPath;
     const targets: SaveTarget[] = [
@@ -411,10 +454,10 @@ class AssetGalleryController {
       labelEnumPathInputError(value)
         ? tr('Enum file path must be relative and stay within the workspace root.')
         : undefined;
-    let enumPath = labelEnumPathSetting(folderUri, this.data.root);
-    if (!enumPath && this.data.root) {
+    let enumPath = labelEnumPathSetting(folderUri, projectRoot);
+    if (!enumPath) {
       const { pythonPath } = getProjectConfig();
-      const discovered = (await probeWindowConfig(this.data.root, pythonPath))?.labelEnumRelativePath;
+      const discovered = (await probeWindowConfig(projectRoot, pythonPath))?.labelEnumRelativePath;
       if (discovered) {
         try { enumPath = normalizeLabelEnumPathInput(discovered); } catch { /* invalid project path */ }
       }
@@ -442,7 +485,7 @@ class AssetGalleryController {
         quickPickItems,
         { placeHolder: tr('Save COCO data + images to...') },
       );
-      if (!pick) return;
+      if (!pick) return undefined;
       if (pick.separator) continue;
       if (pick.target) {
         targetFolder = pick.target;
@@ -479,7 +522,7 @@ class AssetGalleryController {
         value: derivedEnumPath(targetLabel),
         validateInput: validateEnumPathInput,
       });
-      if (edited === undefined) return;
+      if (edited === undefined) return undefined;
       enumPath = normalizeLabelEnumPathInput(edited);
       await rememberEnumPath(enumPath);
     }
@@ -488,11 +531,22 @@ class AssetGalleryController {
     const absEnumPath = generateEnum ? path.join(projectRoot, enumPath) : undefined;
     if (absEnumPath && !isPathInsideRoot(projectRoot, absEnumPath)) {
       void vscode.window.showErrorMessage(tr('Enum file path must be relative and stay within the workspace root.'));
-      return;
+      return undefined;
     }
 
-    if (absEnumPath && !(await this.confirmLabelEnumRename(absEnumPath, folderUri))) return;
+    if (absEnumPath && !(await this.confirmLabelEnumRename(absEnumPath, folderUri, projectRoot))) return undefined;
 
+    return {
+      projectRoot,
+      folderUri,
+      targetFolder,
+      targetLabel,
+      generateEnum,
+      absEnumPath,
+    };
+  }
+
+  private async executeTemplatePublish(plan: TemplatePublishPlan): Promise<boolean> {
     try {
       this.data.ensureTemplateFolder();
       await vscode.window.withProgress(
@@ -503,39 +557,45 @@ class AssetGalleryController {
         },
         async (progress, token) => {
           await this.data.saveToAssets(
-            targetFolder,
-            generateEnum,
-            absEnumPath,
+            plan.targetFolder,
+            plan.generateEnum,
+            plan.absEnumPath,
             (done, total) => {
               progress.report({ message: tr('Packing pages {done}/{total}…', { done, total }) });
             },
             token,
-            folderUri,
+            plan.folderUri,
           );
         },
       );
-      void vscode.window.showInformationMessage(tr('Saved to: {path}', { path: targetLabel }));
+      void vscode.window.showInformationMessage(tr('Saved to: {path}', { path: plan.targetLabel }));
+      return true;
     } catch (e) {
       if (e instanceof vscode.CancellationError) {
         void vscode.window.showInformationMessage(tr('Save to assets cancelled.'));
       } else {
         void vscode.window.showErrorMessage(tr('Save failed: {error}', { error: String(e) }));
       }
+      return false;
     }
   }
 
-  private async confirmLabelEnumRename(absEnumPath: string, folderUri: vscode.Uri): Promise<boolean> {
+  private async confirmLabelEnumRename(
+    absEnumPath: string,
+    folderUri: vscode.Uri,
+    projectRoot: string,
+  ): Promise<boolean> {
     let existingSource: string | undefined;
     try {
       existingSource = fs.readFileSync(absEnumPath, 'utf-8');
     } catch {
       return true;
     }
-    const newClassName = writableClassName(labelEnumClassName(absEnumPath, this.data.root, folderUri));
+    const newClassName = writableClassName(labelEnumClassName(absEnumPath, projectRoot, folderUri));
     const impact = labelEnumRenameImpact({ existingSource, newClassName });
     if (!impact) return true;
 
-    const refs = await findLabelEnumReferences(impact.existingClassName, this.data.root);
+    const refs = await findLabelEnumReferences(impact.existingClassName, projectRoot);
     const overwrite = tr('Overwrite anyway');
     const choice = await vscode.window.showWarningMessage(
       labelEnumRenameMessage(impact, refs, tr),
