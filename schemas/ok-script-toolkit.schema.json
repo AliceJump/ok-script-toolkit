@@ -72,6 +72,22 @@
       }
     },
 
+    "position": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Rect / Point 发布到运行时 Position 数据时的项目约定。与模板等配置使用同一优先级：个人 IDE 偏好 > 本项目约定 > 内置默认。",
+      "properties": {
+        "jsonPath": {
+          "type": "string",
+          "description": "Position JSON 输出文件，相对项目根。取值顺序：个人偏好（IDE 设置 `okScriptToolkit.positionJsonPath`）→ 本项 → 内置默认 `src/scene/positions.json`。"
+        },
+        "pythonDirectory": {
+          "type": "string",
+          "description": "Python Position 输出目录，相对项目根；目录内生成 `ScreenRatio.py` 与 `PositionMap.py`。取值顺序：个人偏好（IDE 设置 `okScriptToolkit.positionPythonDirectory`）→ 本项 → 内置默认 `src/scene`。"
+        }
+      }
+    },
+
     "i18n": {
       "type": "object",
       "additionalProperties": false,
@@ -121,18 +137,6 @@
         "avatarTemplateRegex": {
           "type": "string",
           "description": "头像模板的命名正则，用于把模板名关联到角色。缺席时用 IDE 设置 → 默认 `^battle[_-]?icon[_-]?`。"
-        }
-      }
-    },
-
-    "boxes": {
-      "type": "object",
-      "additionalProperties": false,
-      "description": "框资源。标注工作文件固定是 `<templates.directory>/boxes.json`，不由本组控制。本组只声明游戏和补全读取的那份运行时位置表。见 docs/box-resources.md。",
-      "properties": {
-        "runtime": {
-          "type": "string",
-          "description": "运行时框文件，相对项目根。业务项目的 ScreenPosition 加载它，插件的框管理和补全也读它。\n\n⚠️ 别和 `<模板目录>/boxes.json` 搞混。那是框资源管理的标注工作文件，路径由 `templates.directory` 派生。\n\n没有对应的 IDE 设置。取值链：本字段 → config.py 顶层 `boxes_json` → `src/scene/boxes.json`。通常不必写。"
         }
       }
     },

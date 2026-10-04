@@ -71,28 +71,162 @@ assert(collisionSafeMap.includes('class Position_3_foo:'));
 assert(collisionSafeMap.includes('class Position_3_Foo:'));
 assert(!collisionSafeMap.includes('class ABCPosition:'));
 
+assert.deepStrictEqual(
+  publishStore.positionNamespaceConflicts(['screen.same'], ['screen.same']),
+  ['duplicate:screen.same'],
+);
+assert.deepStrictEqual(
+  publishStore.positionNamespaceConflicts(['screen.group'], ['screen.group.child']),
+  ['prefix:screen.group'],
+);
+assert.strictEqual(
+  publishStore.positionJsonRequiresOverwriteConfirmation(publishStore.DEFAULT_POSITION_JSON, true),
+  false,
+);
+assert.strictEqual(
+  publishStore.positionJsonRequiresOverwriteConfirmation('./src\\scene/positions.json', true),
+  false,
+);
+assert.strictEqual(
+  publishStore.positionJsonRequiresOverwriteConfirmation('generated/positions.json', false),
+  false,
+);
+assert.strictEqual(
+  publishStore.positionJsonRequiresOverwriteConfirmation('generated/positions.json', true),
+  true,
+);
+
+function pointCoco() {
+  return {
+    images: [{ id: 1, file_name: 'screen.png', width: 100, height: 100 }],
+    categories: [{ id: 1, name: 'screen.anchor', supercategory: 'screen' }],
+    annotations: [{
+      id: 1,
+      image_id: 1,
+      category_id: 1,
+      bbox: [50, 50, 0, 0],
+      area: 0,
+      iscrowd: 0,
+    }],
+  };
+}
+
+function rectCoco() {
+  return {
+    images: [{ id: 1, file_name: 'screen.png', width: 100, height: 100 }],
+    categories: [{ id: 1, name: 'screen.box', supercategory: 'screen' }],
+    annotations: [{
+      id: 1,
+      image_id: 1,
+      category_id: 1,
+      bbox: [10, 20, 30, 40],
+      area: 1200,
+      iscrowd: 0,
+    }],
+  };
+}
+
 function makePublishFixture() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ok-position-publish-'));
   const directory = 'templates';
   const templates = path.join(root, directory);
   fs.mkdirSync(templates, { recursive: true });
-  fs.writeFileSync(path.join(templates, 'points.json'), JSON.stringify({
-    version: 1,
-    images: [{ file: 'screen.png', width: 100, height: 100 }],
-    points: [{ path: 'screen.anchor', image: 'screen.png', x: 50, y: 50 }],
-  }, null, 2));
+  fs.writeFileSync(path.join(templates, 'points.json'), JSON.stringify(pointCoco(), null, 2));
+  fs.writeFileSync(path.join(templates, 'boxes.json'), JSON.stringify(rectCoco(), null, 2));
   return { root, directory };
 }
 
 {
   const { root, directory } = makePublishFixture();
   try {
+    const rectOnly = publishStore.collectPositionRuntime(root, directory, { rect: true, point: false });
+    assert.deepStrictEqual(rectOnly.errors, []);
+    assert.deepStrictEqual(rectOnly.file.positions.map(item => item.path), ['screen.box']);
+
+    const pointOnly = publishStore.collectPositionRuntime(root, directory, { rect: false, point: true });
+    assert.deepStrictEqual(pointOnly.errors, []);
+    assert.deepStrictEqual(pointOnly.file.positions.map(item => item.path), ['screen.anchor']);
+
+    const both = publishStore.collectPositionRuntime(root, directory, { rect: true, point: true });
+    assert.deepStrictEqual(both.errors, []);
+    assert.deepStrictEqual(both.file.positions.map(item => item.path), ['screen.anchor', 'screen.box']);
+
+    const none = publishStore.collectPositionRuntime(root, directory, { rect: false, point: false });
+    assert.deepStrictEqual(none.errors, ['selection']);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+}
+
+{
+  const { root, directory } = makePublishFixture();
+  try {
+    const points = pointCoco();
+    points.categories[0].name = 'screen.box';
+    fs.writeFileSync(path.join(root, directory, 'points.json'), JSON.stringify(points, null, 2));
+    const rectOnly = publishStore.collectPositionRuntime(root, directory, { rect: true, point: false });
+    assert(rectOnly.errors.includes('duplicate:screen.box'), 'partial publish still checks a readable unselected namespace');
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+}
+
+{
+  const { root, directory } = makePublishFixture();
+  try {
+    const relativeTarget = 'generated/existing.json';
+    const target = path.join(root, relativeTarget);
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.writeFileSync(target, '{"important":true}\n');
+
+    const blocked = publishStore.publishPositionJson(
+      root,
+      directory,
+      { rect: true, point: true },
+      relativeTarget,
+    );
+    assert.strictEqual(blocked.ok, false);
+    assert.deepStrictEqual(blocked.errors, ['manual']);
+    assert.deepStrictEqual(blocked.protectedFiles, [target]);
+    assert.strictEqual(fs.readFileSync(target, 'utf8'), '{"important":true}\n');
+
+    const overwritten = publishStore.publishPositionJson(
+      root,
+      directory,
+      { rect: true, point: true },
+      relativeTarget,
+      true,
+    );
+    assert.strictEqual(overwritten.ok, true);
+    assert(fs.readFileSync(target, 'utf8').includes('"positions"'));
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+}
+
+{
+  const { root, directory } = makePublishFixture();
+  try {
     fs.writeFileSync(path.join(root, directory, 'boxes.json'), '{ invalid json');
-    const collected = publishStore.collectPositionRuntime(root, directory);
+    const collected = publishStore.collectPositionRuntime(root, directory, { rect: true, point: true });
     assert.strictEqual(collected.file.positions.length, 0);
     assert(collected.errors.some(error => error.startsWith('boxes:')));
 
-    const result = publishStore.publishPositionJson(root, directory);
+    const pointOnly = publishStore.publishPositionJson(
+      root,
+      directory,
+      { rect: false, point: true },
+      publishStore.DEFAULT_POSITION_JSON,
+    );
+    assert.strictEqual(pointOnly.ok, true);
+
+    fs.rmSync(path.join(root, 'src'), { recursive: true, force: true });
+    const result = publishStore.publishPositionJson(
+      root,
+      directory,
+      { rect: true, point: true },
+      publishStore.DEFAULT_POSITION_JSON,
+    );
     assert.strictEqual(result.ok, false);
     assert(result.errors.some(error => error.startsWith('boxes:')));
     assert.strictEqual(fs.existsSync(path.join(root, 'src', 'scene', 'positions.json')), false);
@@ -107,10 +241,49 @@ function makePublishFixture() {
   try {
     fs.mkdirSync(path.join(root, 'src'), { recursive: true });
     fs.symlinkSync(outside, path.join(root, 'src', 'scene'), process.platform === 'win32' ? 'junction' : 'dir');
-    const result = publishStore.publishPositionJson(root, directory);
+    const result = publishStore.publishPositionJson(
+      root,
+      directory,
+      { rect: true, point: true },
+      publishStore.DEFAULT_POSITION_JSON,
+    );
     assert.strictEqual(result.ok, false);
     assert.deepStrictEqual(result.errors, ['target']);
     assert.strictEqual(fs.existsSync(path.join(outside, 'positions.json')), false);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+    fs.rmSync(outside, { recursive: true, force: true });
+  }
+}
+
+{
+  const { root, directory } = makePublishFixture();
+  const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'ok-position-leaf-outside-'));
+  const scene = path.join(root, publishStore.DEFAULT_POSITION_PY_DIR);
+  const ratioFile = path.join(scene, 'ScreenRatio.py');
+  const outsideFile = path.join(outside, 'outside.py');
+  try {
+    fs.mkdirSync(scene, { recursive: true });
+    const outsideText = `${publishStore.GENERATED_MARKER}\n# outside\n`;
+    fs.writeFileSync(outsideFile, outsideText);
+    let linked = true;
+    try {
+      fs.symlinkSync(outsideFile, ratioFile, 'file');
+    } catch {
+      linked = false;
+    }
+    if (linked) {
+      const result = publishStore.publishPositionPython(
+        root,
+        directory,
+        { rect: true, point: true },
+        publishStore.DEFAULT_POSITION_PY_DIR,
+        true,
+      );
+      assert.strictEqual(result.ok, false);
+      assert.deepStrictEqual(result.errors, ['target']);
+      assert.strictEqual(fs.readFileSync(outsideFile, 'utf8'), outsideText);
+    }
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
     fs.rmSync(outside, { recursive: true, force: true });
@@ -140,7 +313,12 @@ function makePublishFixture() {
     return originalRename.apply(this, arguments);
   };
   try {
-    const result = publishStore.publishPositionPython(root, directory);
+    const result = publishStore.publishPositionPython(
+      root,
+      directory,
+      { rect: true, point: true },
+      publishStore.DEFAULT_POSITION_PY_DIR,
+    );
     assert.strictEqual(result.ok, false);
     assert.deepStrictEqual(result.errors, ['write']);
     assert.strictEqual(fs.readFileSync(ratioFile, 'utf8'), oldRatio);
@@ -149,6 +327,32 @@ function makePublishFixture() {
     fs.renameSync = originalRename;
     fs.rmSync(root, { recursive: true, force: true });
   }
+}
+
+// The only user-facing Publish entry is in the original-image/annotation panel.
+// It must expose all three resource types as a multi-select; Resource Preview is preview-only.
+{
+  const root = path.join(__dirname, '..');
+  const host = fs.readFileSync(path.join(root, 'src', 'templateAssetPanel.ts'), 'utf8');
+  const assetHtml = fs.readFileSync(path.join(root, 'media', 'templateAssetPanel', 'index.html'), 'utf8');
+  const previewHtml = fs.readFileSync(path.join(root, 'media', 'templatePanel', 'index.html'), 'utf8');
+  assert(host.includes('canPickMany: true'));
+  assert(host.includes("label: 'Template'"));
+  assert(host.includes("label: 'Rect'"));
+  assert(host.includes("label: 'Point'"));
+  assert(host.includes("selected.has('template')"));
+  assert(host.includes("rect: selected.has('rect')"));
+  assert(host.includes("point: selected.has('point')"));
+  assert(host.includes("positionPublishTargetSetting('json', folderUri, root)"));
+  const prepareTemplate = host.indexOf('await this.prepareTemplatePublish()');
+  const preparePosition = host.indexOf('await this.preparePositionPublish(positionSelection)');
+  const executePosition = host.indexOf('await this.executePositionPublish(positionPlan)');
+  const executeTemplate = host.indexOf('await this.executeTemplatePublish(templatePlan)');
+  assert(prepareTemplate >= 0 && preparePosition > prepareTemplate, 'unified publish gathers Template then Position plans before execution');
+  assert(executePosition > preparePosition && executeTemplate > executePosition, 'unified publish executes only after both plans are gathered');
+  assert(assetHtml.includes('id="saveBtn">Publish</button>'));
+  assert(!previewHtml.includes('Publish positions'));
+  assert(!previewHtml.includes('publishPositionsBtn'));
 }
 
 console.log('position resource tests passed');

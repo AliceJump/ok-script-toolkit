@@ -6,7 +6,6 @@
   const search = document.getElementById('search');
   const countEl = document.getElementById('count');
   const emptyEl = document.getElementById('empty');
-  const publishBtn = document.getElementById('publishPositionsBtn');
   const cards = new Map();
   let metas = [];
   let currentMode = 'template';
@@ -38,7 +37,6 @@
     document.getElementById('templateModeBtn').classList.toggle('active', currentMode === 'template');
     document.getElementById('rectModeBtn').classList.toggle('active', currentMode === 'rect');
     document.getElementById('pointModeBtn').classList.toggle('active', currentMode === 'point');
-    publishBtn.style.display = currentMode === 'template' ? 'none' : '';
   }
 
   function makeCard(meta) {
@@ -158,7 +156,6 @@
   document.getElementById('templateModeBtn').onclick = () => switchMode('template');
   document.getElementById('rectModeBtn').onclick = () => switchMode('rect');
   document.getElementById('pointModeBtn').onclick = () => switchMode('point');
-  publishBtn.onclick = () => vscode.postMessage({ type: 'publish' });
   search.addEventListener('input', applyFilter);
 
   window.addEventListener('message', (e) => {

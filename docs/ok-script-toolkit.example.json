@@ -24,8 +24,9 @@
     "cocoAnnotations": "assets/coco_annotations.json"
   },
 
-  "boxes": {
-    "runtime": "src/scene/boxes.json"
+  "position": {
+    "jsonPath": "src/scene/positions.json",
+    "pythonDirectory": "src/scene"
   },
 
   "i18n": {

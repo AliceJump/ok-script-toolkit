@@ -34,8 +34,6 @@ WINDOWS_SUB_KEYS = ("exe", "title", "hwnd_class", "top_hwnd_class", "capture_met
 # `os.path.join("assets", "coco_annotations.json")`。
 TEMPLATE_MATCHING_SUB_KEYS = ("coco_feature_json",)
 TEMPLATE_TAB_SUB_KEYS = ("label_enum_relative_path",)
-# config 顶层的运行时框文件。现有项目还没有这项，缺席时插件探测 src/scene/boxes.json。
-ROOT_BOXES_KEY = "boxes_json"
 
 
 def _resolve_config_path_from_main(project_dir):
@@ -87,11 +85,9 @@ def _resolve_config_path_from_main(project_dir):
 
 def _resolve_config_path(project_dir):
     """综合查找 config.py：先 main.py 解析，再常规路径。"""
-    # 1. 通过 main.py 定位
     found = _resolve_config_path_from_main(project_dir)
     if found:
         return found
-    # 2. 常规路径
     for candidate in (
         os.path.join(project_dir, "src", "config.py"),
         os.path.join(project_dir, "config.py"),
@@ -149,19 +145,6 @@ def _extract_template_matching_keys(config_path):
     return _extract_sub_dict(_find_config_dict(tree), "template_matching", TEMPLATE_MATCHING_SUB_KEYS)
 
 
-def _extract_root_key(config_path, name):
-    """从顶层 config dict 取出一个键。框文件不放进 template_matching。"""
-    with open(config_path, encoding="utf-8") as f:
-        tree = ast.parse(f.read(), filename=config_path)
-    config_dict = _find_config_dict(tree)
-    if not config_dict:
-        return None
-    for key, value in zip(config_dict.keys, config_dict.values):
-        if isinstance(key, ast.Constant) and key.value == name:
-            return _extract_value(value)
-    return None
-
-
 def _extract_template_tab_keys(config_path):
     """Read the enum module path used by the project's own template tab."""
     with open(config_path, encoding="utf-8") as f:
@@ -178,17 +161,12 @@ def _extract_value(node):
     if isinstance(node, ast.Tuple):
         return [_extract_value(el) for el in node.elts]
     if isinstance(node, ast.Name):
-        # 引用其他变量，返回变量名标记
         return f"<ref:{node.id}>"
     if isinstance(node, ast.Call):
-        # 常见模式: re.compile(r"xxx") → 提取字符串参数
         func = node.func
         if isinstance(func, ast.Attribute) and func.attr == "compile":
             if node.args and isinstance(node.args[0], ast.Constant):
                 return node.args[0].value
-        # 常见模式: os.path.join("assets", "coco_annotations.json") → 拼成 `/` 分隔的路径。
-        # **5/5 个真实项目声明 coco_feature_json 都是这个写法**，不认它等于没接。
-        # 只在**全是字面量**时才拼 —— 掺了变量就无从静态求值，交给调用方走兜底。
         if (
             isinstance(func, ast.Attribute)
             and func.attr == "join"
@@ -201,13 +179,11 @@ def _extract_value(node):
         if isinstance(func, ast.Name) and func.id in ("str", "int", "float", "Path", "PurePath", "PurePosixPath"):
             if node.args and isinstance(node.args[0], ast.Constant):
                 return node.args[0].value
-        # 返回函数名标记
         if isinstance(func, ast.Name):
             return f"<call:{func.id}>"
         if isinstance(func, ast.Attribute):
             return f"<call:{func.attr}>"
     if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Div):
-        # pathlib 写法: Path("assets") / "coco_annotations.json"
         left = _extract_value(node.left)
         right = _extract_value(node.right)
         if (
@@ -252,11 +228,9 @@ def main():
     template_matching = _extract_template_matching_keys(config_path)
     template_tab = _extract_template_tab_keys(config_path)
 
-    # 把 <ref:...> 和 <call:...> 标记替换为 None（无法静态解析的值）
     window_config = {k: _clean(v) for k, v in window_config.items()}
     coco_feature_json = _clean(template_matching.get("coco_feature_json"))
     label_enum_relative_path = _clean(template_tab.get("label_enum_relative_path"))
-    boxes_json = _clean(_extract_root_key(config_path, ROOT_BOXES_KEY))
 
     print(json.dumps({
         "ok": True,
@@ -264,7 +238,6 @@ def main():
         **window_config,
         "coco_feature_json": coco_feature_json,
         "label_enum_relative_path": label_enum_relative_path,
-        "boxes_json": boxes_json,
     }, ensure_ascii=False))
     sys.exit(0)
 

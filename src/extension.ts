@@ -3,8 +3,8 @@ import * as crypto from 'crypto';
 import * as vscode from 'vscode';
 import { LangData, poDirectorySetting } from './langData';
 import { tr } from './localization';
-import { cocoFeatureRelPaths, refreshCocoFeaturePath, probedBoxesJson } from './cocoFeaturePath';
-import { boxesRuntimeSetting, effectsFileSetting, i18nLangDirectorySetting, resolveProjectDir, templatesDirectory } from './projectConfig';
+import { cocoFeatureRelPaths, refreshCocoFeaturePath } from './cocoFeaturePath';
+import { effectsFileSetting, i18nLangDirectorySetting, resolveProjectDir, templatesDirectory } from './projectConfig';
 import { showConventionSources } from './conventionSources';
 import { FeatureData } from './featureData';
 import { EffectData } from './effectData';
@@ -32,10 +32,7 @@ import {
 } from './templateAssetPanel';
 import { TempScreenshotStore } from './tempScreenshotStore';
 import { TempScreenshotViewProvider } from './tempScreenshotPanel';
-import { BoxGalleryViewProvider } from './boxPanels';
 import { notifyAnnotationDataChanged } from './cocoAnnotationData';
-import { boxRuntimeRelPaths, resolveBoxRuntimePlan } from './boxResourcePure';
-import { BoxAssetViewProvider } from './templateAssetPanel';
 
 /** 缩略图缓存 key 版本：内容 hash 化后旧命名（t_/a_）需要清理一次 */
 const THUMB_KEY_VERSION = 'content-hash-v2';
@@ -80,18 +77,16 @@ export function activate(context: vscode.ExtensionContext): void {
       imagePath: ft.imagePath,
       bbox: ft.bbox,
       targetHeight: THUMB_HEIGHT,
-      thumbDir: thumbDirForSource(thumbDir, ft.imagePath),  // 按来源分目录
+      thumbDir: thumbDirForSource(thumbDir, ft.imagePath),
     }));
     void warmCropCache(reqs);
   };
 
   // ---- 各数据源独立防抖刷新（300ms） ----
-  /** 哪些数据源需要刷新（由 getAffectedSources 判定） */
   type RefreshTarget = { lang: boolean; features: boolean; effects: boolean; coco: boolean; annotations: boolean };
 
   const DEBOUNCE_MS = 300;
 
-  // lang 数据：self.lang JSON / gettext PO → 刷新 LangData + 幽灵注释
   let langTimer: NodeJS.Timeout | undefined;
   const refreshLang = () => {
     if (langTimer) clearTimeout(langTimer);
@@ -101,14 +96,12 @@ export function activate(context: vscode.ExtensionContext): void {
     }, DEBOUNCE_MS);
   };
 
-  // 模板数据：coco_annotations.json / 图片 PNG → 刷新 FeatureData + 清缓存 + 预热 + 画廊
   let featTimer: NodeJS.Timeout | undefined;
   const refreshFeatures = (changedUris?: vscode.Uri[]) => {
     if (featTimer) clearTimeout(featTimer);
     featTimer = setTimeout(() => {
       features.refresh(true);
       let cacheInvalidated = false;
-      // 按变更文件的选择性清除：只清受影响来源的缩略图
       if (changedUris && changedUris.length > 0) {
         const sources = new Set<string>();
         for (const uri of changedUris) {
@@ -116,19 +109,14 @@ export function activate(context: vscode.ExtensionContext): void {
         }
         const tplDir = templatesDirectory(targetRoot);
         for (const src of sources) {
-          // 模板目录：只清被改动 PNG 对应的缩略图，不影响同源其他 PNG
           if (src === tplDir) {
             const pngRe = /\.png$/i;
-            // fsPath 在 Windows 上是反斜杠，先归一化再做目录段匹配。
-            // 用 startsWith/includes 而不是正则：目录名可配，拼正则还要转义，
-            // 漏转义时失配是**静默**的（缩略图永远不刷新）。
             const tplPrefix = `${tplDir}/`;
             const pngUris = changedUris.filter(u => {
               const normalized = u.fsPath.replace(/[\\/]+/g, '/');
               return (normalized.startsWith(tplPrefix) || normalized.includes(`/${tplPrefix}`)) && pngRe.test(u.fsPath);
             });
             for (const uri of pngUris) {
-              // 先删旧缩略图（此时内容 hash 记录仍是旧值，才能删到旧文件），再作废指纹
               for (const ft of features.all()) {
                 if (ft.imagePath === uri.fsPath) {
                   removeTemplateThumbFile(ft.imagePath, ft.bbox, thumbDir);
@@ -145,16 +133,10 @@ export function activate(context: vscode.ExtensionContext): void {
           cacheInvalidated = true;
         }
       } else if (changedUris === undefined) {
-        // 未带变更信息（手动触发等）→ 无法做选择性失效，只能清全部
         clearCropCache();
         clearThumbDir(thumbDir);
         cacheInvalidated = true;
       } else {
-        // changedUris 是**空数组**：数据要重载，但缩略图一个都不用动。
-        // 缓存键 = 内容 hash + bbox + 目标高度 —— 数据变了自然落新文件，
-        // 不删也绝不会复用旧图；删了只会把预热成果全部丢掉。
-        // ⚠️ 2026-09-22 实测：激活时的无参调用走到这里，导致每次启动都把
-        // 磁盘缩略图清空再全量重建。要"连数据带缓存一起重置"请显式传 undefined。
         cacheInvalidated = true;
       }
       if (cacheInvalidated) {
@@ -165,7 +147,6 @@ export function activate(context: vscode.ExtensionContext): void {
     }, DEBOUNCE_MS);
   };
 
-  // 效果 ID：effects.py → 刷新 EffectData + JSON 幽灵注释
   let effectTimer: NodeJS.Timeout | undefined;
   const refreshEffects = () => {
     if (effectTimer) clearTimeout(effectTimer);
@@ -175,39 +156,20 @@ export function activate(context: vscode.ExtensionContext): void {
     }, DEBOUNCE_MS);
   };
 
-  /** 转义 glob 元字符（PO 目录可能含 . 等） */
   const escapeGlobSeg = (s: string) => s.replace(/([\\*?[\]{}()!])/g, '\\$1');
 
-  /** 语言数据监听 glob：lang JSON + gettext PO + 模板数据 + 效果 ID */
+  /** Watch authoring resources directly. Published position output is no longer an IDE data source. */
   const langWatchPattern = () => {
-    // `poDirectorySetting()` / `i18nLangDirectorySetting()` / `effectsFileSetting()` 出来的
-    // 值都已过 `normalizeRelPath`（`\` → `/`、去首尾斜杠与开头 `./`），这里不再重复处理。
     const poGlob = poDirectorySetting().split('/').map(escapeGlobSeg).join('/');
-    // 模板目录名可配：拼进 glob 前按段转义（目录名可能含 `[`、`*` 等 glob 元字符）。
-    // 不转义时 watcher 静默失配 —— 界面正常，但改了模板文件不刷新。
     const tplGlob = templatesDirectory(targetRoot).split('/').map(escapeGlobSeg).join('/');
-    // langDirectory 同样可配（IDE 设置 → 项目约定 `i18n.langDirectory`），所以也不能写死。
     const langGlob = i18nLangDirectorySetting().split('/').map(escapeGlobSeg).join('/');
     const effectsFile = effectsFileSetting();
-    // 运行时模板库路径可配（项目约定 `templates.cocoAnnotations` → config.py 的
-    // `template_matching.coco_feature_json` → 两个惯例位置），所以也不能写死。
     const cocoGlobs = cocoFeatureRelPaths(targetRoot)
       .map((rel) => rel.split('/').map(escapeGlobSeg).join('/'))
       .join(',');
-    const boxGlobs = boxRuntimeRelPaths(resolveBoxRuntimePlan(targetRoot, boxesRuntimeSetting(targetRoot), probedBoxesJson(targetRoot)), targetRoot)
-      .map(rel => rel.split('/').map(escapeGlobSeg).join('/')).join(',');
-    // 末尾的 `config.py`：它决定运行时模板库放在哪，改了要重探 + 重建监听。
-    // 放在 `**/{...}` 里等价于 `**/config.py`（任意深度的同名文件都会派发进来，
-    // `getAffectedSources` 再按路径筛一次）。
-    return `**/{${langGlob}/*.json,${poGlob}/**/*.po,${cocoGlobs},${tplGlob}/coco_annotations.json,${tplGlob}/boxes.json,${boxGlobs},assets/images/*.png,ok_tasks/assets/images/*.png,${tplGlob}/*.png,${effectsFile},config.py}`;
+    return `**/{${langGlob}/*.json,${poGlob}/**/*.po,${cocoGlobs},${tplGlob}/coco_annotations.json,${tplGlob}/boxes.json,${tplGlob}/points.json,assets/images/*.png,ok_tasks/assets/images/*.png,${tplGlob}/*.png,${effectsFile},config.py}`;
   };
 
-  /**
-   * 判定变更文件属于哪些数据源（lang / features / effects）。
-   * createFileSystemWatcher 的字符串 glob 在嵌套路径 + brace 组合下可能把工作区
-   * 任意文件变更都派发进来，因此这里按 URI 的相对路径二次过滤，避免每次保存任意
-   * 代码都重载模板库。
-   */
   const getAffectedSources = (uri: vscode.Uri): RefreshTarget => {
     const empty: RefreshTarget = { lang: false, features: false, effects: false, coco: false, annotations: false };
     const rel = (targetRoot ? path.relative(targetRoot, uri.fsPath) : uri.fsPath)
@@ -216,7 +178,6 @@ export function activate(context: vscode.ExtensionContext): void {
     if (!rel || rel === '..' || rel.startsWith('../') || path.isAbsolute(rel)) return empty;
 
     const poDir = poDirectorySetting();
-    // 同上：取值链已归一化，这里不再重复 replace
     const effectsFile = effectsFileSetting();
     const langDir = i18nLangDirectorySetting();
 
@@ -227,17 +188,17 @@ export function activate(context: vscode.ExtensionContext): void {
       return { ...empty, lang: true };
     }
     const sourceDirectory = templatesDirectory(targetRoot);
-    if ([sourceDirectory + '/coco_annotations.json', sourceDirectory + '/boxes.json',
-      ...boxRuntimeRelPaths(resolveBoxRuntimePlan(targetRoot, boxesRuntimeSetting(targetRoot), probedBoxesJson(targetRoot)), targetRoot)].includes(rel)) {
+    if ([
+      `${sourceDirectory}/coco_annotations.json`,
+      `${sourceDirectory}/boxes.json`,
+      `${sourceDirectory}/points.json`,
+    ].includes(rel)) {
       return { ...empty, annotations: true };
     }
     const pngRe = /\.png$/i;
-    // 运行时模板库：路径可配（项目约定 → config.py → 两个惯例位置），所以不能写死。
     if (cocoFeatureRelPaths(targetRoot).includes(rel)) {
       return { ...empty, features: true };
     }
-    // `config.py` 决定库放在哪 —— 它一变就要**重探 + 重建监听**，不只是刷新数据。
-    // 只认 `_resolve_config_path` 会看的两个位置（任意深度的 config.py 都会派发进来，这里再筛一次）。
     if (rel === 'config.py' || rel === 'src/config.py') {
       return { ...empty, coco: true };
     }
@@ -248,7 +209,6 @@ export function activate(context: vscode.ExtensionContext): void {
     ) {
       return { ...empty, features: true };
     }
-    // 相对路径按工作区相对比较；绝对路径配置（如 D:/proj/src/data/effects.py）按解析后的绝对路径比较
     if (rel === effectsFile) {
       return { ...empty, effects: true };
     }
@@ -272,8 +232,6 @@ export function activate(context: vscode.ExtensionContext): void {
     if (target.lang) refreshLang();
     if (target.effects) refreshEffects();
     if (target.coco) {
-      // 先重探库路径再刷新特征 —— 顺序反了会拿旧路径白读一遍。
-      // 用 setTimeout 跳出当前 watcher 回调再重建监听：不想在自己的事件处理里同步 dispose 自己。
       void refreshCocoFeaturePath(targetRoot).then(() => {
         setTimeout(() => {
           recreateWatcher();
@@ -297,14 +255,8 @@ export function activate(context: vscode.ExtensionContext): void {
     return watcher;
   };
   recreateWatcher();
-  // 运行时模板库的路径可能来自 config.py 的 `template_matching.coco_feature_json`
-  // （异步探测）。探到之后要**重建监听并刷新一次** —— 否则首次激活用的是兜底探测，
-  // 探到的真实路径要等到下次文件变动才生效，而"配置生效不了"是静默的。
   void refreshCocoFeaturePath(targetRoot).then(() => {
     recreateWatcher();
-    // 空数组 =「重载数据 + 预热，但**不清**缩略图」—— 探到真实路径 ≠ 数据变了。
-    // 此前这里是无参调用，会命中上面的「清全部」分支：每次启动都把磁盘缩略图
-    // 删光再全量重切（实测 156 张原图 ≈ 8s），这就是"重开 VS Code 缓存就没了"的元凶。
     refreshFeatures([]);
   });
   context.subscriptions.push({
@@ -324,26 +276,20 @@ export function activate(context: vscode.ExtensionContext): void {
     features,
     thumbDir,
   };
-  // 游戏连接 + 调试浮层的共享宿主（原侧边栏工具箱逻辑）；控制台视图组合它而非继承
   const gameConnect = new GameConnectService(context.extensionUri);
   const okConsole = new ConsoleViewProvider(
     context.extensionUri,
     gameConnect,
     () => CharacterManagerPanel.show(characterManagerDependencies),
   );
-  // 浮层开关 → 运行中执行器即时生效（overlay_on/off stdin 命令）
   gameConnect.overlayForwarder = (enabled) => okConsole.setOverlayEnabled(enabled);
 
-  // 模板素材数据管理
   const templateAssetData = new TemplateAssetData(targetRoot);
-  // 临时截图存储（侧边栏最多 10 张，按工作区隔离）
   const tempScreenshotStore = new TempScreenshotStore(
     path.join(context.globalStorageUri.fsPath, 'temp-screenshots', wsHash),
   );
   tempScreenshotStore.ensure();
   const tempThumbDir = path.join(context.globalStorageUri.fsPath, 'temp-thumbs', wsHash);
-  // 缩略图命名已由「原图路径」切换为「原图内容 hash」：清理旧格式残留，
-  // 否则旧缩略图会一直躺在缓存目录里（升级后按新名字查找，永远读不到也删不掉）
   if (context.globalState.get<string>(LEGACY_THUMB_PURGE_KEY) !== THUMB_KEY_VERSION) {
     purgeLegacyThumbFiles(thumbDir);
     purgeLegacyThumbFiles(tempThumbDir);
@@ -365,8 +311,6 @@ export function activate(context: vscode.ExtensionContext): void {
       new LangCompletionProvider(data, features, effects),
       '.', "'", '"',
     ),
-    // 效果 ID 提示：JSON / JSONC 数据文件（character_skills/*.json 等）中的
-    // "effect_id": "XXX" hover 显示分类与描述，引号内补全效果 ID。
     vscode.languages.registerHoverProvider(
       { language: 'json', scheme: 'file' },
       new EffectHoverProvider(effects),
@@ -385,7 +329,6 @@ export function activate(context: vscode.ExtensionContext): void {
       new EffectCompletionProvider(effects),
       '"',
     ),
-    // 效果 ID 幽灵注释：JSON / JSONC 中 "effect_id": "XXX" 后行内显示中文描述
     vscode.languages.registerInlayHintsProvider(
       { language: 'json', scheme: 'file' },
       jsonInlay,
@@ -407,26 +350,16 @@ export function activate(context: vscode.ExtensionContext): void {
       new TemplateAssetViewProvider(templateAssetData, thumbDir, context.extensionUri, tempScreenshotStore),
     ),
     vscode.window.registerWebviewViewProvider(
-      BoxAssetViewProvider.viewType,
-      new BoxAssetViewProvider(templateAssetData, thumbDir, context.extensionUri, tempScreenshotStore),
-    ),
-    vscode.window.registerWebviewViewProvider(
-      BoxGalleryViewProvider.viewType,
-      new BoxGalleryViewProvider(context.extensionUri, thumbDir),
-    ),
-    vscode.window.registerWebviewViewProvider(
       TempScreenshotViewProvider.viewType,
       new TempScreenshotViewProvider(tempScreenshotStore, templateAssetData, tempThumbDir, context.extensionUri),
     ),
     vscode.commands.registerCommand('okScriptToolkit.showTemplates', () => {
-      // 聚焦活动栏中的模板视图（左侧图标 Tab）
       void vscode.commands.executeCommand(`${TemplateGalleryViewProvider.viewType}.focus`);
     }),
     vscode.commands.registerCommand('okScriptToolkit.openTemplatesEditor', () => {
       TemplateGalleryPanel.show(features, thumbDir, context.extensionUri);
     }),
     vscode.commands.registerCommand('okScriptToolkit.showTaskLauncher', () => {
-      // 聚焦活动栏中的控制台视图（命令 id 沿用旧名，兼容既有键位/菜单引用）
       void vscode.commands.executeCommand(`${ConsoleViewProvider.viewType}.focus`);
     }),
     vscode.commands.registerCommand('okScriptToolkit.openCharacterManager', () => {
@@ -436,21 +369,15 @@ export function activate(context: vscode.ExtensionContext): void {
       TemplateAssetPanel.show(templateAssetData, thumbDir, context.extensionUri, tempScreenshotStore);
     }),
     vscode.commands.registerCommand('okScriptToolkit.screenshotToTemplate', () => {
-      // 快捷键入口（默认 ctrl+alt+s）：打开标注模板管理面板并立即截图。
-      // 复用面板自己的截图动作 —— 不新增截图实现，否则两条路径的行为迟早漂移。
       TemplateAssetPanel.showScreenshot(templateAssetData, thumbDir, context.extensionUri, tempScreenshotStore);
     }),
     vscode.commands.registerCommand('okScriptToolkit.showTempScreenshots', () => {
-      // 聚焦活动栏中的临时截图视图
       void vscode.commands.executeCommand(`${TempScreenshotViewProvider.viewType}.focus`);
     }),
     vscode.commands.registerCommand('okScriptToolkit.openAnnotationEditor', () => {
-      // 打开当前选中的图片，或者提示用户先选择
       void vscode.window.showInformationMessage(tr('Please click an image in the Template Assets panel to open the annotation editor.'));
     }),
     vscode.commands.registerCommand('okScriptToolkit.showConventionSources', () => {
-      // 「项目约定 vs 我的设置」：显示每一项的生效值来自哪一层，并可清掉个人覆盖。
-      // 存在的理由见 docs/project-config.md §3 —— 个人偏好最高会让项目声明"永久失效"。
       showConventionSources();
     }),
     vscode.workspace.onDidChangeConfiguration((e) => {
@@ -465,15 +392,12 @@ export function activate(context: vscode.ExtensionContext): void {
           void refreshCocoFeaturePath(targetRoot).then(() => refreshFeatures([]));
           repaintAllAssetGalleries();
         }
-        // 模板目录名可能变了，先重新注入 —— 下面 clearThumbDir/prewarm 都会用到它
         const nextTemplatesDir = templatesDirectory(targetRoot);
         setTemplatesDirName(nextTemplatesDir);
         recreateWatcher();
         data.refresh(true);
         features.refresh(true);
         effects.refresh(true);
-        // 只有模板目录名**真的变了**才清缩略图目录：来源子目录跟着目录名走，
-        // 名字没变时旧缩略图依然按内容 hash 命中，删了只会白切一遍。
         if (nextTemplatesDir !== templatesDir) {
           templatesDir = nextTemplatesDir;
           clearCropCache();
@@ -488,7 +412,6 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
   );
 
-  // 首次激活：先加载数据，再后台预热缩略图缓存
   data.refresh(true);
   features.refresh(true);
   effects.refresh(true);

@@ -10,7 +10,13 @@ import { applySharedAssets, getNonce } from './webviewHtml';
 import { readAuthoringFile } from './boxResourceStore';
 import { readPoints } from './pointResourceStore';
 import { templatesDirectory } from './projectConfig';
-import { PositionPublishFormat, publishPositionsByFormat } from './positionPublishStore';
+import {
+  DEFAULT_POSITION_JSON,
+  DEFAULT_POSITION_PY_DIR,
+  PositionPublishFormat,
+  PositionPublishOptions,
+  publishPositionsByFormat,
+} from './positionPublishStore';
 
 export type ResourcePreviewMode = 'template' | 'rect' | 'point';
 
@@ -215,8 +221,12 @@ class GalleryController {
   private async publishPositions(): Promise<void> {
     const choice = await vscode.window.showQuickPick(
       [
-        { label: 'JSON', description: 'src/scene/positions.json', format: 'json' as PositionPublishFormat },
-        { label: 'Python data + parser', description: 'src/scene/ScreenRatio.py + PositionMap.py', format: 'python' as PositionPublishFormat },
+        { label: 'JSON', description: DEFAULT_POSITION_JSON, format: 'json' as PositionPublishFormat },
+        {
+          label: 'Python data + parser',
+          description: `${DEFAULT_POSITION_PY_DIR}/ScreenRatio.py + PositionMap.py`,
+          format: 'python' as PositionPublishFormat,
+        },
       ],
       { placeHolder: 'Position export format' },
     );
@@ -224,7 +234,13 @@ class GalleryController {
 
     const root = this.features.root;
     const directory = templatesDirectory(root);
-    let result = publishPositionsByFormat(root, directory, choice.format);
+    const options: PositionPublishOptions = {
+      rect: true,
+      point: true,
+      jsonTarget: DEFAULT_POSITION_JSON,
+      pythonTargetDir: DEFAULT_POSITION_PY_DIR,
+    };
+    let result = publishPositionsByFormat(root, directory, choice.format, options);
     if (!result.ok && result.errors.includes('manual') && result.protectedFiles?.length) {
       const names = result.protectedFiles.map(file => path.relative(root, file)).join('\n');
       const overwrite = await vscode.window.showWarningMessage(
@@ -233,7 +249,10 @@ class GalleryController {
         'Overwrite',
       );
       if (overwrite !== 'Overwrite') return;
-      result = publishPositionsByFormat(root, directory, choice.format, true);
+      result = publishPositionsByFormat(root, directory, choice.format, {
+        ...options,
+        overwriteManual: true,
+      });
     }
 
     if (!result.ok) {
