@@ -8,17 +8,18 @@ import { onAnnotationDataChanged, sameAnnotationFile } from './cocoAnnotationDat
 import { readImageSize } from './pngCrop';
 import { injectWebviewLocalization, tr } from './localization';
 import { applySharedAssets, getNonce } from './webviewHtml';
-import { POINT_AUTHORING_FILE, pointPathOccupancy, pointsForImage, savePointsForImage } from './pointResourceStore';
+import { POINT_AUTHORING_FILE, pointPathOccupancy, pointsForImage, readPoints, savePointsForImage } from './pointResourceStore';
+import { AnnotationConflict, MergeAnnotation, mergeAnnotations } from './annotationMergePure';
 
 export type UnifiedAnnotationMode = 'template' | 'rect' | 'point';
 
-interface Annotation {
-  id: number;
-  category: string;
-  x: number;
-  y: number;
-  w: number;
-  h: number;
+interface Annotation extends MergeAnnotation {}
+
+interface ModeSnapshot {
+  annotations: Annotation[];
+  allCategories: Record<string, string>;
+  revision: string | undefined;
+  errors: string[];
 }
 
 function normalizeAnnotationMode(value: UnifiedAnnotationMode | boolean): UnifiedAnnotationMode {
@@ -27,11 +28,30 @@ function normalizeAnnotationMode(value: UnifiedAnnotationMode | boolean): Unifie
   return value;
 }
 
+function cloneAnnotations(values: readonly Annotation[]): Annotation[] {
+  return values.map(value => ({ ...value }));
+}
+
 class AnnotationController {
   private generation = 0;
   private disposed = false;
   private saving = false;
-  private sourceRevision: string | undefined;
+  private readonly sourceRevisions: Record<UnifiedAnnotationMode, string | undefined> = {
+    template: undefined,
+    rect: undefined,
+    point: undefined,
+  };
+  private readonly baseSnapshots: Record<UnifiedAnnotationMode, Annotation[]> = {
+    template: [],
+    rect: [],
+    point: [],
+  };
+  private readonly localSnapshots: Record<UnifiedAnnotationMode, Annotation[]> = {
+    template: [],
+    rect: [],
+    point: [],
+  };
+  private readonly pendingExternal = new Set<UnifiedAnnotationMode>();
   private readonly disposables: vscode.Disposable[] = [];
   private _currentImage: string | undefined;
   private _imageList: string[] = [];
@@ -55,11 +75,15 @@ class AnnotationController {
       webview.onDidReceiveMessage((msg) => { void this.onMessage(msg); }),
       onAnnotationDataChanged(file => {
         if (this.saving || !this._currentImage) return;
-        if (this.activeSourceMatches(file)) {
-          let revision: string | undefined;
-          try { revision = fs.readFileSync(file, 'utf8'); } catch { /* deleted or unreadable source */ }
-          if (revision !== this.sourceRevision) this.reloadIfShowing([this._currentImage]);
-        } else if (this.isPositionSource(file)) {
+        const changedMode = this.modeForSource(file);
+        if (changedMode) {
+          const revision = this.readSourceRevision(changedMode);
+          if (revision !== this.sourceRevisions[changedMode]) {
+            this.pendingExternal.add(changedMode);
+            if (changedMode === this.mode && this.isVisible()) this.showExternalChangeNotice(changedMode);
+          }
+        }
+        if (this.isPositionSource(file)) {
           const positionPaths = this.positionOccupancy();
           void this.webview.postMessage({ type: 'positionPaths', positionPaths });
           // Transitional alias for already-open pre-unification webviews/tests.
@@ -78,6 +102,15 @@ class AnnotationController {
   get root(): string { return this.templateData.root; }
   get currentImage(): string | undefined { return this._currentImage; }
 
+  private resetMergeState(): void {
+    for (const mode of ['template', 'rect', 'point'] as const) {
+      this.sourceRevisions[mode] = undefined;
+      this.baseSnapshots[mode] = [];
+      this.localSnapshots[mode] = [];
+    }
+    this.pendingExternal.clear();
+  }
+
   private dataForMode(mode = this.mode): TemplateAssetData | undefined {
     if (mode === 'template') return this.templateData;
     if (mode === 'rect') return this.boxData;
@@ -91,6 +124,13 @@ class AnnotationController {
 
   private activeSourceFile(): string { return this.sourceFileForMode(this.mode); }
 
+  private modeForSource(file: string): UnifiedAnnotationMode | undefined {
+    for (const mode of ['template', 'rect', 'point'] as const) {
+      if (sameAnnotationFile(file, this.sourceFileForMode(mode))) return mode;
+    }
+    return undefined;
+  }
+
   private activeSourceMatches(file: string): boolean {
     return sameAnnotationFile(file, this.activeSourceFile());
   }
@@ -98,6 +138,64 @@ class AnnotationController {
   private isPositionSource(file: string): boolean {
     return sameAnnotationFile(file, this.boxData.annotationFile)
       || sameAnnotationFile(file, path.join(this.templateData.templatesDir, POINT_AUTHORING_FILE));
+  }
+
+  private readSourceRevision(mode: UnifiedAnnotationMode): string | undefined {
+    try { return fs.readFileSync(this.sourceFileForMode(mode), 'utf8'); }
+    catch { return undefined; }
+  }
+
+  private snapshotForMode(imagePath: string, mode: UnifiedAnnotationMode): ModeSnapshot {
+    const activeData = this.dataForMode(mode);
+    if (activeData) {
+      activeData.load();
+      const annotations = activeData.getAnnotationsForImage(imagePath, true).map(a => ({
+        id: a.id,
+        category: a.categoryName,
+        x: a.bbox[0], y: a.bbox[1], w: a.bbox[2], h: a.bbox[3],
+      }));
+      const allCategories: Record<string, string> = {};
+      for (const img of activeData.data.images) {
+        const imgPath = path.join(activeData.templatesDir, img.file_name);
+        if (imgPath === imagePath) continue;
+        for (const name of activeData.getCategoriesForImage(imgPath)) allCategories[name] = img.file_name;
+      }
+      return {
+        annotations,
+        allCategories,
+        revision: activeData.revision,
+        errors: [...activeData.readErrors],
+      };
+    }
+
+    const result = readPoints(this.root, path.relative(this.root, this.templateData.templatesDir));
+    const imageName = path.basename(imagePath);
+    const own = result.file.points.filter(point => point.image.toLowerCase() === imageName.toLowerCase());
+    const annotations = own.map((point, index) => ({
+      id: index + 1,
+      category: point.path,
+      x: point.x,
+      y: point.y,
+      w: 0,
+      h: 0,
+    }));
+    const ownNames = new Set(own.map(point => point.path));
+    const allCategories = Object.fromEntries(
+      result.file.points.filter(point => !ownNames.has(point.path)).map(point => [point.path, point.image]),
+    );
+    return {
+      annotations,
+      allCategories,
+      revision: this.readSourceRevision(mode),
+      errors: [...result.errors],
+    };
+  }
+
+  private showExternalChangeNotice(mode: UnifiedAnnotationMode): void {
+    const label = mode === 'template' ? 'Template' : mode === 'rect' ? 'Box' : 'Point';
+    void vscode.window.showWarningMessage(
+      tr('{mode} annotations changed outside the editor. Your next save will merge both versions.', { mode: label }),
+    );
   }
 
   reloadIfShowing(imagePaths: readonly string[]): void {
@@ -129,6 +227,7 @@ class AnnotationController {
   }
 
   open(imagePath: string, imageList: string[], mode?: UnifiedAnnotationMode | boolean): void {
+    if (this._currentImage && this._currentImage !== imagePath) this.resetMergeState();
     if (mode !== undefined) this.mode = normalizeAnnotationMode(mode);
     this._imageList = [...imageList];
     this._currentImage = imagePath;
@@ -138,16 +237,14 @@ class AnnotationController {
 
   private async loadImage(imagePath: string): Promise<void> {
     if (this.disposed) return;
+    if (this._currentImage && this._currentImage !== imagePath) this.resetMergeState();
     this._currentImage = imagePath;
     const generation = ++this.generation;
-    const activeData = this.dataForMode();
-    if (activeData) {
-      activeData.load();
-      this.sourceRevision = activeData.revision;
-    } else {
-      try { this.sourceRevision = fs.readFileSync(this.activeSourceFile(), 'utf8'); }
-      catch { this.sourceRevision = undefined; }
-    }
+    const snapshot = this.snapshotForMode(imagePath, this.mode);
+    this.sourceRevisions[this.mode] = snapshot.revision;
+    this.baseSnapshots[this.mode] = cloneAnnotations(snapshot.annotations);
+    this.localSnapshots[this.mode] = cloneAnnotations(snapshot.annotations);
+    this.pendingExternal.delete(this.mode);
 
     let imageBase64 = '';
     try {
@@ -161,41 +258,13 @@ class AnnotationController {
     } catch { imageBase64 = ''; }
     if (this.disposed || generation !== this.generation) return;
 
-    let annotations: Annotation[] = [];
-    let allCategories: Record<string, string> = {};
-    if (activeData) {
-      const source = activeData.getAnnotationsForImage(imagePath, true);
-      annotations = source.map(a => ({
-        id: a.id,
-        category: a.categoryName,
-        x: a.bbox[0], y: a.bbox[1], w: a.bbox[2], h: a.bbox[3],
-      }));
-      for (const img of activeData.data.images) {
-        const imgPath = path.join(activeData.templatesDir, img.file_name);
-        if (imgPath === imagePath) continue;
-        for (const name of activeData.getCategoriesForImage(imgPath)) allCategories[name] = img.file_name;
-      }
-    } else {
-      const points = pointsForImage(this.root, this.templateData.templatesDir, path.basename(imagePath));
-      annotations = points.map((point, index) => ({
-        id: index + 1,
-        category: point.path,
-        x: point.x,
-        y: point.y,
-        w: 0,
-        h: 0,
-      }));
-      allCategories = pointPathOccupancy(this.root, this.templateData.templatesDir);
-      for (const point of points) delete allCategories[point.path];
-    }
-
     const positionPaths = this.positionOccupancy();
     await this.webview.postMessage({
       type: 'load',
       imagePath,
       imageBase64,
-      annotations,
-      allCategories,
+      annotations: snapshot.annotations,
+      allCategories: snapshot.allCategories,
       positionPaths,
       boxPaths: positionPaths,
       annotationMode: this.mode,
@@ -238,13 +307,13 @@ class AnnotationController {
         }
         break;
       case 'save':
-        if (this._currentImage && msg.annotations && this.persistAnnotationsForMode(this._currentImage, this.mode, msg.annotations)) {
+        if (this._currentImage && msg.annotations && await this.persistAnnotationsForMode(this._currentImage, this.mode, msg.annotations)) {
           this.onSaved(this._currentImage);
         }
         break;
       case 'saveMode':
         if (this._currentImage && msg.mode && msg.annotations
-          && this.persistAnnotationsForMode(this._currentImage, msg.mode, msg.annotations)) {
+          && await this.persistAnnotationsForMode(this._currentImage, msg.mode, msg.annotations)) {
           this.onSaved(this._currentImage);
         }
         break;
@@ -286,7 +355,92 @@ class AnnotationController {
     }
   }
 
-  private persistAnnotationsForMode(imagePath: string, mode: UnifiedAnnotationMode, annotations: Annotation[]): boolean {
+  private conflictIdentityMatch(mode: UnifiedAnnotationMode, left: Annotation, right: Annotation): boolean {
+    if (mode === 'template') return left.id === right.id || left.category === right.category;
+    return left.category.trim() === right.category.trim();
+  }
+
+  private useExternalConflictCandidates(
+    mode: UnifiedAnnotationMode,
+    merged: readonly Annotation[],
+    conflicts: readonly AnnotationConflict[],
+  ): Annotation[] {
+    const resolved = cloneAnnotations(merged);
+    for (const conflict of conflicts) {
+      if (conflict.local) {
+        const index = resolved.findIndex(item => this.conflictIdentityMatch(mode, item, conflict.local as Annotation));
+        if (index >= 0) resolved.splice(index, 1);
+      }
+      if (conflict.external) {
+        const external = { ...conflict.external } as Annotation;
+        const existing = resolved.findIndex(item => this.conflictIdentityMatch(mode, item, external));
+        if (existing >= 0) resolved[existing] = external;
+        else resolved.push(external);
+      }
+    }
+    return resolved;
+  }
+
+  private async mergeExternalBeforeSave(
+    imagePath: string,
+    mode: UnifiedAnnotationMode,
+    local: readonly Annotation[],
+  ): Promise<{ annotations: Annotation[]; mergedExternal: boolean } | undefined> {
+    const diskRevision = this.readSourceRevision(mode);
+    if (!this.pendingExternal.has(mode) && diskRevision === this.sourceRevisions[mode]) {
+      return { annotations: cloneAnnotations(local), mergedExternal: false };
+    }
+
+    const external = this.snapshotForMode(imagePath, mode);
+    if (external.errors.length) {
+      void vscode.window.showErrorMessage(
+        tr('The externally changed annotation file is not valid. Your editor copy was kept and nothing was overwritten.'),
+      );
+      this.pendingExternal.add(mode);
+      return undefined;
+    }
+
+    if (external.revision === this.sourceRevisions[mode]) {
+      this.pendingExternal.delete(mode);
+      return { annotations: cloneAnnotations(local), mergedExternal: false };
+    }
+
+    const result = mergeAnnotations(mode, this.baseSnapshots[mode], local, external.annotations);
+    let annotations = result.merged as Annotation[];
+    if (result.conflicts.length) {
+      const choice = await vscode.window.showWarningMessage(
+        tr('The annotation file changed externally and {count} conflict(s) need a choice. Both versions are still preserved.', {
+          count: String(result.conflicts.length),
+        }),
+        { modal: true },
+        tr('Keep editor conflicts'),
+        tr('Use external conflicts'),
+      );
+      if (!choice) {
+        this.pendingExternal.add(mode);
+        return undefined;
+      }
+      if (choice === tr('Use external conflicts')) {
+        annotations = this.useExternalConflictCandidates(mode, annotations, result.conflicts);
+      }
+    }
+
+    // The external snapshot becomes the new merge base. A later save still
+    // checks the revision again, so another external write cannot be lost.
+    this.baseSnapshots[mode] = cloneAnnotations(external.annotations);
+    this.sourceRevisions[mode] = external.revision;
+    this.pendingExternal.delete(mode);
+    return { annotations, mergedExternal: true };
+  }
+
+  private async persistAnnotationsForMode(
+    imagePath: string,
+    mode: UnifiedAnnotationMode,
+    localAnnotations: Annotation[],
+  ): Promise<boolean> {
+    const prepared = await this.mergeExternalBeforeSave(imagePath, mode, localAnnotations);
+    if (!prepared) return false;
+    const annotations = prepared.annotations;
     try {
       this.saving = true;
       if (mode === 'point') {
@@ -297,24 +451,27 @@ class AnnotationController {
           annotations.map(ann => ({ path: ann.category.trim(), x: ann.x, y: ann.y })),
         );
         if (error) throw new Error(error);
-        if (mode === this.mode) {
-          try { this.sourceRevision = fs.readFileSync(this.sourceFileForMode(mode), 'utf8'); }
-          catch { this.sourceRevision = undefined; }
-        }
-        return true;
+      } else {
+        const data = this.dataForMode(mode)!;
+        data.load();
+        if (data.readErrors.length) throw new Error('parse');
+        const mapped = annotations.map(ann => ({
+          category: mode === 'rect' ? ann.category.trim() : ann.category,
+          x: ann.x, y: ann.y, w: ann.w, h: ann.h,
+        }));
+        const namesError = mode === 'rect' ? boxNamesError(data, imagePath, mapped.map(ann => ann.category)) : undefined;
+        if (namesError) throw new Error(namesError);
+        if (!data.setAnnotationsForImage(imagePath, mapped)) throw new Error('geometry');
+        data.save();
       }
 
-      const data = this.dataForMode(mode)!;
-      data.load();
-      const mapped = annotations.map(ann => ({
-        category: mode === 'rect' ? ann.category.trim() : ann.category,
-        x: ann.x, y: ann.y, w: ann.w, h: ann.h,
-      }));
-      const namesError = mode === 'rect' ? boxNamesError(data, imagePath, mapped.map(ann => ann.category)) : undefined;
-      if (namesError) throw new Error(namesError);
-      if (!data.setAnnotationsForImage(imagePath, mapped)) throw new Error('geometry');
-      data.save();
-      if (mode === this.mode) this.sourceRevision = data.revision;
+      const canonical = this.snapshotForMode(imagePath, mode);
+      if (canonical.errors.length) throw new Error('canonical');
+      this.sourceRevisions[mode] = canonical.revision;
+      this.baseSnapshots[mode] = cloneAnnotations(canonical.annotations);
+      this.localSnapshots[mode] = cloneAnnotations(canonical.annotations);
+      this.pendingExternal.delete(mode);
+      if (prepared.mergedExternal && mode === this.mode) await this.loadImage(imagePath);
       return true;
     } catch (error) {
       console.error('[ok-script] save annotations:', error);
