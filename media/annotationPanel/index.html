@@ -6,6 +6,7 @@
 <link rel="stylesheet" href="__SHARED_TOKENS_URI__">
 <link rel="stylesheet" href="__SHARED_CONTROLS_URI__">
 <link rel="stylesheet" href="__STYLE_URI__">
+<link rel="stylesheet" href="__CONFLICT_STYLE_URI__">
 </head>
 <body>
   <div class="panel-toolbar toolbar">
@@ -41,6 +42,11 @@
     </div>
     <aside class="annotation-list">
       <div class="annotation-list-title" id="annotationListTitle"></div>
+      <section class="conflict-panel" id="conflictPanel" hidden>
+        <div class="conflict-summary" id="conflictSummary"></div>
+        <div class="conflict-rows" id="conflictRows"></div>
+        <button class="mini-btn mini-btn--primary conflict-apply" id="conflictApply" type="button"></button>
+      </section>
       <div class="annotation-list-actions">
         <button class="mini-btn" id="showAllBtn" type="button"></button>
         <button class="mini-btn" id="hideAllBtn" type="button"></button>
@@ -88,6 +94,14 @@
     </div>
   </div>
   <div id="annotationPanelI18n" hidden>__I18N_JSON__</div>
+  <script nonce="__CSP_NONCE__">
+    (() => {
+      const nativeAcquire = window.acquireVsCodeApi;
+      let sharedApi;
+      window.acquireVsCodeApi = () => sharedApi || (sharedApi = nativeAcquire());
+    })();
+  </script>
+  <script src="__CONFLICT_SCRIPT_URI__"></script>
   <script src="__APP_SCRIPT_URI__"></script>
 </body>
 </html>
