@@ -34,12 +34,21 @@
     return n;
   }
 
+  function updateCardMeta(card, meta) {
+    card.title = meta.name + '\n' + meta.width + 'x' + meta.height +
+      (meta.categories.length ? '\n' + meta.categories.join(', ') : '');
+    const name = card.querySelector('.name');
+    const cats = card.querySelector('.cats');
+    const size = card.querySelector('.size');
+    if (name) name.textContent = meta.name;
+    if (cats) cats.textContent = meta.categories.length ? meta.categories.join(', ') : '';
+    if (size) size.textContent = meta.width + 'x' + meta.height;
+  }
+
   function makeCard(meta) {
     const card = document.createElement('div');
     card.className = 'card';
     card.dataset.name = meta.name;
-    card.title = meta.name + '\n' + meta.width + 'x' + meta.height +
-      (meta.categories.length ? '\n' + meta.categories.join(', ') : '');
 
     const box = document.createElement('div');
     box.className = 'thumb-box';
@@ -51,31 +60,28 @@
     const actDiv = document.createElement('div');
     actDiv.className = 'actions thumbnail-actions';
     actDiv.append(
-      ThumbnailActions.button('✎', t('editAnnotations'), () => vscode.postMessage({ type: 'openAnnotation', imagePath: meta.imagePath })),
       ThumbnailActions.button('👁', t('openSourceImage'), () => vscode.postMessage({ type: 'openSource', imagePath: meta.imagePath })),
       ThumbnailActions.button('⇄', t('assetSwapTooltip'), () => openSwapPicker(meta)),
       ThumbnailActions.button('×', t('assetDeleteTooltip'), () => vscode.postMessage({ type: 'deleteImage', imagePath: meta.imagePath })),
     );
-    ['edit', 'open', 'swap', 'delete'].forEach((action, index) => { actDiv.children[index].dataset.action = action; });
+    ['open', 'swap', 'delete'].forEach((action, index) => { actDiv.children[index].dataset.action = action; });
     box.appendChild(actDiv);
 
     const m = document.createElement('div');
     m.className = 'meta';
     const nm = document.createElement('div');
     nm.className = 'name';
-    nm.textContent = meta.name;
     const cats = document.createElement('div');
     cats.className = 'cats';
-    cats.textContent = meta.categories.length ? meta.categories.join(', ') : '';
     const sz = document.createElement('div');
     sz.className = 'size';
-    sz.textContent = meta.width + 'x' + meta.height;
     m.appendChild(nm);
     m.appendChild(cats);
     m.appendChild(sz);
 
     card.appendChild(box);
     card.appendChild(m);
+    updateCardMeta(card, meta);
     card.addEventListener('click', () => {
       vscode.postMessage({ type: 'openAnnotation', imagePath: meta.imagePath });
     });
@@ -115,12 +121,25 @@
   function applyThumb(name, url) {
     thumbUrls.set(name, url);
     const card = cards.get(name);
-    if (card && card.dataset.thumbDone !== '1') {
+    if (card) {
+      const box = card.querySelector('.thumb-box');
+      const current = box && box.querySelector('img');
+      if (current) {
+        if (current.src !== url) current.src = url;
+      } else {
+        fillThumbBox(box, url, name, t('loadFailed'));
+      }
       card.dataset.thumbDone = '1';
-      fillThumbBox(card.querySelector('.thumb-box'), url, name, t('loadFailed'));
     }
     for (const thumb of swapList.querySelectorAll('.swap-thumb')) {
-      if (thumb.dataset.name === name) fillThumbBox(thumb, url, name, '');
+      if (thumb.dataset.name === name) {
+        const current = thumb.querySelector('img');
+        if (current) {
+          if (current.src !== url) current.src = url;
+        } else {
+          fillThumbBox(thumb, url, name, '');
+        }
+      }
     }
   }
 
@@ -244,14 +263,33 @@
     const msg = e.data;
     switch (msg.type) {
       case 'templates': {
-        grid.innerHTML = ''; cards.clear();
-        metas = msg.templates || [];
-        thumbUrls.clear();
-        for (const meta of metas) {
-          const card = makeCard(meta);
-          cards.set(meta.name, card);
-          grid.appendChild(card);
+        const incoming = msg.templates || [];
+        const nextNames = new Set(incoming.map(meta => meta.name));
+        for (const [name, card] of [...cards]) {
+          if (nextNames.has(name)) continue;
+          card.remove();
+          cards.delete(name);
+          thumbUrls.delete(name);
         }
+
+        const nextMetas = [];
+        for (const raw of incoming) {
+          const existingMeta = metas.find(meta => meta.name === raw.name);
+          const meta = existingMeta || raw;
+          if (existingMeta) Object.assign(existingMeta, raw);
+          let card = cards.get(meta.name);
+          if (!card) {
+            card = makeCard(meta);
+            cards.set(meta.name, card);
+          } else {
+            updateCardMeta(card, meta);
+          }
+          // appendChild moves an existing node without recreating it. This keeps the
+          // decoded thumbnail and hover state alive across annotation-only refreshes.
+          grid.appendChild(card);
+          nextMetas.push(meta);
+        }
+        metas = nextMetas;
         applyFilter();
         break;
       }
