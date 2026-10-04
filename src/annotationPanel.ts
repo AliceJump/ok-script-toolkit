@@ -9,7 +9,7 @@ import { readImageSize } from './pngCrop';
 import { injectWebviewLocalization, tr } from './localization';
 import { applySharedAssets, getNonce } from './webviewHtml';
 import { POINT_AUTHORING_FILE, pointPathOccupancy, readPoints, savePointsForImage } from './pointResourceStore';
-import { MergeAnnotation, mergeAnnotations } from './annotationMergePure';
+import { AnnotationConflict, MergeAnnotation, mergeAnnotations } from './annotationMergePure';
 
 export type UnifiedAnnotationMode = 'template' | 'rect' | 'point';
 
@@ -20,6 +20,21 @@ interface ModeSnapshot {
   allCategories: Record<string, string>;
   revision: string | undefined;
   errors: string[];
+}
+
+interface ConflictChoice {
+  key: string;
+  choice: 'local' | 'external';
+}
+
+interface PendingConflictSession {
+  imagePath: string;
+  mode: UnifiedAnnotationMode;
+  externalRevision: string | undefined;
+  externalBase: Annotation[];
+  local: Annotation[];
+  merged: Annotation[];
+  conflicts: AnnotationConflict[];
 }
 
 function normalizeAnnotationMode(value: UnifiedAnnotationMode | boolean): UnifiedAnnotationMode {
@@ -36,6 +51,7 @@ class AnnotationController {
   private generation = 0;
   private disposed = false;
   private saving = false;
+  private pendingConflictSession: PendingConflictSession | undefined;
   private readonly sourceRevisions: Record<UnifiedAnnotationMode, string | undefined> = {
     template: undefined,
     rect: undefined,
@@ -109,6 +125,7 @@ class AnnotationController {
       this.localSnapshots[mode] = [];
     }
     this.pendingExternal.clear();
+    this.pendingConflictSession = undefined;
   }
 
   private dataForMode(mode = this.mode): TemplateAssetData | undefined {
@@ -236,6 +253,9 @@ class AnnotationController {
     this.baseSnapshots[this.mode] = cloneAnnotations(snapshot.annotations);
     this.localSnapshots[this.mode] = cloneAnnotations(snapshot.annotations);
     this.pendingExternal.delete(this.mode);
+    if (this.pendingConflictSession?.mode === this.mode && this.pendingConflictSession.imagePath === imagePath) {
+      this.pendingConflictSession = undefined;
+    }
 
     let imageBase64 = '';
     try {
@@ -284,6 +304,7 @@ class AnnotationController {
     text?: string;
     path?: string;
     boxes?: Array<{ x: number; y: number; w: number; h: number }>;
+    choices?: ConflictChoice[];
   }): Promise<void> {
     switch (msg.type) {
       case 'ready':
@@ -307,6 +328,9 @@ class AnnotationController {
           && await this.persistAnnotationsForMode(this._currentImage, msg.mode, msg.annotations)) {
           this.onSaved(this._currentImage);
         }
+        break;
+      case 'resolveAnnotationConflicts':
+        await this.resolveAnnotationConflicts(msg.choices || []);
         break;
       case 'generateBox': {
         if (!this._currentImage || !msg.path || !msg.boxes?.length) {
@@ -346,6 +370,77 @@ class AnnotationController {
     }
   }
 
+  private conflictItemIndex(
+    mode: UnifiedAnnotationMode,
+    annotations: readonly Annotation[],
+    conflict: AnnotationConflict,
+  ): number {
+    const candidates = [conflict.local, conflict.base, conflict.external].filter(Boolean) as Annotation[];
+    for (let index = 0; index < annotations.length; index++) {
+      const item = annotations[index];
+      if (mode === 'template') {
+        if (candidates.some(candidate => candidate.id === item.id || candidate.category === item.category)) return index;
+      } else if (candidates.some(candidate => candidate.category.trim() === item.category.trim())) {
+        return index;
+      }
+    }
+    return -1;
+  }
+
+  private applyExternalConflictChoice(
+    mode: UnifiedAnnotationMode,
+    annotations: Annotation[],
+    conflict: AnnotationConflict,
+  ): void {
+    const index = this.conflictItemIndex(mode, annotations, conflict);
+    if (!conflict.external) {
+      if (index >= 0) annotations.splice(index, 1);
+      return;
+    }
+    if (index < 0) {
+      annotations.push({ ...conflict.external });
+      return;
+    }
+    for (const field of conflict.fields) {
+      annotations[index][field] = conflict.external[field] as never;
+    }
+  }
+
+  private async resolveAnnotationConflicts(choices: readonly ConflictChoice[]): Promise<void> {
+    const session = this.pendingConflictSession;
+    if (!session) return;
+    const choiceMap = new Map(choices.map(choice => [choice.key, choice.choice]));
+    if (session.conflicts.some(conflict => !choiceMap.has(conflict.key))) return;
+
+    // The file may have changed again while the user was inspecting the two candidates.
+    // Never apply decisions against a stale external revision; rebuild the merge instead.
+    if (this.readSourceRevision(session.mode) !== session.externalRevision) {
+      this.pendingConflictSession = undefined;
+      this.pendingExternal.add(session.mode);
+      await this.mergeExternalBeforeSave(session.imagePath, session.mode, session.local);
+      return;
+    }
+
+    const resolved = cloneAnnotations(session.merged);
+    for (const conflict of session.conflicts) {
+      if (choiceMap.get(conflict.key) === 'external') {
+        this.applyExternalConflictChoice(session.mode, resolved, conflict);
+      }
+    }
+
+    this.baseSnapshots[session.mode] = cloneAnnotations(session.externalBase);
+    this.sourceRevisions[session.mode] = session.externalRevision;
+    this.pendingExternal.delete(session.mode);
+    this.pendingConflictSession = undefined;
+
+    const saved = await this.persistAnnotationsForMode(session.imagePath, session.mode, resolved);
+    if (!saved) return;
+    this.onSaved(session.imagePath);
+    if (this._currentImage === session.imagePath && this.mode === session.mode) {
+      await this.loadImage(session.imagePath);
+    }
+  }
+
   private async mergeExternalBeforeSave(
     imagePath: string,
     mode: UnifiedAnnotationMode,
@@ -371,6 +466,15 @@ class AnnotationController {
     const result = mergeAnnotations(mode, this.baseSnapshots[mode], local, external.annotations);
     if (result.conflicts.length) {
       this.pendingExternal.add(mode);
+      this.pendingConflictSession = {
+        imagePath,
+        mode,
+        externalRevision: external.revision,
+        externalBase: cloneAnnotations(external.annotations),
+        local: cloneAnnotations(local),
+        merged: cloneAnnotations(result.merged as Annotation[]),
+        conflicts: result.conflicts,
+      };
       await this.webview.postMessage({
         type: 'annotationConflicts',
         annotationMode: mode,
@@ -380,7 +484,6 @@ class AnnotationController {
         merged: cloneAnnotations(result.merged as Annotation[]),
         conflicts: result.conflicts,
       });
-      this.showExternalChangeNotice();
       return undefined;
     }
 
@@ -389,6 +492,7 @@ class AnnotationController {
     this.baseSnapshots[mode] = cloneAnnotations(external.annotations);
     this.sourceRevisions[mode] = external.revision;
     this.pendingExternal.delete(mode);
+    this.pendingConflictSession = undefined;
     return { annotations: cloneAnnotations(result.merged as Annotation[]), mergedExternal: true };
   }
 
@@ -514,6 +618,8 @@ export function annotationHtml(cspSource: string, extensionUri: vscode.Uri, webv
       .split('__CSP_NONCE__').join(nonce)
       .split('__CSP_SOURCE__').join(cspSource)
       .split('__STYLE_URI__').join(resource('style.css'))
+      .split('__CONFLICT_STYLE_URI__').join(resource('conflict.css'))
+      .split('__CONFLICT_SCRIPT_URI__').join(resource('conflict.js'))
       .split('__APP_SCRIPT_URI__').join(resource('app.js')),
   ));
 }
