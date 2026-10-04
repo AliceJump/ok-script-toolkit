@@ -221,7 +221,7 @@ export function publishPositionJson(
   if (!projected.file.positions.length) return { ok: false, errors: ['empty'], files: [] };
   const target = ensureInsideRoot(root, relativeTarget);
   if (!target) return { ok: false, errors: ['target'], files: [] };
-  if (positionJsonRequiresOverwriteConfirmation(relativeTarget, fs.isFileSync(target)) && !overwriteExisting) {
+  if (positionJsonRequiresOverwriteConfirmation(relativeTarget, fs.existsSync(target)) && !overwriteExisting) {
     return { ok: false, errors: ['manual'], files: [], protectedFiles: [target] };
   }
   try {
