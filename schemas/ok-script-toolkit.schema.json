@@ -72,6 +72,22 @@
       }
     },
 
+    "position": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Rect / Point 发布到运行时 Position 数据时的项目约定。与模板等配置使用同一优先级：个人 IDE 偏好 > 本项目约定 > 内置默认。",
+      "properties": {
+        "jsonPath": {
+          "type": "string",
+          "description": "Position JSON 输出文件，相对项目根。取值顺序：个人偏好（IDE 设置 `okScriptToolkit.positionJsonPath`）→ 本项 → 内置默认 `src/scene/positions.json`。"
+        },
+        "pythonDirectory": {
+          "type": "string",
+          "description": "Python Position 输出目录，相对项目根；目录内生成 `ScreenRatio.py` 与 `PositionMap.py`。取值顺序：个人偏好（IDE 设置 `okScriptToolkit.positionPythonDirectory`）→ 本项 → 内置默认 `src/scene`。"
+        }
+      }
+    },
+
     "i18n": {
       "type": "object",
       "additionalProperties": false,
