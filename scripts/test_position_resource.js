@@ -258,6 +258,40 @@ function makePublishFixture() {
 
 {
   const { root, directory } = makePublishFixture();
+  const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'ok-position-leaf-outside-'));
+  const scene = path.join(root, publishStore.DEFAULT_POSITION_PY_DIR);
+  const ratioFile = path.join(scene, 'ScreenRatio.py');
+  const outsideFile = path.join(outside, 'outside.py');
+  try {
+    fs.mkdirSync(scene, { recursive: true });
+    const outsideText = `${publishStore.GENERATED_MARKER}\n# outside\n`;
+    fs.writeFileSync(outsideFile, outsideText);
+    let linked = true;
+    try {
+      fs.symlinkSync(outsideFile, ratioFile, 'file');
+    } catch {
+      linked = false;
+    }
+    if (linked) {
+      const result = publishStore.publishPositionPython(
+        root,
+        directory,
+        { rect: true, point: true },
+        publishStore.DEFAULT_POSITION_PY_DIR,
+        true,
+      );
+      assert.strictEqual(result.ok, false);
+      assert.deepStrictEqual(result.errors, ['target']);
+      assert.strictEqual(fs.readFileSync(outsideFile, 'utf8'), outsideText);
+    }
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+    fs.rmSync(outside, { recursive: true, force: true });
+  }
+}
+
+{
+  const { root, directory } = makePublishFixture();
   const scene = path.join(root, 'src', 'scene');
   const ratioFile = path.join(scene, 'ScreenRatio.py');
   const mapFile = path.join(scene, 'PositionMap.py');
