@@ -1,44 +1,71 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
+import {
+  ideSetting,
+  loadProjectConfig,
+  normalizeRelPath,
+  resolveProjectDir,
+  resolveSetting,
+  setIdeSetting,
+} from './projectConfig';
 import { isPathInsideRoot } from './saveToAssetsPure';
 import { DEFAULT_POSITION_JSON, DEFAULT_POSITION_PY_DIR } from './positionPublishStore';
 
 export type PositionPublishTargetKind = 'json' | 'python';
-export type PositionPublishTargetSource = 'Project' | 'Workspace' | 'Personal' | 'Default';
+export type PositionPublishTargetSource = 'Personal' | 'Project' | 'Default';
 
 export interface PositionPublishTargetSetting {
   key: 'positionJsonPath' | 'positionPythonDirectory';
   value: string;
   source: PositionPublishTargetSource;
-  projectValue?: string;
-  workspaceValue?: string;
   personalValue?: string;
+  projectValue?: string;
+}
+
+interface ProjectPositionConvention {
+  jsonPath?: string;
+  pythonDirectory?: string;
 }
 
 const TARGET_SPECS = {
-  json: { key: 'positionJsonPath' as const, fallback: DEFAULT_POSITION_JSON },
-  python: { key: 'positionPythonDirectory' as const, fallback: DEFAULT_POSITION_PY_DIR },
+  json: { key: 'positionJsonPath' as const, field: 'jsonPath' as const, fallback: DEFAULT_POSITION_JSON },
+  python: { key: 'positionPythonDirectory' as const, field: 'pythonDirectory' as const, fallback: DEFAULT_POSITION_PY_DIR },
 };
 
-function clean(value: string | undefined): string | undefined {
-  const trimmed = value?.trim();
-  return trimmed ? trimmed.replace(/\\/g, '/') : undefined;
+function projectConvention(kind: PositionPublishTargetKind, projectRoot: string): string | undefined {
+  const config = loadProjectConfig(projectRoot) as ReturnType<typeof loadProjectConfig> & {
+    position?: ProjectPositionConvention;
+  };
+  const value = config.position?.[TARGET_SPECS[kind].field];
+  return normalizeRelPath(value);
 }
 
-/** Resolve an explicitly configured Position target without letting package.json defaults mask its source. */
+/**
+ * Resolve Position targets through the repository-wide convention chain:
+ * personal IDE preference > ok-script-toolkit.json project convention > built-in default.
+ */
 export function positionPublishTargetSetting(
   kind: PositionPublishTargetKind,
   folderUri: vscode.Uri,
+  projectRoot?: string,
 ): PositionPublishTargetSetting {
   const spec = TARGET_SPECS[kind];
-  const inspected = vscode.workspace.getConfiguration('okScriptToolkit', folderUri).inspect<string>(spec.key);
-  const projectValue = clean(inspected?.workspaceFolderValue);
-  const workspaceValue = clean(inspected?.workspaceValue);
-  const personalValue = clean(inspected?.globalValue);
-  if (projectValue) return { ...spec, value: projectValue, source: 'Project', projectValue, workspaceValue, personalValue };
-  if (workspaceValue) return { ...spec, value: workspaceValue, source: 'Workspace', projectValue, workspaceValue, personalValue };
-  if (personalValue) return { ...spec, value: personalValue, source: 'Personal', projectValue, workspaceValue, personalValue };
-  return { ...spec, value: spec.fallback, source: 'Default', projectValue, workspaceValue, personalValue };
+  const root = projectRoot || resolveProjectDir() || folderUri.fsPath;
+  const personalValue = normalizeRelPath(ideSetting<string>(spec.key, folderUri));
+  const projectValue = projectConvention(kind, root);
+  const resolved = resolveSetting(personalValue, projectValue, spec.fallback);
+  const source: PositionPublishTargetSource = resolved.layer === 'personal'
+    ? 'Personal'
+    : resolved.layer === 'project'
+      ? 'Project'
+      : 'Default';
+  return {
+    key: spec.key,
+    value: resolved.value,
+    source,
+    personalValue,
+    projectValue,
+  };
 }
 
 export function positionPublishTargetInputError(
@@ -56,71 +83,38 @@ export function positionPublishTargetInputError(
   return undefined;
 }
 
-/** Edit or clear a Project/Workspace/Personal override, then return to the caller's publish menu. */
+/** Edit or clear the user's IDE override; project conventions remain read-only, like every other convention field. */
 export async function editPositionPublishTarget(
   kind: PositionPublishTargetKind,
   folderUri: vscode.Uri,
   projectRoot: string,
 ): Promise<void> {
-  const current = positionPublishTargetSetting(kind, folderUri);
-  const cfg = vscode.workspace.getConfiguration('okScriptToolkit', folderUri);
-  type Action = 'project' | 'workspace' | 'personal' | 'resetProject' | 'resetWorkspace' | 'resetPersonal';
+  const current = positionPublishTargetSetting(kind, folderUri, projectRoot);
+  type Action = 'personal' | 'resetPersonal';
   const items: Array<vscode.QuickPickItem & { action?: Action }> = [
     {
-      label: 'Set for this project',
-      description: 'Project override — highest priority',
-      action: 'project',
-    },
-    {
-      label: 'Set for this workspace',
-      description: 'Used when this project has no folder-specific override',
-      action: 'workspace',
-    },
-    {
-      label: 'Set personal default',
-      description: 'Used when no Project / Workspace override exists',
+      label: 'Set my override',
+      description: `Personal preference — highest priority · current: ${current.value}`,
       action: 'personal',
     },
   ];
-  if (current.projectValue || current.workspaceValue || current.personalValue) {
-    items.push({ label: '', kind: vscode.QuickPickItemKind.Separator });
-  }
-  if (current.projectValue) {
-    items.push({
-      label: 'Reset project override',
-      description: 'Fall back to Workspace → Personal → Default',
-      action: 'resetProject',
-    });
-  }
-  if (current.workspaceValue) {
-    items.push({
-      label: 'Reset workspace override',
-      description: 'Fall back to Personal → Default when no project override exists',
-      action: 'resetWorkspace',
-    });
-  }
   if (current.personalValue) {
+    items.push({ label: '', kind: vscode.QuickPickItemKind.Separator });
     items.push({
-      label: 'Reset personal default',
-      description: 'Fall back to the built-in default when no project/workspace value exists',
+      label: 'Reset my override',
+      description: 'Fall back to Project convention → Default',
       action: 'resetPersonal',
     });
   }
 
   const action = await vscode.window.showQuickPick(items, {
-    placeHolder: kind === 'json' ? 'Configure Position JSON path' : 'Configure Position Python output directory',
+    placeHolder: kind === 'json'
+      ? `Configure Position JSON path · ${current.source}`
+      : `Configure Position Python output directory · ${current.source}`,
   });
   if (!action?.action) return;
-  if (action.action === 'resetProject') {
-    await cfg.update(current.key, undefined, vscode.ConfigurationTarget.WorkspaceFolder);
-    return;
-  }
-  if (action.action === 'resetWorkspace') {
-    await cfg.update(current.key, undefined, vscode.ConfigurationTarget.Workspace);
-    return;
-  }
   if (action.action === 'resetPersonal') {
-    await cfg.update(current.key, undefined, vscode.ConfigurationTarget.Global);
+    await setIdeSetting(current.key, undefined, folderUri);
     return;
   }
 
@@ -132,11 +126,5 @@ export async function editPositionPublishTarget(
     validateInput: value => positionPublishTargetInputError(value, projectRoot),
   });
   if (edited === undefined) return;
-  const normalized = edited.trim().replace(/\\/g, '/');
-  const target = action.action === 'project'
-    ? vscode.ConfigurationTarget.WorkspaceFolder
-    : action.action === 'workspace'
-      ? vscode.ConfigurationTarget.Workspace
-      : vscode.ConfigurationTarget.Global;
-  await cfg.update(current.key, normalized, target);
+  await setIdeSetting(current.key, edited.trim().replace(/\\/g, '/'), folderUri);
 }
