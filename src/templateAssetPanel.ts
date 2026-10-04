@@ -15,12 +15,15 @@ import { onAnnotationDataChanged, sameAnnotationFile } from './cocoAnnotationDat
 import { isSameSize, scaleBoxes, SwapBox } from './annotationSwapPure';
 import { applySharedAssets, getNonce } from './webviewHtml';
 import {
-  DEFAULT_POSITION_JSON,
-  DEFAULT_POSITION_PY_DIR,
   PositionPublishFormat,
   PositionPublishOptions,
   publishPositionsByFormat,
 } from './positionPublishStore';
+import {
+  editPositionPublishTarget,
+  PositionPublishTargetKind,
+  positionPublishTargetSetting,
+} from './positionPublishSettings';
 
 /* ---------------- 控制器 ---------------- */
 
@@ -289,6 +292,60 @@ class AssetGalleryController {
   }
 
   private async handlePublishPositions(selection: { rect: boolean; point: boolean }): Promise<void> {
+    const folder = vscode.workspace.workspaceFolders?.[0];
+    if (!folder) {
+      void vscode.window.showWarningMessage(tr('No workspace folder open.'));
+      return;
+    }
+    const root = this.data.root || folder.uri.fsPath;
+    const folderUri = folder.uri;
+    let format: PositionPublishFormat | undefined;
+    let jsonTarget = positionPublishTargetSetting('json', folderUri);
+    let pythonTarget = positionPublishTargetSetting('python', folderUri);
+
+    for (;;) {
+      jsonTarget = positionPublishTargetSetting('json', folderUri);
+      pythonTarget = positionPublishTargetSetting('python', folderUri);
+      const pythonDir = pythonTarget.value.replace(/\/+$/, '');
+      const items: Array<vscode.QuickPickItem & {
+        format?: PositionPublishFormat;
+        edit?: PositionPublishTargetKind;
+      }> = [
+        {
+          label: 'JSON',
+          description: `${jsonTarget.value} · ${jsonTarget.source}`,
+          format: 'json',
+        },
+        {
+          label: 'Python data + parser',
+          description: `${pythonDir}/ScreenRatio.py + PositionMap.py · ${pythonTarget.source}`,
+          format: 'python',
+        },
+        { label: '', kind: vscode.QuickPickItemKind.Separator },
+        {
+          label: '$(settings-gear) JSON output path',
+          description: `${jsonTarget.value} · ${jsonTarget.source}`,
+          edit: 'json',
+        },
+        {
+          label: '$(settings-gear) Python output directory',
+          description: `${pythonTarget.value} · ${pythonTarget.source}`,
+          edit: 'python',
+        },
+      ];
+      const choice = await vscode.window.showQuickPick(items, {
+        placeHolder: 'Position export format — paths can be configured below',
+      });
+      if (!choice) return;
+      if (choice.edit) {
+        await editPositionPublishTarget(choice.edit, folderUri, root);
+        continue;
+      }
+      if (!choice.format) continue;
+      format = choice.format;
+      break;
+    }
+
     if (selection.rect !== selection.point) {
       const publishSelected = 'Publish selected positions';
       const confirm = await vscode.window.showWarningMessage(
@@ -299,27 +356,13 @@ class AssetGalleryController {
       if (confirm !== publishSelected) return;
     }
 
-    const choice = await vscode.window.showQuickPick(
-      [
-        { label: 'JSON', description: DEFAULT_POSITION_JSON, format: 'json' as PositionPublishFormat },
-        {
-          label: 'Python data + parser',
-          description: `${DEFAULT_POSITION_PY_DIR}/ScreenRatio.py + PositionMap.py`,
-          format: 'python' as PositionPublishFormat,
-        },
-      ],
-      { placeHolder: 'Position export format' },
-    );
-    if (!choice) return;
-
-    const root = this.data.root;
     const directory = templatesDirectory(root);
     const options: PositionPublishOptions = {
       ...selection,
-      jsonTarget: DEFAULT_POSITION_JSON,
-      pythonTargetDir: DEFAULT_POSITION_PY_DIR,
+      jsonTarget: jsonTarget.value,
+      pythonTargetDir: pythonTarget.value,
     };
-    let result = publishPositionsByFormat(root, directory, choice.format, options);
+    let result = publishPositionsByFormat(root, directory, format, options);
     if (!result.ok && result.errors.includes('manual') && result.protectedFiles?.length) {
       const names = result.protectedFiles.map(file => path.relative(root, file)).join('\n');
       const overwrite = await vscode.window.showWarningMessage(
@@ -328,7 +371,7 @@ class AssetGalleryController {
         'Overwrite',
       );
       if (overwrite !== 'Overwrite') return;
-      result = publishPositionsByFormat(root, directory, choice.format, {
+      result = publishPositionsByFormat(root, directory, format, {
         ...options,
         overwriteManual: true,
       });
