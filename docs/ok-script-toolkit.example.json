@@ -24,6 +24,11 @@
     "cocoAnnotations": "assets/coco_annotations.json"
   },
 
+  "position": {
+    "jsonPath": "src/scene/positions.json",
+    "pythonDirectory": "src/scene"
+  },
+
   "i18n": {
     "enabled": true,
     "langDirectory": "assets/lang",
