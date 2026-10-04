@@ -2,10 +2,9 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { TemplateAssetData } from './templateAssetData';
-import { addBox, pixelUnionFromAnnotations, readAuthoringFile, boxNamesError } from './boxResourceStore';
+import { readAuthoringFile, boxNamesError } from './boxResourceStore';
 import { AUTHORING_FILE_NAME, BOX_PATH_SEGMENT_SOURCE } from './boxResourcePure';
 import { onAnnotationDataChanged, sameAnnotationFile } from './cocoAnnotationData';
-import { readImageSize } from './pngCrop';
 import { injectWebviewLocalization, tr } from './localization';
 import { applySharedAssets, getNonce } from './webviewHtml';
 import { POINT_AUTHORING_FILE, pointPathOccupancy, readPoints, savePointsForImage } from './pointResourceStore';
@@ -302,8 +301,6 @@ class AnnotationController {
     index?: number;
     category?: string;
     text?: string;
-    path?: string;
-    boxes?: Array<{ x: number; y: number; w: number; h: number }>;
     choices?: ConflictChoice[];
   }): Promise<void> {
     switch (msg.type) {
@@ -332,21 +329,6 @@ class AnnotationController {
       case 'resolveAnnotationConflicts':
         await this.resolveAnnotationConflicts(msg.choices || []);
         break;
-      case 'generateBox': {
-        if (!this._currentImage || !msg.path || !msg.boxes?.length) {
-          void this.webview.postMessage({ type: 'generateBoxResult', ok: false, error: 'path' });
-          break;
-        }
-        let size: { width: number; height: number } | undefined;
-        try { size = readImageSize(fs.readFileSync(this._currentImage)); } catch { size = undefined; }
-        const union = size ? pixelUnionFromAnnotations(msg.boxes) : undefined;
-        const error = union
-          ? addBox(this.root, path.relative(this.root, this.templateData.templatesDir), msg.path, path.basename(this._currentImage), union)
-          : 'image';
-        void this.webview.postMessage({ type: 'generateBoxResult', ok: !error, error: error || '' });
-        if (!error) this.onSaved(this._currentImage);
-        break;
-      }
       case 'navigate':
         if (msg.index !== undefined && msg.index >= 0 && msg.index < this._imageList.length) await this.loadImage(this._imageList[msg.index]);
         break;
