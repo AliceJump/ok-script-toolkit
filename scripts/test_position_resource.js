@@ -79,6 +79,22 @@ assert.deepStrictEqual(
   publishStore.positionNamespaceConflicts(['screen.group'], ['screen.group.child']),
   ['prefix:screen.group'],
 );
+assert.strictEqual(
+  publishStore.positionJsonRequiresOverwriteConfirmation(publishStore.DEFAULT_POSITION_JSON, true),
+  false,
+);
+assert.strictEqual(
+  publishStore.positionJsonRequiresOverwriteConfirmation('./src\\scene/positions.json', true),
+  false,
+);
+assert.strictEqual(
+  publishStore.positionJsonRequiresOverwriteConfirmation('generated/positions.json', false),
+  false,
+);
+assert.strictEqual(
+  publishStore.positionJsonRequiresOverwriteConfirmation('generated/positions.json', true),
+  true,
+);
 
 function pointCoco() {
   return {
@@ -150,6 +166,39 @@ function makePublishFixture() {
     fs.writeFileSync(path.join(root, directory, 'points.json'), JSON.stringify(points, null, 2));
     const rectOnly = publishStore.collectPositionRuntime(root, directory, { rect: true, point: false });
     assert(rectOnly.errors.includes('duplicate:screen.box'), 'partial publish still checks a readable unselected namespace');
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+}
+
+{
+  const { root, directory } = makePublishFixture();
+  try {
+    const relativeTarget = 'generated/existing.json';
+    const target = path.join(root, relativeTarget);
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.writeFileSync(target, '{"important":true}\n');
+
+    const blocked = publishStore.publishPositionJson(
+      root,
+      directory,
+      { rect: true, point: true },
+      relativeTarget,
+    );
+    assert.strictEqual(blocked.ok, false);
+    assert.deepStrictEqual(blocked.errors, ['manual']);
+    assert.deepStrictEqual(blocked.protectedFiles, [target]);
+    assert.strictEqual(fs.readFileSync(target, 'utf8'), '{"important":true}\n');
+
+    const overwritten = publishStore.publishPositionJson(
+      root,
+      directory,
+      { rect: true, point: true },
+      relativeTarget,
+      true,
+    );
+    assert.strictEqual(overwritten.ok, true);
+    assert(fs.readFileSync(target, 'utf8').includes('"positions"'));
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
