@@ -276,7 +276,8 @@ class AnnotationController {
 
   reloadIfShowing(imagePaths: readonly string[]): void {
     if (this.disposed || !this._currentImage || !imagePaths.includes(this._currentImage)) return;
-    void this.loadImage(this._currentImage);
+    this.pendingExternal.add(this.mode);
+    void this.webview.postMessage({ type: 'externalSourceChanged', mode: this.mode });
   }
 
   attachHtml(): void {
