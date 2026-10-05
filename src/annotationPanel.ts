@@ -8,7 +8,7 @@ import { onAnnotationDataChanged, sameAnnotationFile } from './cocoAnnotationDat
 import { tr } from './localization';
 import { injectAnnotationWebviewLocalization } from './annotationLocalization';
 import { applySharedAssets, getNonce } from './webviewHtml';
-import { POINT_AUTHORING_FILE, pointPathOccupancy, readPoints, savePointsForImage } from './pointResourceStore';
+import { POINT_AUTHORING_FILE, pointPathOccupancy, readPoints, savePointsForImageIfRevision } from './pointResourceStore';
 import {
   AnnotationConflict,
   MergeAnnotation,
@@ -591,26 +591,30 @@ class AnnotationController {
     mode: UnifiedAnnotationMode,
     prepared: PreparedAnnotationSave,
   ): Promise<AnnotationWriteResult> {
-    if (this.readSourceRevision(mode) !== prepared.expectedRevision) {
-      this.pendingExternal.add(mode);
-      return 'changed';
-    }
-
     const annotations = prepared.annotations;
     try {
       this.saving = true;
       if (mode === 'point') {
-        const error = savePointsForImage(
+        const error = savePointsForImageIfRevision(
           this.root,
           path.relative(this.root, this.templateData.templatesDir),
           imagePath,
           annotations.map(ann => ({ path: ann.category.trim(), x: ann.x, y: ann.y })),
+          prepared.expectedRevision,
         );
+        if (error === 'changed') {
+          this.pendingExternal.add(mode);
+          return 'changed';
+        }
         if (error) throw new Error(error);
       } else {
         const data = this.dataForMode(mode)!;
         data.load();
         if (data.readErrors.length) throw new Error('parse');
+        if (data.revision !== prepared.expectedRevision) {
+          this.pendingExternal.add(mode);
+          return 'changed';
+        }
         const mapped = annotations.map(ann => ({
           category: mode === 'rect' ? ann.category.trim() : ann.category,
           x: ann.x, y: ann.y, w: ann.w, h: ann.h,
@@ -618,7 +622,10 @@ class AnnotationController {
         const namesError = mode === 'rect' ? boxNamesError(data, imagePath, mapped.map(ann => ann.category)) : undefined;
         if (namesError) throw new Error(namesError);
         if (!data.setAnnotationsForImage(imagePath, mapped)) throw new Error('geometry');
-        data.save();
+        if (!data.saveIfRevision(prepared.expectedRevision)) {
+          this.pendingExternal.add(mode);
+          return 'changed';
+        }
       }
 
       const canonical = this.snapshotForMode(imagePath, mode);
