@@ -64,6 +64,26 @@ const byName = new Map(raw.annotations.map(ann => [names.get(ann.category_id), a
 assert.deepStrictEqual(byName.get('screen.existing'), [10,20,0,0]);
 assert.deepStrictEqual(byName.get('screen.new'), [30,40,0,0]);
 
+// Revision-guarded point saves must not overwrite a newer external revision.
+const pointRevision = fs.readFileSync(pointFile, 'utf8');
+const externalPointRevision = pointRevision + '\n';
+fs.writeFileSync(pointFile, externalPointRevision, 'utf8');
+assert.strictEqual(points.savePointsForImageIfRevision(project, directory, image, [
+  { path: 'screen.existing', x: 11, y: 21 },
+  { path: 'screen.new', x: 31, y: 41 },
+], pointRevision), 'changed');
+assert.strictEqual(fs.readFileSync(pointFile, 'utf8'), externalPointRevision,
+  'stale point save preserves the external revision');
+assert.strictEqual(points.savePointsForImageIfRevision(project, directory, image, [
+  { path: 'screen.existing', x: 11, y: 21 },
+  { path: 'screen.new', x: 31, y: 41 },
+], externalPointRevision), undefined);
+read = points.readPoints(project, directory);
+assert.deepStrictEqual(read.file.points.map(point => [point.path, point.x, point.y]).sort(), [
+  ['screen.existing', 11, 21],
+  ['screen.new', 31, 41],
+]);
+
 read = points.readPoints(project, directory);
 assert.deepStrictEqual(read.errors, []);
 assert.strictEqual(read.file.points.length, 2);
