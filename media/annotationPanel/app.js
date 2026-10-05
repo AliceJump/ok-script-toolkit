@@ -859,7 +859,7 @@
       const left = ['left','tl','bl'].includes(h), right = ['right','tr','br'].includes(h);
       const top = ['top','tl','tr'].includes(h), bottom = ['bottom','bl','br'].includes(h);
       if (left) { nx += dx; nw -= dx; } if (right) nw += dx;
-      if (top) { ny += dx; nh -= dy; } if (bottom) nh += dy;
+      if (top) { ny += dy; nh -= dy; } if (bottom) nh += dy;
       nw = Math.max(5, nw); nh = Math.max(5, nh);
     }
     nx = Math.max(0, Math.min(nx, img.width - Math.max(1, nw)));
