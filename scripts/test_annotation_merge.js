@@ -20,6 +20,7 @@ const ann = (id, category, x, y, w = 10, h = 10) => ({ id, category, x, y, w, h 
   const result = mergeAnnotations('template', base, local, external);
   assert.strictEqual(result.conflicts.length, 1);
   assert.deepStrictEqual(result.conflicts[0].fields, ['x']);
+  assert.strictEqual(result.conflicts[0].mergedIndex, 0);
   assert.strictEqual(result.merged[0].x, 30, 'local candidate stays editable while external candidate is retained in conflict data');
 }
 
@@ -31,6 +32,7 @@ const ann = (id, category, x, y, w = 10, h = 10) => ({ id, category, x, y, w, h 
   assert.strictEqual(result.conflicts.length, 1);
   assert.strictEqual(result.conflicts[0].kind, 'delete-modify');
   assert.strictEqual(result.conflicts[0].local, undefined);
+  assert.strictEqual(result.conflicts[0].mergedIndex, undefined);
 }
 
 {
@@ -69,33 +71,26 @@ const ann = (id, category, x, y, w = 10, h = 10) => ({ id, category, x, y, w, h 
 }
 
 {
-  const conflict = {
-    key: 'template:5:shared.category',
-    kind: 'modify-modify',
-    fields: ['x'],
-    base: ann(5, 'shared.category', 10, 10),
-    local: ann(5, 'shared.category', 20, 10),
-    external: ann(5, 'shared.category', 30, 10),
-  };
-  const merged = [
-    ann(3, 'shared.category', 5, 5),
-    ann(5, 'shared.category', 20, 10),
-  ];
-  assert.strictEqual(findAnnotationConflictItemIndex('template', merged, conflict), 1,
-    'template conflict lookup prefers exact id even when an earlier annotation shares the category');
+  const base = [ann(1, 'screen.a', 10, 10)];
+  const local = [ann(2, 'screen.b', 50, 50)];
+  const external = [ann(2, 'screen.a', 15, 10)];
+  const result = mergeAnnotations('template', base, local, external);
+  const conflict = result.conflicts.find(item => item.kind === 'delete-modify');
+  assert(conflict, 'delete-modify conflict is preserved');
+  assert.strictEqual(conflict.mergedIndex, undefined, 'local deletion has no merge-owned target slot');
+  assert.strictEqual(findAnnotationConflictItemIndex('template', result.merged, conflict), -1,
+    'external candidate id cannot retarget the conflict to unrelated local shape');
+  assert.strictEqual(result.merged.length, 1);
+  assert.strictEqual(result.merged[0].category, 'screen.b');
 }
 
 {
-  const conflict = {
-    key: 'template:5:shared.category',
-    kind: 'delete-modify',
-    fields: ['x'],
-    base: ann(5, 'shared.category', 10, 10),
-    external: ann(5, 'shared.category', 30, 10),
-  };
-  const merged = [ann(3, 'shared.category', 5, 5)];
-  assert.strictEqual(findAnnotationConflictItemIndex('template', merged, conflict), -1,
-    'template local deletion never falls back to a different same-category annotation');
+  const base = [ann(1, 'screen.a', 10, 10), ann(2, 'screen.b', 20, 20)];
+  const local = [ann(1, 'screen.a', 11, 10), ann(2, 'screen.b', 21, 20)];
+  const result = mergeAnnotations('rect', base, local, []);
+  assert.strictEqual(result.conflicts.length, 2);
+  assert(result.conflicts[0].mergedIndex > result.conflicts[1].mergedIndex,
+    'conflicts are ordered from higher to lower merge slot so removals cannot shift later targets');
 }
 
 console.log('annotation merge tests passed');

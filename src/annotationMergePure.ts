@@ -18,6 +18,7 @@ export interface AnnotationConflict {
   base?: MergeAnnotation;
   local?: MergeAnnotation;
   external?: MergeAnnotation;
+  mergedIndex?: number;
 }
 
 export interface AnnotationMergeResult {
@@ -164,27 +165,16 @@ function additionMatch(
 }
 
 /**
- * Locate the annotation represented by one merge conflict.
- * Template annotations can share categories, so stable ids always win there.
- * A local deletion must not fall back to another same-category template item.
+ * Locate the exact merge-owned slot represented by one conflict.
+ * The merge phase records this identity before branch-local ids can collide.
  */
 export function findAnnotationConflictItemIndex(
-  mode: AnnotationMergeMode,
+  _mode: AnnotationMergeMode,
   annotations: readonly MergeAnnotation[],
   conflict: AnnotationConflict,
 ): number {
-  const candidates = [conflict.local, conflict.base, conflict.external].filter(Boolean) as MergeAnnotation[];
-  if (mode === 'template') {
-    for (const candidate of candidates) {
-      const index = annotations.findIndex(item => item.id === candidate.id);
-      if (index >= 0) return index;
-    }
-    if (conflict.kind === 'delete-modify' && !conflict.local) return -1;
-  }
-  for (let index = 0; index < annotations.length; index++) {
-    if (candidates.some(candidate => categoryKey(candidate) === categoryKey(annotations[index]))) return index;
-  }
-  return -1;
+  const index = conflict.mergedIndex;
+  return index !== undefined && index >= 0 && index < annotations.length ? index : -1;
 }
 
 /**
@@ -220,8 +210,12 @@ export function mergeAnnotations(
       localItem,
       externalItem,
     );
-    if (result.annotation) merged.push(result.annotation);
-    if (result.conflict) conflicts.push(result.conflict);
+    let mergedIndex: number | undefined;
+    if (result.annotation) {
+      merged.push(result.annotation);
+      mergedIndex = merged.length - 1;
+    }
+    if (result.conflict) conflicts.push({ ...result.conflict, mergedIndex });
   }
 
   for (let localIndex = 0; localIndex < local.length; localIndex++) {
@@ -247,6 +241,7 @@ export function mergeAnnotations(
       fields: FIELDS.filter(field => !sameValue(localItem[field], externalItem[field])),
       local: cloneAnnotation(localItem),
       external: cloneAnnotation(externalItem),
+      mergedIndex: merged.length - 1,
     });
   }
 
@@ -254,5 +249,6 @@ export function mergeAnnotations(
     if (!usedExternal.has(externalIndex)) merged.push({ ...external[externalIndex] });
   }
 
+  conflicts.sort((a, b) => (b.mergedIndex ?? -1) - (a.mergedIndex ?? -1));
   return { merged, conflicts };
 }
