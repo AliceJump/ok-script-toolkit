@@ -192,6 +192,7 @@ export function writeAnnotationTextIfUnchanged(
   const previous = path.join(path.dirname(file), '.' + path.basename(file) + '.' + token + '.previous');
   let movedPrevious = false;
   let saved = false;
+  let operationError: unknown;
   try {
     fs.writeFileSync(temp, text, 'utf8');
     if (expectedRevision === undefined) {
@@ -207,15 +208,29 @@ export function writeAnnotationTextIfUnchanged(
         saved = linkPreparedFile(temp, file);
       }
     }
-  } finally {
-    if (movedPrevious && !fs.existsSync(file)) {
-      try { fs.linkSync(previous, file); } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
-      }
-    }
-    try { fs.rmSync(previous, { force: true }); } catch { /* preserve the write error */ }
-    try { fs.rmSync(temp, { force: true }); } catch { /* preserve the write error */ }
+  } catch (error) {
+    operationError = error;
   }
+
+  let recoveryError: unknown;
+  let removePrevious = !movedPrevious || fs.existsSync(file);
+  if (movedPrevious && !removePrevious) {
+    try {
+      const restored = linkPreparedFile(previous, file);
+      removePrevious = restored || fs.existsSync(file);
+      if (!removePrevious) recoveryError = new Error('Could not restore previous annotation file');
+    } catch (error) {
+      recoveryError = error;
+      removePrevious = false;
+    }
+  }
+  if (removePrevious) {
+    try { fs.rmSync(previous, { force: true }); } catch { /* preserve the write/recovery error */ }
+  }
+  try { fs.rmSync(temp, { force: true }); } catch { /* preserve the write/recovery error */ }
+
+  if (operationError) throw operationError;
+  if (recoveryError) throw recoveryError;
   if (saved && notify) notifyAnnotationDataChanged(file);
   return saved;
 }
