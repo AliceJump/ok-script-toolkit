@@ -8,7 +8,7 @@ const zlib = require('zlib');
 
 const pure = require('../out/boxResourcePure');
 const store = require('../out/boxResourceStore');
-const { CocoAnnotationData } = require('../out/cocoAnnotationData');
+const { CocoAnnotationData, writeAnnotationTextIfUnchanged } = require('../out/cocoAnnotationData');
 
 const CRC_TABLE = (() => {
   const table = new Int32Array(256);
@@ -56,6 +56,30 @@ writePng(path.join(folder, 'b.png'), 200, 200);
 try {
   const source = path.join(folder, 'boxes.json');
 
+  // The compare-and-write handoff must preserve a writer that recreates the path
+  // after the expected revision was moved aside but before our prepared file is installed.
+  const casFile = path.join(folder, 'cas.json');
+  fs.writeFileSync(casFile, 'expected', 'utf8');
+  const originalLink = fs.linkSync;
+  let injectedExternalWrite = false;
+  fs.linkSync = function (from, to) {
+    if (!injectedExternalWrite && path.resolve(String(to)) === path.resolve(casFile)) {
+      injectedExternalWrite = true;
+      fs.writeFileSync(casFile, 'external', 'utf8');
+      const error = new Error('already exists');
+      error.code = 'EEXIST';
+      throw error;
+    }
+    return originalLink.apply(this, arguments);
+  };
+  try {
+    assert.strictEqual(writeAnnotationTextIfUnchanged(casFile, 'ours', 'expected', false), false);
+  } finally {
+    fs.linkSync = originalLink;
+  }
+  assert.strictEqual(fs.readFileSync(casFile, 'utf8'), 'external',
+    'a writer that recreates the path during handoff must win instead of being overwritten');
+
   assert.deepStrictEqual(store.authoringReadErrors(project, directory), []);
   assert.deepStrictEqual(store.readAuthoringFile(project, directory), { images: [], boxes: [] });
 
@@ -73,6 +97,16 @@ try {
   assert(Array.isArray(raw.categories));
   assert(!Object.prototype.hasOwnProperty.call(raw, 'version'));
   assert(!Object.prototype.hasOwnProperty.call(raw, 'boxes'));
+
+  // CocoAnnotationData guarded saves use the same expected revision and leave newer disk data intact.
+  const guardedData = new CocoAnnotationData(project, directory, 'boxes.json');
+  guardedData.load();
+  const guardedRevision = guardedData.revision;
+  const externalRevision = guardedRevision + '\n';
+  fs.writeFileSync(source, externalRevision, 'utf8');
+  assert.strictEqual(guardedData.saveIfRevision(guardedRevision), false);
+  assert.strictEqual(fs.readFileSync(source, 'utf8'), externalRevision);
+  fs.writeFileSync(source, guardedRevision, 'utf8');
 
   const authoring = store.readAuthoringFile(project, directory);
   assert.deepStrictEqual(authoring.boxes.map(box => box.path).sort(), ['panels.allowed', 'screen.first']);
