@@ -486,7 +486,9 @@ class AnnotationController {
         break;
       }
       case 'retryLoad':
-        if (msg.imagePath === this._currentImage && msg.mode === this.mode) await this.loadImage(msg.imagePath);
+        if (msg.imagePath && msg.mode && msg.imagePath === this._currentImage && msg.mode === this.mode) {
+          await this.loadImage(msg.imagePath);
+        }
         break;
       case 'resolveAnnotationConflicts':
         await this.resolveAnnotationConflicts(msg.choices || [], msg.conflictSessionId);
