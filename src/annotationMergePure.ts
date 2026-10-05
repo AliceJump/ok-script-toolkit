@@ -67,9 +67,11 @@ function findMatch(
     if (byId >= 0) return byId;
   }
 
-  const key = categoryKey(base);
-  const byCategory = available(candidate => categoryKey(candidate) === key);
-  if (byCategory >= 0) return byCategory;
+  if (mode !== 'template') {
+    const key = categoryKey(base);
+    const byCategory = available(candidate => categoryKey(candidate) === key);
+    if (byCategory >= 0) return byCategory;
+  }
 
   if (mode === 'template') {
     const byGeometry = available(candidate => geometryEqual(candidate, base));

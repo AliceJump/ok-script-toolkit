@@ -3,8 +3,6 @@
   const nativePostMessage = vscode.postMessage.bind(vscode);
   const canvas = document.getElementById('canvas');
   const bboxModal = document.getElementById('bboxModal');
-  const drawBtn = document.getElementById('drawBtn');
-  const coordBtn = document.getElementById('coordBtn');
   const pendingModes = new Set();
   const annotationSnapshots = new Map();
   let pointerActive = false;
@@ -23,10 +21,7 @@
   };
 
   function hasTransientEdit() {
-    return pointerActive
-      || !!bboxModal?.classList.contains('visible')
-      || !!drawBtn?.classList.contains('active')
-      || !!coordBtn?.classList.contains('active');
+    return pointerActive || !!bboxModal?.classList.contains('visible');
   }
 
   function reportPending() {

@@ -202,6 +202,13 @@ function load(mode, annotations) {
   assert(last('externalEditorState').annotations?.[0]?.category === 'screen.rect_one',
     'idle external sync reports the exact editor-owned annotation snapshot');
 
+  document.getElementById('drawBtn').click();
+  message({ type: 'externalSourceChanged', mode: 'rect' });
+  await flush();
+  assert(last('externalEditorState').transient === false,
+    'selecting the draw tool alone does not indefinitely defer an external sync');
+  document.getElementById('drawBtn').click();
+
   // The first rect starts at widget x=160,y=60 for a 1000x1000 image fitted into 800x600.
   mouse('mousedown', 170, 70);
   message({ type: 'externalSourceChanged', mode: 'rect' });

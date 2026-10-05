@@ -473,7 +473,11 @@ class AnnotationController {
     if (session.conflicts.some(conflict => !choiceMap.has(conflict.key))) return;
 
     this.resolvingConflictSessionId = session.sessionId;
-    this.generation++;
+    const resolutionGeneration = ++this.generation;
+    const sessionStillCurrent = (): boolean => !this.disposed
+      && this.generation === resolutionGeneration
+      && this._currentImage === session.imagePath
+      && this.mode === session.mode;
     try {
       // The file may have changed again while the user was inspecting the two candidates.
       // Never apply decisions against a stale external revision; rebuild the merge instead.
@@ -481,6 +485,7 @@ class AnnotationController {
         this.pendingConflictSession = undefined;
         this.pendingExternal.add(session.mode);
         await this.webview.postMessage({ type: 'clearAnnotationConflicts', conflictSessionId: session.sessionId });
+        if (!sessionStillCurrent()) return;
         const saved = await this.persistAnnotationsForMode(session.imagePath, session.mode, session.local);
         if (!saved) return;
         this.onSaved(session.imagePath);
@@ -499,10 +504,12 @@ class AnnotationController {
         mergedExternal: true,
         expectedRevision: session.externalRevision,
       });
+      if (!sessionStillCurrent()) return;
       if (outcome === 'changed') {
         this.pendingConflictSession = undefined;
         this.pendingExternal.add(session.mode);
         await this.webview.postMessage({ type: 'clearAnnotationConflicts', conflictSessionId: session.sessionId });
+        if (!sessionStillCurrent()) return;
         const saved = await this.persistAnnotationsForMode(session.imagePath, session.mode, session.local);
         if (saved) this.onSaved(session.imagePath);
         return;
