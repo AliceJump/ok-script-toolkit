@@ -10,18 +10,18 @@
 </head>
 <body>
   <div class="panel-toolbar toolbar">
-    <div class="annotation-mode-switch" role="group" aria-label="Annotation mode">
+    <div class="annotation-mode-switch" id="annotationModeGroup" role="group" aria-label="Annotation mode">
       <button class="mini-btn" id="templateModeBtn" type="button">Template</button>
       <button class="mini-btn" id="rectModeBtn" type="button">Box</button>
       <button class="mini-btn" id="pointModeBtn" type="button">Point</button>
     </div>
-    <label class="shared-history-toggle" title="Share undo/redo history between template, box and point modes">
+    <label class="shared-history-toggle" id="sharedHistoryWrap" title="Share undo/redo history between template, box and point modes">
       <input id="sharedHistoryChk" type="checkbox" checked />
       <span id="sharedHistoryLabel">Shared undo history</span>
     </label>
-    <label class="shared-history-toggle" title="Unchecked: x1,y1,x2,y2. Checked: x,y,w,h. This also resolves ambiguous unnamed four-number pastes.">
+    <label class="shared-history-toggle" id="coordPreferenceWrap" title="Unchecked: x1,y1,x2,y2. Checked: x,y,w,h. This also resolves ambiguous unnamed four-number pastes.">
       <input id="coordPreferXywhChk" type="checkbox" />
-      <span>XYWH</span>
+      <span id="coordPreferLabel">XYWH</span>
     </label>
     <span class="toolbar-separator" aria-hidden="true"></span>
     <button class="mini-btn" id="drawBtn">Draw (R)</button>
