@@ -106,6 +106,7 @@
       currentImagePath = imagePath;
       editorVersions.set(key, expectedEditorVersion);
       annotationSnapshots.set(key, cloneAnnotations(message.annotations));
+      rejectedLoads.delete(key);
       if (message.loadRequestId) {
         queueMicrotask(() => nativePostMessage({
           type: 'loadAccepted',
@@ -122,7 +123,7 @@
       const key = stateKey(message.imagePath || '', message.mode);
       const remaining = Math.max(0, (pendingSaveCounts.get(key) || 0) - 1);
       pendingSaveCounts.set(key, remaining);
-      if (remaining === 0 && rejectedLoads.has(key)) {
+      if (remaining === 0 && rejectedLoads.has(key) && message.saved !== false) {
         const rejected = rejectedLoads.get(key);
         rejectedLoads.delete(key);
         nativePostMessage({ type: 'retryLoad', imagePath: rejected.imagePath, mode: rejected.mode });
