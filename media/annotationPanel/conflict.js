@@ -1,5 +1,7 @@
 (() => {
   const vscode = acquireVsCodeApi();
+  const I18N = JSON.parse(document.getElementById('annotationPanelI18n')?.textContent || '{}');
+  const t = (key, args = {}) => (I18N[key] || key).replace(/\{(\w+)\}/g, (_, name) => String(args[name] ?? '{' + name + '}'));
   const canvas = document.getElementById('canvas');
   const wrap = canvas?.parentElement;
   const panel = document.getElementById('conflictPanel');
@@ -7,35 +9,6 @@
   const apply = document.getElementById('conflictApply');
   const summary = document.getElementById('conflictSummary');
   if (!canvas || !wrap || !panel || !rows || !apply || !summary) return;
-
-  const lang = (navigator.language || 'en').toLowerCase();
-  const copies = {
-    zh: {
-      title: '标注冲突', current: '当前编辑', external: '外部修改', fields: '冲突字段',
-      apply: '应用选择并保存', hint: '两边都会保留到你完成选择；未解决前不会写盘。',
-    },
-    ja: {
-      title: 'アノテーション競合', current: '編集中', external: '外部変更', fields: '競合フィールド',
-      apply: '選択を適用して保存', hint: '選択が完了するまで両方を保持し、ディスクには書き込みません。',
-    },
-    ko: {
-      title: '주석 충돌', current: '현재 편집', external: '외부 변경', fields: '충돌 필드',
-      apply: '선택 적용 및 저장', hint: '선택이 끝날 때까지 두 버전을 모두 유지하며 디스크에 쓰지 않습니다.',
-    },
-    es: {
-      title: 'Conflicto de anotaciones', current: 'Edición actual', external: 'Cambio externo', fields: 'Campos en conflicto',
-      apply: 'Aplicar selección y guardar', hint: 'Ambas versiones se conservan hasta resolver el conflicto; no se escribe nada antes.',
-    },
-    en: {
-      title: 'Annotation conflicts', current: 'Current edit', external: 'External change', fields: 'Conflicting fields',
-      apply: 'Apply choices and save', hint: 'Both versions are kept until every conflict is resolved; nothing is written before that.',
-    },
-  };
-  const text = lang.startsWith('zh') ? copies.zh
-    : lang.startsWith('ja') ? copies.ja
-      : lang.startsWith('ko') ? copies.ko
-        : lang.startsWith('es') ? copies.es
-          : copies.en;
 
   const overlay = document.createElement('canvas');
   overlay.id = 'conflictCanvas';
@@ -128,19 +101,19 @@
 
     const fields = document.createElement('div');
     fields.className = 'conflict-fields';
-    fields.textContent = `${text.fields}: ${(conflict.fields || []).join(', ') || '—'}`;
+    fields.textContent = `${t('conflictFields')}: ${(conflict.fields || []).join(', ') || '—'}`;
 
     const current = document.createElement('button');
     current.type = 'button';
     current.className = 'mini-btn conflict-choice';
     current.dataset.choice = 'local';
-    current.textContent = `${text.current}: ${candidateLabel(conflict.local)}`;
+    current.textContent = `${t('conflictCurrent')}: ${candidateLabel(conflict.local)}`;
 
     const external = document.createElement('button');
     external.type = 'button';
     external.className = 'mini-btn conflict-choice';
     external.dataset.choice = 'external';
-    external.textContent = `${text.external}: ${candidateLabel(conflict.external)}`;
+    external.textContent = `${t('conflictExternal')}: ${candidateLabel(conflict.external)}`;
 
     const choose = choice => {
       choices.set(conflict.key, choice);
@@ -161,8 +134,8 @@
     choices.clear();
     rows.replaceChildren();
     for (const conflict of message.conflicts || []) rows.appendChild(renderConflictRow(conflict));
-    summary.textContent = `${text.title} · ${(message.conflicts || []).length}\n${text.hint}`;
-    apply.textContent = text.apply;
+    summary.textContent = `${t('conflictTitle')} · ${(message.conflicts || []).length}\n${t('conflictHint')}`;
+    apply.textContent = t('conflictApply');
     apply.disabled = true;
     panel.hidden = false;
     paintOverlay();
