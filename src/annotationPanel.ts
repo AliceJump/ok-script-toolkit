@@ -95,7 +95,9 @@ class AnnotationController {
           const revision = this.readSourceRevision(changedMode);
           if (revision !== this.sourceRevisions[changedMode]) {
             this.pendingExternal.add(changedMode);
-            if (changedMode === this.mode && this.isVisible()) this.showExternalChangeNotice();
+            if (changedMode === this.mode) {
+              void this.webview.postMessage({ type: 'externalSourceChanged', mode: changedMode });
+            }
           }
         }
         if (this.isPositionSource(file)) {
@@ -205,6 +207,32 @@ class AnnotationController {
     void vscode.window.showWarningMessage(tr('Annotations changed while confirming. Retry the swap.'));
   }
 
+  private async handleExternalEditorState(mode: UnifiedAnnotationMode, transient: boolean): Promise<void> {
+    if (this.disposed || !this._currentImage || mode !== this.mode || !this.pendingExternal.has(mode)) return;
+    if (transient) {
+      if (this.isVisible()) this.showExternalChangeNotice();
+      return;
+    }
+    if (this.pendingConflictSession?.mode === mode) return;
+
+    const external = this.snapshotForMode(this._currentImage, mode);
+    if (external.errors.length) {
+      if (this.isVisible()) {
+        void vscode.window.showErrorMessage(tr('The annotation source is invalid. Fix the source file before saving or exporting.'));
+      }
+      return;
+    }
+    if (external.revision === this.sourceRevisions[mode]) {
+      this.pendingExternal.delete(mode);
+      return;
+    }
+
+    // No transient edit is active, so the canvas still represents the last
+    // canonical snapshot. Reloading here gives clean sessions true live sync;
+    // transient edits stay pending and are merged through the existing save path.
+    await this.loadImage(this._currentImage);
+  }
+
   reloadIfShowing(imagePaths: readonly string[]): void {
     if (this.disposed || !this._currentImage || !imagePaths.includes(this._currentImage)) return;
     void this.loadImage(this._currentImage);
@@ -302,6 +330,7 @@ class AnnotationController {
     category?: string;
     text?: string;
     choices?: ConflictChoice[];
+    transient?: boolean;
   }): Promise<void> {
     switch (msg.type) {
       case 'ready':
@@ -324,6 +353,11 @@ class AnnotationController {
         if (this._currentImage && msg.mode && msg.annotations
           && await this.persistAnnotationsForMode(this._currentImage, msg.mode, msg.annotations)) {
           this.onSaved(this._currentImage);
+        }
+        break;
+      case 'externalEditorState':
+        if (msg.mode && typeof msg.transient === 'boolean') {
+          await this.handleExternalEditorState(msg.mode, msg.transient);
         }
         break;
       case 'resolveAnnotationConflicts':
@@ -602,6 +636,7 @@ export function annotationHtml(cspSource: string, extensionUri: vscode.Uri, webv
       .split('__STYLE_URI__').join(resource('style.css'))
       .split('__CONFLICT_STYLE_URI__').join(resource('conflict.css'))
       .split('__CONFLICT_SCRIPT_URI__').join(resource('conflict.js'))
-      .split('__APP_SCRIPT_URI__').join(resource('app.js')),
+      .split('__APP_SCRIPT_URI__').join(resource('app.js'))
+      .split('__EXTERNAL_SYNC_SCRIPT_URI__').join(resource('externalSync.js')),
   ));
 }
