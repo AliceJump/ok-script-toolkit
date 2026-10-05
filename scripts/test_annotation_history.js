@@ -21,7 +21,8 @@ html = html
   .replace('<link rel="stylesheet" href="__SHARED_TOKENS_URI__">', '')
   .replace('<link rel="stylesheet" href="__SHARED_CONTROLS_URI__">', '')
   .replace('<link rel="stylesheet" href="__STYLE_URI__">', '')
-  .replace('<script src="__APP_SCRIPT_URI__"></script>', `<script>${fs.readFileSync(path.join(componentRoot, 'app.js'), 'utf8')}</script>`);
+  .replace('<script src="__APP_SCRIPT_URI__"></script>', `<script>${fs.readFileSync(path.join(componentRoot, 'app.js'), 'utf8')}</script>`)
+  .replace('<script src="__EXTERNAL_SYNC_SCRIPT_URI__"></script>', `<script>${fs.readFileSync(path.join(componentRoot, 'externalSync.js'), 'utf8')}</script>`);
 
 const sent = [];
 let webviewState = {};
@@ -88,10 +89,13 @@ function message(data) { window.dispatchEvent(new window.MessageEvent('message',
 function key(keyValue, init = {}) {
   document.dispatchEvent(new window.KeyboardEvent('keydown', { bubbles: true, cancelable: true, key: keyValue, ...init }));
 }
-function load(mode, annotations) {
+function mouse(type, x, y, init = {}) {
+  canvas.dispatchEvent(new window.MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y, button: 0, ...init }));
+}
+function load(mode, annotations, imagePath = 'x/a.png', extra = {}) {
   message({
-    type: 'load', annotationMode: mode, imagePath: 'x/a.png', imageBase64: 'data:image/png;base64,FAKE-1000x1000',
-    filename: 'a.png', currentIndex: 0, totalImages: 1, allCategories: {}, annotations,
+    type: 'load', annotationMode: mode, imagePath, imageBase64: 'data:image/png;base64,FAKE-1000x1000',
+    filename: path.basename(imagePath), currentIndex: 0, totalImages: 1, allCategories: {}, annotations, ...extra,
   });
 }
 
@@ -110,8 +114,11 @@ function load(mode, annotations) {
   await flush(); await flush();
   message({ type: 'clipboardText', text: '{"name":"screen.rect_one","bbox":[0.1,0.1,0.2,0.2]}' });
   await flush();
-  const rectOne = last('save').annotations;
+  const rectSave = last('save');
+  const rectOne = rectSave.annotations;
   assert(rectOne.length === 1 && rectOne[0].category === 'screen.rect_one', 'rect paste creates a real editor transaction');
+  assert(rectSave.imagePath === 'x/a.png' && rectSave.editorVersion === 1,
+    'save messages bind the edit to its image and editor version before leaving the webview');
 
   load('point', []);
   await flush();
@@ -186,6 +193,94 @@ function load(mode, annotations) {
   await flush();
   assert(writes().length === beforeSwitchWrites + 1, 'matching mode load unlocks editing exactly once');
   assert(last('save').annotations.some(item => item.category === 'screen.after_load'), 'post-load point paste is saved in Point mode');
+
+  // External changes can live-reload only when no transient editor interaction is active.
+  load('rect', rectOne);
+  await flush(); await flush();
+  const cleanCount = posts('externalEditorState').length;
+  message({ type: 'externalSourceChanged', mode: 'rect' });
+  await flush();
+  assert(posts('externalEditorState').length === cleanCount + 1, 'clean external change reports editor state immediately');
+  assert(last('externalEditorState').transient === false, 'clean editor allows immediate external reload');
+  assert(last('externalEditorState').imagePath === 'x/a.png', 'external sync state is bound to the image currently owned by the editor');
+  assert(last('externalEditorState').annotations?.[0]?.category === 'screen.rect_one',
+    'idle external sync reports the exact editor-owned annotation snapshot');
+
+  document.getElementById('drawBtn').click();
+  message({ type: 'externalSourceChanged', mode: 'rect' });
+  await flush();
+  assert(last('externalEditorState').transient === false,
+    'selecting the draw tool alone does not indefinitely defer an external sync');
+  document.getElementById('drawBtn').click();
+
+  // The first rect starts at widget x=160,y=60 for a 1000x1000 image fitted into 800x600.
+  mouse('mousedown', 170, 70);
+  message({ type: 'externalSourceChanged', mode: 'rect' });
+  await flush();
+  assert(last('externalEditorState').transient === true, 'external reload is blocked during a drag');
+  mouse('mousemove', 190, 90);
+  const beforeReleaseMessages = sent.length;
+  mouse('mouseup', 190, 90);
+  await flush(); await flush();
+  assert(last('externalEditorState').transient === false, 'drag completion re-opens the safe reload point');
+  assert(last('externalEditorState').annotations?.[0]?.x !== rectOne[0].x,
+    'safe reload report carries the drag result instead of the stale loaded snapshot');
+  const releaseMessages = sent.slice(beforeReleaseMessages);
+  const saveIndex = releaseMessages.findIndex(item => item?.type === 'save');
+  const readyIndex = releaseMessages.findIndex(item => item?.type === 'externalEditorState' && item.transient === false);
+  assert(saveIndex >= 0 && readyIndex > saveIndex, 'current drag is saved before host is told it may reload external data');
+
+  // A load sampled before an outstanding save must be rejected until that exact image/version is processed.
+  load('rect', [], 'x/guard.png');
+  await flush(); await flush();
+  message({ type: 'clipboardText', text: '{"name":"screen.guard_one","bbox":[0.1,0.1,0.2,0.2]}' });
+  await flush();
+  const guardSave = last('save');
+  assert(guardSave.imagePath === 'x/guard.png' && guardSave.editorVersion === 1,
+    'guarded save starts versioning independently for the new image');
+  load('rect', [], 'x/guard.png', { loadRequestId: 9001, expectedEditorVersion: 0 });
+  await flush();
+  assert(last('loadRejected')?.loadRequestId === 9001 && last('loadRejected')?.pendingSaves === 1,
+    'stale host load is rejected while the image has a pending save');
+
+  const retryBeforeFailedAck = posts('retryLoad').length;
+  message({ type: 'annotationSaveProcessed', imagePath: 'x/guard.png', mode: 'rect', editorVersion: 1, saved: false });
+  await flush();
+  assert(posts('retryLoad').length === retryBeforeFailedAck,
+    'failed save acknowledgement preserves the editor state instead of retrying a destructive load');
+
+  message({ type: 'clipboardText', text: '{"name":"screen.guard_two","bbox":[0.4,0.4,0.1,0.1]}' });
+  await flush();
+  const guardSaveTwo = last('save');
+  assert(guardSaveTwo.imagePath === 'x/guard.png' && guardSaveTwo.editorVersion === 2,
+    'later save advances the same image version');
+  message({ type: 'annotationSaveProcessed', imagePath: 'x/guard.png', mode: 'rect', editorVersion: 2, saved: true });
+  await flush();
+  assert(posts('retryLoad').length === retryBeforeFailedAck + 1,
+    'successful save acknowledgement retries the previously rejected load');
+  assert(last('retryLoad').imagePath === 'x/guard.png' && last('retryLoad').mode === 'rect',
+    'retry remains bound to the image and mode that rejected the load');
+
+  const controllerSource = fs.readFileSync(path.join(root, 'src', 'annotationPanel.ts'), 'utf8');
+  const reloadStart = controllerSource.indexOf('  reloadIfShowing(imagePaths: readonly string[]): void {');
+  const attachStart = controllerSource.indexOf('\n  attachHtml(): void {', reloadStart);
+  assert(reloadStart >= 0 && attachStart > reloadStart, 'reloadIfShowing remains covered by the sync regression test');
+  const reloadBlock = controllerSource.slice(reloadStart, attachStart);
+  assert(reloadBlock.includes('this.pendingExternal.add(this.mode);'),
+    'cross-panel reload marks the active mode as externally changed');
+  assert(reloadBlock.includes("this.webview.postMessage({ type: 'externalSourceChanged', mode: this.mode });"),
+    'cross-panel reload enters the editor-state coordination flow');
+  assert(!reloadBlock.includes('this.loadImage('),
+    'cross-panel reload must not bypass pending-save coordination with a direct load');
+  assert(controllerSource.includes('msg.imagePath === this._currentImage'),
+    'host accepts external editor state only for the image it currently owns');
+  assert(controllerSource.includes("type: 'annotationSaveProcessed'"),
+    'host acknowledges every image-bound save so pending-save load guards can drain');
+  assert(controllerSource.includes("case 'loadAccepted'") && controllerSource.includes("case 'loadRejected'")
+    && controllerSource.includes("case 'retryLoad'"),
+  'host completes the webview load version handshake instead of leaving it one-sided');
+  assert(controllerSource.includes('loadRequestId: requestId') && controllerSource.includes('expectedEditorVersion'),
+    'host versions every load request against the editor state it has already observed');
 
   console.log('annotation history runtime tests passed');
 })().catch(error => {

@@ -8,7 +8,7 @@ const zlib = require('zlib');
 
 const pure = require('../out/boxResourcePure');
 const store = require('../out/boxResourceStore');
-const { CocoAnnotationData } = require('../out/cocoAnnotationData');
+const { CocoAnnotationData, writeAnnotationTextIfUnchanged } = require('../out/cocoAnnotationData');
 
 const CRC_TABLE = (() => {
   const table = new Int32Array(256);
@@ -56,6 +56,106 @@ writePng(path.join(folder, 'b.png'), 200, 200);
 try {
   const source = path.join(folder, 'boxes.json');
 
+  // The compare-and-write handoff must preserve a writer that recreates the path
+  // after the expected revision was moved aside but before our prepared file is installed.
+  const casFile = path.join(folder, 'cas.json');
+  fs.writeFileSync(casFile, 'expected', 'utf8');
+  const originalLink = fs.linkSync;
+  let injectedExternalWrite = false;
+  fs.linkSync = function (from, to) {
+    if (!injectedExternalWrite && path.resolve(String(to)) === path.resolve(casFile)) {
+      injectedExternalWrite = true;
+      fs.writeFileSync(casFile, 'external', 'utf8');
+      const error = new Error('already exists');
+      error.code = 'EEXIST';
+      throw error;
+    }
+    return originalLink.apply(this, arguments);
+  };
+  try {
+    assert.strictEqual(writeAnnotationTextIfUnchanged(casFile, 'ours', 'expected', false), false);
+  } finally {
+    fs.linkSync = originalLink;
+  }
+  assert.strictEqual(fs.readFileSync(casFile, 'utf8'), 'external',
+    'a writer that recreates the path during handoff must win instead of being overwritten');
+
+  // Recovery must use the same hard-link -> exclusive-copy fallback as installation.
+  const recoveryFile = path.join(folder, 'recovery.json');
+  fs.writeFileSync(recoveryFile, 'expected', 'utf8');
+  fs.linkSync = function (from, to) {
+    if (String(from).includes('.previous') && path.resolve(String(to)) === path.resolve(recoveryFile)) {
+      const error = new Error('hard links unavailable');
+      error.code = 'EPERM';
+      throw error;
+    }
+    return originalLink.apply(this, arguments);
+  };
+  try {
+    assert.strictEqual(writeAnnotationTextIfUnchanged(recoveryFile, 'ours', 'stale', false), false);
+  } finally {
+    fs.linkSync = originalLink;
+  }
+  assert.strictEqual(fs.readFileSync(recoveryFile, 'utf8'), 'expected',
+    'revision mismatch restores the previous bytes through the copy fallback');
+
+  // If installation fails after the old file is moved aside, restore it but keep the original error.
+  const installFailureFile = path.join(folder, 'install-failure.json');
+  fs.writeFileSync(installFailureFile, 'expected', 'utf8');
+  fs.linkSync = function (from, to) {
+    if (String(from).includes('.tmp') && path.resolve(String(to)) === path.resolve(installFailureFile)) {
+      const error = new Error('prepared install failed');
+      error.code = 'EIO';
+      throw error;
+    }
+    return originalLink.apply(this, arguments);
+  };
+  try {
+    assert.throws(
+      () => writeAnnotationTextIfUnchanged(installFailureFile, 'ours', 'expected', false),
+      error => error && error.code === 'EIO' && error.message === 'prepared install failed',
+    );
+  } finally {
+    fs.linkSync = originalLink;
+  }
+  assert.strictEqual(fs.readFileSync(installFailureFile, 'utf8'), 'expected',
+    'failed install restores the original file before rethrowing the install error');
+
+  // If restoration itself fails, never delete the only preserved previous copy.
+  const recoveryFailureFile = path.join(folder, 'recovery-failure.json');
+  fs.writeFileSync(recoveryFailureFile, 'expected', 'utf8');
+  const originalCopy = fs.copyFileSync;
+  fs.linkSync = function (from, to) {
+    if (String(from).includes('.previous') && path.resolve(String(to)) === path.resolve(recoveryFailureFile)) {
+      const error = new Error('hard links unavailable');
+      error.code = 'EPERM';
+      throw error;
+    }
+    return originalLink.apply(this, arguments);
+  };
+  fs.copyFileSync = function (from, to) {
+    if (String(from).includes('.previous') && path.resolve(String(to)) === path.resolve(recoveryFailureFile)) {
+      const error = new Error('restore copy failed');
+      error.code = 'EIO';
+      throw error;
+    }
+    return originalCopy.apply(this, arguments);
+  };
+  try {
+    assert.throws(
+      () => writeAnnotationTextIfUnchanged(recoveryFailureFile, 'ours', 'stale', false),
+      error => error && error.code === 'EIO' && error.message === 'restore copy failed',
+    );
+  } finally {
+    fs.linkSync = originalLink;
+    fs.copyFileSync = originalCopy;
+  }
+  assert.strictEqual(fs.existsSync(recoveryFailureFile), false);
+  const preservedPrevious = fs.readdirSync(folder).find(name => name.startsWith('.recovery-failure.json.') && name.endsWith('.previous'));
+  assert(preservedPrevious, 'failed recovery preserves the previous copy for manual recovery');
+  assert.strictEqual(fs.readFileSync(path.join(folder, preservedPrevious), 'utf8'), 'expected');
+  fs.rmSync(path.join(folder, preservedPrevious), { force: true });
+
   assert.deepStrictEqual(store.authoringReadErrors(project, directory), []);
   assert.deepStrictEqual(store.readAuthoringFile(project, directory), { images: [], boxes: [] });
 
@@ -73,6 +173,16 @@ try {
   assert(Array.isArray(raw.categories));
   assert(!Object.prototype.hasOwnProperty.call(raw, 'version'));
   assert(!Object.prototype.hasOwnProperty.call(raw, 'boxes'));
+
+  // CocoAnnotationData guarded saves use the same expected revision and leave newer disk data intact.
+  const guardedData = new CocoAnnotationData(project, directory, 'boxes.json');
+  guardedData.load();
+  const guardedRevision = guardedData.revision;
+  const externalRevision = guardedRevision + '\n';
+  fs.writeFileSync(source, externalRevision, 'utf8');
+  assert.strictEqual(guardedData.saveIfRevision(guardedRevision), false);
+  assert.strictEqual(fs.readFileSync(source, 'utf8'), externalRevision);
+  fs.writeFileSync(source, guardedRevision, 'utf8');
 
   const authoring = store.readAuthoringFile(project, directory);
   assert.deepStrictEqual(authoring.boxes.map(box => box.path).sort(), ['panels.allowed', 'screen.first']);

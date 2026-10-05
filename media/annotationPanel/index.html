@@ -6,27 +6,27 @@
 <link rel="stylesheet" href="__SHARED_TOKENS_URI__">
 <link rel="stylesheet" href="__SHARED_CONTROLS_URI__">
 <link rel="stylesheet" href="__STYLE_URI__">
+<link rel="stylesheet" href="__CONFLICT_STYLE_URI__">
 </head>
 <body>
   <div class="panel-toolbar toolbar">
-    <div class="annotation-mode-switch" role="group" aria-label="Annotation mode">
+    <div class="annotation-mode-switch" id="annotationModeGroup" role="group" aria-label="Annotation mode">
       <button class="mini-btn" id="templateModeBtn" type="button">Template</button>
       <button class="mini-btn" id="rectModeBtn" type="button">Box</button>
       <button class="mini-btn" id="pointModeBtn" type="button">Point</button>
     </div>
-    <label class="shared-history-toggle" title="Share undo/redo history between template, box and point modes">
+    <label class="shared-history-toggle" id="sharedHistoryWrap" title="Share undo/redo history between template, box and point modes">
       <input id="sharedHistoryChk" type="checkbox" checked />
       <span id="sharedHistoryLabel">Shared undo history</span>
     </label>
-    <label class="shared-history-toggle" title="Unchecked: x1,y1,x2,y2. Checked: x,y,w,h. This also resolves ambiguous unnamed four-number pastes.">
+    <label class="shared-history-toggle" id="coordPreferenceWrap" title="Unchecked: x1,y1,x2,y2. Checked: x,y,w,h. This also resolves ambiguous unnamed four-number pastes.">
       <input id="coordPreferXywhChk" type="checkbox" />
-      <span>XYWH</span>
+      <span id="coordPreferLabel">XYWH</span>
     </label>
     <span class="toolbar-separator" aria-hidden="true"></span>
     <button class="mini-btn" id="drawBtn">Draw (R)</button>
     <button class="mini-btn" id="coordBtn">Coords (C)</button>
     <button class="mini-btn" id="deleteBtn">Delete (D)</button>
-    <button class="mini-btn" id="generateBoxBtn" type="button"></button>
     <button class="icon-btn" id="undoBtn" title="Undo">↩</button>
     <button class="icon-btn" id="redoBtn" title="Redo">↪</button>
     <div class="spacer"></div>
@@ -41,6 +41,11 @@
     </div>
     <aside class="annotation-list">
       <div class="annotation-list-title" id="annotationListTitle"></div>
+      <section class="conflict-panel" id="conflictPanel" hidden>
+        <div class="conflict-summary" id="conflictSummary"></div>
+        <div class="conflict-rows" id="conflictRows"></div>
+        <button class="mini-btn mini-btn--primary conflict-apply" id="conflictApply" type="button"></button>
+      </section>
       <div class="annotation-list-actions">
         <button class="mini-btn" id="showAllBtn" type="button"></button>
         <button class="mini-btn" id="hideAllBtn" type="button"></button>
@@ -72,22 +77,16 @@
       </div>
     </div>
   </div>
-  <div class="modal-overlay" id="generateModal">
-    <div class="modal">
-      <h3 id="generateTitle">Create box</h3>
-      <div id="generateChoices"></div>
-      <div class="row">
-        <label id="generatePathLabel" for="generatePath">Path:</label>
-        <input type="text" id="generatePath" />
-      </div>
-      <div class="error" id="generateError"></div>
-      <div class="actions">
-        <button class="mini-btn" id="generateCancel" type="button">Cancel</button>
-        <button class="mini-btn mini-btn--primary" id="generateOk" type="button">OK</button>
-      </div>
-    </div>
-  </div>
   <div id="annotationPanelI18n" hidden>__I18N_JSON__</div>
+  <script nonce="__CSP_NONCE__">
+    (() => {
+      const nativeAcquire = window.acquireVsCodeApi;
+      let sharedApi;
+      window.acquireVsCodeApi = () => sharedApi || (sharedApi = nativeAcquire());
+    })();
+  </script>
+  <script src="__EXTERNAL_SYNC_SCRIPT_URI__"></script>
+  <script src="__CONFLICT_SCRIPT_URI__"></script>
   <script src="__APP_SCRIPT_URI__"></script>
 </body>
 </html>

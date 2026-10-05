@@ -103,11 +103,19 @@ const { dom, w, sent } = gallery('templateAssetPanel', { type: 'templates', temp
   name: 'source.png', imagePath: 'source.png', width: 20, height: 30, categories: [], annotations: 0,
 }] });
 const card = w.document.querySelector('.card');
-assert.strictEqual(card.querySelectorAll('.thumbnail-actions button').length, 4);
-card.querySelector('[data-action="edit"]').click();
+assert.strictEqual(card.querySelectorAll('.thumbnail-actions button').length, 3, 'asset card exposes only source, swap and delete actions');
+assert.strictEqual(card.querySelector('[data-action="edit"]'), null, 'clicking the card itself is the annotation edit action');
+card.dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
 assert.deepStrictEqual(sent.pop(), { type: 'openAnnotation', imagePath: 'source.png' });
 card.querySelector('[data-action="open"]').click();
 assert.deepStrictEqual(sent.pop(), { type: 'openSource', imagePath: 'source.png' });
 assert.strictEqual(sent.length, 0, 'direct asset actions never trigger a second card action');
+
+w.dispatchEvent(new w.MessageEvent('message', { data: { type: 'templates', templates: [{
+  name: 'source.png', imagePath: 'source.png', width: 20, height: 30, categories: ['screen.updated'], annotations: 1,
+}] } }));
+assert.strictEqual(w.document.querySelector('.card'), card, 'annotation refresh preserves the existing source-card DOM node');
+assert.strictEqual(card.querySelector('.cats').textContent, 'screen.updated', 'annotation metadata updates in place');
+
 dom.window.close();
 console.log('thumbnail action parity: unified template/rect/point preview and asset actions OK');

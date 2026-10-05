@@ -146,18 +146,101 @@ export function notifyAnnotationDataChanged(file: string): void {
   }
 }
 
+function renameWithRetry(source: string, target: string): void {
+  for (let attempt = 0; ; attempt++) {
+    try { fs.renameSync(source, target); return; } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (attempt >= 3 || !['EPERM', 'EACCES', 'EBUSY'].includes(code ?? '')) throw error;
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25);
+    }
+  }
+}
+
+function linkPreparedFile(temp: string, file: string): boolean {
+  try {
+    fs.linkSync(temp, file);
+    return true;
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === 'EEXIST') return false;
+    if (!['EPERM', 'ENOTSUP', 'EOPNOTSUPP'].includes(code ?? '')) throw error;
+  }
+  try {
+    fs.copyFileSync(temp, file, fs.constants.COPYFILE_EXCL);
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'EEXIST') return false;
+    throw error;
+  }
+}
+
+/**
+ * Replace an annotation file only if the bytes being replaced still equal expectedRevision.
+ * The current path is first moved aside atomically, then the moved bytes are verified. A fully
+ * written temp file is installed with exclusive-create semantics, so a writer that recreates the
+ * path during the handoff wins and this write reports a revision change instead of overwriting it.
+ */
+export function writeAnnotationTextIfUnchanged(
+  file: string,
+  text: string,
+  expectedRevision: string | undefined,
+  notify = true,
+): boolean {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const token = randomUUID();
+  const temp = path.join(path.dirname(file), '.' + path.basename(file) + '.' + token + '.tmp');
+  const previous = path.join(path.dirname(file), '.' + path.basename(file) + '.' + token + '.previous');
+  let movedPrevious = false;
+  let saved = false;
+  let operationError: unknown;
+  try {
+    fs.writeFileSync(temp, text, 'utf8');
+    if (expectedRevision === undefined) {
+      saved = linkPreparedFile(temp, file);
+    } else {
+      try {
+        renameWithRetry(file, previous);
+        movedPrevious = true;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      }
+      if (movedPrevious && fs.readFileSync(previous, 'utf8') === expectedRevision) {
+        saved = linkPreparedFile(temp, file);
+      }
+    }
+  } catch (error) {
+    operationError = error;
+  }
+
+  let recoveryError: unknown;
+  let removePrevious = !movedPrevious || fs.existsSync(file);
+  if (movedPrevious && !removePrevious) {
+    try {
+      const restored = linkPreparedFile(previous, file);
+      removePrevious = restored || fs.existsSync(file);
+      if (!removePrevious) recoveryError = new Error('Could not restore previous annotation file');
+    } catch (error) {
+      recoveryError = error;
+      removePrevious = false;
+    }
+  }
+  if (removePrevious) {
+    try { fs.rmSync(previous, { force: true }); } catch { /* preserve the write/recovery error */ }
+  }
+  try { fs.rmSync(temp, { force: true }); } catch { /* preserve the write/recovery error */ }
+
+  if (operationError) throw operationError;
+  if (recoveryError) throw recoveryError;
+  if (saved && notify) notifyAnnotationDataChanged(file);
+  return saved;
+}
+
 export function writeAnnotationText(file: string, text: string, notify = true): void {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   const temp = path.join(path.dirname(file), '.' + path.basename(file) + '.' + randomUUID() + '.tmp');
   try {
     fs.writeFileSync(temp, text, 'utf8');
-    for (let attempt = 0; ; attempt++) {
-      try { fs.renameSync(temp, file); break; } catch (error) {
-        const code = (error as NodeJS.ErrnoException).code;
-        if (attempt >= 3 || !['EPERM', 'EACCES', 'EBUSY'].includes(code ?? '')) throw error;
-        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25);
-      }
-    }
+    renameWithRetry(temp, file);
   } finally {
     try { fs.rmSync(temp, { force: true }); } catch { /* preserve the write error */ }
   }
@@ -234,6 +317,20 @@ export class CocoAnnotationData {
     this.legacy = false;
     this._dirty = false;
     notifyAnnotationDataChanged(this.cocoPath);
+  }
+
+  saveIfRevision(expectedRevision: string | undefined): boolean {
+    if (this.readErrors.length) throw new Error('Unreadable annotation file: ' + this.readErrors.join(', '));
+    if (this.legacy && expectedRevision !== undefined && fs.existsSync(this.cocoPath)) {
+      fs.copyFileSync(this.cocoPath, this.cocoPath + '.pre-coco.' + randomUUID() + '.bak', fs.constants.COPYFILE_EXCL);
+    }
+    const text = JSON.stringify(this.cocoData, null, 2);
+    if (!writeAnnotationTextIfUnchanged(this.cocoPath, text, expectedRevision, false)) return false;
+    this.loadedText = text;
+    this.legacy = false;
+    this._dirty = false;
+    notifyAnnotationDataChanged(this.cocoPath);
+    return true;
   }
 
   get data(): CocoData { return this.cocoData; }

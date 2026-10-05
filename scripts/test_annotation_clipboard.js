@@ -12,7 +12,7 @@ const { JSDOM, VirtualConsole } = jsdom;
 const root = path.resolve(__dirname, '..');
 const componentRoot = path.join(root, 'media', 'annotationPanel');
 const dictionary = {
-  categoryLabel: 'Category:', widthLabel: 'Width:', heightLabel: 'Height:', cancel: 'Cancel',
+  categoryLabel: 'Category:', widthLabel: 'Width:', heightLabel: 'Height:', cancel: 'Cancel', confirm: 'Confirm',
   newBboxTitle: 'New Box', drawBbox: 'Draw (R)', drawBboxTooltip: 'Draw tip',
   copyCoords: 'Coords (C)', copyCoordsTooltip: 'Coords tip', coordLabel: 'Coords:',
   deleteMode: 'Delete (D)', deleteBboxTooltip: 'Delete tip', prevImage: 'Prev', nextImage: 'Next',
@@ -20,6 +20,13 @@ const dictionary = {
   categoryExists: 'Exists in {file}', undo: 'Undo', redo: 'Redo',
   boxPathRequired: 'Path required', boxPathTwoSegments: 'Two segments: {path}',
   boxPathBadSegment: 'Bad segment: {segment}', boxPathExists: 'Path exists', boxPathRuleMissing: 'Rule missing',
+  annotationModeLabel: 'Annotation mode', modeTemplate: 'Template', modeRect: 'Box', modePoint: 'Point',
+  sharedHistory: 'Shared undo history', sharedHistoryTooltip: 'Share undo history',
+  coordPreferenceTooltip: 'Coordinate preference', pointTool: 'Point ({key})',
+  newPointTitle: 'New Point', editPointTitle: 'Edit Point', generatePath: 'Path', generatePathPlaceholder: 'screen.name',
+  clipboardInvalid: 'Clipboard is not a valid normalized coordinate tuple.',
+  clipboardPointOnly: 'Zero-size coordinates can only be pasted in Point mode.',
+  positionPathFailed: 'Invalid position path',
 };
 
 let html = fs.readFileSync(path.join(componentRoot, 'index.html'), 'utf8');
@@ -197,7 +204,8 @@ function nameOpenPaste(name) {
   message({ type: 'clipboardText', text: '0.3, 0.3, 0, 0' });
   await flush();
   assert(posts('save').length === beforeZeroRect, 'zero-size XYWH point is rejected in rect mode');
-  assert(/Point mode/i.test(document.getElementById('colorInfo').textContent), 'zero-size rejection explains point-only rule');
+  assert(document.getElementById('colorInfo').textContent === dictionary.clipboardPointOnly,
+    'zero-size rejection uses the localized point-only explanation');
 
   message({
     type: 'load', annotationMode: 'point', imagePath: 'x/a.png', imageBase64: 'data:image/png;base64,FAKE-1000x1000',
