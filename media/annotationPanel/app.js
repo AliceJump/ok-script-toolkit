@@ -546,7 +546,6 @@
     document.getElementById('templateModeBtn').classList.toggle('active', annotationMode === 'template');
     document.getElementById('rectModeBtn').classList.toggle('active', annotationMode === 'rect');
     document.getElementById('pointModeBtn').classList.toggle('active', annotationMode === 'point');
-    document.getElementById('generateBoxBtn').style.display = annotationMode === 'template' ? '' : 'none';
     document.getElementById('drawBtn').textContent = pointMode ? 'Point (' + keybindings.drawBbox.toUpperCase() + ')' : t('drawBbox');
     document.getElementById('bboxWRow').style.display = pointMode ? 'none' : '';
     document.getElementById('bboxHRow').style.display = pointMode ? 'none' : '';
@@ -1012,30 +1011,6 @@
     offsetX = px - ix * scale; offsetY = py - iy * scale; recalcOffset(); e.preventDefault(); paint();
   }, { passive:false });
 
-  function openGenerateBox() {
-    if (annotationMode !== 'template') return;
-    const choices = document.getElementById('generateChoices'); choices.replaceChildren();
-    const selected = new Set(selectedList());
-    annotations.forEach((ann, index) => {
-      const label = document.createElement('label'); label.className = 'annotation-row';
-      const input = document.createElement('input'); input.type = 'checkbox'; input.checked = selected.size === 0 || selected.has(index); input.dataset.index = String(index);
-      const text = document.createElement('span'); text.textContent = ann.category; label.append(input, text); choices.append(label);
-    });
-    const seedAnn = annotations[selectedIdx] || annotations[0];
-    const seed = seedAnn?.category || 'region';
-    document.getElementById('generatePath').value = 'screen.' + String(seed).replace(/[^A-Za-z0-9_]/g, '_');
-    document.getElementById('generateError').textContent = '';
-    document.getElementById('generateModal').classList.add('visible');
-  }
-
-  function refreshGeneratePathState() {
-    const input = document.getElementById('generatePath');
-    const problem = pathProblem(input.value) || pathOccupied(input.value, null);
-    document.getElementById('generateError').textContent = problem ? pathMessage(problem) : '';
-    document.getElementById('generateOk').disabled = !!problem;
-    return problem;
-  }
-
   function navigate(delta) {
     if (!imageData) return;
     const target = imageData.currentIndex + delta;
@@ -1049,10 +1024,6 @@
 
   document.addEventListener('keydown', (e) => {
     if (document.getElementById('bboxModal').classList.contains('visible')) return;
-    if (document.getElementById('generateModal').classList.contains('visible')) {
-      if (e.key === 'Enter') { e.preventDefault(); document.getElementById('generateOk').click(); }
-      return;
-    }
     if (matchKeybinding(e, keybindings.modeTemplate)) { e.preventDefault(); requestAnnotationMode('template'); return; }
     if (matchKeybinding(e, keybindings.modeRect)) { e.preventDefault(); requestAnnotationMode('rect'); return; }
     if (matchKeybinding(e, keybindings.modePoint)) { e.preventDefault(); requestAnnotationMode('point'); return; }
@@ -1107,16 +1078,6 @@
     annotations.forEach(a => { if (!categories.has(a.category)) hidden.add(a.category); });
     listSignature=''; paint();
   };
-  document.getElementById('generateBoxBtn').onclick = openGenerateBox;
-  document.getElementById('generateCancel').onclick = () => document.getElementById('generateModal').classList.remove('visible');
-  document.getElementById('generatePath').oninput = refreshGeneratePathState;
-  document.getElementById('generateOk').onclick = () => {
-    if (refreshGeneratePathState()) return;
-    const chosen = [];
-    document.querySelectorAll('#generateChoices input').forEach(input => { if (input.checked) chosen.push(annotations[Number(input.dataset.index)]); });
-    if (!chosen.length) { document.getElementById('generateError').textContent = t('generateNeedSelection'); return; }
-    vscode.postMessage({ type:'generateBox', path:document.getElementById('generatePath').value.trim(), boxes:chosen.map(a=>({x:a.x,y:a.y,w:a.w,h:a.h})) });
-  };
 
   function updateStaticText() {
     document.getElementById('bboxCatLabel').textContent = t('categoryLabel');
@@ -1127,11 +1088,6 @@
     document.getElementById('showAllBtn').textContent = t('showAllAnnotations');
     document.getElementById('hideAllBtn').textContent = t('hideAllAnnotations');
     document.getElementById('onlyCurrentBtn').textContent = t('showOnlyCurrent');
-    document.getElementById('generateBoxBtn').textContent = t('generateBox');
-    document.getElementById('generateTitle').textContent = t('generateBoxTitle');
-    document.getElementById('generatePathLabel').textContent = t('generatePath');
-    document.getElementById('generateCancel').textContent = t('cancel');
-    document.getElementById('generateOk').textContent = t('ok');
     document.getElementById('prevBtn').title = t('prevImage');
     document.getElementById('nextBtn').title = t('nextImage');
     document.getElementById('emptyMsg').textContent = t('noImageLoaded');
@@ -1156,11 +1112,6 @@
     }
     if (msg.type === 'clipboardText') {
       pasteClipboardText(msg.text || '');
-      return;
-    }
-    if (msg.type === 'generateBoxResult') {
-      if (msg.ok) document.getElementById('generateModal').classList.remove('visible');
-      else document.getElementById('generateError').textContent = pathMessage(msg.error === 'duplicate' ? {code:'duplicate'} : {code:msg.error || 'unknown'});
       return;
     }
     if (msg.type !== 'load') return;
