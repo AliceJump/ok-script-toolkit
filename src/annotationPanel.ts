@@ -9,7 +9,12 @@ import { tr } from './localization';
 import { injectAnnotationWebviewLocalization } from './annotationLocalization';
 import { applySharedAssets, getNonce } from './webviewHtml';
 import { POINT_AUTHORING_FILE, pointPathOccupancy, readPoints, savePointsForImage } from './pointResourceStore';
-import { AnnotationConflict, MergeAnnotation, mergeAnnotations } from './annotationMergePure';
+import {
+  AnnotationConflict,
+  MergeAnnotation,
+  findAnnotationConflictItemIndex,
+  mergeAnnotations,
+} from './annotationMergePure';
 
 export type UnifiedAnnotationMode = 'template' | 'rect' | 'point';
 
@@ -387,29 +392,12 @@ class AnnotationController {
     }
   }
 
-  private conflictItemIndex(
-    mode: UnifiedAnnotationMode,
-    annotations: readonly Annotation[],
-    conflict: AnnotationConflict,
-  ): number {
-    const candidates = [conflict.local, conflict.base, conflict.external].filter(Boolean) as Annotation[];
-    for (let index = 0; index < annotations.length; index++) {
-      const item = annotations[index];
-      if (mode === 'template') {
-        if (candidates.some(candidate => candidate.id === item.id || candidate.category === item.category)) return index;
-      } else if (candidates.some(candidate => candidate.category.trim() === item.category.trim())) {
-        return index;
-      }
-    }
-    return -1;
-  }
-
   private applyExternalConflictChoice(
     mode: UnifiedAnnotationMode,
     annotations: Annotation[],
     conflict: AnnotationConflict,
   ): void {
-    const index = this.conflictItemIndex(mode, annotations, conflict);
+    const index = findAnnotationConflictItemIndex(mode, annotations, conflict);
     if (!conflict.external) {
       if (index >= 0) annotations.splice(index, 1);
       return;
@@ -434,7 +422,14 @@ class AnnotationController {
     if (this.readSourceRevision(session.mode) !== session.externalRevision) {
       this.pendingConflictSession = undefined;
       this.pendingExternal.add(session.mode);
-      await this.mergeExternalBeforeSave(session.imagePath, session.mode, session.local);
+      const prepared = await this.mergeExternalBeforeSave(session.imagePath, session.mode, session.local);
+      if (!prepared) return;
+      const saved = await this.persistAnnotationsForMode(session.imagePath, session.mode, prepared.annotations);
+      if (!saved) return;
+      this.onSaved(session.imagePath);
+      if (this._currentImage === session.imagePath && this.mode === session.mode) {
+        await this.loadImage(session.imagePath);
+      }
       return;
     }
 

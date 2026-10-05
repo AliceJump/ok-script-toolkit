@@ -164,6 +164,30 @@ function additionMatch(
 }
 
 /**
+ * Locate the annotation represented by one merge conflict.
+ * Template annotations can share categories, so stable ids always win there.
+ * A local deletion must not fall back to another same-category template item.
+ */
+export function findAnnotationConflictItemIndex(
+  mode: AnnotationMergeMode,
+  annotations: readonly MergeAnnotation[],
+  conflict: AnnotationConflict,
+): number {
+  const candidates = [conflict.local, conflict.base, conflict.external].filter(Boolean) as MergeAnnotation[];
+  if (mode === 'template') {
+    for (const candidate of candidates) {
+      const index = annotations.findIndex(item => item.id === candidate.id);
+      if (index >= 0) return index;
+    }
+    if (conflict.kind === 'delete-modify' && !conflict.local) return -1;
+  }
+  for (let index = 0; index < annotations.length; index++) {
+    if (candidates.some(candidate => categoryKey(candidate) === categoryKey(annotations[index]))) return index;
+  }
+  return -1;
+}
+
+/**
  * Three-way merge for one image and one annotation mode.
  *
  * `base` is the last canonical snapshot shown by the editor, `local` is the
@@ -216,7 +240,9 @@ export function mergeAnnotations(
     }
     merged.push({ ...localItem });
     conflicts.push({
-      key: mode === 'template' ? `template:new:${localItem.category}` : `${mode}:${categoryKey(localItem)}`,
+      key: mode === 'template'
+        ? `template:new:${localIndex}:${categoryKey(localItem)}`
+        : `${mode}:${categoryKey(localItem)}`,
       kind: 'add-add',
       fields: FIELDS.filter(field => !sameValue(localItem[field], externalItem[field])),
       local: cloneAnnotation(localItem),
