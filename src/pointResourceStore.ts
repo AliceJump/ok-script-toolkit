@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { CocoData, writeAnnotationText } from './cocoAnnotationData';
+import { CocoData, writeAnnotationText, writeAnnotationTextIfUnchanged } from './cocoAnnotationData';
 import { readImageSize } from './imageHeader';
 import { positionPathError, PixelPoint, PositionAuthoringItem, PositionImage } from './positionResourcePure';
 
@@ -135,28 +135,26 @@ export function pointPathOccupancy(root: string, directory: string): Record<stri
   return Object.fromEntries(result.file.points.map(point => [point.path, point.image]));
 }
 
-export function savePointsForImage(
-  root: string,
-  directory: string,
+function preparePointsForImage(
+  current: PointReadResult,
   imagePath: string,
   points: readonly { path: string; x: number; y: number }[],
-): string | undefined {
-  const current = readPoints(root, directory);
-  if (current.errors.length) return 'parse';
+): { error?: string; text?: string } {
+  if (current.errors.length) return { error: 'parse' };
   const imageName = path.basename(imagePath);
   let size;
-  try { size = readImageSize(fs.readFileSync(imagePath)); } catch { return 'image'; }
-  if (!size || size.width <= 0 || size.height <= 0) return 'image';
+  try { size = readImageSize(fs.readFileSync(imagePath)); } catch { return { error: 'image' }; }
+  if (!size || size.width <= 0 || size.height <= 0) return { error: 'image' };
 
   const own = new Set(current.file.points.filter(point => point.image.toLowerCase() === imageName.toLowerCase()).map(point => point.path));
   const occupied = new Set(current.file.points.filter(point => !own.has(point.path)).map(point => point.path));
   for (const point of points) {
     const name = point.path.trim();
-    if (positionPathError(name)) return 'path';
-    if (occupied.has(name)) return 'duplicate';
+    if (positionPathError(name)) return { error: 'path' };
+    if (occupied.has(name)) return { error: 'duplicate' };
     occupied.add(name);
     if (!Number.isFinite(point.x) || !Number.isFinite(point.y)
-      || point.x < 0 || point.y < 0 || point.x > size.width || point.y > size.height) return 'geometry';
+      || point.x < 0 || point.y < 0 || point.x > size.width || point.y > size.height) return { error: 'geometry' };
   }
 
   current.file.points = current.file.points.filter(point => point.image.toLowerCase() !== imageName.toLowerCase());
@@ -165,9 +163,41 @@ export function savePointsForImage(
   if (image) { image.width = size.width; image.height = size.height; }
   else current.file.images.push({ file: imageName, width: size.width, height: size.height });
 
+  return { text: JSON.stringify(toCoco(current.file), null, 2) + '\n' };
+}
+
+export function savePointsForImage(
+  root: string,
+  directory: string,
+  imagePath: string,
+  points: readonly { path: string; x: number; y: number }[],
+): string | undefined {
+  const prepared = preparePointsForImage(readPoints(root, directory), imagePath, points);
+  if (prepared.error) return prepared.error;
   try {
-    writeAnnotationText(sourceFile(root, directory), JSON.stringify(toCoco(current.file), null, 2) + '\n');
+    writeAnnotationText(sourceFile(root, directory), prepared.text!);
     return undefined;
+  } catch {
+    return 'write';
+  }
+}
+
+export function savePointsForImageIfRevision(
+  root: string,
+  directory: string,
+  imagePath: string,
+  points: readonly { path: string; x: number; y: number }[],
+  expectedRevision: string | undefined,
+): string | undefined {
+  const current = expectedRevision === undefined
+    ? { file: emptyFile(), errors: [] }
+    : parse(expectedRevision);
+  const prepared = preparePointsForImage(current, imagePath, points);
+  if (prepared.error) return prepared.error;
+  try {
+    return writeAnnotationTextIfUnchanged(sourceFile(root, directory), prepared.text!, expectedRevision)
+      ? undefined
+      : 'changed';
   } catch {
     return 'write';
   }
