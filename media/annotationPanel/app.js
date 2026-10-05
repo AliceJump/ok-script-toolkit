@@ -344,7 +344,7 @@
     if (problem.code === 'segment') return t('boxPathBadSegment', { segment: problem.bad || '' });
     if (problem.code === 'duplicate') return t('boxPathExists');
     if (problem.code === 'rule') return t('boxPathRuleMissing');
-    return t('generateBoxFailed');
+    return t('positionPathFailed');
   }
 
   function syncAnnotationList() {
@@ -546,7 +546,9 @@
     document.getElementById('templateModeBtn').classList.toggle('active', annotationMode === 'template');
     document.getElementById('rectModeBtn').classList.toggle('active', annotationMode === 'rect');
     document.getElementById('pointModeBtn').classList.toggle('active', annotationMode === 'point');
-    document.getElementById('drawBtn').textContent = pointMode ? 'Point (' + keybindings.drawBbox.toUpperCase() + ')' : t('drawBbox');
+    document.getElementById('drawBtn').textContent = pointMode
+      ? t('pointTool', { key: keybindings.drawBbox.toUpperCase() })
+      : t('drawBbox');
     document.getElementById('bboxWRow').style.display = pointMode ? 'none' : '';
     document.getElementById('bboxHRow').style.display = pointMode ? 'none' : '';
     updateUndoRedoButtons();
@@ -561,7 +563,10 @@
     const wInput = document.getElementById('bboxW');
     const hInput = document.getElementById('bboxH');
     const ok = document.getElementById('bboxOk');
-    document.getElementById('bboxTitle').textContent = category ? (pointMode ? 'Edit point' : t('editBboxTitle')) : (pointMode ? 'New point' : t('newBboxTitle'));
+    document.getElementById('bboxTitle').textContent = category
+      ? (pointMode ? t('editPointTitle') : t('editBboxTitle'))
+      : (pointMode ? t('newPointTitle') : t('newBboxTitle'));
+    document.getElementById('bboxCatLabel').textContent = isPositionMode() ? t('generatePath') + ':' : t('categoryLabel');
     catInput.value = category;
     catInput.placeholder = isPositionMode() ? t('generatePathPlaceholder') : t('categoryLabel');
     xInput.value = x;
@@ -778,10 +783,10 @@
   function pasteClipboardText(text) {
     if (!img || toolMode !== 'none' || modeLoading) return;
     const payload = parseClipboardPayload(text);
-    if (!payload) { pasteStatus('Clipboard is not a valid normalized coordinate tuple.'); return; }
+    if (!payload) { pasteStatus(t('clipboardInvalid')); return; }
     const zeroSize = payload.box.w === 0 && payload.box.h === 0;
     if (zeroSize && annotationMode !== 'point') {
-      pasteStatus('Zero-size coordinates can only be pasted in Point mode.');
+      pasteStatus(t('clipboardPointOnly'));
       return;
     }
     let box = payload.box;
@@ -854,7 +859,7 @@
       const left = ['left','tl','bl'].includes(h), right = ['right','tr','br'].includes(h);
       const top = ['top','tl','tr'].includes(h), bottom = ['bottom','bl','br'].includes(h);
       if (left) { nx += dx; nw -= dx; } if (right) nw += dx;
-      if (top) { ny += dy; nh -= dy; } if (bottom) nh += dy;
+      if (top) { ny += dx; nh -= dy; } if (bottom) nh += dy;
       nw = Math.max(5, nw); nh = Math.max(5, nh);
     }
     nx = Math.max(0, Math.min(nx, img.width - Math.max(1, nw)));
@@ -1080,8 +1085,18 @@
   };
 
   function updateStaticText() {
-    document.getElementById('bboxCatLabel').textContent = t('categoryLabel');
+    document.getElementById('annotationModeGroup').setAttribute('aria-label', t('annotationModeLabel'));
+    document.getElementById('templateModeBtn').textContent = t('modeTemplate');
+    document.getElementById('rectModeBtn').textContent = t('modeRect');
+    document.getElementById('pointModeBtn').textContent = t('modePoint');
+    document.getElementById('sharedHistoryLabel').textContent = t('sharedHistory');
+    document.getElementById('sharedHistoryWrap').title = t('sharedHistoryTooltip');
+    document.getElementById('coordPreferenceWrap').title = t('coordPreferenceTooltip');
+    document.getElementById('bboxCatLabel').textContent = isPositionMode() ? t('generatePath') + ':' : t('categoryLabel');
+    document.getElementById('bboxWLabel').textContent = t('widthLabel');
+    document.getElementById('bboxHLabel').textContent = t('heightLabel');
     document.getElementById('bboxCancel').textContent = t('cancel');
+    document.getElementById('bboxOk').textContent = t('confirm');
     document.getElementById('coordBtn').textContent = t('copyCoords');
     document.getElementById('deleteBtn').textContent = t('deleteMode');
     document.getElementById('annotationListTitle').textContent = t('annotationListTitle');
@@ -1133,7 +1148,7 @@
     clearSelection();
     hoveredIdx = -1;
     listSignature = '';
-    updateModeUi();
+    updateStaticText();
 
     const needImageLoad = !img || imageChanged;
     if (msg.imageBase64 && needImageLoad) {
