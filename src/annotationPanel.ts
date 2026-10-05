@@ -5,7 +5,8 @@ import { TemplateAssetData } from './templateAssetData';
 import { readAuthoringFile, boxNamesError } from './boxResourceStore';
 import { AUTHORING_FILE_NAME, BOX_PATH_SEGMENT_SOURCE } from './boxResourcePure';
 import { onAnnotationDataChanged, sameAnnotationFile } from './cocoAnnotationData';
-import { injectWebviewLocalization, tr } from './localization';
+import { tr } from './localization';
+import { injectAnnotationWebviewLocalization } from './annotationLocalization';
 import { applySharedAssets, getNonce } from './webviewHtml';
 import { POINT_AUTHORING_FILE, pointPathOccupancy, readPoints, savePointsForImage } from './pointResourceStore';
 import { AnnotationConflict, MergeAnnotation, mergeAnnotations } from './annotationMergePure';
@@ -629,7 +630,7 @@ export function annotationHtml(cspSource: string, extensionUri: vscode.Uri, webv
   const file = path.join(extensionUri.fsPath, 'media', 'annotationPanel', 'index.html');
   const nonce = getNonce();
   const resource = (name: string) => webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'media', 'annotationPanel', name)).toString(true);
-  return injectWebviewLocalization(applySharedAssets(webview, extensionUri,
+  return injectAnnotationWebviewLocalization(applySharedAssets(webview, extensionUri,
     fs.readFileSync(file, 'utf-8')
       .split('__CSP_NONCE__').join(nonce)
       .split('__CSP_SOURCE__').join(cspSource)
