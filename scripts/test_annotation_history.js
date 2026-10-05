@@ -21,7 +21,8 @@ html = html
   .replace('<link rel="stylesheet" href="__SHARED_TOKENS_URI__">', '')
   .replace('<link rel="stylesheet" href="__SHARED_CONTROLS_URI__">', '')
   .replace('<link rel="stylesheet" href="__STYLE_URI__">', '')
-  .replace('<script src="__APP_SCRIPT_URI__"></script>', `<script>${fs.readFileSync(path.join(componentRoot, 'app.js'), 'utf8')}</script>`);
+  .replace('<script src="__APP_SCRIPT_URI__"></script>', `<script>${fs.readFileSync(path.join(componentRoot, 'app.js'), 'utf8')}</script>`)
+  .replace('<script src="__EXTERNAL_SYNC_SCRIPT_URI__"></script>', `<script>${fs.readFileSync(path.join(componentRoot, 'externalSync.js'), 'utf8')}</script>`);
 
 const sent = [];
 let webviewState = {};
@@ -87,6 +88,9 @@ const writes = () => sent.filter(item => item?.type === 'save' || item?.type ===
 function message(data) { window.dispatchEvent(new window.MessageEvent('message', { data })); }
 function key(keyValue, init = {}) {
   document.dispatchEvent(new window.KeyboardEvent('keydown', { bubbles: true, cancelable: true, key: keyValue, ...init }));
+}
+function mouse(type, x, y, init = {}) {
+  canvas.dispatchEvent(new window.MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y, button: 0, ...init }));
 }
 function load(mode, annotations) {
   message({
@@ -186,6 +190,30 @@ function load(mode, annotations) {
   await flush();
   assert(writes().length === beforeSwitchWrites + 1, 'matching mode load unlocks editing exactly once');
   assert(last('save').annotations.some(item => item.category === 'screen.after_load'), 'post-load point paste is saved in Point mode');
+
+  // External changes can live-reload only when no transient editor interaction is active.
+  load('rect', rectOne);
+  await flush(); await flush();
+  const cleanCount = posts('externalEditorState').length;
+  message({ type: 'externalSourceChanged', mode: 'rect' });
+  await flush();
+  assert(posts('externalEditorState').length === cleanCount + 1, 'clean external change reports editor state immediately');
+  assert(last('externalEditorState').transient === false, 'clean editor allows immediate external reload');
+
+  // The first rect starts at widget x=160,y=60 for a 1000x1000 image fitted into 800x600.
+  mouse('mousedown', 170, 70);
+  message({ type: 'externalSourceChanged', mode: 'rect' });
+  await flush();
+  assert(last('externalEditorState').transient === true, 'external reload is blocked during a drag');
+  mouse('mousemove', 190, 90);
+  const beforeReleaseMessages = sent.length;
+  mouse('mouseup', 190, 90);
+  await flush(); await flush();
+  assert(last('externalEditorState').transient === false, 'drag completion re-opens the safe reload point');
+  const releaseMessages = sent.slice(beforeReleaseMessages);
+  const saveIndex = releaseMessages.findIndex(item => item?.type === 'save');
+  const readyIndex = releaseMessages.findIndex(item => item?.type === 'externalEditorState' && item.transient === false);
+  assert(saveIndex >= 0 && readyIndex > saveIndex, 'current drag is saved before host is told it may reload external data');
 
   console.log('annotation history runtime tests passed');
 })().catch(error => {
