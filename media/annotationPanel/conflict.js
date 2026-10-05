@@ -17,6 +17,7 @@
 
   let session = null;
   let transform = null;
+  let submitting = false;
   const choices = new Map();
 
   const originalDrawImage = CanvasRenderingContext2D.prototype.drawImage;
@@ -116,6 +117,7 @@
     external.textContent = `${t('conflictExternal')}: ${candidateLabel(conflict.external)}`;
 
     const choose = choice => {
+      if (submitting) return;
       choices.set(conflict.key, choice);
       for (const button of row.querySelectorAll('.conflict-choice')) {
         button.classList.toggle('active', button.dataset.choice === choice);
@@ -131,6 +133,7 @@
 
   function showConflicts(message) {
     session = message;
+    submitting = false;
     choices.clear();
     rows.replaceChildren();
     for (const conflict of message.conflicts || []) rows.appendChild(renderConflictRow(conflict));
@@ -143,6 +146,7 @@
 
   function clearConflicts() {
     session = null;
+    submitting = false;
     choices.clear();
     rows.replaceChildren();
     panel.hidden = true;
@@ -150,9 +154,12 @@
   }
 
   apply.addEventListener('click', () => {
-    if (!session || choices.size !== (session.conflicts?.length || 0)) return;
+    if (!session || submitting || choices.size !== (session.conflicts?.length || 0)) return;
+    submitting = true;
+    apply.disabled = true;
     vscode.postMessage({
       type: 'resolveAnnotationConflicts',
+      conflictSessionId: session.conflictSessionId,
       choices: [...choices].map(([key, choice]) => ({ key, choice })),
     });
   });
@@ -160,7 +167,13 @@
   window.addEventListener('message', event => {
     const message = event.data || {};
     if (message.type === 'annotationConflicts') showConflicts(message);
-    else if (message.type === 'load' && session) clearConflicts();
+    else if (message.type === 'clearAnnotationConflicts'
+      && (!message.conflictSessionId || message.conflictSessionId === session?.conflictSessionId)) clearConflicts();
+    else if (message.type === 'conflictResolutionFailed'
+      && message.conflictSessionId === session?.conflictSessionId) {
+      submitting = false;
+      apply.disabled = choices.size !== (session?.conflicts?.length || 0);
+    } else if (message.type === 'load' && session) clearConflicts();
   });
 
   window.addEventListener('resize', () => {

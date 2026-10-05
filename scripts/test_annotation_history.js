@@ -199,6 +199,8 @@ function load(mode, annotations) {
   await flush();
   assert(posts('externalEditorState').length === cleanCount + 1, 'clean external change reports editor state immediately');
   assert(last('externalEditorState').transient === false, 'clean editor allows immediate external reload');
+  assert(last('externalEditorState').annotations?.[0]?.category === 'screen.rect_one',
+    'idle external sync reports the exact editor-owned annotation snapshot');
 
   // The first rect starts at widget x=160,y=60 for a 1000x1000 image fitted into 800x600.
   mouse('mousedown', 170, 70);
@@ -210,6 +212,8 @@ function load(mode, annotations) {
   mouse('mouseup', 190, 90);
   await flush(); await flush();
   assert(last('externalEditorState').transient === false, 'drag completion re-opens the safe reload point');
+  assert(last('externalEditorState').annotations?.[0]?.x !== rectOne[0].x,
+    'safe reload report carries the drag result instead of the stale loaded snapshot');
   const releaseMessages = sent.slice(beforeReleaseMessages);
   const saveIndex = releaseMessages.findIndex(item => item?.type === 'save');
   const readyIndex = releaseMessages.findIndex(item => item?.type === 'externalEditorState' && item.transient === false);
