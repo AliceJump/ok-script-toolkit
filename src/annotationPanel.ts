@@ -42,6 +42,14 @@ interface PendingConflictSession {
   conflicts: AnnotationConflict[];
 }
 
+interface PreparedAnnotationSave {
+  annotations: Annotation[];
+  mergedExternal: boolean;
+  expectedRevision: string | undefined;
+}
+
+type AnnotationWriteResult = 'saved' | 'changed' | 'failed';
+
 function normalizeAnnotationMode(value: UnifiedAnnotationMode | boolean): UnifiedAnnotationMode {
   if (value === true) return 'rect';
   if (value === false) return 'template';
@@ -422,14 +430,9 @@ class AnnotationController {
     if (this.readSourceRevision(session.mode) !== session.externalRevision) {
       this.pendingConflictSession = undefined;
       this.pendingExternal.add(session.mode);
-      const prepared = await this.mergeExternalBeforeSave(session.imagePath, session.mode, session.local);
-      if (!prepared) return;
-      const saved = await this.persistAnnotationsForMode(session.imagePath, session.mode, prepared.annotations);
+      const saved = await this.persistAnnotationsForMode(session.imagePath, session.mode, session.local);
       if (!saved) return;
       this.onSaved(session.imagePath);
-      if (this._currentImage === session.imagePath && this.mode === session.mode) {
-        await this.loadImage(session.imagePath);
-      }
       return;
     }
 
@@ -440,13 +443,20 @@ class AnnotationController {
       }
     }
 
-    this.baseSnapshots[session.mode] = cloneAnnotations(session.externalBase);
-    this.sourceRevisions[session.mode] = session.externalRevision;
-    this.pendingExternal.delete(session.mode);
-    this.pendingConflictSession = undefined;
+    const outcome = await this.writePreparedAnnotations(session.imagePath, session.mode, {
+      annotations: resolved,
+      mergedExternal: true,
+      expectedRevision: session.externalRevision,
+    });
+    if (outcome === 'changed') {
+      this.pendingConflictSession = undefined;
+      this.pendingExternal.add(session.mode);
+      const saved = await this.persistAnnotationsForMode(session.imagePath, session.mode, session.local);
+      if (saved) this.onSaved(session.imagePath);
+      return;
+    }
+    if (outcome !== 'saved') return;
 
-    const saved = await this.persistAnnotationsForMode(session.imagePath, session.mode, resolved);
-    if (!saved) return;
     this.onSaved(session.imagePath);
     if (this._currentImage === session.imagePath && this.mode === session.mode) {
       await this.loadImage(session.imagePath);
@@ -457,10 +467,14 @@ class AnnotationController {
     imagePath: string,
     mode: UnifiedAnnotationMode,
     local: readonly Annotation[],
-  ): Promise<{ annotations: Annotation[]; mergedExternal: boolean } | undefined> {
+  ): Promise<PreparedAnnotationSave | undefined> {
     const diskRevision = this.readSourceRevision(mode);
     if (!this.pendingExternal.has(mode) && diskRevision === this.sourceRevisions[mode]) {
-      return { annotations: cloneAnnotations(local), mergedExternal: false };
+      return {
+        annotations: cloneAnnotations(local),
+        mergedExternal: false,
+        expectedRevision: diskRevision,
+      };
     }
 
     const external = this.snapshotForMode(imagePath, mode);
@@ -472,7 +486,11 @@ class AnnotationController {
 
     if (external.revision === this.sourceRevisions[mode]) {
       this.pendingExternal.delete(mode);
-      return { annotations: cloneAnnotations(local), mergedExternal: false };
+      return {
+        annotations: cloneAnnotations(local),
+        mergedExternal: false,
+        expectedRevision: external.revision,
+      };
     }
 
     const result = mergeAnnotations(mode, this.baseSnapshots[mode], local, external.annotations);
@@ -499,22 +517,25 @@ class AnnotationController {
       return undefined;
     }
 
-    // The external snapshot becomes the new merge base. A later save still
-    // checks the revision again, so another external write cannot be lost.
-    this.baseSnapshots[mode] = cloneAnnotations(external.annotations);
-    this.sourceRevisions[mode] = external.revision;
-    this.pendingExternal.delete(mode);
-    this.pendingConflictSession = undefined;
-    return { annotations: cloneAnnotations(result.merged as Annotation[]), mergedExternal: true };
+    // Preparing a merge must not advance the accepted base. The external
+    // snapshot is committed only after persistence and canonical reread succeed.
+    return {
+      annotations: cloneAnnotations(result.merged as Annotation[]),
+      mergedExternal: true,
+      expectedRevision: external.revision,
+    };
   }
 
-  private async persistAnnotationsForMode(
+  private async writePreparedAnnotations(
     imagePath: string,
     mode: UnifiedAnnotationMode,
-    localAnnotations: Annotation[],
-  ): Promise<boolean> {
-    const prepared = await this.mergeExternalBeforeSave(imagePath, mode, localAnnotations);
-    if (!prepared) return false;
+    prepared: PreparedAnnotationSave,
+  ): Promise<AnnotationWriteResult> {
+    if (this.readSourceRevision(mode) !== prepared.expectedRevision) {
+      this.pendingExternal.add(mode);
+      return 'changed';
+    }
+
     const annotations = prepared.annotations;
     try {
       this.saving = true;
@@ -546,15 +567,39 @@ class AnnotationController {
       this.baseSnapshots[mode] = cloneAnnotations(canonical.annotations);
       this.localSnapshots[mode] = cloneAnnotations(canonical.annotations);
       this.pendingExternal.delete(mode);
-      if (prepared.mergedExternal && mode === this.mode) await this.loadImage(imagePath);
-      return true;
+      if (this.pendingConflictSession?.mode === mode && this.pendingConflictSession.imagePath === imagePath) {
+        this.pendingConflictSession = undefined;
+      }
+      return 'saved';
     } catch (error) {
       console.error('[ok-script] save annotations:', error);
       void vscode.window.showErrorMessage(tr('Could not save annotations.'));
-      return false;
+      return 'failed';
     } finally {
       this.saving = false;
     }
+  }
+
+  private async persistAnnotationsForMode(
+    imagePath: string,
+    mode: UnifiedAnnotationMode,
+    localAnnotations: Annotation[],
+  ): Promise<boolean> {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const prepared = await this.mergeExternalBeforeSave(imagePath, mode, localAnnotations);
+      if (!prepared) return false;
+      const outcome = await this.writePreparedAnnotations(imagePath, mode, prepared);
+      if (outcome === 'saved') {
+        if (prepared.mergedExternal && this._currentImage === imagePath && mode === this.mode) {
+          await this.loadImage(imagePath);
+        }
+        return true;
+      }
+      if (outcome === 'failed') return false;
+      this.pendingExternal.add(mode);
+    }
+    if (this.isVisible()) this.showExternalChangeNotice();
+    return false;
   }
 
   dispose(): void {
