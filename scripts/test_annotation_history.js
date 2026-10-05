@@ -226,6 +226,18 @@ function load(mode, annotations) {
   const readyIndex = releaseMessages.findIndex(item => item?.type === 'externalEditorState' && item.transient === false);
   assert(saveIndex >= 0 && readyIndex > saveIndex, 'current drag is saved before host is told it may reload external data');
 
+  const controllerSource = fs.readFileSync(path.join(root, 'src', 'annotationPanel.ts'), 'utf8');
+  const reloadStart = controllerSource.indexOf('  reloadIfShowing(imagePaths: readonly string[]): void {');
+  const attachStart = controllerSource.indexOf('\n  attachHtml(): void {', reloadStart);
+  assert(reloadStart >= 0 && attachStart > reloadStart, 'reloadIfShowing remains covered by the sync regression test');
+  const reloadBlock = controllerSource.slice(reloadStart, attachStart);
+  assert(reloadBlock.includes('this.pendingExternal.add(this.mode);'),
+    'cross-panel reload marks the active mode as externally changed');
+  assert(reloadBlock.includes("this.webview.postMessage({ type: 'externalSourceChanged', mode: this.mode });"),
+    'cross-panel reload enters the editor-state coordination flow');
+  assert(!reloadBlock.includes('this.loadImage('),
+    'cross-panel reload must not bypass pending-save coordination with a direct load');
+
   console.log('annotation history runtime tests passed');
 })().catch(error => {
   console.error(error && error.stack ? error.stack : error);
