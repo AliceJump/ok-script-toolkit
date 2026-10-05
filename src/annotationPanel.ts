@@ -49,6 +49,14 @@ interface PreparedAnnotationSave {
   expectedRevision: string | undefined;
 }
 
+interface PendingLoadRequest {
+  requestId: number;
+  generation: number;
+  imagePath: string;
+  mode: UnifiedAnnotationMode;
+  snapshot: ModeSnapshot;
+}
+
 type AnnotationWriteResult = 'saved' | 'changed' | 'failed';
 
 function normalizeAnnotationMode(value: UnifiedAnnotationMode | boolean): UnifiedAnnotationMode {
@@ -77,8 +85,11 @@ class AnnotationController {
   private disposed = false;
   private saving = false;
   private conflictSessionSequence = 0;
+  private loadRequestSequence = 0;
   private resolvingConflictSessionId: number | undefined;
   private pendingConflictSession: PendingConflictSession | undefined;
+  private readonly pendingLoadRequests = new Map<number, PendingLoadRequest>();
+  private readonly editorVersions = new Map<string, number>();
   private readonly sourceRevisions: Record<UnifiedAnnotationMode, string | undefined> = {
     template: undefined,
     rect: undefined,
@@ -147,12 +158,23 @@ class AnnotationController {
   get root(): string { return this.templateData.root; }
   get currentImage(): string | undefined { return this._currentImage; }
 
+  private editorStateKey(imagePath: string, mode: UnifiedAnnotationMode): string {
+    return `${imagePath}\n${mode}`;
+  }
+
+  private noteEditorVersion(imagePath: string, mode: UnifiedAnnotationMode, editorVersion?: number): void {
+    if (!Number.isInteger(editorVersion) || editorVersion! < 0) return;
+    const key = this.editorStateKey(imagePath, mode);
+    this.editorVersions.set(key, Math.max(this.editorVersions.get(key) ?? 0, editorVersion!));
+  }
+
   private resetMergeState(): void {
     for (const mode of ['template', 'rect', 'point'] as const) {
       this.sourceRevisions[mode] = undefined;
       this.baseSnapshots[mode] = [];
       this.localSnapshots[mode] = [];
     }
+    this.pendingLoadRequests.clear();
     this.pendingExternal.clear();
     this.pendingConflictSession = undefined;
     this.resolvingConflictSessionId = undefined;
@@ -234,6 +256,49 @@ class AnnotationController {
 
   private showExternalChangeNotice(): void {
     void vscode.window.showWarningMessage(tr('Annotations changed while confirming. Retry the swap.'));
+  }
+
+  private commitAcceptedLoad(request: PendingLoadRequest): void {
+    if (this.disposed || request.generation !== this.generation
+      || this._currentImage !== request.imagePath || this.mode !== request.mode) return;
+    const { snapshot, mode, imagePath } = request;
+    this.sourceRevisions[mode] = snapshot.revision;
+    this.baseSnapshots[mode] = cloneAnnotations(snapshot.annotations);
+    this.localSnapshots[mode] = cloneAnnotations(snapshot.annotations);
+    if (this.readSourceRevision(mode) === snapshot.revision) {
+      this.pendingExternal.delete(mode);
+    } else {
+      this.pendingExternal.add(mode);
+      void this.webview.postMessage({ type: 'externalSourceChanged', mode });
+    }
+    if (this.pendingConflictSession?.mode === mode && this.pendingConflictSession.imagePath === imagePath) {
+      this.pendingConflictSession = undefined;
+    }
+  }
+
+  private async processEditorSave(
+    imagePath: string | undefined,
+    mode: UnifiedAnnotationMode | undefined,
+    annotations: Annotation[] | undefined,
+    editorVersion?: number,
+  ): Promise<void> {
+    if (!imagePath || !mode || !annotations) return;
+    this.noteEditorVersion(imagePath, mode, editorVersion);
+    let saved = false;
+    try {
+      if (imagePath === this._currentImage) {
+        saved = await this.persistAnnotationsForMode(imagePath, mode, annotations);
+        if (saved) this.onSaved(imagePath);
+      }
+    } finally {
+      await this.webview.postMessage({
+        type: 'annotationSaveProcessed',
+        imagePath,
+        mode,
+        editorVersion,
+        saved,
+      });
+    }
   }
 
   private async handleExternalEditorState(
@@ -332,17 +397,15 @@ class AnnotationController {
     } catch { imageBase64 = ''; }
     if (this.disposed || generation !== this.generation) return;
 
-    this.sourceRevisions[loadingMode] = snapshot.revision;
-    this.baseSnapshots[loadingMode] = cloneAnnotations(snapshot.annotations);
-    this.localSnapshots[loadingMode] = cloneAnnotations(snapshot.annotations);
-    this.pendingExternal.delete(loadingMode);
-    if (this.pendingConflictSession?.mode === loadingMode && this.pendingConflictSession.imagePath === imagePath) {
-      this.pendingConflictSession = undefined;
-    }
-
     const positionPaths = this.positionOccupancy();
+    const requestId = ++this.loadRequestSequence;
+    const expectedEditorVersion = this.editorVersions.get(this.editorStateKey(imagePath, loadingMode)) ?? 0;
+    this.pendingLoadRequests.clear();
+    this.pendingLoadRequests.set(requestId, { requestId, generation, imagePath, mode: loadingMode, snapshot });
     await this.webview.postMessage({
       type: 'load',
+      loadRequestId: requestId,
+      expectedEditorVersion,
       imagePath,
       imageBase64,
       annotations: snapshot.annotations,
@@ -368,6 +431,10 @@ class AnnotationController {
   private async onMessage(msg: {
     type?: string;
     mode?: UnifiedAnnotationMode;
+    imagePath?: string;
+    editorVersion?: number;
+    loadRequestId?: number;
+    pendingSaves?: number;
     annotation?: Annotation;
     annotations?: Annotation[];
     index?: number;
@@ -390,20 +457,36 @@ class AnnotationController {
         }
         break;
       case 'save':
-        if (this._currentImage && msg.annotations && await this.persistAnnotationsForMode(this._currentImage, this.mode, msg.annotations)) {
-          this.onSaved(this._currentImage);
-        }
-        break;
       case 'saveMode':
-        if (this._currentImage && msg.mode && msg.annotations
-          && await this.persistAnnotationsForMode(this._currentImage, msg.mode, msg.annotations)) {
-          this.onSaved(this._currentImage);
-        }
+        await this.processEditorSave(msg.imagePath, msg.mode, msg.annotations, msg.editorVersion);
         break;
       case 'externalEditorState':
-        if (msg.mode && typeof msg.transient === 'boolean') {
+        if (msg.imagePath === this._currentImage && msg.mode && typeof msg.transient === 'boolean') {
           await this.handleExternalEditorState(msg.mode, msg.transient, msg.annotations);
         }
+        break;
+      case 'loadAccepted': {
+        if (!msg.loadRequestId || !msg.imagePath || !msg.mode) break;
+        const request = this.pendingLoadRequests.get(msg.loadRequestId);
+        if (!request || request.imagePath !== msg.imagePath || request.mode !== msg.mode) break;
+        this.pendingLoadRequests.delete(msg.loadRequestId);
+        this.noteEditorVersion(msg.imagePath, msg.mode, msg.editorVersion);
+        this.commitAcceptedLoad(request);
+        break;
+      }
+      case 'loadRejected': {
+        if (!msg.loadRequestId || !msg.imagePath || !msg.mode) break;
+        const request = this.pendingLoadRequests.get(msg.loadRequestId);
+        if (!request || request.imagePath !== msg.imagePath || request.mode !== msg.mode) break;
+        this.pendingLoadRequests.delete(msg.loadRequestId);
+        this.noteEditorVersion(msg.imagePath, msg.mode, msg.editorVersion);
+        if ((msg.pendingSaves ?? 0) === 0 && this._currentImage === msg.imagePath && this.mode === msg.mode) {
+          await this.loadImage(msg.imagePath);
+        }
+        break;
+      }
+      case 'retryLoad':
+        if (msg.imagePath === this._currentImage && msg.mode === this.mode) await this.loadImage(msg.imagePath);
         break;
       case 'resolveAnnotationConflicts':
         await this.resolveAnnotationConflicts(msg.choices || [], msg.conflictSessionId);
@@ -630,12 +713,17 @@ class AnnotationController {
 
       const canonical = this.snapshotForMode(imagePath, mode);
       if (canonical.errors.length) throw new Error('canonical');
-      this.sourceRevisions[mode] = canonical.revision;
-      this.baseSnapshots[mode] = cloneAnnotations(canonical.annotations);
-      this.localSnapshots[mode] = cloneAnnotations(canonical.annotations);
-      this.pendingExternal.delete(mode);
-      if (this.pendingConflictSession?.mode === mode && this.pendingConflictSession.imagePath === imagePath) {
-        this.pendingConflictSession = undefined;
+      if (this._currentImage === imagePath) {
+        this.sourceRevisions[mode] = canonical.revision;
+        this.baseSnapshots[mode] = cloneAnnotations(canonical.annotations);
+        this.localSnapshots[mode] = cloneAnnotations(canonical.annotations);
+        this.pendingExternal.delete(mode);
+        if (this.pendingConflictSession?.mode === mode && this.pendingConflictSession.imagePath === imagePath) {
+          this.pendingConflictSession = undefined;
+        }
+      } else {
+        this.pendingExternal.add(mode);
+        if (mode === this.mode) void this.webview.postMessage({ type: 'externalSourceChanged', mode });
       }
       return 'saved';
     } catch (error) {
@@ -675,6 +763,7 @@ class AnnotationController {
   dispose(): void {
     this.disposed = true;
     this.generation++;
+    this.pendingLoadRequests.clear();
     for (const d of this.disposables) d.dispose();
     this.disposables.length = 0;
   }
