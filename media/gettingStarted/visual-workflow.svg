@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="220" viewBox="0 0 720 220" role="img" aria-labelledby="title desc">
+  <title id="title">Visual resource workflow</title>
+  <desc id="desc">Image to Template, Rect, and Point annotations, then publish.</desc>
+  <g fill="none" stroke="#8c8c8c" stroke-width="2">
+    <rect x="24" y="72" width="120" height="76" rx="10"/>
+    <rect x="210" y="32" width="120" height="44" rx="10"/>
+    <rect x="210" y="88" width="120" height="44" rx="10"/>
+    <rect x="210" y="144" width="120" height="44" rx="10"/>
+    <rect x="396" y="72" width="120" height="76" rx="10"/>
+    <rect x="582" y="72" width="114" height="76" rx="10"/>
+    <path d="M144 110h42m144-56h32v56h34m-66 0h66m-66 56h32v-56h34m120 0h66"/>
+    <path d="m178 104 8 6-8 6m210-12 8 6-8 6m186-12 8 6-8 6"/>
+  </g>
+  <g fill="#8c8c8c" font-family="system-ui, sans-serif" font-size="16" text-anchor="middle">
+    <text x="84" y="116">Image</text>
+    <text x="270" y="60">Template</text>
+    <text x="270" y="116">Rect</text>
+    <text x="270" y="172">Point</text>
+    <text x="456" y="104">Select</text>
+    <text x="456" y="126">resources</text>
+    <text x="639" y="104">Publish</text>
+    <text x="639" y="126" font-size="13">JSON / Python</text>
+  </g>
+</svg>
