@@ -35,12 +35,19 @@
   "activationEvents": [
     "onLanguage:python",
     "onLanguage:json",
-    "onLanguage:jsonc"
+    "onLanguage:jsonc",
+    "workspaceContains:config.py",
+    "workspaceContains:src/config.py"
   ],
-  "main": "./out/extension.js",
+  "main": "./out/entrypoint.js",
   "l10n": "./l10n",
   "contributes": {
     "commands": [
+      {
+        "command": "okScriptToolkit.openGettingStarted",
+        "title": "%command.openGettingStarted%",
+        "category": "%command.category%"
+      },
       {
         "command": "okScriptToolkit.showTemplates",
         "title": "%command.showTemplates%",
@@ -67,6 +74,11 @@
         "category": "%command.category%"
       },
       {
+        "command": "okScriptToolkit.openResourcePublisher",
+        "title": "%command.openResourcePublisher%",
+        "category": "%command.category%"
+      },
+      {
         "command": "okScriptToolkit.openAnnotationEditor",
         "title": "%command.openAnnotationEditor%",
         "category": "%command.category%"
@@ -85,6 +97,61 @@
         "command": "okScriptToolkit.showConventionSources",
         "title": "%command.showConventionSources%",
         "category": "%command.category%"
+      }
+    ],
+    "walkthroughs": [
+      {
+        "id": "okScriptToolkit.getStarted",
+        "title": "%walkthrough.title%",
+        "description": "%walkthrough.description%",
+        "steps": [
+          {
+            "id": "chooseGoal",
+            "title": "%walkthrough.goal.title%",
+            "description": "%walkthrough.goal.description%"
+          },
+          {
+            "id": "loadProject",
+            "title": "%walkthrough.project.title%",
+            "description": "%walkthrough.project.description%",
+            "completionEvents": [
+              "onContext:okScriptToolkit.projectReady"
+            ]
+          },
+          {
+            "id": "visualResources",
+            "title": "%walkthrough.visual.title%",
+            "description": "%walkthrough.visual.description%",
+            "media": {
+              "image": "media/gettingStarted/visual-workflow.svg",
+              "altText": "%walkthrough.visual.mediaAlt%"
+            },
+            "completionEvents": [
+              "onCommand:okScriptToolkit.openTemplateAssets"
+            ]
+          },
+          {
+            "id": "publishResources",
+            "title": "%walkthrough.publish.title%",
+            "description": "%walkthrough.publish.description%",
+            "completionEvents": [
+              "onCommand:okScriptToolkit.openResourcePublisher"
+            ]
+          },
+          {
+            "id": "runTask",
+            "title": "%walkthrough.run.title%",
+            "description": "%walkthrough.run.description%",
+            "completionEvents": [
+              "onCommand:okScriptToolkit.showTaskLauncher"
+            ]
+          },
+          {
+            "id": "resources",
+            "title": "%walkthrough.links.title%",
+            "description": "%walkthrough.links.description%"
+          }
+        ]
       }
     ],
     "viewsContainers": {
