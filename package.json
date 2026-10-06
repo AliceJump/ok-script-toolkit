@@ -108,12 +108,20 @@
           {
             "id": "chooseGoal",
             "title": "%walkthrough.goal.title%",
-            "description": "%walkthrough.goal.description%"
+            "description": "%walkthrough.goal.description%",
+            "media": {
+              "image": "media/gettingStarted/visual-workflow.svg",
+              "altText": "%walkthrough.visual.mediaAlt%"
+            }
           },
           {
             "id": "loadProject",
             "title": "%walkthrough.project.title%",
             "description": "%walkthrough.project.description%",
+            "media": {
+              "image": "media/gettingStarted/visual-workflow.svg",
+              "altText": "%walkthrough.visual.mediaAlt%"
+            },
             "completionEvents": [
               "onContext:okScriptToolkit.projectReady"
             ]
@@ -134,6 +142,10 @@
             "id": "publishResources",
             "title": "%walkthrough.publish.title%",
             "description": "%walkthrough.publish.description%",
+            "media": {
+              "image": "media/gettingStarted/visual-workflow.svg",
+              "altText": "%walkthrough.visual.mediaAlt%"
+            },
             "completionEvents": [
               "onCommand:okScriptToolkit.openResourcePublisher"
             ]
@@ -142,6 +154,10 @@
             "id": "runTask",
             "title": "%walkthrough.run.title%",
             "description": "%walkthrough.run.description%",
+            "media": {
+              "image": "media/gettingStarted/visual-workflow.svg",
+              "altText": "%walkthrough.visual.mediaAlt%"
+            },
             "completionEvents": [
               "onCommand:okScriptToolkit.showTaskLauncher"
             ]
@@ -149,7 +165,11 @@
           {
             "id": "resources",
             "title": "%walkthrough.links.title%",
-            "description": "%walkthrough.links.description%"
+            "description": "%walkthrough.links.description%",
+            "media": {
+              "image": "media/gettingStarted/visual-workflow.svg",
+              "altText": "%walkthrough.visual.mediaAlt%"
+            }
           }
         ]
       }
