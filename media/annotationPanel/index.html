@@ -85,6 +85,62 @@
       window.acquireVsCodeApi = () => sharedApi || (sharedApi = nativeAcquire());
     })();
   </script>
+  <script nonce="__CSP_NONCE__">
+    (() => {
+      const MODE_BUTTON_IDS = ['templateModeBtn', 'rectModeBtn', 'pointModeBtn'];
+      let cycleMode = 'm';
+
+      function parseKeybinding(binding) {
+        const parts = String(binding || '').toLowerCase().split('+').filter(Boolean);
+        const key = parts.pop() || '';
+        return {
+          key,
+          needPrimary: parts.includes('ctrl') || parts.includes('meta') || parts.includes('cmd'),
+          needShift: parts.includes('shift'),
+          needAlt: parts.includes('alt'),
+        };
+      }
+
+      function matchesKeybinding(event, binding) {
+        if (!binding) return false;
+        const parsed = parseKeybinding(binding);
+        const keyMatches = event.key.toLowerCase() === parsed.key || event.code.toLowerCase() === parsed.key;
+        return keyMatches
+          && !!(event.ctrlKey || event.metaKey) === parsed.needPrimary
+          && !!event.shiftKey === parsed.needShift
+          && !!event.altKey === parsed.needAlt;
+      }
+
+      function cycleAnnotationMode() {
+        const buttons = MODE_BUTTON_IDS.map(id => document.getElementById(id));
+        const currentIndex = buttons.findIndex(button => button?.classList.contains('active'));
+        const nextIndex = currentIndex < 0 ? 0 : (currentIndex + 1) % buttons.length;
+        buttons[nextIndex]?.click();
+      }
+
+      window.addEventListener('message', event => {
+        if (event.data?.type !== 'config' || !event.data.keybindings) return;
+        const incoming = event.data.keybindings;
+        if (typeof incoming.cycleMode === 'string') cycleMode = incoming.cycleMode;
+        // This listener is registered before app.js. Blank the retired bindings on the
+        // shared config message so app.js cannot keep its historical 1/2/3 defaults or
+        // revive stale per-mode user settings. The released keys remain available to
+        // every other configurable command.
+        incoming.modeTemplate = '';
+        incoming.modeRect = '';
+        incoming.modePoint = '';
+      });
+
+      document.addEventListener('keydown', event => {
+        if (document.getElementById('bboxModal')?.classList.contains('visible')) return;
+        if (matchesKeybinding(event, cycleMode)) {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          cycleAnnotationMode();
+        }
+      }, true);
+    })();
+  </script>
   <script src="__EXTERNAL_SYNC_SCRIPT_URI__"></script>
   <script src="__CONFLICT_SCRIPT_URI__"></script>
   <script src="__APP_SCRIPT_URI__"></script>
