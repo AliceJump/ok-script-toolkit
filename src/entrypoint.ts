@@ -36,8 +36,45 @@ export function activate(context: vscode.ExtensionContext): void {
     isSupportedProject(resolveProjectDir()),
   );
 
-  const rootConfigWatcher = vscode.workspace.createFileSystemWatcher('**/config.py');
-  const srcConfigWatcher = vscode.workspace.createFileSystemWatcher('**/src/config.py');
+  let configWatcherDisposables: vscode.Disposable[] = [];
+
+  const disposeConfigWatchers = () => {
+    for (const disposable of configWatcherDisposables) disposable.dispose();
+    configWatcherDisposables = [];
+  };
+
+  const addConfigWatcher = (pattern: string | vscode.RelativePattern) => {
+    const watcher = vscode.workspace.createFileSystemWatcher(pattern);
+    configWatcherDisposables.push(
+      watcher,
+      watcher.onDidCreate(() => { void updateProjectReady(); }),
+      watcher.onDidDelete(() => { void updateProjectReady(); }),
+    );
+  };
+
+  const bindConfigWatchers = () => {
+    disposeConfigWatchers();
+
+    // Workspace globs keep automatic project detection responsive.
+    addConfigWatcher('**/config.py');
+    addConfigWatcher('**/src/config.py');
+
+    // A configured project may live outside the open workspace. String globs only
+    // watch workspace folders, so bind additional RelativePatterns to that directory.
+    const configuredPath = vscode.workspace
+      .getConfiguration('okScriptToolkit')
+      .get<string>('okScriptProjectPath')
+      ?.trim();
+    if (configuredPath) {
+      const configuredProjectDir = resolveProjectDir();
+      if (configuredProjectDir) {
+        addConfigWatcher(new vscode.RelativePattern(configuredProjectDir, 'config.py'));
+        addConfigWatcher(new vscode.RelativePattern(configuredProjectDir, 'src/config.py'));
+      }
+    }
+  };
+
+  bindConfigWatchers();
 
   context.subscriptions.push(
     vscode.commands.registerCommand('okScriptToolkit.openGettingStarted', () => {
@@ -47,18 +84,17 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('okScriptToolkit.openResourcePublisher', () => {
       return vscode.commands.executeCommand('okScriptToolkit.openTemplateAssets');
     }),
-    vscode.workspace.onDidChangeWorkspaceFolders(() => { void updateProjectReady(); }),
+    vscode.workspace.onDidChangeWorkspaceFolders(() => {
+      bindConfigWatchers();
+      void updateProjectReady();
+    }),
     vscode.workspace.onDidChangeConfiguration((event) => {
       if (event.affectsConfiguration('okScriptToolkit.okScriptProjectPath')) {
+        bindConfigWatchers();
         void updateProjectReady();
       }
     }),
-    rootConfigWatcher,
-    rootConfigWatcher.onDidCreate(() => { void updateProjectReady(); }),
-    rootConfigWatcher.onDidDelete(() => { void updateProjectReady(); }),
-    srcConfigWatcher,
-    srcConfigWatcher.onDidCreate(() => { void updateProjectReady(); }),
-    srcConfigWatcher.onDidDelete(() => { void updateProjectReady(); }),
+    new vscode.Disposable(disposeConfigWatchers),
   );
 
   void updateProjectReady();
