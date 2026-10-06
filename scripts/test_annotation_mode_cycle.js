@@ -51,7 +51,11 @@ function press(key, init = {}) {
   return event;
 }
 
-configure({ cycleMode: 'm' });
+const defaultConfig = { cycleMode: 'm' };
+configure(defaultConfig);
+assert.strictEqual(defaultConfig.modeTemplate, '', 'retired Template binding should be blanked before app.js receives config');
+assert.strictEqual(defaultConfig.modeRect, '', 'retired Box binding should be blanked before app.js receives config');
+assert.strictEqual(defaultConfig.modePoint, '', 'retired Point binding should be blanked before app.js receives config');
 assert.strictEqual(activeMode(), 'templateModeBtn');
 press('m');
 assert.strictEqual(activeMode(), 'rectModeBtn', 'first cycle should move Template -> Box');
@@ -60,22 +64,30 @@ assert.strictEqual(activeMode(), 'pointModeBtn', 'second cycle should move Box -
 press('m');
 assert.strictEqual(activeMode(), 'templateModeBtn', 'third cycle should wrap Point -> Template');
 
-let propagatedLegacyKeys = 0;
+let releasedKeyEvents = 0;
 document.addEventListener('keydown', event => {
-  if (['1', '2', '3', 'x'].includes(event.key)) propagatedLegacyKeys += 1;
+  if (['1', '2', '3', 'x'].includes(event.key)) releasedKeyEvents += 1;
 });
 press('1');
 assert.strictEqual(activeMode(), 'templateModeBtn', 'legacy number shortcuts must no longer switch modes');
-assert.strictEqual(propagatedLegacyKeys, 0, 'legacy mode shortcut must be consumed before the old app handler sees it');
+assert.strictEqual(releasedKeyEvents, 1, 'released number shortcut must remain available to other commands');
 
-configure({ cycleMode: 'q', modeRect: 'x' });
+const customConfig = { cycleMode: 'q', modeTemplate: '3', modeRect: 'x', modePoint: '2', nextImage: '1' };
+configure(customConfig);
+assert.strictEqual(customConfig.modeTemplate, '', 'persisted Template shortcut must be retired');
+assert.strictEqual(customConfig.modeRect, '', 'persisted Box shortcut must be retired');
+assert.strictEqual(customConfig.modePoint, '', 'persisted Point shortcut must be retired');
+assert.strictEqual(customConfig.nextImage, '1', 'unrelated shortcut reuse must be preserved');
 press('m');
 assert.strictEqual(activeMode(), 'templateModeBtn', 'previous cycle key must stop working after reconfiguration');
 press('q');
 assert.strictEqual(activeMode(), 'rectModeBtn', 'configured cycle key should switch modes');
 press('x');
-assert.strictEqual(activeMode(), 'rectModeBtn', 'persisted legacy per-mode bindings must not switch modes');
-assert.strictEqual(propagatedLegacyKeys, 0, 'persisted legacy per-mode bindings must also be consumed');
+assert.strictEqual(activeMode(), 'rectModeBtn', 'persisted legacy per-mode binding must not switch modes');
+assert.strictEqual(releasedKeyEvents, 2, 'retired custom shortcut must remain available to other commands');
+press('1');
+assert.strictEqual(activeMode(), 'rectModeBtn', 'reused legacy number key must not switch annotation mode');
+assert.strictEqual(releasedKeyEvents, 3, 'reused number key must propagate to the configured command handler');
 
 document.getElementById('bboxModal').classList.add('visible');
 press('q');
