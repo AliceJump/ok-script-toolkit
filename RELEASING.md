@@ -2,7 +2,7 @@
 
 [简体中文](RELEASING.md) | [English](RELEASING.en.md)
 
-发布由父仓库 `AliceJump/ok-script-toolkit` 统一协调。普通提交不会发布；手动运行 `Prepare Release` 会完成两仓发版准备并推送版本标签，而真正的构建与市场发布仍由首次推送匹配版本的标签触发：
+发布由父仓库 `AliceJump/ok-script-toolkit` 统一协调。普通提交不会发布；手动运行 `Prepare Release` 会同步两仓版本、直接更新两个仓库的 `main`、等待对应 CI，然后推送版本标签。真正的构建与 Marketplace 发布仍只由首次推送匹配版本的标签触发：
 
 ```text
 vMAJOR.MINOR.PATCH
@@ -16,21 +16,27 @@ vMAJOR.MINOR.PATCH
 
 **Settings → Secrets and variables → Actions → New repository secret**
 
-### 一键发版机器人
+### 一键发版凭据
 
-`Prepare Release` 工作流需要一个安装在父仓库和 JetBrains 子仓库上的 GitHub App。可以直接复用其他仓库的 release bot。
+`Prepare Release` 不使用 GitHub App 或 release bot。它使用维护者自己的 GitHub PAT，以该账号身份直接更新父仓和 JetBrains 子仓的 `main`，并推送最终版本 tag。
 
-父仓库配置：
+父仓库添加一个 Actions Secret：
 
-- Actions Variable：`RELEASE_APP_ID`
-- Actions Secret：`RELEASE_APP_PRIVATE_KEY`
+- `RELEASE_TOKEN`
 
-GitHub App 至少需要两个仓库的 **Contents: Read and write** 与 **Pull requests: Read and write** 权限，并安装到：
+推荐使用 fine-grained PAT，并只授权：
 
 - `AliceJump/ok-script-toolkit`
 - `AliceJump/ok-script-toolkit-jetbrains`
 
-不需要给 App 配置 `main` ruleset bypass：工作流会在两个仓库分别创建 release PR，并按现有规则使用 squash merge；只有最后的版本 tag 直接由 App token 推送。这样 tag 的 `push` 事件会正常触发现有 `release.yml`。
+所需仓库权限：
+
+- **Contents: Read and write**：提交并直接推送两个仓库的 `main` 与父仓版本 tag。
+- **Actions: Read**：等待两个仓库直推后的 CI 结果。
+
+两个仓库的 `main` 当前允许正常 fast-forward 直接推送，只保留防删除和防 force-push 规则，因此不需要 release PR，也不需要 ruleset bypass。release commit 的 Git author 会使用实际点击 `Run workflow` 的 GitHub 账号；认证和远端 push 则使用 `RELEASE_TOKEN` 对应的维护者账号。
+
+必须使用 PAT 而不是工作流内置的 `GITHUB_TOKEN`，因为这里需要跨仓库写入 JetBrains 子仓，而且 PAT 推送最终 tag 后需要正常触发 `release.yml`。
 
 ### Visual Studio Marketplace
 
@@ -109,14 +115,16 @@ GitHub Secret 支持多行文本，可直接粘贴 PEM/CRT 全文；也可先 Ba
 
 1. 读取父仓 `main` 和 JetBrains 子仓 `main`，计算目标版本。
 2. 调用现有 `sync-version.js` 同步 `package.json`、`package-lock.json`、`jetbrains/gradle.properties` 与四份 README 徽章。
-3. 如子仓需要改版本，创建 JetBrains release 分支和 PR，按仓库规则 squash merge。
-4. 更新父仓 gitlink；创建父仓 release PR，按仓库规则 squash merge。
+3. 如子仓需要改版本，在 JetBrains 子仓提交 `chore(release): prepare vX.Y.Z`，直接 fast-forward 推送到 `main`，等待子仓 `CI` 成功，并确认 `main` 没有在等待期间被其他提交推进。
+4. 更新父仓 gitlink 和版本文件，提交同名 release commit，直接 fast-forward 推送到父仓 `main`，等待父仓 `CI` 成功，并再次确认 `main` 仍指向本次 release commit。
 5. 再次运行 `verify:version`，然后给父仓最终 `main` 创建并推送 `vX.Y.Z` annotated tag。
-6. App token 推送 tag 后，现有 `release.yml` 自动开始；`Prepare Release` 会找到这次下游运行并等待它结束，所以按钮这一条 workflow 的最终状态会直接反映构建、GitHub Release 和 Marketplace 发布是否成功。
+6. `RELEASE_TOKEN` 推送 tag 后，现有 `release.yml` 自动开始；`Prepare Release` 会找到这次下游运行并等待它结束，所以按钮这一条 workflow 的最终状态会直接反映构建、GitHub Release 和 Marketplace 发布是否成功。
 
-`release.sh` / `release.ps1` 仍保留作历史和本地流程参考，但在当前 `main` 强制 PR 的 ruleset 下，它们直接 push `main` 的旧流程会被拒绝，**不再作为正式发布入口**。
+`release.sh` / `release.ps1` 仍保留作本地手动流程和故障排查参考。它们的直接推送方式现在与仓库规则兼容，但**正式发布入口仍是 `Prepare Release`**，因为自动流程会额外处理双仓版本、gitlink、CI 等待与下游发布状态。
 
-如果编排在“子仓已合并、父仓尚未合并”之类的中间状态失败，修复原因后重新运行 **Prepare Release**，并在 `version` 中填同一个目标版本；脚本允许 JetBrains 已经先到达目标版本，并会继续完成父仓和 tag。
+如果编排在“子仓已推送、父仓尚未推送”之类的中间状态失败，修复原因后重新运行 **Prepare Release**，并在 `version` 中填同一个目标版本；脚本允许 JetBrains `main` 已经先到达目标版本，并会继续完成父仓和 tag。
+
+如果任一仓库的 `main` 在编排等待 CI 期间被其他提交推进，流程会主动中止，不会 force-push 或覆盖新提交。此时从新的 `main` 状态重新运行即可。
 
 标签发布会依次：
 
@@ -125,7 +133,7 @@ GitHub Secret 支持多行文本，可直接粘贴 PEM/CRT 全文；也可先 Ba
 3. 测试并构建 VSIX。
 4. 测试、验证、构建并按 Secret 签名 JetBrains ZIP。
 5. 创建一个 GitHub Release，附带两个安装包。
-6. 有 `VSCE_PAT` 时发布 Visual Studio Marketplace。
+6. 有 `VSCE_PAT` 或 OIDC 配置时发布 Visual Studio Marketplace。
 7. 有完整 JetBrains Token 和签名 Secrets 时发布 JetBrains Marketplace。
 
 ## 失败处理
@@ -134,3 +142,4 @@ GitHub Secret 支持多行文本，可直接粘贴 PEM/CRT 全文；也可先 Ba
 - 标签构建失败时，修复后提升补丁版本，例如从 `0.6.0` 改为 `0.6.1`，再推送新标签。
 - 标签和 GitHub Release 都不可复用；两个 Marketplace 也拒绝重复版本。
 - 如果只缺 Marketplace Secret，GitHub Release 仍会创建并提供两个离线安装包。
+- 直推 `main` 或等待 CI 失败时，不要 force-push；修复原因后从最新 `main` 重新运行 `Prepare Release`。

@@ -44,52 +44,42 @@ console.log(0);
 NODE
 }
 
-wait_mergeable() {
+wait_commit_ci() {
   local repo="$1"
-  local pr="$2"
-  local state=""
-  for _ in $(seq 1 30); do
-    state=$(gh pr view "$pr" --repo "$repo" --json mergeable --jq '.mergeable')
-    case "$state" in
-      MERGEABLE) return 0 ;;
-      CONFLICTING) die "$repo PR #$pr has merge conflicts." ;;
-    esac
-    sleep 2
-  done
-  die "$repo PR #$pr did not become mergeable (last state: ${state:-unknown})."
-}
+  local sha="$2"
+  local run_id=""
+  local run_url=""
 
-wait_pr_checks() {
-  local repo="$1"
-  local pr="$2"
-  local count="0"
-  for _ in $(seq 1 30); do
-    count=$(gh pr view "$pr" --repo "$repo" --json statusCheckRollup --jq '.statusCheckRollup | length')
-    if [ "$count" -gt 0 ]; then
-      gh pr checks "$pr" --repo "$repo" --watch --interval 5
-      return 0
+  for _ in $(seq 1 60); do
+    local row
+    row=$(gh run list \
+      --repo "$repo" \
+      --workflow ci.yml \
+      --event push \
+      --commit "$sha" \
+      --limit 20 \
+      --json databaseId,headSha,url \
+      --jq ".[] | select(.headSha == \"$sha\") | [.databaseId, .url] | @tsv" \
+      | head -n 1 || true)
+    if [ -n "$row" ]; then
+      IFS=$'\t' read -r run_id run_url <<< "$row"
+      break
     fi
-    sleep 2
+    sleep 3
   done
-  die "$repo PR #$pr did not report any CI checks."
+
+  if [ -z "$run_id" ]; then
+    die "$repo CI did not start for $sha."
+  fi
+
+  echo "Waiting for $repo CI: $run_url"
+  gh run watch "$run_id" --repo "$repo" --exit-status
 }
 
-merge_release_pr() {
-  local repo="$1"
-  local pr="$2"
-  local version="$3"
-  wait_mergeable "$repo" "$pr"
-  wait_pr_checks "$repo" "$pr"
-  gh pr merge "$pr" \
-    --repo "$repo" \
-    --squash \
-    --delete-branch \
-    --subject "chore(release): prepare v$version (#$pr)" \
-    --body "Automated version synchronization for v$version."
-}
-
-git config --global user.name "alicejump-release-bot[bot]"
-git config --global user.email "alicejump-release-bot[bot]@users.noreply.github.com"
+release_git_name="${RELEASE_GIT_NAME:-${GITHUB_ACTOR:-release}}"
+release_git_email="${RELEASE_GIT_EMAIL:-${release_git_name}@users.noreply.github.com}"
+git config --global user.name "$release_git_name"
+git config --global user.email "$release_git_email"
 gh auth setup-git
 
 rm -rf "$WORK_ROOT"
@@ -147,8 +137,8 @@ if git -C "$PARENT_DIR" ls-remote --exit-code --tags origin "refs/tags/$tag" >/d
   die "Tag $tag already exists."
 fi
 
-parent_pr=""
-child_pr=""
+parent_sha=$(git -C "$PARENT_DIR" rev-parse HEAD)
+child_sha="$child_main"
 
 if [ "$target_version" = "$current_version" ]; then
   [ "$child_version" = "$target_version" ] || die "JetBrains main is not prepared for $tag."
@@ -160,54 +150,42 @@ else
   (cd "$PARENT_DIR" && node scripts/release/sync-version.js "$target_version")
   (cd "$PARENT_DIR" && npm run --silent verify:version)
 
-  child_branch="release/v${target_version}-${RUN_ID}"
   if ! git -C "$CHILD_DIR" diff --quiet -- gradle.properties README.md README.en.md; then
-    git -C "$CHILD_DIR" checkout -b "$child_branch"
     git -C "$CHILD_DIR" add gradle.properties README.md README.en.md
     git -C "$CHILD_DIR" commit -m "chore(release): prepare v$target_version"
-    git -C "$CHILD_DIR" push -u origin "$child_branch"
-
-    child_pr_url=$(gh pr create \
-      --repo "$CHILD_REPO" \
-      --base main \
-      --head "$child_branch" \
-      --title "chore(release): prepare v$target_version" \
-      --body "Automated JetBrains version and README badge synchronization for v$target_version.")
-    child_pr="${child_pr_url##*/}"
-    merge_release_pr "$CHILD_REPO" "$child_pr" "$target_version"
+    child_sha=$(git -C "$CHILD_DIR" rev-parse HEAD)
+    git -C "$CHILD_DIR" push origin HEAD:main
+    wait_commit_ci "$CHILD_REPO" "$child_sha"
   elif [ "$child_version" != "$target_version" ]; then
     die "JetBrains version needs to change to $target_version, but no release diff was produced."
+  else
+    child_sha=$(git -C "$CHILD_DIR" rev-parse HEAD)
+    wait_commit_ci "$CHILD_REPO" "$child_sha"
   fi
 
   git -C "$CHILD_DIR" fetch origin main
   git -C "$CHILD_DIR" checkout -B main origin/main
+  [ "$(git -C "$CHILD_DIR" rev-parse HEAD)" = "$child_sha" ] \
+    || die "JetBrains main moved after preparing v$target_version. Rerun the release from the new main state."
   [ "$(sed -n 's/^pluginVersion=//p' "$CHILD_DIR/gradle.properties" | head -n 1)" = "$target_version" ] \
     || die "JetBrains main did not reach version $target_version."
 
   (cd "$PARENT_DIR" && npm run --silent verify:version)
 
-  parent_branch="release/v${target_version}-${RUN_ID}"
-  git -C "$PARENT_DIR" checkout -b "$parent_branch"
   git -C "$PARENT_DIR" add package.json package-lock.json README.md README.en.md jetbrains
   git -C "$PARENT_DIR" commit -m "chore(release): prepare v$target_version"
-  git -C "$PARENT_DIR" push -u origin "$parent_branch"
-
-  parent_pr_url=$(gh pr create \
-    --repo "$PARENT_REPO" \
-    --base main \
-    --head "$parent_branch" \
-    --title "chore(release): prepare v$target_version" \
-    --body "Automated parent version synchronization and JetBrains gitlink update for v$target_version.")
-  parent_pr="${parent_pr_url##*/}"
-  merge_release_pr "$PARENT_REPO" "$parent_pr" "$target_version"
+  parent_sha=$(git -C "$PARENT_DIR" rev-parse HEAD)
+  git -C "$PARENT_DIR" push origin HEAD:main
+  wait_commit_ci "$PARENT_REPO" "$parent_sha"
 
   git -C "$PARENT_DIR" fetch origin main
-  git -C "$PARENT_DIR" checkout -B main origin/main
-  git -C "$PARENT_DIR" submodule update --init jetbrains
+  [ "$(git -C "$PARENT_DIR" rev-parse origin/main)" = "$parent_sha" ] \
+    || die "Parent main moved after preparing v$target_version. Rerun the release from the new main state."
   (cd "$PARENT_DIR" && npm run --silent verify:version)
 fi
 
 release_sha=$(git -C "$PARENT_DIR" rev-parse HEAD)
+[ "$release_sha" = "$parent_sha" ] || die "Release SHA changed unexpectedly before tagging."
 git -C "$PARENT_DIR" tag -a "$tag" "$release_sha" -m "Release $tag"
 git -C "$PARENT_DIR" push origin "$tag"
 
@@ -216,11 +194,11 @@ if [ -n "${GITHUB_OUTPUT:-}" ]; then
     echo "version=$target_version"
     echo "tag=$tag"
     echo "release_sha=$release_sha"
-    echo "parent_pr=$parent_pr"
-    echo "child_pr=$child_pr"
+    echo "parent_sha=$parent_sha"
+    echo "child_sha=$child_sha"
   } >> "$GITHUB_OUTPUT"
 fi
 
 echo "Released $tag -> $release_sha"
-[ -n "$child_pr" ] && echo "JetBrains PR: https://github.com/$CHILD_REPO/pull/$child_pr"
-[ -n "$parent_pr" ] && echo "Parent PR: https://github.com/$PARENT_REPO/pull/$parent_pr"
+echo "JetBrains main: $child_sha"
+echo "Parent main: $parent_sha"

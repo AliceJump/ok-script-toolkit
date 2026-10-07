@@ -20,7 +20,7 @@ on:
 
 permissions:
   contents: read
-  actions: read
+  actions: write
 
 concurrency:
   group: prepare-release
@@ -28,7 +28,7 @@ concurrency:
 
 jobs:
   prepare:
-    name: Prepare, merge, tag, and publish
+    name: Prepare, push, tag, and publish
     runs-on: ubuntu-24.04
     timeout-minutes: 120
 
@@ -36,78 +36,108 @@ jobs:
       - name: Check out orchestrator
         uses: actions/checkout@v4
 
-      - name: Validate release bot configuration
+      - name: Validate release token
         env:
-          RELEASE_APP_ID: ${{ vars.RELEASE_APP_ID }}
-          RELEASE_APP_PRIVATE_KEY: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}
         run: |
           set -euo pipefail
-          if [ -z "$RELEASE_APP_ID" ] || [ -z "$RELEASE_APP_PRIVATE_KEY" ]; then
-            echo "::error::Configure RELEASE_APP_ID (Actions variable) and RELEASE_APP_PRIVATE_KEY (Actions secret) in the parent repository."
+          if [ -z "$RELEASE_TOKEN" ]; then
+            echo "::error::Configure RELEASE_TOKEN as a maintainer PAT with Contents read/write and Actions read access to both repositories."
             exit 1
           fi
 
-      - name: Create cross-repository release token
-        id: app-token
-        uses: actions/create-github-app-token@v3
-        with:
-          app-id: ${{ vars.RELEASE_APP_ID }}
-          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
-          owner: ${{ github.repository_owner }}
-          repositories: |
-            ok-script-toolkit
-            ok-script-toolkit-jetbrains
-
-      - name: Prepare release PRs, merge, and push tag
+      - name: Synchronize release commits and push tag
         id: prepare
         env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
           PARENT_REPO: ${{ github.repository }}
           CHILD_REPO: ${{ github.repository_owner }}/ok-script-toolkit-jetbrains
           BUMP_LEVEL: ${{ inputs.bump }}
           EXPLICIT_VERSION: ${{ inputs.version }}
+          RELEASE_GIT_NAME: ${{ github.actor }}
+          RELEASE_GIT_EMAIL: ${{ github.actor_id }}+${{ github.actor }}@users.noreply.github.com
         run: bash scripts/release/orchestrate-release.sh
 
-      - name: Wait for downstream Release workflow
+      - name: Start downstream Release workflow
+        id: dispatch
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_SHA: ${{ steps.prepare.outputs.release_sha }}
           RELEASE_TAG: ${{ steps.prepare.outputs.tag }}
+          RELEASE_SHA: ${{ steps.prepare.outputs.release_sha }}
         run: |
           set -euo pipefail
+
+          # A tag pushed with GITHUB_TOKEN does not start another workflow. The
+          # production path therefore dispatches Release explicitly. Keep the
+          # tag-push trigger in release.yml as an independent/manual entry point.
+          # During migration, an external token may still have caused the tag
+          # push to start Release already; avoid launching a duplicate run.
+          existing=$(gh run list \
+            --repo "$GITHUB_REPOSITORY" \
+            --workflow release.yml \
+            --event push \
+            --limit 20 \
+            --json databaseId,headSha,url \
+            --jq ".[] | select(.headSha == \"$RELEASE_SHA\") | [.databaseId, .url] | @tsv" \
+            | head -n 1 || true)
+
+          if [ -n "$existing" ]; then
+            IFS=$'\t' read -r run_id run_url <<< "$existing"
+            echo "Release already started from the tag push: $run_url"
+            echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          gh workflow run release.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref main \
+            -f "tag=$RELEASE_TAG"
+
           run_id=""
           run_url=""
           for _ in $(seq 1 30); do
             row=$(gh run list \
               --repo "$GITHUB_REPOSITORY" \
               --workflow release.yml \
-              --event push \
+              --event workflow_dispatch \
               --limit 20 \
-              --json databaseId,headSha,url \
-              --jq ".[] | select(.headSha == \"$RELEASE_SHA\") | [.databaseId, .url] | @tsv" \
+              --json databaseId,displayTitle,url \
+              --jq ".[] | select(.displayTitle == \"Release $RELEASE_TAG\") | [.databaseId, .url] | @tsv" \
               | head -n 1 || true)
             if [ -n "$row" ]; then
               IFS=$'\t' read -r run_id run_url <<< "$row"
               break
             fi
-            sleep 4
+            sleep 2
           done
 
           if [ -z "$run_id" ]; then
-            echo "::error::Tag $RELEASE_TAG was pushed, but release.yml did not start for $RELEASE_SHA."
+            echo "::error::release.yml was dispatched for $RELEASE_TAG but its run could not be found."
             exit 1
           fi
 
-          echo "Downstream Release: $run_url"
-          gh run watch "$run_id" --repo "$GITHUB_REPOSITORY" --exit-status
+          echo "Release dispatched: $run_url"
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for downstream Release workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ steps.dispatch.outputs.run_id }}
+        run: |
+          set -euo pipefail
+          if [ -z "$RUN_ID" ]; then
+            echo "::error::Downstream Release run id is missing."
+            exit 1
+          fi
+          gh run watch "$RUN_ID" --repo "$GITHUB_REPOSITORY" --exit-status
 
       - name: Release summary
         if: always()
         env:
           VERSION: ${{ steps.prepare.outputs.version }}
           TAG: ${{ steps.prepare.outputs.tag }}
-          PARENT_PR: ${{ steps.prepare.outputs.parent_pr }}
-          CHILD_PR: ${{ steps.prepare.outputs.child_pr }}
+          PARENT_SHA: ${{ steps.prepare.outputs.parent_sha }}
+          CHILD_SHA: ${{ steps.prepare.outputs.child_sha }}
         run: |
           {
             echo "## One-click release"
@@ -116,10 +146,10 @@ jobs:
               echo "- Version: \`$VERSION\`"
               echo "- Tag: \`$TAG\`"
             fi
-            if [ -n "$CHILD_PR" ]; then
-              echo "- JetBrains release PR: $CHILD_PR"
+            if [ -n "$CHILD_SHA" ]; then
+              echo "- JetBrains main: \`$CHILD_SHA\`"
             fi
-            if [ -n "$PARENT_PR" ]; then
-              echo "- Parent release PR: $PARENT_PR"
+            if [ -n "$PARENT_SHA" ]; then
+              echo "- Parent main: \`$PARENT_SHA\`"
             fi
           } >> "$GITHUB_STEP_SUMMARY"
