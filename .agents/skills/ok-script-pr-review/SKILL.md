@@ -145,6 +145,8 @@ description: 处理 ok-script-toolkit 主仓及 JetBrains 子仓的 PR 审阅意
 `6` 仍需等待（`-Once` 不是超时）、`4` PR 关闭而停止等待、`11` head 变化且本轮数据丢弃、`2` 错误。
 等待须在用户能从 Codex 侧边查看输出的终端会话后台运行，复用已有进程；不要默认隐藏
 Start-Process，也不要为等待另建定时任务、heartbeat 或 automation，除非用户明确要求安排。
+终端中的等待截止时间和下一次额度查询时间跟随电脑当前时区，显示完整日期、UTC 偏移与剩余时长；
+等待已停止时也显示建议的查询时间。它不是审阅预计完成时间。JSON 的 ISO 时间格式保持不变。
 本机账本默认在 `%LOCALAPPDATA%\ok-script-pr-review\coderabbit-triggers`，按仓库、PR 与 head 记录
 触发，写入先于发送；`-StateDir` 可改位置。修改脚本后运行 `test-coderabbit-helpers.ps1` 与
 `test-coderabbit-wait-mock.ps1`、`test-review-threads-mock.ps1`（Windows PowerShell 5.1 与 PowerShell 7 都应通过）。含非 ASCII
