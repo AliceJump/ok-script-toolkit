@@ -15,6 +15,12 @@ function Get-CrNow {
     return [datetimeoffset]::UtcNow
 }
 
+# Human-readable times follow the computer's current timezone; protocol timestamps stay in UTC.
+function Format-CrDisplayTime {
+    param([datetimeoffset]$Time, [TimeZoneInfo]$TimeZone = [TimeZoneInfo]::Local)
+    return [TimeZoneInfo]::ConvertTime($Time, $TimeZone).ToString('yyyy-MM-dd HH:mm:ss zzz', [Globalization.CultureInfo]::InvariantCulture)
+}
+
 function Wait-CrSeconds {
     param([double]$Seconds)
     if ($Seconds -le 0) { return }

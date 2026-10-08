@@ -162,6 +162,7 @@ try {
     }
     $started = Get-CrNow
     $deadline = $started.AddSeconds($TimeoutSeconds)
+    if (-not $Once) { Write-Host "[threads] waiting deadline: $(Format-CrDisplayTime $deadline) (local time; maximum wait $TimeoutSeconds seconds; not a review completion estimate)" }
     $pr = Get-CrPr $Repo $PrNumber
     if (-not $ExpectedHead) { $ExpectedHead = $pr.head }
     $polls = 0
