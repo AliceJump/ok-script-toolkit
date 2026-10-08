@@ -150,6 +150,28 @@ function plain(value) { return JSON.parse(JSON.stringify(value)); }
   pointErrors = [];
   expectedResourceLabels = ['translated:Template', 'translated:Box', 'translated:Point'];
 
+  // A damaged source must not hide another type's valid annotations.
+  rectAnnotations = [];
+  pointErrors = ['json'];
+  selection = ['template'];
+  expectedResourceLabels = ['translated:Template'];
+  const beforeMixedPick = quickPickCalls;
+  await run(['configure template', 'write template']);
+  assert.strictEqual(quickPickCalls, beforeMixedPick + 1, 'valid templates remain selectable alongside empty boxes and invalid points');
+
+  rectAnnotations = [{ id: 1 }];
+  pointItems = [];
+  pointErrors = [];
+  templateData.readErrors = ['json'];
+  selection = ['rect'];
+  expectedResourceLabels = ['translated:Box'];
+  await run(['configure positions', 'write positions']);
+  assert.strictEqual(quickPickCalls, beforeMixedPick + 2, 'valid boxes remain selectable alongside invalid templates and empty points');
+
+  templateData.readErrors = [];
+  pointItems = [{ path: 'screen.click', image: 'screen.png', x: 500, y: 250 }];
+  expectedResourceLabels = ['translated:Template', 'translated:Box', 'translated:Point'];
+
   // Empty or invalid authoring data cannot silently replace a published template library.
   const data = { load() {}, readErrors: [], listImages: () => [] };
   assert.strictEqual(await publish.prepareTemplatePublish.call({ data }), undefined);
