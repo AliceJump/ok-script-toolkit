@@ -2,7 +2,9 @@
 
 [简体中文](feature-parity.md) | [English](feature-parity.en.md)
 
-复核日期：2026-10-08。主仓基线 `aea8b14`，子仓 `main` 基线 `9eb4992`，版本均为 `1.23.0`。本轮在子仓 [PR #28](https://github.com/AliceJump/ok-script-toolkit-jetbrains/pull/28) 的 `0e846f0` 上继续修正，并同步调整主仓 `codex/complete-feature-parity` 分支。以下功能结论针对本轮 PR 代码，合并和发布之前不计入已发布版本。
+历史功能补齐记录：2026-10-08。主仓基线 `aea8b14`，子仓 `main` 基线 `9eb4992`，版本均为 `1.23.0`。本轮在子仓 [PR #28](https://github.com/AliceJump/ok-script-toolkit-jetbrains/pull/28) 的 `0e846f0` 上继续修正，并同步调整主仓 `codex/complete-feature-parity` 分支。以下功能结论针对本轮 PR 代码，合并和发布之前不计入已发布版本。
+
+当前交互改动由 [JetBrains PR #30](https://github.com/AliceJump/ok-script-toolkit-jetbrains/pull/30) 与 [主仓 PR #37](https://github.com/AliceJump/ok-script-toolkit/pull/37) 交付，版本 `1.24.0`。标注管理与资源预览按 VS Code 对齐。下面的 PR #28 基线及验证数字保留为历史记录，不代表当前 PR 的审阅状态。
 
 ## 当前功能核对
 
@@ -39,7 +41,7 @@
 
 ## 有意保留的宿主差异
 
-VS Code 标注改动即保存；JetBrains 对话框点击保存才写回，取消放弃本次编辑。两端都只写工作文件，保存不代表发布。Webview 与 Swing 的按钮位置和原生布局可不同，同一资源来源、表达式、写入范围和发布含义一致。
+两端标注均在编辑器页签内操作，完成创建、编辑、拖动、删除、撤销或重做后立即保存工作文件；保存不等于发布。JetBrains 保存失败时显示错误与重试入口，并保留插件草稿供重新打开后恢复及合并外部修改。 卡片按钮、点击、显隐、删除模式、数值编辑、方向键微调与图片导航按 VS Code 对齐；输入与确认仍使用各 IDE 的宿主控件。
 
 游戏如何加载发布文件由业务项目负责。插件提供当前声明、运行状态和日志入口，不增加业务参数迁移、历史键恢复或应用回执协议。操作契约详见位置资源文档。
 

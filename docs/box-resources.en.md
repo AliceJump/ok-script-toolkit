@@ -41,7 +41,7 @@ Deleting a source image removes its records and annotations from all three autho
 
 Internal saves, imports, and external file changes use one refresh channel. Open editing sessions retain local changes while reconciling external edits and conflicts; unresolved conflicts prevent overwriting sources. Management lists and thumbnails use the current model and reject stale asynchronous callbacks.
 
-VS Code saves annotation edits immediately. JetBrains writes when the dialog's Save action is accepted; Cancel discards that session's changes. Both write authoring files only. Saving annotations does not publish them.
+Both hosts edit annotations in an editor tab and save authoring files after completed creation, editing, dragging, deletion, undo or redo. Saving does not publish resources. JetBrains exposes save errors and a retry action, preserving a plugin draft for recovery and external-change reconciliation when reopened.
 
 ## Resource Previews and Code References
 
