@@ -259,5 +259,6 @@
   "Overwrite": "Sobrescribir",
   "Could not publish positions: {error}": "No se pudieron publicar las posiciones: {error}",
   "Published positions: {files}": "Posiciones publicadas: {files}",
-  "Resource Preview": "Vista previa de recursos"
+  "Resource Preview": "Vista previa de recursos",
+  "No annotations available to publish.": "No hay anotaciones disponibles para publicar."
 }
