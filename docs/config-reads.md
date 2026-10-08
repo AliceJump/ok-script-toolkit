@@ -21,8 +21,8 @@
 
 | 型     | 实际经过的层                              | 有哪些                                                                                                                                                   | 数量                     | 一句话                                           | 代码入口                                                                   |
 | ----- | ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------- | --------------------------------------------- | ---------------------------------------------------------------------- |
-| **甲** | **① ② ④**                           | 枚举 3 项 + 模板目录 1 项 + i18n 4 项 + 角色 5 项 + 效果 1 项                                                                                                        | **14**                 | 能被团队约定，也能被我覆盖；**不碰 `config.py`**              | `projectConfig.ts` 的 `xxxSetting()`；子仓 `OkScriptToolkitSettings.xxx()` |
-| **乙** | **② ③ ④**                           | `templates.cocoAnnotations`、`boxes.runtime` | **2** | 由**项目**决定（约定文件 或 `config.py`）；**没有个人偏好层** | `cocoFeaturePath.ts` / `boxResourcePure.ts`；子仓 `core/CocoFeaturePath.kt` / `core/BoxRuntimePath.kt` |
+| **甲** | **① ② ④**                           | 枚举 3 项 + 模板目录 1 项 + i18n 4 项 + 角色 5 项 + 效果 1 项 + Position 发布路径 2 项                                                                                                        | **16**                 | 能被团队约定，也能被我覆盖；**不碰 `config.py`**              | `projectConfig.ts` 的 `xxxSetting()`；子仓 `OkScriptToolkitSettings.xxx()` |
+| **乙** | **② ③ ④** | `templates.cocoAnnotations` | **1** | 项目约定或 `config.py`；没有个人偏好层 | `cocoFeaturePath.ts` / 子仓 `core/CocoFeaturePath.kt` |
 | **丙** | **③**                               | `windows.{exe, title, hwnd_class, args}`                                                                                                              | **4**（另有 2 项是死字段，见 §9） | 只有 `config.py` 这一层；探不到时**交互式兜底**（让用户手输窗口标题正则） | `python/probe_window_config.py`                                        |
 | **丁** | **① ④**                             | `displayLocale` / `enableInlayHints` / `annotationKeybindings` / `enableTemplateGallery` / `okScriptProjectPath` / `okScriptPython` / `captureMethod` | **7**（任一端 6）           | 只属于**我这台机器 / 我个人**；**不碰项目文件**                 | `getConfiguration().get()`；子仓直接读 `SettingsState`                       |
 | **戊** | 独立探测链（`okScriptProjectPath` → 自动探测） | 项目根解析                                                                                                                                                 | **2 条**                | "到哪儿去找这个项目"                                   | 父仓 `resolveProjectDir()`；子仓 `core/ProjectDirResolution.kt`             |
@@ -61,16 +61,9 @@
 
 | IDE 键                  | 约定字段                  | 这个配置是干什么的                                                                                | 兜底             | 归一化  |
 | ---------------------- | --------------------- | ---------------------------------------------------------------------------------------- | -------------- | ---- |
-| `okTemplatesDirectory` | `templates.directory` | **素材面板的工作目录名**（相对项目根）。里面放 png 切图 + 面板自己的 `coco_annotations.json`；同时决定缩略图缓存来源判定与文件监听 glob | `ok_templates` | 相对路径 |
+| `okTemplatesDirectory` | `templates.directory` | **素材面板的工作目录名**（相对项目根）。里面放图片与 `coco_annotations.json`、`boxes.json`、`points.json`；同时决定缩略图缓存来源判定与文件监听 glob | `ok_templates` | 相对路径 |
 
-共 **9 处调用点**，横跨：
-
-| 位置                         | 用途                                                                 |
-| -------------------------- | ------------------------------------------------------------------ |
-| `extension.ts` ×5          | 拼**文件监听 glob**、变更归属比较（`rel.startsWith(...)`）、把目录名**注入**给 `pngCrop` |
-| `featureData.ts`           | 建立模板索引（扫描该目录下的 png 与 `coco_annotations.json`）                      |
-| `templateAssetData.ts`     | 面板数据根目录                                                            |
-| `templateAssetPanel.ts` ×2 | 「保存到 assets」的输出目录、导入对话框的标题文案                                       |
+当前调用点包括 `extension.ts` 资源监听、`templateAssetData.ts` 标注管理、统一标注编辑与资源预览的工作原图定位。Rect / Point 的标注文件也放在这个目录；运行时 Template 预览使用 `templates.cocoAnnotations`。
 
 `pngCrop.ts` **不自己读**配置（它有测试契约钉着：在纯 Node 沙箱里 require，`vscode` 只有空壳桩），  
 目录名由宿主通过 `setTemplatesDirName()` 注入 —— 与 `setCropLogger` 同一套路。
@@ -124,6 +117,15 @@
 
 解析出的数据是 `效果 ID → { 描述, 分类 }`，描述与分类都来自那个文件，所以**加一个效果只需要改项目文件、不用改插件**。
 
+### Position 发布路径（2 项）
+
+| IDE 键 | 约定字段 | 默认值 |
+|---|---|---|
+| `positionJsonPath` | `position.jsonPath` | `src/scene/positions.json` |
+| `positionPythonDirectory` | `position.pythonDirectory` | `src/scene` |
+
+两项都走个人偏好 → 项目约定 → 默认值。发布配置显示当前来源，可修改或清除个人覆盖。留空恢复项目约定；写入前拒绝绝对路径、越界段、项目根目录本身及越界符号链接。Python 发布保护手写模块；已有自定义 JSON 目标需要明确覆盖确认。这两项不决定标注来源和 `self.pos` 索引来源。见 [位置资源契约](box-resources.md)。
+
 ### 2.6 只由执行器读的 `executor.startupHooks`
 
 | 约定字段                                       | 这个配置是干什么的                                                                                       | 谁读                                    |
@@ -138,12 +140,12 @@
 
 ---
 
-## 3. 乙型 · ② ③ ④：由项目决定（2 项）
+## 3. 乙型 · ② ③ ④：由项目决定（1 项）
 
 | 约定字段                        | 这个配置是干什么的                                      | 取值链                                                                                                                                      |
 | --------------------------- | ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | `templates.cocoAnnotations` | **ok 框架加载的「运行时模板库」**（那份 COCO）在哪。插件用它做模板匹配提示与索引 | 约定文件 → `config.py` 的 `template_matching.coco_feature_json` → 依次探测 `assets/coco_annotations.json`、`ok_tasks/assets/coco_annotations.json` |
-| `boxes.runtime` | **运行时框位置表**，用于框画廊、补全和 Hover；游戏加载器由业务项目提供 | 约定文件 → `config.py` 顶层 `boxes_json` → `src/scene/boxes.json` |
+
 
 **它没有"个人偏好"层**（不进溯源面板）—— 这是刻意的：它是"项目自己的真话"，不是"我这台机器的偏好"。
 

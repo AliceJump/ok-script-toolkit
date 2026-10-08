@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { CocoData, writeAnnotationText, writeAnnotationTextIfUnchanged } from './cocoAnnotationData';
+import { CocoData, notifyAnnotationDataChanged, writeAnnotationText, writeAnnotationTextIfUnchanged } from './cocoAnnotationData';
 import { readImageSize } from './imageHeader';
 import { positionPathError, PixelPoint, PositionAuthoringItem, PositionImage } from './positionResourcePure';
 
@@ -121,6 +121,36 @@ export function readPoints(root: string, directory: string): PointReadResult {
       ? { file: emptyFile(), errors: [] }
       : { file: emptyFile(), errors: ['read'] };
   }
+}
+
+export function capturePointAuthoring(root: string, directory: string): { text: string | null } | null {
+  try { return { text: fs.readFileSync(sourceFile(root, directory), 'utf8') }; }
+  catch (error) { return (error as NodeJS.ErrnoException).code === 'ENOENT' ? { text: null } : null; }
+}
+
+export function restorePointAuthoring(root: string, directory: string, snapshot: { text: string | null }): boolean {
+  const file = sourceFile(root, directory);
+  try {
+    if (snapshot.text === null) { fs.rmSync(file, { force: true }); notifyAnnotationDataChanged(file); }
+    else writeAnnotationText(file, snapshot.text);
+    return true;
+  } catch { return false; }
+}
+
+/** 删除原图时清理该图的 Point 引用；读取失败或版本变化不覆盖源文件。 */
+export function removeImagePoints(root: string, directory: string, imageName: string): boolean {
+  const snapshot = capturePointAuthoring(root, directory);
+  if (!snapshot) return false;
+  if (snapshot.text === null) return true;
+  const current = parse(snapshot.text);
+  if (current.errors.length) return false;
+  const key = (name: string) => path.basename(name.replace(/\\/g, '/')).toLowerCase();
+  const raw = JSON.parse(snapshot.text) as CocoData;
+  const removedIds = new Set(raw.images.filter(image => key(image.file_name) === key(imageName)).map(image => image.id));
+  if (!removedIds.size) return true;
+  raw.images = raw.images.filter(image => !removedIds.has(image.id));
+  raw.annotations = raw.annotations.filter(annotation => !removedIds.has(annotation.image_id));
+  return writeAnnotationTextIfUnchanged(sourceFile(root, directory), JSON.stringify(raw, null, 2) + '\n', snapshot.text, false);
 }
 
 export function pointsForImage(root: string, directory: string, imageName: string): AuthoringPoint[] {

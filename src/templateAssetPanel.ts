@@ -283,13 +283,13 @@ class AssetGalleryController {
   private async handlePublish(): Promise<void> {
     const resources = await vscode.window.showQuickPick(
       [
-        { label: 'Template', resource: 'template' as const, picked: true },
-        { label: 'Rect', resource: 'rect' as const, picked: true },
-        { label: 'Point', resource: 'point' as const, picked: true },
+        { label: tr('Template'), resource: 'template' as const, picked: true },
+        { label: tr('Box'), resource: 'rect' as const, picked: true },
+        { label: tr('Point'), resource: 'point' as const, picked: true },
       ],
       {
         canPickMany: true,
-        placeHolder: 'Select resources to publish',
+        placeHolder: tr('Select resources to publish'),
       },
     );
     if (!resources?.length) return;
@@ -342,28 +342,28 @@ class AssetGalleryController {
       }> = [
         {
           label: 'JSON',
-          description: `${jsonTarget.value} · ${jsonTarget.source}`,
+          description: `${jsonTarget.value} · ${tr(jsonTarget.source)}`,
           format: 'json',
         },
         {
-          label: 'Python data + parser',
-          description: `${pythonDir}/ScreenRatio.py + PositionMap.py · ${pythonTarget.source}`,
+          label: tr('Python data + parser'),
+          description: `${pythonDir}/ScreenRatio.py + PositionMap.py · ${tr(pythonTarget.source)}`,
           format: 'python',
         },
         { label: '', kind: vscode.QuickPickItemKind.Separator },
         {
-          label: '$(settings-gear) JSON output path',
-          description: `${jsonTarget.value} · ${jsonTarget.source}`,
+          label: '$(settings-gear) ' + tr('JSON output path'),
+          description: `${jsonTarget.value} · ${tr(jsonTarget.source)}`,
           edit: 'json',
         },
         {
-          label: '$(settings-gear) Python output directory',
-          description: `${pythonTarget.value} · ${pythonTarget.source}`,
+          label: '$(settings-gear) ' + tr('Python output directory'),
+          description: `${pythonTarget.value} · ${tr(pythonTarget.source)}`,
           edit: 'python',
         },
       ];
       const choice = await vscode.window.showQuickPick(items, {
-        placeHolder: 'Position export format — paths can be configured below',
+        placeHolder: tr('Position export format — paths can be configured below'),
       });
       if (!choice) return undefined;
       if (choice.edit) {
@@ -376,9 +376,9 @@ class AssetGalleryController {
     }
 
     if (selection.rect !== selection.point) {
-      const publishSelected = 'Publish selected positions';
+      const publishSelected = tr('Publish selected positions');
       const confirm = await vscode.window.showWarningMessage(
-        'Publishing only the selected position type replaces the complete Position output and removes unselected positions.',
+        tr('Publishing only the selected position type replaces the complete Position output and removes unselected positions.'),
         { modal: true },
         publishSelected,
       );
@@ -403,11 +403,11 @@ class AssetGalleryController {
     if (!result.ok && result.errors.includes('manual') && result.protectedFiles?.length) {
       const names = result.protectedFiles.map(file => path.relative(plan.root, file)).join('\n');
       const overwrite = await vscode.window.showWarningMessage(
-        `These existing files require explicit overwrite confirmation:\n${names}`,
+        tr('These existing files require explicit overwrite confirmation:\n{files}', { files: names }),
         { modal: true },
-        'Overwrite',
+        tr('Overwrite'),
       );
-      if (overwrite !== 'Overwrite') return false;
+      if (overwrite !== tr('Overwrite')) return false;
       result = publishPositionsByFormat(plan.root, directory, plan.format, {
         ...plan.options,
         overwriteManual: true,
@@ -416,11 +416,11 @@ class AssetGalleryController {
 
     if (!result.ok) {
       const detail = result.errors.join(', ') || 'unknown';
-      void vscode.window.showErrorMessage(`Could not publish positions: ${detail}`);
+      void vscode.window.showErrorMessage(tr('Could not publish positions: {error}', { error: detail }));
       return false;
     }
     const files = result.files.map(file => path.relative(plan.root, file).replace(/\\/g, '/')).join(', ');
-    void vscode.window.showInformationMessage(`Published positions: ${files}`);
+    void vscode.window.showInformationMessage(tr('Published positions: {files}', { files }));
     return true;
   }
 
@@ -432,8 +432,13 @@ class AssetGalleryController {
   }
 
   private async prepareTemplatePublish(): Promise<TemplatePublishPlan | undefined> {
+    this.data.load();
     if (this.data.readErrors.length) {
       void vscode.window.showErrorMessage(tr('The annotation source is invalid. Fix the source file before saving or exporting.'));
+      return undefined;
+    }
+    if (!this.data.listImages().some(image => this.data.getAnnotationsForImage(image, true).length > 0)) {
+      void vscode.window.showWarningMessage(tr('No Template annotations to publish.'));
       return undefined;
     }
     const folder = vscode.workspace.workspaceFolders?.[0];

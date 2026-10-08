@@ -4,7 +4,7 @@
 
 本文件服务于开发者插件识别**当前本地项目的接口与资源入口**，范围见 [开发者插件的功能范围与使用体验](developer-tool-scope.md)。约定文件不承载业务参数迁移表；业务项目删除或转移参数时，插件跟随当前声明，不自动恢复或搬运旧调试值。
 
-> 状态：**现有字段已接入两端**（2026-10-01 本地代码复核）。配套产物：`schemas/ok-script-toolkit.schema.json`、
+> 状态：**现有字段已接入两端**（2026-10-08 本地代码复核）。配套产物：`schemas/ok-script-toolkit.schema.json`、
 > `docs/ok-script-toolkit.example.json`。
 >
 > | 范围 | 状态 |
@@ -172,14 +172,13 @@
 | | `afterConfigImport` | **无此信息** | 按约定试 `src.patches.startup_patches:install_startup_patches` |
 | `templates` | `directory` | 无（插件侧约定） | IDE 设置 → `ok_templates` |
 | | `cocoAnnotations` | **6/6 有** | `config.py` 的 `template_matching.coco_feature_json` → 依次探测两个候选 |
-| `boxes` | `runtime` | 新字段，现有项目还没有 | `config.py` 顶层 `boxes_json` → `src/scene/boxes.json` |
+| `position` | `jsonPath` | 插件发布约定 | 个人偏好 → 项目约定 → `src/scene/positions.json` |
+| | `pythonDirectory` | 插件发布约定 | 个人偏好 → 项目约定 → `src/scene` |
 | `i18n` | `enabled` / `langDirectory` / `poDirectory` / `poDomains` | 无 | IDE 设置 → 内置默认 |
 | `characters` | `projectPath` / `masterFile` / `skillsDirectory` / `localeFile` / `avatarTemplateRegex` | 无 | IDE 设置 → 内置默认 |
 | `effects` | `file` | 无 | IDE 设置 → `src/data/effects.py` |
 
-**接线状态**：全部字段已接线（`templates.directory` / `templates.cocoAnnotations` /
-`boxes.runtime` / `labelEnum.*` / `i18n` / `characters` / `effects`）。
-`boxes.runtime` 已接入文件定位、框资源管理、运行时框画廊及 `self.pos` 补全；实现分别在 `src/boxPanels.ts` / `src/providers.ts` 与子仓 `ui/BoxWindows.kt` / `editor/OkEditorSupport.kt`。几何和保存契约见 [框资源设计](box-resources.md)。
+**接线状态**：当前 Schema 字段均已接入两端。统一标注与资源预览取代独立框管理入口；`self.pos` 补全和预览读取当前 Rect / Point 标注，位置发布使用 `position.jsonPath` / `position.pythonDirectory`。发布配置里可修改、清除个人路径覆盖，并查看当前来源。详见 [位置资源契约](box-resources.md)。
 
 **⚠️ 两个同名的 `coco_annotations.json` 不是一回事** —— 接错会静默指向错的文件：
 
@@ -187,11 +186,12 @@
 |---|---|---|---|
 | `assets/coco_annotations.json`（或 config.py 指的别处） | ok 框架加载的**运行时模板库** | `featureData` / `OkProjectDataService` 读，文件监听盯它 | `templates.cocoAnnotations` → config.py → 两个惯例位置 |
 | `<模板目录>/coco_annotations.json` | 素材面板自己的**标注工作文件** | `templateAssetData` / `TemplateAssetDataService` 读写 | `templates.directory`（**不受** `cocoAnnotations` 影响） |
-| `src/scene/boxes.json`（或 `boxes_json` 指的别处） | 业务项目加载的**运行时框** | 框画廊、补全和 Hover 读取；游戏加载器仍由业务项目的 `ScreenPosition` 提供 | `boxes.runtime` → config.py → 探测位置 |
-| `<模板目录>/boxes.json` | 框资源管理的**标注工作文件** | 两端框资源管理和共用标注编辑器读写，显式发布到运行时文件 | `templates.directory`（**不受** `boxes.runtime` 影响） |
+| `<模板目录>/points.json` | Point 的 COCO 标注工作文件 | 统一标注器读写；资源预览与 `self.pos` 提示读取 | `templates.directory` |
+| `<模板目录>/boxes.json` | Rect 的 COCO 标注工作文件 | 统一标注器读写；资源预览与 `self.pos` 提示读取 | `templates.directory` |
+| `src/scene/positions.json` 或自定义路径 | 发布后的归一化 Position 数据 | 显式发布时写入；游戏加载由业务项目负责 | `position.jsonPath`，个人偏好优先 |
+| `ScreenRatio.py` / `PositionMap.py` | 发布后的 Python 位置数据与解析器 | 显式发布时写入，保护已有手写文件 | `position.pythonDirectory`，个人偏好优先 |
 
-`cocoAnnotations` 与 `boxes.runtime` 是"`config.py` 已声明的事实"落地的两条链，
-都**没有 IDE 设置**（没有"个人偏好"层）。`boxes_json` 在现有项目里还没有，缺席时探测 `src/scene/boxes.json`。
+`templates.cocoAnnotations` 消费项目事实，没有个人偏好层。位置发布路径有个人偏好层，不读取旧的 `boxes_json`；`boxes.runtime` 已从当前 Schema 和插件入口移除。标注保存不会发布 Position 数据，也不会修改业务项目加载器。
 
 **按字段类型选归一化方式**（做错是**静默**的，所以这里写死）：
 
@@ -237,7 +237,7 @@ from src.data.feature_list import FeatureList      # OK-AzurPromilia 里有 10 �
 | 环节 | 实现 |
 |---|---|
 | 判据（纯函数，可单测） | VS Code `src/labelEnumGuard.ts`；子仓 `core/LabelEnumGuard.kt` |
-| IO 与弹窗 | VS Code `templateAssetPanel.confirmLabelEnumRename()`（编排层）；子仓 `ui/TemplateAssetToolWindowFactory` |
+| IO 与弹窗 | VS Code `templateAssetPanel.confirmLabelEnumRename()`（编排层）；子仓 `ui/TemplatePublishFlow` |
 | 测试 | `scripts/test_label_enum_guard.js`（含 5 组破坏性对照） |
 
 三条不变量：
@@ -335,7 +335,7 @@ import 得到（只是拿不到新标签），不会报错；而改类名是**�
 >   `OkScriptToolkitSettings.okTemplatesDirectory()`，包括文件监听 glob 与
 >   `thumbSourceSubdir()` 的来源判定（目录名要拼进 glob / 做目录段匹配，所以
 >   两端都先归一化一次 —— 见 `normalizeRelPath`）。
-> - **已完成后续接线**：`templates.cocoAnnotations`（含 `config.py` 的 `template_matching.coco_feature_json`）、`boxes.runtime`、`i18n` / `characters` / `effects` 各组。导出时，两端会在个人与项目约定均未提供枚举路径时探测 `template_tab.label_enum_relative_path`；这个后备发生在导出入口，不由普通设置访问器直接读取。
+> - **已完成后续接线**：`templates.cocoAnnotations`（含 `config.py` 的 `template_matching.coco_feature_json`）、`position.jsonPath` / `position.pythonDirectory`、`i18n` / `characters` / `effects` 各组。导出时，两端会在个人与项目约定均未提供枚举路径时探测 `template_tab.label_enum_relative_path`；这个后备发生在导出入口，不由普通设置访问器直接读取。
 > - **不能据此宣称所有交互都免输入**：导出目标、路径修改和覆盖确认仍按当前工作流处理。
 
 ### 执行器（`python/run_executor.py`）
@@ -379,7 +379,7 @@ IntelliJ 各有原生 keymap 编辑器，用户改键位本来就该走那里 �
    **✅ 已修**：两端统一走 `templates.directory` 取值链，消费点全部改为读访问器；
    顺带把 `TemplateAssetDataService.load/cocoPath` 的 `templatesDir: String = "ok_templates"`
    默认值**去掉**了 —— 留一个默认值等于给调用方留一条绕过取值链的静默通道。
-2. **`label_enum_relative_path` 原先未读，现已作为导出路径的后备** —— 主仓 `templateAssetPanel.ts` 和子仓 `TemplateAssetToolWindowFactory.kt` 消费同一个探针字段。
+2. **`label_enum_relative_path` 原先未读，现已作为导出路径的后备** —— 主仓 `templateAssetPanel.ts` 和子仓 `TemplatePublishFlow.kt` 消费同一个探针字段。
 3. **VS Code 侧无 jsonc 解析器** —— 这是本设计选纯 JSON 的原因之一（见 §4）。
 
 ## 9. 未决事项

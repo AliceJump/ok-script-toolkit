@@ -329,13 +329,13 @@
           "type": "string",
           "default": "src/scene/positions.json",
           "scope": "resource",
-          "markdownDescription": "Project-relative output path for Position JSON publishing. Precedence: your IDE preference → `ok-script-toolkit.json` project convention → built-in default."
+          "markdownDescription": "%config.positionJsonPath%"
         },
         "okScriptToolkit.positionPythonDirectory": {
           "type": "string",
           "default": "src/scene",
           "scope": "resource",
-          "markdownDescription": "Project-relative directory for generated `ScreenRatio.py` and `PositionMap.py`. Precedence: your IDE preference → `ok-script-toolkit.json` project convention → built-in default."
+          "markdownDescription": "%config.positionPythonDirectory%"
         },
         "okScriptToolkit.effectsFile": {
           "type": "string",
@@ -435,7 +435,7 @@
     "verify:version": "node scripts/release/verify-version.js",
     "verify:l10n": "node scripts/release/verify-l10n.js",
     "release": "sh scripts/release.sh",
-    "test": "npm run verify:version && npm run verify:l10n && npm run compile && npm run test:webview-html && npm run test:design-system && npm run test:thumbnail-actions && npm run test:task-launcher && npm run test:console-accountseg && npm run test:task-launcher-executor && npm run test:task-reconcile && npm run test:temp-screenshots && npm run test:annotation-coords && npm run test:annotation-clipboard && npm run test:annotation-swap && npm run test:annotation-merge && npm run test:annotation-history && npm run test:annotation-mode-cycle && npm run test:position-resource && npm run test:point-resource && npm run test:asset-swap-picker && npm run test:thumb-content-hash && npm run test:list-editor && npm run test:project-config && npm run test:project-config-schema && npm run test:convention-sources && npm run test:label-enum-guard && npm run test:save-to-assets-flow && npm run test:save-to-assets && npm run test:asset-pack-worker && npm run test:coco-feature-path && npm run test:box-resource && npm run test:probe-schemas && npm run test:probe-gui-group-names && npm run test:probe-qt-layer && npm run test:probe-multi-account-path && npm run test:probe-window-config && npm run test:run-sandbox && npm run test:startup-patches && npm run test:executor-runtime && npm run test:executor-project-config && npm run test:executor-gconfig && npm run test:project-store && npm run test:project-runtime",
+    "test": "npm run verify:version && npm run verify:l10n && npm run test:l10n-literals && npm run compile && npm run test:webview-l10n && npm run test:webview-html && npm run test:design-system && npm run test:thumbnail-actions && npm run test:task-launcher && npm run test:console-accountseg && npm run test:task-launcher-executor && npm run test:task-reconcile && npm run test:temp-screenshots && npm run test:annotation-coords && npm run test:annotation-clipboard && npm run test:annotation-swap && npm run test:annotation-merge && npm run test:annotation-history && npm run test:annotation-mode-cycle && npm run test:position-resource && npm run test:resource-host-contract && npm run test:position-publish-settings && npm run test:point-resource && npm run test:asset-swap-picker && npm run test:thumb-content-hash && npm run test:list-editor && npm run test:project-config && npm run test:project-config-schema && npm run test:convention-sources && npm run test:label-enum-guard && npm run test:save-to-assets-flow && npm run test:save-to-assets && npm run test:asset-pack-worker && npm run test:coco-feature-path && npm run test:box-resource && npm run test:probe-schemas && npm run test:probe-gui-group-names && npm run test:probe-qt-layer && npm run test:probe-multi-account-path && npm run test:probe-window-config && npm run test:run-sandbox && npm run test:startup-patches && npm run test:executor-runtime && npm run test:executor-project-config && npm run test:executor-gconfig && npm run test:project-store && npm run test:project-runtime",
     "test:webview-html": "node scripts/test_webview_html.js",
     "test:design-system": "node scripts/test_design_system.js",
     "test:thumbnail-actions": "node scripts/test_thumbnail_actions.js",
@@ -478,7 +478,11 @@
     "test:project-runtime": "python python/tests/test_project_runtime.py",
     "vscode:prepublish": "npm run compile",
     "package": "vsce package",
-    "publish:marketplace": "vsce publish --skip-duplicate --packagePath ok-script-toolkit-${npm_package_version}.vsix"
+    "publish:marketplace": "vsce publish --skip-duplicate --packagePath ok-script-toolkit-${npm_package_version}.vsix",
+    "test:l10n-literals": "node scripts/test_l10n_literals.js",
+    "test:position-publish-settings": "node scripts/test_position_publish_settings.js",
+    "test:webview-l10n": "node scripts/test_webview_l10n.js",
+    "test:resource-host-contract": "node scripts/test_resource_host_contract.js"
   },
   "devDependencies": {
     "@types/jpeg-js": "^0.3.0",

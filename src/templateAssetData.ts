@@ -10,7 +10,8 @@ import { tr } from './localization';
 import { labelEnumNameSetting, templatesDirectory } from './projectConfig';
 import { PYTHON_KEYWORDS, writableClassName } from './labelEnumGuard';
 import { isPathInsideRoot } from './saveToAssetsPure';
-import { captureAuthoring, removeImageBoxes, restoreAuthoring } from './boxResourceStore';
+import { authoringReadErrors, captureAuthoring, removeImageBoxes, restoreAuthoring } from './boxResourceStore';
+import { capturePointAuthoring, removeImagePoints, restorePointAuthoring } from './pointResourceStore';
 import { CocoAnnotationData, CocoData, CocoImage, CocoAnnotation, filenameKey, readImageHeaderSize } from './cocoAnnotationData';
 import { AUTHORING_FILE_NAME, parseBoxCoco } from './boxResourcePure';
 export { CocoImage, CocoAnnotation, CocoCategory, CocoData, filenameKey } from './cocoAnnotationData';
@@ -38,13 +39,19 @@ export class TemplateAssetData extends CocoAnnotationData {
       return templates.deleteImage(imagePath);
     }
     const templates = templatesDirectory(this.rootDir);
+    this.load();
+    if (this.readErrors.length || authoringReadErrors(this.rootDir, templates).length) return false;
     const snapshot = captureAuthoring(this.rootDir, templates);
-    if (!snapshot) return false;
+    const pointSnapshot = capturePointAuthoring(this.rootDir, templates);
+    if (!snapshot || !pointSnapshot) return false;
     const staged = `${imagePath}.${process.pid}.ok-delete`;
     let moved = false;
     let committed = false;
+    let pointsRemoved = false;
     try {
       if (!removeImageBoxes(this.rootDir, templates, path.basename(imagePath))) return false;
+      if (!removeImagePoints(this.rootDir, templates, path.basename(imagePath))) throw new Error('points');
+      pointsRemoved = true;
       // 挪走文件后，大小写不同的记录不能再靠 realpath 对上，所以先记下 id。
       const imageId = this.getSwapImageEntry(imagePath)?.id;
       if (fs.existsSync(imagePath)) {
@@ -66,7 +73,10 @@ export class TemplateAssetData extends CocoAnnotationData {
       if (moved && fs.existsSync(staged) && !fs.existsSync(imagePath)) {
         try { fs.renameSync(staged, imagePath); } catch { /* 原路径占着时留给下面的框恢复判断 */ }
       }
-      if (fs.existsSync(imagePath)) restoreAuthoring(this.rootDir, templates, snapshot);
+      if (fs.existsSync(imagePath)) {
+        restoreAuthoring(this.rootDir, templates, snapshot);
+        if (pointsRemoved) restorePointAuthoring(this.rootDir, templates, pointSnapshot);
+      }
       try { this.load(); } catch { /* 标注写盘没成功时，内存仍可能是删过的那份 */ }
       return false;
     }

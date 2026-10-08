@@ -360,7 +360,7 @@ export class CocoAnnotationData {
       [...this.cocoData.images.map(img => img.file_name), ...this.listImages()].map(name => path.basename(name, path.extname(name)))
     );
     // Both editors share the directory; reserve names even for missing files and legacy box sources.
-    for (const source of new Set([this.fileName, 'coco_annotations.json', 'boxes.json'])) {
+    for (const source of new Set([this.fileName, 'coco_annotations.json', 'boxes.json', 'points.json'])) {
       try {
         const raw = JSON.parse(fs.readFileSync(path.join(this.templateFolder, source), 'utf8'));
         const names: unknown[] = [

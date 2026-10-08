@@ -56,6 +56,20 @@ writePng(path.join(folder, 'b.png'), 200, 200);
 try {
   const source = path.join(folder, 'boxes.json');
 
+  // A deleted image name retained by any authoring source must not be reused by import.
+  for (const fileName of ['coco_annotations.json', 'boxes.json', 'points.json']) {
+    const reservedFolder = path.join(project, 'reserved-' + fileName);
+    fs.mkdirSync(reservedFolder);
+    const text = JSON.stringify({ images: [{ id: 1, file_name: '1.png', width: 100, height: 100 }], annotations: [], categories: [] });
+    const sourceFile = path.join(reservedFolder, fileName);
+    fs.writeFileSync(sourceFile, text);
+    const data = new CocoAnnotationData(project, path.basename(reservedFolder));
+    data.load();
+    assert.strictEqual(data.nextImageName(), '2', fileName);
+    assert.strictEqual(fs.readFileSync(sourceFile, 'utf8'), text, 'name reservation is read-only');
+    assert.strictEqual(fs.existsSync(path.join(reservedFolder, '1.png')), false);
+  }
+
   // The compare-and-write handoff must preserve a writer that recreates the path
   // after the expected revision was moved aside but before our prepared file is installed.
   const casFile = path.join(folder, 'cas.json');

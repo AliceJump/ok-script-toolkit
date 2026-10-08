@@ -337,9 +337,9 @@ function makePublishFixture() {
   const assetHtml = fs.readFileSync(path.join(root, 'media', 'templateAssetPanel', 'index.html'), 'utf8');
   const previewHtml = fs.readFileSync(path.join(root, 'media', 'templatePanel', 'index.html'), 'utf8');
   assert(host.includes('canPickMany: true'));
-  assert(host.includes("label: 'Template'"));
-  assert(host.includes("label: 'Rect'"));
-  assert(host.includes("label: 'Point'"));
+  assert(host.includes("label: tr('Template')"));
+  assert(host.includes("label: tr('Box')"));
+  assert(host.includes("label: tr('Point')"));
   assert(host.includes("selected.has('template')"));
   assert(host.includes("rect: selected.has('rect')"));
   assert(host.includes("point: selected.has('point')"));

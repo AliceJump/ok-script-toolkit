@@ -4,7 +4,7 @@
 
 This file helps the developer plugin discover **current local project interfaces and resource entry points**; see [Developer Plugin Scope and User Experience](developer-tool-scope.en.md). It does not contain business parameter migration tables. When projects remove or transfer parameters, the plugin follows current declarations instead of restoring or transferring old debug values.
 
-> Status: **existing fields connected in both hosts** (local source verification, 2026-10-01). Companion artifacts: `schemas/ok-script-toolkit.schema.json` and `docs/ok-script-toolkit.example.json`.
+> Status: **existing fields connected in both hosts** (local source verification, 2026-10-08). Companion artifacts: `schemas/ok-script-toolkit.schema.json` and `docs/ok-script-toolkit.example.json`.
 >
 > | Scope | Status |
 > |---|---|
@@ -137,12 +137,13 @@ Simply reading IDE settings always returns a value, so ④ always wins and **③
 | | `afterConfigImport` | **No such information** | Try convention `src.patches.startup_patches:install_startup_patches` |
 | `templates` | `directory` | No (plugin convention) | IDE setting → `ok_templates` |
 | | `cocoAnnotations` | **6/6** | `template_matching.coco_feature_json` → two discovery candidates |
-| `boxes` | `runtime` | New; absent in existing projects | Top-level `boxes_json` → `src/scene/boxes.json` |
+| `position` | `jsonPath` | Plugin publishing convention | Personal preference → project convention → `src/scene/positions.json` |
+| | `pythonDirectory` | Plugin publishing convention | Personal preference → project convention → `src/scene` |
 | `i18n` | `enabled` / `langDirectory` / `poDirectory` / `poDomains` | No | IDE settings → built-ins |
 | `characters` | `projectPath` / `masterFile` / `skillsDirectory` / `localeFile` / `avatarTemplateRegex` | No | IDE settings → built-ins |
 | `effects` | `file` | No | IDE setting → `src/data/effects.py` |
 
-**Wiring status:** all fields connected (`templates.directory`, `templates.cocoAnnotations`, `boxes.runtime`, `labelEnum.*`, `i18n`, `characters`, `effects`). `boxes.runtime` supports file discovery, box resource management, runtime galleries, and `self.pos` completion through `src/boxPanels.ts` / `src/providers.ts` and child `ui/BoxWindows.kt` / `editor/OkEditorSupport.kt`. See [Box Resource Design](box-resources.en.md) for geometry and save contracts.
+**Wiring status:** current Schema fields are connected in both hosts. Unified annotation management and resource previews replace separate box windows. `self.pos` completion and previews read current Rect / Point authoring data; publishing uses `position.jsonPath` / `position.pythonDirectory`. Publishing settings expose the source and let users change or clear personal path overrides. See [Position Resource Contract](box-resources.en.md).
 
 **⚠️ Files named `coco_annotations.json` can mean different things.** Wrong wiring silently selects the wrong file:
 
@@ -150,10 +151,12 @@ Simply reading IDE settings always returns a value, so ④ always wins and **③
 |---|---|---|---|
 | `assets/coco_annotations.json` (or config.py location) | Framework **runtime template library** | `featureData` / `OkProjectDataService` read and watch | `templates.cocoAnnotations` → config.py → two conventions |
 | `<template directory>/coco_annotations.json` | Asset panel **annotation working file** | `templateAssetData` / `TemplateAssetDataService` read/write | `templates.directory`, **unaffected by** `cocoAnnotations` |
-| `src/scene/boxes.json` (or `boxes_json` location) | Business-project **runtime boxes** | Read by box galleries, completion, and Hover; game loading still belongs to project `ScreenPosition` | `boxes.runtime` → config.py → discovery |
-| `<template directory>/boxes.json` | Box management **annotation working file** | Both resource panels and shared annotation editors read/write it; explicit runtime publication | `templates.directory`, **unaffected by** `boxes.runtime` |
+| `<template directory>/points.json` | Point COCO authoring data | Unified editor writes; resource previews and `self.pos` hints read | `templates.directory` |
+| `<template directory>/boxes.json` | Rect COCO authoring data | Unified editor writes; resource previews and `self.pos` hints read | `templates.directory` |
+| `src/scene/positions.json` or a custom path | Published normalized Position data | Explicit publication writes it; business projects provide game loading | `position.jsonPath`, personal preference first |
+| `ScreenRatio.py` / `PositionMap.py` | Published Python position data and parser | Explicit publication writes them, protecting existing handwritten files | `position.pythonDirectory`, personal preference first |
 
-`cocoAnnotations` and `boxes.runtime` both consume project facts and have **no IDE/personal preference layer**. Existing projects lack `boxes_json`; absence probes `src/scene/boxes.json`.
+`templates.cocoAnnotations` consumes project facts without personal preferences. Position publication has personal overrides and does not read legacy `boxes_json`; `boxes.runtime` has been removed from the current Schema and plugin entry points. Saving annotations does not publish Position data or modify business-project loaders.
 
 **Choose normalization by field type**; wrong choices fail silently:
 
@@ -188,7 +191,7 @@ Changing the class to `MyEnum` can prevent the entire project from running, not 
 | Step | Implementation |
 |---|---|
 | Pure, testable criterion | VS Code `src/labelEnumGuard.ts`; child `core/LabelEnumGuard.kt` |
-| IO/dialog | VS Code `templateAssetPanel.confirmLabelEnumRename()`; child `ui/TemplateAssetToolWindowFactory` |
+| IO/dialog | VS Code `templateAssetPanel.confirmLabelEnumRename()`; child `ui/TemplatePublishFlow` |
 | Tests | `scripts/test_label_enum_guard.js`, including 5 destructive comparisons |
 
 Three invariants:
@@ -259,7 +262,7 @@ Committing these would impose one person's machine/preferences on colleagues.
 > - **`name`:** generation uses `labelEnum.name`, falling back to filename only when absent. Both have `labelEnumName` personal overrides and existing-file class-change guards (§5).
 > - **`path`:** generation defaults use explicit module-to-file conversion (§5); personal persistence moved from `globalState` to IDE `labelEnumPath` (§5).
 > - **`templates.directory`:** both connected, including the formerly dead VS Code setting (§8.1). Consumers use `projectConfig.templatesDirectory(projectDir)` / `OkScriptToolkitSettings.okTemplatesDirectory()`, including watcher globs and `thumbSourceSubdir()` source detection. Both normalize names first through `normalizeRelPath`.
-> - **Later wiring completed:** `templates.cocoAnnotations` including `template_matching.coco_feature_json`, `boxes.runtime`, and `i18n` / `characters` / `effects`. During export, both hosts probe `template_tab.label_enum_relative_path` if personal preferences and project conventions supply no enum path. This fallback belongs to the export entry point, not ordinary setting accessors.
+> - **Later wiring completed:** `templates.cocoAnnotations` including `template_matching.coco_feature_json`, `position.jsonPath` / `position.pythonDirectory`, and `i18n` / `characters` / `effects`. During export, both hosts probe `template_tab.label_enum_relative_path` if personal preferences and project conventions supply no enum path. This fallback belongs to the export entry point, not ordinary setting accessors.
 > - **This does not make every interaction prompt-free:** export targets, path changes, and overwrite confirmations retain their current workflows.
 
 ### Executor (`python/run_executor.py`)
@@ -293,7 +296,7 @@ Open the annotation template management panel and invoke its screenshot action. 
 ## 8. Related Findings Outside This Design
 
 1. **VS Code `okScriptToolkit.okTemplatesDirectory` was unused:** `templateAssetData.ts` hardcoded `ok_templates`, while the child read the setting in 10 places. **✅ Fixed:** both use `templates.directory` accessors. Removed `TemplateAssetDataService.load/cocoPath` default `templatesDir: String = "ok_templates"`, which would allow silent bypasses.
-2. **Previously unread `label_enum_relative_path` now supplies an export fallback**, through parent `templateAssetPanel.ts` and child `TemplateAssetToolWindowFactory.kt`, consuming the same probe field.
+2. **Previously unread `label_enum_relative_path` now supplies an export fallback**, through parent `templateAssetPanel.ts` and child `TemplatePublishFlow.kt`, consuming the same probe field.
 3. **VS Code lacks a JSONC parser**, supporting the plain-JSON decision (§4).
 
 ## 9. Open Questions

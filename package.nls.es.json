@@ -65,5 +65,7 @@
   "config.characterLocaleFile": "JSON de localización de nombres de personajes.",
   "config.characterAvatarTemplateRegex": "Expresión regular para nombres de plantillas de avatar. Usa el primer grupo si existe; en caso contrario compara el texto posterior al prefijo coincidente con el slug inglés. Admite por defecto battleicon, battle_icon y battle-icon.",
   "config.okTemplatesDirectory": "Nombre de la carpeta ok_templates relativo a la raíz del espacio de trabajo. Usado por el gestor de recursos de plantillas.",
-  "config.annotationKeybindings": "Atajos de teclado del editor de anotaciones. Cada valor es un nombre de tecla, opcionalmente con prefijos de modificador unidos por `+` (p. ej. `ctrl+z`, `shift+d`). Teclas admitidas: letras, dígitos, `Delete`, `ArrowLeft`, `ArrowRight`, etc."
+  "config.annotationKeybindings": "Atajos de teclado del editor de anotaciones. Cada valor es un nombre de tecla, opcionalmente con prefijos de modificador unidos por `+` (p. ej. `ctrl+z`, `shift+d`). Teclas admitidas: letras, dígitos, `Delete`, `ArrowLeft`, `ArrowRight`, etc.",
+  "config.positionJsonPath": "Ruta relativa al proyecto para publicar Position JSON. Prioridad: preferencia personal del IDE → convención del proyecto en `ok-script-toolkit.json` → valor predeterminado.",
+  "config.positionPythonDirectory": "Directorio relativo al proyecto para generar `ScreenRatio.py` y `PositionMap.py`. Prioridad: preferencia personal del IDE → convención del proyecto en `ok-script-toolkit.json` → valor predeterminado."
 }
