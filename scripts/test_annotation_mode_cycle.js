@@ -7,7 +7,9 @@ const root = path.join(__dirname, '..');
 const indexPath = path.join(root, 'media', 'annotationPanel', 'index.html');
 const indexHtml = fs.readFileSync(indexPath, 'utf8');
 const inlineScripts = [...indexHtml.matchAll(/<script nonce="__CSP_NONCE__">([\s\S]*?)<\/script>/g)];
+const apiShimScript = inlineScripts.find(match => match[1].includes('const nativeAcquire = window.acquireVsCodeApi'))?.[1];
 const cycleScript = inlineScripts.find(match => match[1].includes('MODE_BUTTON_IDS'))?.[1];
+assert(apiShimScript, 'annotation panel should keep the shared VS Code API shim embedded in the HTML resource');
 assert(cycleScript, 'annotation mode cycle script should remain embedded in the annotation panel resource');
 
 const dom = new JSDOM(`<!doctype html><body>
@@ -99,5 +101,37 @@ assert.strictEqual(defaults.cycleMode, 'm', 'default cycle shortcut should be M'
 assert(!Object.prototype.hasOwnProperty.call(defaults, 'modeTemplate'));
 assert(!Object.prototype.hasOwnProperty.call(defaults, 'modeRect'));
 assert(!Object.prototype.hasOwnProperty.call(defaults, 'modePoint'));
+
+const syncSent = [];
+const syncDom = new JSDOM(`<!doctype html><body>
+  <canvas id="canvas"></canvas>
+  <div id="bboxModal"></div>
+</body>`, { runScripts: 'outside-only' });
+const syncWindow = syncDom.window;
+const nativeApi = Object.freeze({
+  postMessage: message => syncSent.push(message),
+  getState: () => ({}),
+  setState: () => {},
+});
+syncWindow.acquireVsCodeApi = () => nativeApi;
+syncWindow.eval(apiShimScript);
+const sharedApi = syncWindow.acquireVsCodeApi();
+assert.notStrictEqual(sharedApi, nativeApi, 'shared API shim must not expose the frozen native VS Code API object');
+assert.strictEqual(Object.isFrozen(nativeApi), true, 'test must model the real frozen VS Code Webview API');
+
+const externalSyncSource = fs.readFileSync(path.join(root, 'media', 'annotationPanel', 'externalSync.js'), 'utf8');
+syncWindow.eval(externalSyncSource);
+syncWindow.dispatchEvent(new syncWindow.MessageEvent('message', {
+  data: { type: 'load', annotationMode: 'rect', imagePath: 'x/frozen.png', annotations: [] },
+}));
+syncWindow.acquireVsCodeApi().postMessage({
+  type: 'save',
+  mode: 'rect',
+  annotations: [{ category: 'screen.guard', x: 1, y: 2, w: 3, h: 4 }],
+});
+const frozenSave = syncSent.find(message => message?.type === 'save');
+assert(frozenSave, 'save should reach the native VS Code API through the mutable facade');
+assert.strictEqual(frozenSave.imagePath, 'x/frozen.png', 'external sync should bind saves to the loaded image path');
+assert.strictEqual(frozenSave.editorVersion, 1, 'external sync should version saves before they leave the webview');
 
 console.log('annotation mode cycle shortcut tests passed');
