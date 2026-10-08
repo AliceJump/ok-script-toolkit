@@ -53,6 +53,6 @@ Business projects load published files. The plugin provides current declarations
 - All six external main Webview dictionaries have 388 matching keys; 413 actual literal UI calls are covered. Host translations and child UI bundles are checked as well.
 - Final VSIX and JetBrains JAR contain 13 byte-identical Python scripts and the same convention Schema, with complete language resources and no Agent files, tests or developer documentation.
 - Historical CI passed at `0e846f0`; old review coverage was `a9fd35f`, and a previous manual re-review was rate-limited. Verify new CI and review coverage against each PR's current head; historical results do not cover this round's changes.
-- Confirmed code differences are closed, and the main PR gitlink pins the companion child PR commit. Merge child PR #28 first, then confirm or update the gitlink to a commit reachable from child `main` and verify main CI before merging the main PR. Unmerged code is not released functionality.
+- Confirmed code differences are closed, and the main PR gitlink pins the companion child PR commit. Merge child PR #30 first, then confirm or update the gitlink to a commit reachable from child `main` and verify main CI before merging the main PR. Unmerged code is not released functionality.
 
 No actual IDE interaction, game screenshot or business-project runtime acceptance was performed. Full Plugin Verifier API compatibility was not run; build, structure checks and automated regression do not replace those checks.

@@ -259,5 +259,6 @@
   "Overwrite": "덮어쓰기",
   "Could not publish positions: {error}": "위치 리소스를 게시할 수 없습니다: {error}",
   "Published positions: {files}": "게시된 위치 리소스: {files}",
-  "Resource Preview": "리소스 미리보기"
+  "Resource Preview": "리소스 미리보기",
+  "No annotations available to publish.": "게시할 주석이 없습니다."
 }

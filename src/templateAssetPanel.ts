@@ -45,7 +45,7 @@ interface TemplatePublishPlan {
 type PublishResource = 'template' | 'rect' | 'point';
 type PublishResourceItem = vscode.QuickPickItem & { resource: PublishResource };
 
-function publishableResourceItems(data: TemplateAssetData, folder: vscode.WorkspaceFolder): PublishResourceItem[] {
+function publishableResourceItems(data: TemplateAssetData, folder: vscode.WorkspaceFolder): { resources: PublishResourceItem[]; invalid: boolean } {
   const root = data.root || folder.uri.fsPath;
   const directory = templatesDirectory(root);
   const resources: PublishResourceItem[] = [];
@@ -67,7 +67,7 @@ function publishableResourceItems(data: TemplateAssetData, folder: vscode.Worksp
     resources.push({ label: tr('Point'), resource: 'point', picked: true });
   }
 
-  return resources;
+  return { resources, invalid: !!(data.readErrors.length || rectData.readErrors.length || pointData.errors.length) };
 }
 
 /* ---------------- 控制器 ---------------- */
@@ -316,8 +316,12 @@ class AssetGalleryController {
       void vscode.window.showWarningMessage(tr('No workspace folder open.'));
       return;
     }
-    const candidates = publishableResourceItems(this.data, folder);
-    if (!candidates.length) return;
+    const { resources: candidates, invalid } = publishableResourceItems(this.data, folder);
+    if (!candidates.length) {
+      if (invalid) void vscode.window.showErrorMessage(tr('The annotation source is invalid. Fix the source file before saving or exporting.'));
+      else void vscode.window.showWarningMessage(tr('No annotations available to publish.'));
+      return;
+    }
 
     const resources = await vscode.window.showQuickPick(
       candidates,

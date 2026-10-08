@@ -124,6 +124,15 @@ function plain(value) { return JSON.parse(JSON.stringify(value)); }
   const beforeEmptyPick = quickPickCalls;
   await run([]);
   assert.strictEqual(quickPickCalls, beforeEmptyPick, 'no picker should open when every resource is empty');
+  assert.strictEqual(notices.pop(), 'translated:No annotations available to publish.');
+
+  for (const invalidType of ['rect', 'point']) {
+    boxData.readErrors = invalidType === 'rect' ? ['json'] : [];
+    pointErrors = invalidType === 'point' ? ['json'] : [];
+    await run([]);
+    assert.strictEqual(quickPickCalls, beforeEmptyPick, 'an invalid empty position source should not open a picker');
+    assert.strictEqual(notices.pop(), 'translated:The annotation source is invalid. Fix the source file before saving or exporting.');
+  }
 
   templateAnnotations = [{ id: 1, image_id: 1 }];
   rectAnnotations = [{ id: 1 }];
@@ -134,6 +143,7 @@ function plain(value) { return JSON.parse(JSON.stringify(value)); }
   const beforeInvalidPick = quickPickCalls;
   await run([]);
   assert.strictEqual(quickPickCalls, beforeInvalidPick, 'no picker should open when every resource source is invalid');
+  assert.strictEqual(notices.pop(), 'translated:The annotation source is invalid. Fix the source file before saving or exporting.');
 
   templateData.readErrors = [];
   boxData.readErrors = [];

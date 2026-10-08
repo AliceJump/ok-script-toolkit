@@ -259,5 +259,6 @@
   "Overwrite": "Overwrite",
   "Could not publish positions: {error}": "Could not publish positions: {error}",
   "Published positions: {files}": "Published positions: {files}",
-  "Resource Preview": "Resource Preview"
+  "Resource Preview": "Resource Preview",
+  "No annotations available to publish.": "No annotations available to publish."
 }

@@ -259,5 +259,6 @@
   "Overwrite": "覆寫",
   "Could not publish positions: {error}": "無法發佈位置資源：{error}",
   "Published positions: {files}": "已發佈位置資源：{files}",
-  "Resource Preview": "資源預覽"
+  "Resource Preview": "資源預覽",
+  "No annotations available to publish.": "沒有可發佈的標註。"
 }

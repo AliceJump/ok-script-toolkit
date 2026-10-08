@@ -150,3 +150,5 @@ The 50 rows above remain the detailed pre-change snapshot. This round covers ann
 JetBrains PR #30’s huge-image scale clamp, growing minimum canvas size and empty publish dialog findings are fixed together. Failed saves preserve a recoverable draft with the original local branch for external merges. Successful saves accept the source revision so the editor’s own file events do not erase undo history.
 
 Remaining host differences: Webview/Swing drawing and native containers for numeric input, swap targets, publication selection and confirmation. Themes, DPI, focus and drag/drop still require actual IDE acceptance. Passing automated tests and packaging are not treated as that acceptance.
+
+Additional verification: insertion replaces each selection in a visible Python editor, falling back to copy and feedback without a visible target. Narrow cards fit complete thumbnails; source cards display categories and dimensions. Empty publish results distinguish invalid sources from absent annotations.
