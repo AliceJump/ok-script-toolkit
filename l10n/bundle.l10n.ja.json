@@ -259,5 +259,6 @@
   "Overwrite": "上書き",
   "Could not publish positions: {error}": "位置リソースを公開できませんでした: {error}",
   "Published positions: {files}": "位置リソースを公開しました: {files}",
-  "Resource Preview": "リソースプレビュー"
+  "Resource Preview": "リソースプレビュー",
+  "No annotations available to publish.": "公開できるアノテーションはありません。"
 }

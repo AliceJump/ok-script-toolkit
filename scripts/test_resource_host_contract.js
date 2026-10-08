@@ -4,31 +4,63 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 const root = path.resolve(__dirname, '..');
+const workspaceRoot = path.join(root, 'workspace');
+const sourceImage = { file: 'screen.png', width: 1000, height: 500 };
 let selection = ['template', 'rect', 'point'];
+let expectedResourceLabels = ['translated:Template', 'translated:Box', 'translated:Point'];
+let quickPickCalls = 0;
+let templateAnnotations = [{ id: 1, image_id: 1 }];
+let rectAnnotations = [{ id: 1 }];
+let pointErrors = [];
+let pointItems = [
+  { path: 'screen.click', image: 'screen.png', x: 500, y: 250 },
+];
 const notices = [];
+const templateData = {
+  root: workspaceRoot,
+  readErrors: [],
+  load() {},
+  get data() {
+    return {
+      images: [{ id: 1, file_name: 'screen.png', width: 1000, height: 500 }],
+      annotations: templateAnnotations,
+      categories: [{ id: 1, name: 'screen.template' }],
+    };
+  },
+};
+const boxData = {
+  readErrors: [],
+  get data() { return { annotations: rectAnnotations }; },
+};
 const vscode = {
+  workspace: {
+    workspaceFolders: [{ uri: { fsPath: workspaceRoot } }],
+  },
   window: {
     showQuickPick: async (items, options) => {
+      quickPickCalls++;
       assert.strictEqual(options.canPickMany, true);
-      assert.deepStrictEqual(Array.from(items, item => item.label), ['translated:Template', 'translated:Box', 'translated:Point']);
-      return selection.map(resource => items.find(item => item.resource === resource));
+      assert.deepStrictEqual(Array.from(items, item => item.label), expectedResourceLabels);
+      return selection.map(resource => items.find(item => item.resource === resource)).filter(Boolean);
     },
     showWarningMessage: message => notices.push(message),
     showErrorMessage: message => notices.push(message),
   },
 };
-const sourceImage = { file: 'screen.png', width: 1000, height: 500 };
 const dependencies = {
   vscode,
   './localization': { tr: key => 'translated:' + key },
   './projectConfig': { templatesDirectory: () => 'ok_templates' },
   './providers': { featureAliases: () => ['Features'] },
-  './boxResourceStore': { readAuthoringFile: () => ({ images: [sourceImage], boxes: [
-    { path: 'screen.panel', image: 'screen.png', bbox: [10, 20, 30, 40] },
-  ] }) },
-  './pointResourceStore': { readPoints: () => ({ errors: [], file: { images: [sourceImage], points: [
-    { path: 'screen.click', image: 'screen.png', x: 500, y: 250 },
-  ] } }) },
+  './boxResourceStore': {
+    boxAnnotationData: () => boxData,
+    readAuthoringFile: () => ({ images: [sourceImage], boxes: [
+      { path: 'screen.panel', image: 'screen.png', bbox: [10, 20, 30, 40] },
+    ] }),
+  },
+  './pointResourceStore': {
+    readPoints: () => ({ errors: pointErrors, file: { images: [sourceImage], points: pointItems } }),
+  },
 };
 function controller(file, className) {
   const exports = {};
@@ -48,6 +80,7 @@ function plain(value) { return JSON.parse(JSON.stringify(value)); }
   let positionPlan = {};
   let positionSuccess = true;
   const host = {
+    data: templateData,
     prepareTemplatePublish: async () => { effects.push('configure template'); return templatePlan; },
     preparePositionPublish: async picked => {
       assert.strictEqual(picked.rect, selection.includes('rect'));
@@ -79,6 +112,66 @@ function plain(value) { return JSON.parse(JSON.stringify(value)); }
   selection = [];
   await run([]);
 
+  // The initial picker only shows non-empty, readable authoring resources.
+  selection = ['template', 'rect', 'point'];
+  expectedResourceLabels = ['translated:Template'];
+  rectAnnotations = [];
+  pointItems = [];
+  await run(['configure template', 'write template']);
+
+  templateAnnotations = [];
+  expectedResourceLabels = [];
+  const beforeEmptyPick = quickPickCalls;
+  await run([]);
+  assert.strictEqual(quickPickCalls, beforeEmptyPick, 'no picker should open when every resource is empty');
+  assert.strictEqual(notices.pop(), 'translated:No annotations available to publish.');
+
+  for (const invalidType of ['rect', 'point']) {
+    boxData.readErrors = invalidType === 'rect' ? ['json'] : [];
+    pointErrors = invalidType === 'point' ? ['json'] : [];
+    await run([]);
+    assert.strictEqual(quickPickCalls, beforeEmptyPick, 'an invalid empty position source should not open a picker');
+    assert.strictEqual(notices.pop(), 'translated:The annotation source is invalid. Fix the source file before saving or exporting.');
+  }
+
+  templateAnnotations = [{ id: 1, image_id: 1 }];
+  rectAnnotations = [{ id: 1 }];
+  pointItems = [{ path: 'screen.click', image: 'screen.png', x: 500, y: 250 }];
+  templateData.readErrors = ['json'];
+  boxData.readErrors = ['json'];
+  pointErrors = ['json'];
+  const beforeInvalidPick = quickPickCalls;
+  await run([]);
+  assert.strictEqual(quickPickCalls, beforeInvalidPick, 'no picker should open when every resource source is invalid');
+  assert.strictEqual(notices.pop(), 'translated:The annotation source is invalid. Fix the source file before saving or exporting.');
+
+  templateData.readErrors = [];
+  boxData.readErrors = [];
+  pointErrors = [];
+  expectedResourceLabels = ['translated:Template', 'translated:Box', 'translated:Point'];
+
+  // A damaged source must not hide another type's valid annotations.
+  rectAnnotations = [];
+  pointErrors = ['json'];
+  selection = ['template'];
+  expectedResourceLabels = ['translated:Template'];
+  const beforeMixedPick = quickPickCalls;
+  await run(['configure template', 'write template']);
+  assert.strictEqual(quickPickCalls, beforeMixedPick + 1, 'valid templates remain selectable alongside empty boxes and invalid points');
+
+  rectAnnotations = [{ id: 1 }];
+  pointItems = [];
+  pointErrors = [];
+  templateData.readErrors = ['json'];
+  selection = ['rect'];
+  expectedResourceLabels = ['translated:Box'];
+  await run(['configure positions', 'write positions']);
+  assert.strictEqual(quickPickCalls, beforeMixedPick + 2, 'valid boxes remain selectable alongside invalid templates and empty points');
+
+  templateData.readErrors = [];
+  pointItems = [{ path: 'screen.click', image: 'screen.png', x: 500, y: 250 }];
+  expectedResourceLabels = ['translated:Template', 'translated:Box', 'translated:Point'];
+
   // Empty or invalid authoring data cannot silently replace a published template library.
   const data = { load() {}, readErrors: [], listImages: () => [] };
   assert.strictEqual(await publish.prepareTemplatePublish.call({ data }), undefined);
@@ -102,5 +195,5 @@ function plain(value) { return JSON.parse(JSON.stringify(value)); }
   assert.strictEqual(point.expression, 'self.pos.screen.click');
   assert.deepStrictEqual(plain(point.bbox), [440, 220, 120, 60]);
   await preview.onMessage.call({}, { type: 'publish' });
-  console.log('resource host contract tests passed: current source, reference expressions, cancellation and write ordering');
+  console.log('resource host contract tests passed: publish filtering, current source, reference expressions, cancellation and write ordering');
 })().catch(error => { console.error(error); process.exitCode = 1; });

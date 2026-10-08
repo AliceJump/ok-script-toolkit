@@ -13,6 +13,8 @@ import { labelEnumRenameImpact, labelEnumRenameMessage, referencingFiles, writab
 import { derivedEnumPath, isPathInsideRoot, needsEnumPathPrompt, SaveTarget, saveToAssetsItems } from './saveToAssetsPure';
 import { onAnnotationDataChanged, sameAnnotationFile } from './cocoAnnotationData';
 import { isSameSize, scaleBoxes, SwapBox } from './annotationSwapPure';
+import { boxAnnotationData } from './boxResourceStore';
+import { readPoints } from './pointResourceStore';
 import { applySharedAssets, getNonce } from './webviewHtml';
 import {
   PositionPublishFormat,
@@ -38,6 +40,34 @@ interface TemplatePublishPlan {
   targetLabel: string;
   generateEnum: boolean;
   absEnumPath?: string;
+}
+
+type PublishResource = 'template' | 'rect' | 'point';
+type PublishResourceItem = vscode.QuickPickItem & { resource: PublishResource };
+
+function publishableResourceItems(data: TemplateAssetData, folder: vscode.WorkspaceFolder): { resources: PublishResourceItem[]; invalid: boolean } {
+  const root = data.root || folder.uri.fsPath;
+  const directory = templatesDirectory(root);
+  const resources: PublishResourceItem[] = [];
+
+  // Keep the first picker cheap: only parse the authoring data and check that it contains
+  // publishable annotations. Expensive image/header/output validation stays in the selected flow.
+  data.load();
+  if (!data.readErrors.length && data.data.annotations.length > 0) {
+    resources.push({ label: tr('Template'), resource: 'template', picked: true });
+  }
+
+  const rectData = boxAnnotationData(root, directory);
+  if (!rectData.readErrors.length && rectData.data.annotations.length > 0) {
+    resources.push({ label: tr('Box'), resource: 'rect', picked: true });
+  }
+
+  const pointData = readPoints(root, directory);
+  if (!pointData.errors.length && pointData.file.points.length > 0) {
+    resources.push({ label: tr('Point'), resource: 'point', picked: true });
+  }
+
+  return { resources, invalid: !!(data.readErrors.length || rectData.readErrors.length || pointData.errors.length) };
 }
 
 /* ---------------- 控制器 ---------------- */
@@ -281,12 +311,20 @@ class AssetGalleryController {
   /* ---------- 统一发布 ---------- */
 
   private async handlePublish(): Promise<void> {
+    const folder = vscode.workspace.workspaceFolders?.[0];
+    if (!folder) {
+      void vscode.window.showWarningMessage(tr('No workspace folder open.'));
+      return;
+    }
+    const { resources: candidates, invalid } = publishableResourceItems(this.data, folder);
+    if (!candidates.length) {
+      if (invalid) void vscode.window.showErrorMessage(tr('The annotation source is invalid. Fix the source file before saving or exporting.'));
+      else void vscode.window.showWarningMessage(tr('No annotations available to publish.'));
+      return;
+    }
+
     const resources = await vscode.window.showQuickPick(
-      [
-        { label: tr('Template'), resource: 'template' as const, picked: true },
-        { label: tr('Box'), resource: 'rect' as const, picked: true },
-        { label: tr('Point'), resource: 'point' as const, picked: true },
-      ],
+      candidates,
       {
         canPickMany: true,
         placeHolder: tr('Select resources to publish'),

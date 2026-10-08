@@ -259,5 +259,6 @@
   "Overwrite": "覆盖",
   "Could not publish positions: {error}": "无法发布位置资源：{error}",
   "Published positions: {files}": "已发布位置资源：{files}",
-  "Resource Preview": "资源预览"
+  "Resource Preview": "资源预览",
+  "No annotations available to publish.": "没有可发布的标注。"
 }

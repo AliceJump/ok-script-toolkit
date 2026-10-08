@@ -4,6 +4,8 @@
 
 Verified on 2026-10-08. Main baseline: `aea8b14`; child `main` baseline: `9eb4992`; both versions: `1.23.0`. This round extends child [PR #28](https://github.com/AliceJump/ok-script-toolkit-jetbrains/pull/28) from `0e846f0` and updates the main host on `codex/complete-feature-parity`. Conclusions below describe this round's PR code, which is not released until merged and published.
 
+Current interaction changes ship through [JetBrains PR #30](https://github.com/AliceJump/ok-script-toolkit-jetbrains/pull/30) and [parent PR #37](https://github.com/AliceJump/ok-script-toolkit/pull/37), version `1.24.0`. Annotation management and previews follow VS Code. The PR #28 baselines and validation counts below remain historical evidence, not current PR review status.
+
 ## Current Feature Audit
 
 | Feature | Implementations and entry points |
@@ -39,7 +41,7 @@ Verified on 2026-10-08. Main baseline: `aea8b14`; child `main` baseline: `9eb499
 
 ## Deliberate Host Differences
 
-VS Code saves annotation edits immediately. JetBrains saves when the dialog is accepted; Cancel discards the current session's changes. Both write authoring data only, without implicit publication. Webview and Swing layouts and button placement may differ; resource sources, expressions, write scope and publication semantics agree.
+Both hosts edit annotations in an editor tab and save authoring files after completed creation, editing, dragging, deletion, undo or redo. Saving does not publish resources. JetBrains exposes save errors and a retry action, preserving a plugin draft for recovery and external-change reconciliation when reopened. Card actions, clicks, visibility, delete mode, numeric editing, arrow-key nudging and image navigation follow VS Code; inputs and confirmation use each IDE’s host controls.
 
 Business projects load published files. The plugin provides current declarations, runtime state and log entry points without business parameter migration, historical-key recovery or application acknowledgement protocols. See the position-resource contract for operation details.
 
@@ -51,6 +53,6 @@ Business projects load published files. The plugin provides current declarations
 - All six external main Webview dictionaries have 388 matching keys; 413 actual literal UI calls are covered. Host translations and child UI bundles are checked as well.
 - Final VSIX and JetBrains JAR contain 13 byte-identical Python scripts and the same convention Schema, with complete language resources and no Agent files, tests or developer documentation.
 - Historical CI passed at `0e846f0`; old review coverage was `a9fd35f`, and a previous manual re-review was rate-limited. Verify new CI and review coverage against each PR's current head; historical results do not cover this round's changes.
-- Confirmed code differences are closed, and the main PR gitlink pins the companion child PR commit. Merge child PR #28 first, then confirm or update the gitlink to a commit reachable from child `main` and verify main CI before merging the main PR. Unmerged code is not released functionality.
+- Confirmed code differences are closed, and the main PR gitlink pins the companion child PR commit. Merge child PR #30 first, then confirm or update the gitlink to a commit reachable from child `main` and verify main CI before merging the main PR. Unmerged code is not released functionality.
 
 No actual IDE interaction, game screenshot or business-project runtime acceptance was performed. Full Plugin Verifier API compatibility was not run; build, structure checks and automated regression do not replace those checks.
