@@ -65,5 +65,7 @@
   "config.characterLocaleFile": "キャラクター名ローカライズ JSON。",
   "config.characterAvatarTemplateRegex": "キャラクターアバターのテンプレート名正規表現。キャプチャグループがあれば最初のグループを、なければ一致した接頭辞より後の名前を英語 slug と照合します。既定では battleicon、battle_icon、battle-icon に対応します。",
   "config.okTemplatesDirectory": "テンプレートアセットマネージャーで使用する、ワークスペースルート相対の ok_templates フォルダー名。",
-  "config.annotationKeybindings": "アノテーションエディターのキーボードショートカット。各値はキー名で、`+` で修飾キーを接頭辞として付けられます（例: `ctrl+z`、`shift+d`）。サポートされるキー: 英字、数字、`Delete`、`ArrowLeft`、`ArrowRight` など。"
+  "config.annotationKeybindings": "アノテーションエディターのキーボードショートカット。各値はキー名で、`+` で修飾キーを接頭辞として付けられます（例: `ctrl+z`、`shift+d`）。サポートされるキー: 英字、数字、`Delete`、`ArrowLeft`、`ArrowRight` など。",
+  "config.positionJsonPath": "Position JSON の出力先（プロジェクト相対パス）。優先順位：個人の IDE 設定 → `ok-script-toolkit.json` のプロジェクト設定 → 既定値。",
+  "config.positionPythonDirectory": "生成する `ScreenRatio.py` と `PositionMap.py` の出力ディレクトリ（プロジェクト相対）。優先順位：個人の IDE 設定 → `ok-script-toolkit.json` のプロジェクト設定 → 既定値。"
 }

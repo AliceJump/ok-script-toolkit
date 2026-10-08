@@ -1,55 +1,56 @@
 # Feature and Documentation Parity
 
-Verified: 2026-10-01. Local baseline: parent `efc4ff9`, JetBrains child `4df0cee`, both version `1.19.0`. This matrix uses current source entry points and the checks below, not design plans, other branches, or historical review conclusions.
-
 [简体中文](feature-parity.md) | [English](feature-parity.en.md)
 
-## 1. Current Features
+Verified on 2026-10-08. Main baseline: `aea8b14`; child `main` baseline: `9eb4992`; both versions: `1.23.0`. This round extends child [PR #28](https://github.com/AliceJump/ok-script-toolkit-jetbrains/pull/28) from `0e846f0` and updates the main host on `codex/complete-feature-parity`. Conclusions below describe this round's PR code, which is not released until merged and published.
 
-“Present” means an actual implementation entry point exists in both hosts, not that real IDE/game acceptance was completed in this pass.
+## Current Feature Audit
 
-| Feature | VS Code | JetBrains | Parity and evidence |
-|---|---|---|---|
-| Language/OCR/template/effect reference hints | Present | Present | `src/providers.ts` / child `editor/OkEditorSupport.kt`; native host extension points |
-| AST task list and runtime schemas | Present | Present | Shared `python/parse_config_tasks.py` / `python/probe_task_schemas.py`; host caches/UI |
-| Persistent executor, one-time queues, triggers, pause/stop | Present | Present | `src/consolePanel.ts` / child `TaskRunnerService.kt`; shared `python/run_executor.py` |
-| Native startup and configuration isolation | Present | Present | Shared `OK.start_runtime()`, native controller, sandbox; nonblocking Windows input in `python/executor_input.py` |
-| Current task/global-group parameter editing | Present | Present | `src/consolePanel.ts` / child `TaskLauncherService.kt`, `GlobalSnapshotRules.kt`; startup `OK_TOOLKIT_GCONFIG`, runtime `gparams` |
-| Account override debugging | Present | Present | Shared `python/account_store.py`; child `AccountEditorDialog.kt`, beyond probe metadata passthrough |
-| Project conventions and personal provenance | Present | Present | `src/projectConfig.ts` / child `ProjectConvention.kt`, `ConventionSources.kt`; declared fields connected with corresponding type/provenance rules |
-| Runtime template paths and enum export fallback | Present | Present | Template library consumes `config.py`; export entry points in `templateAssetPanel.ts` / child `TemplateAssetToolWindowFactory.kt` provide enum fallback |
-| Template assets, export, previews, source navigation | Present | Present | `src/templateAssetPanel.ts`, `templatePanel.ts` / child `TemplateAssetToolWindowFactory.kt`, `TemplatesToolWindowFactory.kt` |
-| Box editing, publication, runtime galleries | Present | Present | `src/boxPanels.ts`, `boxResourceStore.ts` / child `BoxWindows.kt`, `BoxCatalogService.kt`; separate COCO working files and runtime tables |
-| `self.pos` completion/Hover | Present | Present | `src/providers.ts` / child `editor/OkEditorSupport.kt`; business projects still own game loading |
-| Thumbnail actions and Python insertion target | Present | Present | `src/pythonEditor.ts` / child `PythonEditorTarget.kt`; templates/boxes reuse recent Python editors, no longer TODO |
-| Annotation editing, undo, copy, image swapping, visibility | Present | Present | `src/annotationPanel.ts` / child `AnnotationDialog.kt`; common COCO contract, different save timing |
-| Temporary screenshots, capture, connection, overlay | Present | Present | Shared Python calls; separate host storage and UI |
-
-## 2. Remaining Differences and Boundaries
-
-- **Annotation save timing:** VS Code saves on change; JetBrains aggregates writes in `AnnotationDialog.doOKAction()`, discarding edits on cancel. Do not describe this as autosave or change semantics during documentation work.
-- **UI carriers:** Webview versus Swing. Parameter layouts, keymaps, and editor entry points follow their IDEs; parity does not require pixel-identical UI structure.
-- **Application feedback:** snapshot persistence, command sending, and business runtime application are separate outcomes. No uniform business acknowledgement exists; save/send success does not prove game usage.
-- **Business changes:** current declarations govern removed parameters, task splits, and internal detection templates; they do not automatically require plugin adaptation or migration.
-- **External loaders:** correct published box files do not prove project loading; actual game execution requires separate validation.
-
-## 3. Documentation Corrections
-
-| Document | Correction |
+| Feature | Implementations and entry points |
 |---|---|
-| `AGENTS.md` | Merge former `AGENT.md`; consolidate scope, boundaries, language rules |
-| `project-config.en.md` | Remove stale claims of unwired global fields, unread box management, and skipped pre-import hooks |
-| `config-reads.en.md` | Add `boxes.runtime`; distinguish ordinary enum accessors from export fallback; clarify layer numbering |
-| Child `design-parity.en.md` | Mark global injection/pushes and account editing implemented instead of original planned gaps |
-| Child `parity-review.en.md` | Update recent Python editor tracking; retain historical baselines explicitly and use this matrix for current status |
-| Child architecture report | Preserve historical analysis without treating old missing features/line counts as current acceptance |
+| Language, OCR, Template and effect references | `providers.ts` / `editor/OkEditorSupport.kt`, reading current local resources |
+| AST tasks, runtime schema, parameters, global groups, account overrides | `consolePanel.ts` / `tasklauncher/`, sharing main-repository Python probes and account interfaces |
+| Resident executor, queue, triggers, pause, stop, config isolation | Shared `python/run_executor.py` and helpers; hosts expose state, logs and errors |
+| Project conventions, personal overrides and provenance | `projectConfig.ts` / `ProjectConvention.kt`; Position publication settings expose path provenance and override reset |
+| Unified Template / Rect / Point annotations | `annotationPanel.ts` / `UnifiedAnnotationUi.kt`; three COCO authoring files share source images |
+| Coordinates, visibility, undo/redo, mode cycling, clipboard | Common coordinate contract, M to cycle modes, shared and per-mode histories |
+| External edits and conflicts | `annotationMerge.ts` / `AnnotationSessionSync.kt`; preserve both edits and verify source revisions before saving resolved results |
+| Source-image management | Import, capture, temporary screenshot send/drop, search, editing, source viewing, Template swaps, deletion across three authoring sources and external-change refresh |
+| Unified publication | Select Template / Rect / Point in annotation management; gather all configuration before writes; Position failure or rejected overwrite prevents Template writes |
+| Template and enum publication | Shared packing contract; destination, enum path and class settings; framework path fallback and old-class reference checks |
+| Position publication | Unified JSON / Python output; personal → project → default paths; protection for handwritten files and explicit custom-JSON overwrite |
+| Resource previews | Side and wide three-mode image cards, name/expression search, single-click insert, double-click copy and annotated source navigation; runtime Templates, current authoring Rect / Point |
+| `self.pos` hints | Current Rect / Point declarations; Rect uses `self.pos.<path>.to_box()`, Point uses `self.pos.<path>` |
+| Characters, effects, screenshots, connection and overlay | Existing host entry points using shared framework probes and executor interfaces |
+| Getting started | Native main walkthrough / child `GettingStartedEditor.kt` |
+| Localization and resources | Six languages; main host/Webview dictionaries and both child UI bundles use external resources |
 
-All documents except Agent instructions, skills, and skill references have separate Chinese `.md` and English `.en.md` versions maintained together. Code, APIs, and necessary original UI labels are not mixed-language prose.
+## Differences Closed in This Round
 
-## 4. Validation and Limits
+1. The child CI's previous main pin lacked Position Schema fields. Pin `aea8b14` and test both publication-path fields. Shared Python requires no changes.
+2. Child Template cards now read runtime resources rather than unpublished authoring data, preserving actual images, bbox and configured aliases. Restore insertion, copying, source navigation and resource-change refresh; side and wide previews share implementation.
+3. Child unified image management connects viewing, swapping, deletion, temporary screenshot drops, search and automatic refresh. Narrow toolbars wrap and reserve visible height for every action; lists and thumbnails reject old asynchronous callbacks.
+4. Restore child enum path/class configuration, framework fallback and old-class reference checks. All decisions precede writes; cancellation and rejected overwrites stop subsequent publication.
+5. Position personal paths can be reset with empty input. Both reject absolute paths, traversal, the root itself and symlink escapes. Main settings descriptions and publication messages use six external language resources.
+6. Both reserve image names from `points.json`; child screenshot sending uses the actual project root. Deletion clears all three authoring sources, restores image and modified files on later failure, and preserves same-stem resources with different extensions.
+7. Move all six main Webview dictionaries out of business code; add 19 missing keys and resource-preview messages. Translation checks read actual TypeScript literal values, including escaped newlines and quotes, and cover real Webview calls.
+8. Match `Ctrl+Alt+T` resource-preview shortcuts and wide-preview titles. Remove unregistered text windows and old preview publishing code; main Rect cards report actual crop dimensions.
+9. Update this matrix, [Project Conventions](project-config.en.md), [Configuration Reads](config-reads.en.md) and [Position Resource Contract](box-resources.en.md), replacing historical runtime-box and migration descriptions.
 
-Parent checks passed: `test_box_resource.js`, `test_thumbnail_actions.js`, `test_project_config.js`, `test_coco_feature_path.js`, `test_run_executor_sandbox.py`, `test_run_executor_gconfig.py`, covering resources, thumbnail actions, precedence, template paths, isolation, and global configuration application.
+## Deliberate Host Differences
 
-JetBrains `BoxResourceTest`, `GlobalSnapshotRulesTest`, `TaskConfigMergeTest`, and `BundleParityTest` passed all 45 cases. The global UI static audit passed for 7 panels. Documentation checks confirmed 16 bilingual pairs and 7 Chinese Agent/skill references, without missing local links or numbered sections; both repositories passed `git diff --check`. VSIX build/archive checks passed with no Agent, skill, or development documents included.
+VS Code saves annotation edits immediately. JetBrains saves when the dialog is accepted; Cancel discards the current session's changes. Both write authoring data only, without implicit publication. Webview and Swing layouts and button placement may differ; resource sources, expressions, write scope and publication semantics agree.
 
-No real IDE walkthrough or game execution was performed; source entry points and automated tests do not replace that acceptance.
+Business projects load published files. The plugin provides current declarations, runtime state and log entry points without business parameter migration, historical-key recovery or application acknowledgement protocols. See the position-resource contract for operation details.
+
+## Verification and Repository State
+
+- Final main `npm test` and `npm run package` passed, using installed Python rather than the Windows Store placeholder.
+- Child `gradlew test buildPlugin verifyPluginStructure verifyPluginConfiguration` passed: 485 tests, zero failures, errors or skips.
+- Regression coverage includes cancellation/write ordering, path reset, enum references, runtime Templates/reference expressions, image reservations, deletion/rollback across three sources, narrow-toolbar height and stale thumbnail callbacks.
+- All six external main Webview dictionaries have 388 matching keys; 413 actual literal UI calls are covered. Host translations and child UI bundles are checked as well.
+- Final VSIX and JetBrains JAR contain 13 byte-identical Python scripts and the same convention Schema, with complete language resources and no Agent files, tests or developer documentation.
+- Historical CI passed at `0e846f0`; old review coverage was `a9fd35f`, and a previous manual re-review was rate-limited. Verify new CI and review coverage against each PR's current head; historical results do not cover this round's changes.
+- Confirmed code differences are closed, and the main PR gitlink pins the companion child PR commit. Merge child PR #28 first, then confirm or update the gitlink to a commit reachable from child `main` and verify main CI before merging the main PR. Unmerged code is not released functionality.
+
+No actual IDE interaction, game screenshot or business-project runtime acceptance was performed. Full Plugin Verifier API compatibility was not run; build, structure checks and automated regression do not replace those checks.

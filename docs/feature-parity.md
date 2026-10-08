@@ -1,55 +1,56 @@
 # 功能与文档对齐表
 
-复核日期：2026-10-01。本地基线：主仓 `efc4ff9`、JetBrains 子仓 `4df0cee`，版本均为 `1.19.0`。本表依据当前代码入口与下列验证，不把设计计划、其他分支的改动或历史审查结论算作当前功能。
-
 [简体中文](feature-parity.md) | [English](feature-parity.en.md)
 
-## 1. 当前功能
+复核日期：2026-10-08。主仓基线 `aea8b14`，子仓 `main` 基线 `9eb4992`，版本均为 `1.23.0`。本轮在子仓 [PR #28](https://github.com/AliceJump/ok-script-toolkit-jetbrains/pull/28) 的 `0e846f0` 上继续修正，并同步调整主仓 `codex/complete-feature-parity` 分支。以下功能结论针对本轮 PR 代码，合并和发布之前不计入已发布版本。
 
-“已有”表示两端有实际实现入口，不代表本轮已完成真实 IDE 或游戏验收。
+## 当前功能核对
 
-| 功能 | VS Code | JetBrains | 对齐结论与证据 |
-|---|---|---|---|
-| 语言、OCR、模板、效果引用提示 | 已有 | 已有 | `src/providers.ts` / 子仓 `editor/OkEditorSupport.kt`；载体为 VS Code provider 与 IntelliJ 扩展点 |
-| AST 任务列表与运行时 schema | 已有 | 已有 | 共用 `python/parse_config_tasks.py` / `python/probe_task_schemas.py`，宿主分别缓存与展示 |
-| 常驻执行器、一次性入队、触发任务启用、暂停与停止 | 已有 | 已有 | `src/consolePanel.ts` / 子仓 `TaskRunnerService.kt`；执行核心共用 `python/run_executor.py` |
-| 原生启动链与配置隔离 | 已有 | 已有 | 共用 `OK.start_runtime()`、原生启动控制器和沙箱；`python/executor_input.py` 使用 Windows 非阻塞命令管道 |
-| 当前任务参数与全局配置组编辑 | 已有 | 已有 | `src/consolePanel.ts` / 子仓 `TaskLauncherService.kt`、`GlobalSnapshotRules.kt`；启动注入 `OK_TOOLKIT_GCONFIG`、运行中推送 `gparams` |
-| 账号覆盖调试 | 已有 | 已有 | 共用 `python/account_store.py`；子仓 `AccountEditorDialog.kt`，不是只有 probe 元数据透传 |
-| 项目约定与个人覆盖溯源 | 已有 | 已有 | `src/projectConfig.ts` / 子仓 `ProjectConvention.kt`、`ConventionSources.kt`；声明字段已接入，类型和来源规则需保持一致 |
-| 运行时模板路径与枚举导出后备 | 已有 | 已有 | 模板库消费 `config.py`；枚举路径后备在 `templateAssetPanel.ts` / 子仓 `TemplateAssetToolWindowFactory.kt` 的导出入口读取 |
-| 模板素材、导出、预览与原图定位 | 已有 | 已有 | `src/templateAssetPanel.ts`、`templatePanel.ts` / 子仓 `TemplateAssetToolWindowFactory.kt`、`TemplatesToolWindowFactory.kt` |
-| 框资源编辑、发布与运行时画廊 | 已有 | 已有 | `src/boxPanels.ts`、`boxResourceStore.ts` / 子仓 `BoxWindows.kt`、`BoxCatalogService.kt`；COCO 工作文件与运行时位置表分开 |
-| `self.pos` 框补全与 Hover | 已有 | 已有 | `src/providers.ts` / 子仓 `editor/OkEditorSupport.kt`；游戏中的加载仍由业务项目负责 |
-| 缩略图动作与 Python 插入目标 | 已有 | 已有 | `src/pythonEditor.ts` / 子仓 `PythonEditorTarget.kt`；模板和框均复用最近 Python 编辑器，不再列为待办 |
-| 标注编辑、撤销、复制、图片交换、显隐 | 已有 | 已有 | `src/annotationPanel.ts` / 子仓 `AnnotationDialog.kt`；共用 COCO 契约，保存时机仍有差异 |
-| 临时截图、窗口采集、连接与浮层 | 已有 | 已有 | 两端调用共用 Python，宿主存储和界面各自实现 |
-
-## 2. 保留的差异与范围
-
-- **标注保存时机不同**：VS Code 改动即保存；JetBrains 在 `AnnotationDialog.doOKAction()` 中汇总保存，取消丢弃编辑。不能把后者写成自动保存，也不在本次文档整理中改变既有语义。
-- **界面载体不同**：Webview 与 Swing，参数详情布局、键位设置和编辑器入口遵循各自 IDE。功能对齐不要求界面结构逐像素相同。
-- **参数应用反馈有限**：快照保存、命令发送和业务运行应用是不同结果；当前没有统一的业务应用回执。不能据保存或发送成功宣称游戏已使用新值。
-- **业务变化由当前声明决定**：删除参数、拆分任务、更换内部检测模板不自动产生插件适配或迁移需求。
-- **本表不保证外部项目加载器**：框发布文件正确并不证明业务项目已经加载它；真实游戏运行需单独验证。
-
-## 3. 文档状态修正
-
-| 文档 | 已修正内容 |
+| 功能 | 两端实现与入口 |
 |---|---|
-| `AGENTS.md` | 合并原 `AGENT.md`，统一仓库定位、功能边界和文档语言规则 |
-| `project-config.md` | 去掉“全局字段未接线”“框管理尚未读取”“配置导入前钩子仍被跳过”等过时描述 |
-| `config-reads.md` | 补充 `boxes.runtime`，区分普通枚举设置访问器与导出入口后备，说明本文编号与设计图不同 |
-| 子仓 `design-parity.md` | 全局配置注入、运行中推送和账号编辑改为当前已实现，不再按最初计划列为缺失 |
-| 子仓 `parity-review.md` | 更新最近 Python 编辑器跟踪状态；旧条目明确保留历史基线，当前结论以本表为入口 |
-| 子仓架构比较报告 | 保留历史分析，不把旧缺失清单或旧行数当作当前验收结果 |
+| 语言、OCR、模板、效果引用提示 | `providers.ts` / `editor/OkEditorSupport.kt`，读取当前本地资源 |
+| AST 任务列表、运行时 schema、参数、全局组、账号覆盖 | `consolePanel.ts` / `tasklauncher/`，共用主仓 Python 探针和账号接口 |
+| 常驻执行器、入队、触发、暂停、停止、配置隔离 | 共用 `python/run_executor.py` 及辅助模块，宿主维护状态、日志和错误入口 |
+| 项目约定、个人覆盖、配置来源 | `projectConfig.ts` / `ProjectConvention.kt`；Position 发布配置另提供路径来源及个人覆盖重置 |
+| 统一 Template / Rect / Point 标注 | `annotationPanel.ts` / `UnifiedAnnotationUi.kt`；三份 COCO 工作文件共享原图 |
+| 坐标、显隐、撤销重做、模式循环、复制粘贴 | 两端使用同一坐标契约，默认 M 循环模式，支持共享及分模式历史 |
+| 外部修改与冲突 | `annotationMerge.ts` / `AnnotationSessionSync.kt`；保留双方修改，解决冲突并核对源版本后保存 |
+| 原图管理 | 两端提供导入、截图、临时截图发送和拖入、搜索、编辑、原图查看、Template 标注交换、三类标注联动删除及外部变更刷新 |
+| 统一发布 | 在标注管理选择 Template / Rect / Point；先完成全部配置，再执行写入，位置失败或拒绝覆盖时停止模板写入 |
+| 模板与枚举发布 | 同一打包契约；目标、枚举路径、类名可配置；未配置路径时读取框架后备，覆盖前检查旧类名及项目引用 |
+| Position 发布 | 统一 JSON / Python 输出，路径按个人偏好 → 项目约定 → 默认值；保护手写文件，明确确认自定义 JSON 覆盖 |
+| 资源预览 | 侧栏和宽屏均有三模式图片卡片、名称或表达式搜索、单击插入、双击复制和带标注的来源查看；Template 使用运行时库，Rect / Point 使用当前工作标注 |
+| `self.pos` 提示 | 两端读取当前 Rect / Point 声明，Rect 引用 `self.pos.<路径>.to_box()`，Point 引用 `self.pos.<路径>` |
+| 角色、效果、截图、连接、浮层 | 两端保留现有功能入口，共用框架探针和执行器接口 |
+| 使用引导 | 主仓原生 walkthrough / 子仓 `GettingStartedEditor.kt` |
+| 语言与资源 | 六种语言；主仓宿主及 Webview、子仓两套 UI bundle 均使用外部资源 |
 
-除 Agent、skill 及技能配套说明外，文档均提供独立中文 `.md` 和英文 `.en.md`，同步维护内容；代码、API 和必要的原始界面文字不作为混写正文。
+## 本轮补齐的实际差异
 
-## 4. 验证与限制
+1. 子仓独立 CI 固定的旧主仓提交不含 Position Schema。改为 `aea8b14`，补充发布路径字段测试；共享 Python 无需改动。
+2. 子仓模板卡片原本使用未发布标注，改为运行时库并保留真实图片、bbox 和当前模板别名。恢复插入、复制、原图查看和资源变化刷新；宽屏预览与侧栏共用同一实现。
+3. 子仓统一原图入口补接查看、交换、删除、临时截图拖入、搜索和自动刷新。窄窗口工具栏会按可用宽度换行，全部动作保留可见高度；异步列表和缩略图拒绝旧回调。
+4. 恢复子仓枚举路径、类名、框架路径后备和旧类名引用检查；发布先收集全部决策，取消配置和拒绝覆盖均阻止后续写入。
+5. 两端 Position 个人路径支持留空重置，并拒绝绝对路径、越界、项目根目录本身及越界符号链接。主仓设置说明和两端发布文案补齐六语言外部资源。
+6. 两端图片编号补上 `points.json` 占位；子仓临时截图发送使用实际项目根。原图删除统一清理三类工作标注，后续失败恢复图片和已改动文件，保留同名不同扩展名的资源。
+7. 主仓 Webview 六套语言表迁出业务代码，补齐 19 个遗漏键及资源预览文案。翻译检查读取 TypeScript 实际字面量值，正确处理换行和引号；新增覆盖实际 Webview 调用的检查。
+8. 两端资源预览快捷键统一为 `Ctrl+Alt+T`；宽屏标题改为资源预览。移除未注册的旧文本窗口和预览中的旧发布链，主仓 Rect 卡片尺寸改为实际裁剪尺寸。
+9. 更新本表及 [项目约定](project-config.md)、[配置读取](config-reads.md)、[位置资源契约](box-resources.md)，移除旧框运行时链和迁移描述。
 
-本轮主仓验证通过：`test_box_resource.js`、`test_thumbnail_actions.js`、`test_project_config.js`、`test_coco_feature_path.js`、`test_run_executor_sandbox.py`、`test_run_executor_gconfig.py`。覆盖框资源、缩略图动作、配置优先级、模板路径、配置隔离及全局配置应用链。
+## 有意保留的宿主差异
 
-JetBrains 的 `BoxResourceTest`、`GlobalSnapshotRulesTest`、`TaskConfigMergeTest`、`BundleParityTest` 共 45 个用例通过。全局 UI 静态审计覆盖 7 个面板并通过。文档检查确认 16 组双语文件、7 份中文 Agent/skill 说明，本地链接和编号章节无缺漏；两仓 `git diff --check` 通过。VSIX 构建与压缩包检查通过，未包含 Agent、skill 或开发文档。
+VS Code 标注改动即保存；JetBrains 对话框点击保存才写回，取消放弃本次编辑。两端都只写工作文件，保存不代表发布。Webview 与 Swing 的按钮位置和原生布局可不同，同一资源来源、表达式、写入范围和发布含义一致。
 
-没有在真实 IDE 中逐项操作，也没有启动游戏；源码中存在入口和自动测试通过不替代这些验收。
+游戏如何加载发布文件由业务项目负责。插件提供当前声明、运行状态和日志入口，不增加业务参数迁移、历史键恢复或应用回执协议。操作契约详见位置资源文档。
+
+## 验证与仓库状态
+
+- 主仓最终 `npm test`、`npm run package` 通过；本机使用已安装 Python，避开 Windows 商店占位程序。
+- 子仓 `gradlew test buildPlugin verifyPluginStructure verifyPluginConfiguration` 通过，485 个测试，0 失败、0 错误、0 跳过。
+- 回归覆盖发布取消及写入顺序、路径覆盖重置、枚举引用检查、运行时模板与引用表达式、图片占位、三类标注删除与回滚、窄工具栏高度和旧缩略图回调。
+- 主仓 388 个 Webview 键在六语言外部表中对等，413 处实际 Webview 字面量调用均有对应键；宿主翻译和子仓 UI bundle 同步检查。
+- 最终 VSIX 与 JetBrains JAR 中 13 个 Python 脚本和约定 Schema 逐字节一致，语言资源齐全；打包产物不含 Agent 文件、测试或开发文档。
+- `0e846f0` 的历史 CI 成功；旧审阅覆盖 `a9fd35f`，此前主动复审被限流。新提交的 CI 和审阅应按各 PR 当前 head 独立核对，历史结果不代表本轮改动已审阅。
+- 本轮代码差异已补齐，主仓 PR 的 gitlink 指向子仓 PR 的配套提交。必须先合并子仓 PR #28，再确认或更新 gitlink 到子仓 `main` 可达的提交并核对主仓 CI，最后合并主仓；未合并代码不作为已发布功能。
+
+没有执行真实 IDE 交互、真实游戏截图或业务项目运行验收，也未执行完整 Plugin Verifier API 兼容性检查；构建、结构和自动回归的成功不代替这些验收。

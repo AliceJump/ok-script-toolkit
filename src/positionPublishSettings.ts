@@ -1,5 +1,6 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
+import { tr } from './localization';
 import {
   ideSetting,
   loadProjectConfig,
@@ -71,14 +72,15 @@ export function positionPublishTargetSetting(
 export function positionPublishTargetInputError(
   value: string,
   projectRoot: string,
-): string | undefined {
+): 'relative' | 'outside' | undefined {
   const target = value.trim();
-  if (!target) return 'Position output path is required.';
-  if (path.isAbsolute(target)) return 'Position output path must be relative to the project root.';
+  if (!target) return undefined;
+  if (path.isAbsolute(target) || /^[/\\]|^[A-Za-z]:/.test(target)) return 'relative';
+  if (target.replace(/\\/g, '/').split('/').includes('..')) return 'outside';
   const resolvedRoot = path.resolve(projectRoot);
   const resolvedTarget = path.resolve(resolvedRoot, target);
   if (resolvedTarget === resolvedRoot || !isPathInsideRoot(resolvedRoot, resolvedTarget)) {
-    return 'Position output path must stay within the project root.';
+    return 'outside';
   }
   return undefined;
 }
@@ -93,24 +95,24 @@ export async function editPositionPublishTarget(
   type Action = 'personal' | 'resetPersonal';
   const items: Array<vscode.QuickPickItem & { action?: Action }> = [
     {
-      label: 'Set my override',
-      description: `Personal preference — highest priority · current: ${current.value}`,
+      label: tr('Set my override'),
+      description: tr('Personal preference — highest priority · current: {path}', { path: current.value }),
       action: 'personal',
     },
   ];
   if (current.personalValue) {
     items.push({ label: '', kind: vscode.QuickPickItemKind.Separator });
     items.push({
-      label: 'Reset my override',
-      description: 'Fall back to Project convention → Default',
+      label: tr('Reset my override'),
+      description: tr('Fall back to Project convention → Default'),
       action: 'resetPersonal',
     });
   }
 
   const action = await vscode.window.showQuickPick(items, {
     placeHolder: kind === 'json'
-      ? `Configure Position JSON path · ${current.source}`
-      : `Configure Position Python output directory · ${current.source}`,
+      ? tr('Configure Position JSON path · {source}', { source: tr(current.source) })
+      : tr('Configure Position Python output directory · {source}', { source: tr(current.source) }),
   });
   if (!action?.action) return;
   if (action.action === 'resetPersonal') {
@@ -120,11 +122,16 @@ export async function editPositionPublishTarget(
 
   const edited = await vscode.window.showInputBox({
     prompt: kind === 'json'
-      ? 'Position JSON path (relative to project root)'
-      : 'Position Python output directory (relative to project root)',
+      ? tr('Position JSON path (relative to project root, leave empty to restore the project convention)')
+      : tr('Position Python output directory (relative to project root, leave empty to restore the project convention)'),
     value: current.value,
-    validateInput: value => positionPublishTargetInputError(value, projectRoot),
+    validateInput: value => {
+      const error = positionPublishTargetInputError(value, projectRoot);
+      return error === 'relative'
+        ? tr('Position output path must be relative to the project root.')
+        : error === 'outside' ? tr('Position output path must stay within the project root.') : undefined;
+    },
   });
   if (edited === undefined) return;
-  await setIdeSetting(current.key, edited.trim().replace(/\\/g, '/'), folderUri);
+  await setIdeSetting(current.key, edited.trim().replace(/\\/g, '/') || undefined, folderUri);
 }

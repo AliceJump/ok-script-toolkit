@@ -910,7 +910,55 @@ async function test_screenshotFlowHasNoCocoRegistrationEntryPoint() {
 
 /* ========== 运行所有测试 ========== */
 
+async function test_deleteImageCleansAllAuthoringSourcesAndRollsBack() {
+  for (const outcome of ['success', 'template-failure', 'invalid-point', 'invalid-rect']) {
+    setup();
+    try {
+      const image = path.join(templateDir, 'a.png');
+      const imageBytes = createPng(100, 100, 128, 128, 128);
+      fs.writeFileSync(image, imageBytes);
+      fs.writeFileSync(path.join(templateDir, 'a.jpg'), imageBytes);
+      const files = ['coco_annotations.json', 'boxes.json', 'points.json'];
+      const snapshots = new Map();
+      for (const file of files) {
+        const point = file === 'points.json';
+        const template = file === 'coco_annotations.json';
+        let text = JSON.stringify({
+          images: [{ id: 1, file_name: 'a.png', width: 100, height: 100 }, { id: 2, file_name: 'a.jpg', width: 100, height: 100 }],
+          categories: [{ id: 1, name: template ? 'button' : 'screen.first' }, { id: 2, name: template ? 'other' : 'screen.second' }],
+          annotations: [
+            { id: 1, image_id: 1, category_id: 1, bbox: point ? [10, 20, 0, 0] : [10, 20, 3, 4], area: point ? 0 : 12, iscrowd: 0 },
+            { id: 2, image_id: 2, category_id: 2, bbox: point ? [20, 30, 0, 0] : [20, 30, 3, 4], area: point ? 0 : 12, iscrowd: 0 },
+          ],
+        });
+        if ((outcome === 'invalid-point' && point) || (outcome === 'invalid-rect' && file === 'boxes.json')) text = '{ invalid';
+        fs.writeFileSync(path.join(templateDir, file), text);
+        snapshots.set(file, text);
+      }
+      const data = new TemplateAssetData(tmpDir);
+      data.load();
+      if (outcome === 'template-failure') data.save = () => { throw new Error('injected template write failure'); };
+      const deleted = data.deleteImage(image);
+      assert(deleted === (outcome === 'success'), outcome + ': delete result');
+      if (outcome === 'success') {
+        assert(!fs.existsSync(image), 'selected image removed');
+        for (const file of files) {
+          const actual = JSON.parse(fs.readFileSync(path.join(templateDir, file), 'utf8'));
+          assert(actual.images.every(row => row.file_name !== 'a.png'), file + ': no orphan image reference');
+          assert(actual.images.some(row => row.file_name === 'a.jpg'), file + ': same-stem JPG preserved');
+          assert(actual.annotations.length === 1, file + ': only the selected image annotations removed');
+        }
+      } else {
+        assert(fs.readFileSync(image).equals(imageBytes), 'failure retains original image bytes');
+        for (const [file, text] of snapshots) assert(fs.readFileSync(path.join(templateDir, file), 'utf8') === text, file + ': failure restores exact source');
+      }
+    } finally { teardown(); }
+  }
+  console.log('[PASS] image deletion cleans all three authoring sources and rolls back on failure');
+}
+
 const tests = [
+  test_deleteImageCleansAllAuthoringSourcesAndRollsBack,
   test_nonOverlappingBboxesPackToSamePage,
   test_overlappingBboxesSplitToDifferentPages,
   test_bboxCoordinatesUnchanged,

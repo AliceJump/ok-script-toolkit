@@ -65,5 +65,7 @@
   "config.characterLocaleFile": "角色名稱多語言 JSON（相對於角色專案根目錄）。",
   "config.characterAvatarTemplateRegex": "角色頭像模板名稱正規表示式；有擷取群組時使用第一組，否則使用符合前綴後的剩餘名稱與角色英文 slug 比對；預設相容 battleicon、battle_icon 與 battle-icon 前綴。",
   "config.okTemplatesDirectory": "ok_templates 資料夾名稱（相對於工作區根目錄），供模板素材管理器使用。",
-  "config.annotationKeybindings": "標註編輯器的鍵盤快速鍵。每個值為按鍵名稱，可選擇性使用 `+` 連接修飾鍵前綴（如 `ctrl+z`、`shift+d`）。支援的鍵：字母、數字、`Delete`、`ArrowLeft`、`ArrowRight` 等。"
+  "config.annotationKeybindings": "標註編輯器的鍵盤快速鍵。每個值為按鍵名稱，可選擇性使用 `+` 連接修飾鍵前綴（如 `ctrl+z`、`shift+d`）。支援的鍵：字母、數字、`Delete`、`ArrowLeft`、`ArrowRight` 等。",
+  "config.positionJsonPath": "Position JSON 發布的專案相對路徑。優先順序：個人 IDE 偏好 → `ok-script-toolkit.json` 專案約定 → 內建預設值。",
+  "config.positionPythonDirectory": "產生 `ScreenRatio.py` 和 `PositionMap.py` 的專案相對目錄。優先順序：個人 IDE 偏好 → `ok-script-toolkit.json` 專案約定 → 內建預設值。"
 }

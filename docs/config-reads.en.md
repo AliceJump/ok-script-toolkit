@@ -19,8 +19,8 @@
 
 | Type | Actual layers | Settings | Count | Meaning | Entry point |
 |---|---|---|---|---|---|
-| **A** | **① ② ④** | Enum 3 + template directory 1 + i18n 4 + characters 5 + effects 1 | **14** | Team conventions plus personal overrides; no `config.py` in ordinary accessors | `projectConfig.ts` `xxxSetting()`; child `OkScriptToolkitSettings.xxx()` |
-| **B** | **② ③ ④** | `templates.cocoAnnotations`, `boxes.runtime` | **2** | Project convention or `config.py`; no personal preferences | `cocoFeaturePath.ts` / `boxResourcePure.ts`; child `core/CocoFeaturePath.kt` / `core/BoxRuntimePath.kt` |
+| **A** | **① ② ④** | Enum 3 + template directory 1 + i18n 4 + characters 5 + effects 1 + Position publication paths 2 | **16** | Team conventions plus personal overrides; no `config.py` in ordinary accessors | `projectConfig.ts` `xxxSetting()`; child `OkScriptToolkitSettings.xxx()` |
+| **B** | **② ③ ④** | `templates.cocoAnnotations` | **1** | Project convention or `config.py`; no personal preferences | `cocoFeaturePath.ts` / child `core/CocoFeaturePath.kt` |
 | **C** | **③** | `windows.{exe, title, hwnd_class, args}` | **4**, plus 2 unused fields (§9) | `config.py` only; interactive title-regex fallback | `python/probe_window_config.py` |
 | **D** | **① ④** | `displayLocale` / `enableInlayHints` / `annotationKeybindings` / `enableTemplateGallery` / `okScriptProjectPath` / `okScriptPython` / `captureMethod` | **7**, 6 per host | Personal/machine preferences; no project files | `getConfiguration().get()`; child `SettingsState` |
 | **E** | Independent discovery (`okScriptProjectPath` → detection) | Project root resolution | **2 paths** | Where to find the project | Parent `resolveProjectDir()`; child `core/ProjectDirResolution.kt` |
@@ -51,16 +51,9 @@ The order reflects proximity to the project: conventions + personal values → p
 
 | IDE key | Convention field | Purpose | Fallback | Normalization |
 |---|---|---|---|---|
-| `okTemplatesDirectory` | `templates.directory` | Asset panel working directory relative to root, containing PNGs and its own `coco_annotations.json`; also controls thumbnail-cache source classification and watcher globs | `ok_templates` | Relative path |
+| `okTemplatesDirectory` | `templates.directory` | Asset panel working directory relative to root, containing images and `coco_annotations.json`, `boxes.json`, `points.json`; also controls thumbnail-cache source classification and watcher globs | `ok_templates` | Relative path |
 
-There are **9 call sites**:
-
-| Location | Use |
-|---|---|
-| `extension.ts` ×5 | Watcher globs, change ownership (`rel.startsWith(...)`), inject directory into `pngCrop` |
-| `featureData.ts` | Index PNGs and `coco_annotations.json` in the directory |
-| `templateAssetData.ts` | Panel data root |
-| `templateAssetPanel.ts` ×2 | Save to assets output directory and import-dialog title |
+Current callers include `extension.ts` resource watchers, `templateAssetData.ts` management, unified annotation editing, and resource preview/source lookup. Rect and Point authoring files share this directory; runtime Template previews use `templates.cocoAnnotations`.
 
 `pngCrop.ts` does **not** read configuration itself; tests require it in pure Node with an empty `vscode` stub. Hosts inject the name through `setTemplatesDirName()`, like `setCropLogger`.
 
@@ -106,6 +99,15 @@ There are **9 call sites**:
 
 Parsed data maps effect ID → description/category, both from that file. Adding effects needs only project-file changes, not plugin changes.
 
+### Position publication paths (2 Settings)
+
+| IDE key | Convention field | Default |
+|---|---|---|
+| `positionJsonPath` | `position.jsonPath` | `src/scene/positions.json` |
+| `positionPythonDirectory` | `position.pythonDirectory` | `src/scene` |
+
+Both use personal preference → project convention → default. Publishing settings show the source and allow changing or clearing overrides. Empty input resets the override; absolute paths, traversal, the project root itself, and symlink escapes are rejected before writes. Python publication protects handwritten modules; existing custom JSON targets require explicit overwrite confirmation. These fields do not decide the authoring source or `self.pos` indexing. See [Position Resource Contract](box-resources.en.md).
+
 ### 2.6 Executor-Only `executor.startupHooks`
 
 | Convention field | Purpose | Reader |
@@ -117,12 +119,12 @@ Neither host directly reading this is intentional, not a parity gap. Hook names 
 
 ---
 
-## 3. Type B · ② ③ ④: Project-Owned (2 Settings)
+## 3. Type B · ② ③ ④: Project-Owned (1 Setting)
 
 | Convention field | Purpose | Resolution |
 |---|---|---|
 | `templates.cocoAnnotations` | Framework **runtime template library** for hints/indexing | Convention → `template_matching.coco_feature_json` → `assets/coco_annotations.json`, then `ok_tasks/assets/coco_annotations.json` |
-| `boxes.runtime` | **Runtime box table** for galleries/completion/Hover; game loading belongs to the business project | Convention → top-level `boxes_json` → `src/scene/boxes.json` |
+
 
 No personal preference layer or provenance-panel entry: these describe project facts, not machine preferences.
 

@@ -13,8 +13,12 @@
   let failedCount = 0;
 
   document.documentElement.lang = navigator.language || 'en';
-  document.title = 'Resource Preview';
-  search.placeholder = t('templatesSearch');
+  document.title = t('resourcesTitle');
+  search.placeholder = t('resourcesSearch');
+  document.querySelector('.resource-mode-switch').setAttribute('aria-label', t('annotationModeLabel'));
+  document.getElementById('templateModeBtn').textContent = t('modeTemplate');
+  document.getElementById('rectModeBtn').textContent = t('modeRect');
+  document.getElementById('pointModeBtn').textContent = t('modePoint');
   document.querySelector('.hint').textContent = t('templatesHint');
 
   function shownCount() {
@@ -72,7 +76,7 @@
     nm.title = meta.expression || meta.name;
     const sz = document.createElement('div');
     sz.className = 'size';
-    sz.textContent = meta.kind === 'point' ? 'point' : meta.width + '×' + meta.height;
+    sz.textContent = meta.kind === 'point' ? t('modePoint') : meta.width + '×' + meta.height;
     m.append(nm, sz);
     card.append(box, m);
 
@@ -99,7 +103,7 @@
     emptyEl.textContent = '';
     if (metas.length === 0) {
       emptyEl.style.display = '';
-      emptyEl.textContent = currentMode === 'template' ? t('noTemplatesWithHint') : 'No resources in this mode.';
+      emptyEl.textContent = currentMode === 'template' ? t('noTemplatesWithHint') : t('resourcesEmpty');
     } else if (shown === 0) {
       emptyEl.style.display = '';
       emptyEl.textContent = t('noTemplateMatch', { query: search.value.trim() });

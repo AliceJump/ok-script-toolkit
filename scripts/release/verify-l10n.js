@@ -13,7 +13,7 @@
  * 看到的都是英文原文 —— 同样是静默的。所以这里顺带扫一遍 `src` 下的 `.ts` 文件里
  * 的 `tr()` 字面量，逐个核对是否在 base bundle 里（见下方 §覆盖率）。
  *
- * 与 `verify-version.js` 一样是**零依赖的纯 Node 脚本**，可以在 CI 与
+ * 使用项目已有的 TypeScript 解析器，可以在 CI 与
  * `npm test` 里低成本跑。
  *
  * 退出码：0 = 全部对等；1 = 有缺失/多余键。
@@ -21,6 +21,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { trLiterals: readTrLiterals } = require('./l10n-literals');
 
 const root = path.resolve(__dirname, '..', '..');
 const l10nDir = path.join(root, 'l10n');
@@ -71,7 +72,7 @@ if (problems.length) {
 //
 // 只查**字面量**首参：`tr(someVariable)` 静态查不到，不能假装查过。
 // 宿主侧所有面向用户的字符串都必须经 `localization.tr()`（见 AGENTS.md 的
-// 「不硬编码 i18n 字符串」约定），所以这个正则的覆盖面就是"用户可见文案"。
+// 「不硬编码 i18n 字符串」约定）；解析器排除注释、动态参数和模板插值。
 const srcDir = path.join(root, 'src');
 const trLiterals = []; // { file, text }
 
@@ -87,11 +88,10 @@ if (fs.existsSync(srcDir)) {
 
   // 单引号 / 双引号 / 反引号（无插值）三种写法都收；`localization.ts` 里
   // `function tr(message: string…)` 的首参不是引号，天然不会命中。
-  const TR_CALL = /\btr\(\s*(?:'((?:[^'\\]|\\.)*)'|"((?:[^"\\]|\\.)*)"|`([^`$\\]*)`)/g;
   for (const file of tsFiles) {
     const source = fs.readFileSync(file, 'utf8');
-    for (const match of source.matchAll(TR_CALL)) {
-      trLiterals.push({ file: path.relative(root, file), text: match[1] ?? match[2] ?? match[3] });
+    for (const text of readTrLiterals(source, file)) {
+      trLiterals.push({ file: path.relative(root, file), text });
     }
   }
 }

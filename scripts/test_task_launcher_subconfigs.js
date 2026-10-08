@@ -12,9 +12,8 @@ const { JSDOM, VirtualConsole } = jsdom;
 const root = path.resolve(__dirname, '..');
 const componentRoot = path.join(root, 'media', 'console');
 let html = fs.readFileSync(path.join(componentRoot, 'index.html'), 'utf8');
-const source = fs.readFileSync(path.join(root, 'src', 'localization.ts'), 'utf8');
-const match = /const EN: WebviewStrings = \{([\s\S]*?)\n\};/.exec(source);
-if (!match) throw new Error('EN dictionary not found');
+const baseDictionary = JSON.parse(fs.readFileSync(path.join(root, 'l10n', 'webview.en.json'), 'utf8'));
+if (!baseDictionary.parameters) throw new Error('EN dictionary not found');
 const dictionary = {
   parameters: 'Parameters', collapseParameters: 'Collapse Parameters', launchSettings: 'Launch Settings',
   reset: 'Reset', configGroup: 'Group', saved: 'Auto-saved',
