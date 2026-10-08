@@ -32,8 +32,8 @@ Verified on 2026-10-08. Main baseline: `aea8b14`; child `main` baseline: `9eb499
 3. Child unified image management connects viewing, swapping, deletion, temporary screenshot drops, search and automatic refresh. Narrow toolbars wrap and reserve visible height for every action; lists and thumbnails reject old asynchronous callbacks.
 4. Restore child enum path/class configuration, framework fallback and old-class reference checks. All decisions precede writes; cancellation and rejected overwrites stop subsequent publication.
 5. Position personal paths can be reset with empty input. Both reject absolute paths, traversal, the root itself and symlink escapes. Main settings descriptions and publication messages use six external language resources.
-6. Both reserve image names from `points.json`; child screenshot sending uses the actual project root. Deletion clears all three authoring sources, restores image and modified files on later failure, and preserves same-stem resources with different extensions.
-7. Move all six main Webview dictionaries out of business code; add 19 missing keys and resource-preview messages. Translation checks read actual TypeScript literal values, including escaped newlines and quotes, and cover real Webview calls.
+6. Both reserve image names from `points.json`; child screenshot sending uses the actual project root. Deletion clears all three authoring sources, restores image and modified files on later failure, and preserves same-stem resources with different extensions. Both hosts' Point cleanup filters only the selected image and its annotations, preserving unrelated empty image registrations, fractional coordinates, original IDs and extension fields. The child exits on Template read errors before cleaning secondary sources.
+7. Move all six main Webview dictionaries out of business code; add 19 missing keys and resource-preview messages, and correct Simplified Chinese trigger-mode and ALL/ANY hints in the other five languages. Translation checks read actual TypeScript literal values, including escaped newlines and quotes, and cover real Webview calls.
 8. Match `Ctrl+Alt+T` resource-preview shortcuts and wide-preview titles. Remove unregistered text windows and old preview publishing code; main Rect cards report actual crop dimensions.
 9. Update this matrix, [Project Conventions](project-config.en.md), [Configuration Reads](config-reads.en.md) and [Position Resource Contract](box-resources.en.md), replacing historical runtime-box and migration descriptions.
 
@@ -46,7 +46,7 @@ Business projects load published files. The plugin provides current declarations
 ## Verification and Repository State
 
 - Final main `npm test` and `npm run package` passed, using installed Python rather than the Windows Store placeholder.
-- Child `gradlew test buildPlugin verifyPluginStructure verifyPluginConfiguration` passed: 485 tests, zero failures, errors or skips.
+- Child `gradlew test buildPlugin verifyPluginStructure verifyPluginConfiguration` passed: 487 tests, zero failures, errors or skips.
 - Regression coverage includes cancellation/write ordering, path reset, enum references, runtime Templates/reference expressions, image reservations, deletion/rollback across three sources, narrow-toolbar height and stale thumbnail callbacks.
 - All six external main Webview dictionaries have 388 matching keys; 413 actual literal UI calls are covered. Host translations and child UI bundles are checked as well.
 - Final VSIX and JetBrains JAR contain 13 byte-identical Python scripts and the same convention Schema, with complete language resources and no Agent files, tests or developer documentation.

@@ -145,12 +145,12 @@ export function removeImagePoints(root: string, directory: string, imageName: st
   const current = parse(snapshot.text);
   if (current.errors.length) return false;
   const key = (name: string) => path.basename(name.replace(/\\/g, '/')).toLowerCase();
-  const file = current.file;
-  const hasImage = file.images.some(image => key(image.file) === key(imageName));
-  if (!hasImage) return true;
-  file.points = file.points.filter(point => key(point.image) !== key(imageName));
-  file.images = file.images.filter(image => key(image.file) !== key(imageName));
-  return writeAnnotationTextIfUnchanged(sourceFile(root, directory), JSON.stringify(toCoco(file), null, 2) + '\n', snapshot.text, false);
+  const raw = JSON.parse(snapshot.text) as CocoData;
+  const removedIds = new Set(raw.images.filter(image => key(image.file_name) === key(imageName)).map(image => image.id));
+  if (!removedIds.size) return true;
+  raw.images = raw.images.filter(image => !removedIds.has(image.id));
+  raw.annotations = raw.annotations.filter(annotation => !removedIds.has(annotation.image_id));
+  return writeAnnotationTextIfUnchanged(sourceFile(root, directory), JSON.stringify(raw, null, 2) + '\n', snapshot.text, false);
 }
 
 export function pointsForImage(root: string, directory: string, imageName: string): AuthoringPoint[] {

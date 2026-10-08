@@ -931,6 +931,16 @@ async function test_deleteImageCleansAllAuthoringSourcesAndRollsBack() {
             { id: 2, image_id: 2, category_id: 2, bbox: point ? [20, 30, 0, 0] : [20, 30, 3, 4], area: point ? 0 : 12, iscrowd: 0 },
           ],
         });
+        if (point) {
+          const raw = JSON.parse(text);
+          raw.images.push({ id: 17, file_name: '0017.png', width: 100, height: 100, note: 'reserved without annotations' });
+          raw.images[1].license = 42;
+          raw.annotations[1].id = 23;
+          raw.annotations[1].bbox = [20.25, 30.75, 0, 0];
+          raw.annotations[1].note = 'keep fractional point and metadata';
+          raw.info = { description: 'retain document metadata' };
+          text = JSON.stringify(raw);
+        }
         if ((outcome === 'invalid-point' && point) || (outcome === 'invalid-rect' && file === 'boxes.json')) text = '{ invalid';
         fs.writeFileSync(path.join(templateDir, file), text);
         snapshots.set(file, text);
@@ -947,6 +957,14 @@ async function test_deleteImageCleansAllAuthoringSourcesAndRollsBack() {
           assert(actual.images.every(row => row.file_name !== 'a.png'), file + ': no orphan image reference');
           assert(actual.images.some(row => row.file_name === 'a.jpg'), file + ': same-stem JPG preserved');
           assert(actual.annotations.length === 1, file + ': only the selected image annotations removed');
+          if (file === 'points.json') {
+            const original = JSON.parse(snapshots.get(file));
+            require('assert').deepStrictEqual(actual, {
+              ...original,
+              images: original.images.filter(row => row.id !== 1),
+              annotations: original.annotations.filter(row => row.image_id !== 1),
+            }, 'Point cleanup preserves empty image reservations, fractional coordinates, IDs and metadata');
+          }
         }
       } else {
         assert(fs.readFileSync(image).equals(imageBytes), 'failure retains original image bytes');
