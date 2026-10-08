@@ -82,7 +82,17 @@
     (() => {
       const nativeAcquire = window.acquireVsCodeApi;
       let sharedApi;
-      window.acquireVsCodeApi = () => sharedApi || (sharedApi = nativeAcquire());
+      window.acquireVsCodeApi = () => {
+        if (!sharedApi) {
+          const nativeApi = nativeAcquire();
+          sharedApi = {
+            postMessage: (...args) => nativeApi.postMessage(...args),
+            getState: (...args) => nativeApi.getState(...args),
+            setState: (...args) => nativeApi.setState(...args),
+          };
+        }
+        return sharedApi;
+      };
     })();
   </script>
   <script nonce="__CSP_NONCE__">
