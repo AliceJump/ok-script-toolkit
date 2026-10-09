@@ -248,7 +248,6 @@
   "templatesHint": "Clic=insertar · Doble clic=copiar · Use los botones inferiores derechos para acciones directas",
   "templatesCount": "{shown}/{total} plantillas",
   "noTemplates": "No se encontraron plantillas.",
-  "noTemplatesWithHint": "No se encontraron plantillas.\nCompruebe que el espacio de trabajo contiene assets/coco_annotations.json\n(o ok_tasks/assets/coco_annotations.json).",
   "noTemplateMatch": "No hay plantillas que coincidan con «{query}».",
   "viewOriginal": "Ver la imagen original con la posición resaltada",
   "thumbnailStats": "{loaded} miniaturas cargadas",
@@ -258,8 +257,6 @@
   "templateSource": "Origen: {path}",
   "templateAssetsTitle": "Gestión de anotaciones",
   "templateAssetsHint": "Pulse la imagen o el botón de editar para abrir anotaciones",
-  "noTemplateAssets": "No template assets yet.\nClick Import to add images.",
-  "noTemplateAssetsHint": "No template assets.",
   "screenshotSaved": "Screenshot saved: {name}",
   "screenshotFailed": "Screenshot failed: {error}",
   "noClipboardImage": "No image in clipboard.",
@@ -385,5 +382,13 @@
   "conflictFields": "Campos",
   "resourcesTitle": "Vista previa de recursos",
   "resourcesSearch": "Buscar nombres o expresiones de recursos…",
-  "resourcesEmpty": "No hay recursos en este modo."
+  "resourcesEmpty": "No hay recursos en este modo.",
+  "assetsEmptyTitle": "Aún no hay imágenes para anotar",
+  "assetsEmptyBody": "Captura o importa una imagen, o arrástrala desde Capturas temporales.",
+  "openAnnotationSource": "Abrir archivo de origen",
+  "previewEmptyTemplateTitle": "Aún no hay plantillas publicadas",
+  "previewEmptyTemplateBody": "La vista previa muestra recursos publicados. Anota imágenes en Gestión de anotaciones y luego publícalas.",
+  "previewEmptyPositionBody": "Dibuja cajas o puntos en Gestión de anotaciones (modo Box / Point).",
+  "previewCheckedPaths": "Rutas comprobadas:\n{paths}",
+  "openAnnotationManagement": "Abrir gestión de anotaciones"
 }

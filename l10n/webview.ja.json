@@ -248,7 +248,6 @@
   "templatesHint": "クリック=挿入 · ダブルクリック=コピー · 右下のボタンで直接操作",
   "templatesCount": "{shown}/{total} テンプレート",
   "noTemplates": "テンプレートが見つかりません。",
-  "noTemplatesWithHint": "テンプレートが見つかりません。\nワークスペースに assets/coco_annotations.json\n（または ok_tasks/assets/coco_annotations.json）があることを確認してください。",
   "noTemplateMatch": "「{query}」に一致するテンプレートがありません。",
   "viewOriginal": "位置を強調表示した元画像を表示",
   "thumbnailStats": "サムネイル {loaded} 件を読み込み",
@@ -258,8 +257,6 @@
   "templateSource": "ソース: {path}",
   "templateAssetsTitle": "アノテーション管理",
   "templateAssetsHint": "画像または編集ボタンをクリックしてアノテーションを開く",
-  "noTemplateAssets": "No template assets yet.\nClick Import to add images.",
-  "noTemplateAssetsHint": "No template assets.",
   "screenshotSaved": "Screenshot saved: {name}",
   "screenshotFailed": "Screenshot failed: {error}",
   "noClipboardImage": "No image in clipboard.",
@@ -385,5 +382,13 @@
   "conflictFields": "フィールド",
   "resourcesTitle": "リソースプレビュー",
   "resourcesSearch": "リソース名や式を検索…",
-  "resourcesEmpty": "このモードにはリソースがありません。"
+  "resourcesEmpty": "このモードにはリソースがありません。",
+  "assetsEmptyTitle": "アノテーションする画像がまだありません",
+  "assetsEmptyBody": "スクリーンショットを撮るか画像をインポートしてください。一時スクリーンショットからドラッグすることもできます。",
+  "openAnnotationSource": "ソースファイルを開く",
+  "previewEmptyTemplateTitle": "公開済みのテンプレートがまだありません",
+  "previewEmptyTemplateBody": "リソースプレビューには公開済みのリソースだけが表示されます。アノテーション管理で注釈を付けてから公開してください。",
+  "previewEmptyPositionBody": "アノテーション管理の Box / Point モードで注釈を付けてください。",
+  "previewCheckedPaths": "確認したパス:\n{paths}",
+  "openAnnotationManagement": "アノテーション管理を開く"
 }

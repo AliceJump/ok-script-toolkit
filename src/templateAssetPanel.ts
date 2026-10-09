@@ -156,6 +156,12 @@ class AssetGalleryController {
       void vscode.window.showErrorMessage(tr('The annotation source is invalid. Fix the source file before saving or exporting.'));
     }
     this.lastReadErrors = authoringErrors.length > 0;
+    void this.webview.postMessage({
+      type: 'sourceError',
+      text: authoringErrors.length
+        ? tr('The annotation source is invalid. Fix the source file before saving or exporting.')
+        : '',
+    });
     const metas = imageFiles.map((imgPath) => {
       const size = this.imagePixelSize(imgPath);
       const cats = this.data.getCategoriesForImage(imgPath);
@@ -229,6 +235,11 @@ class AssetGalleryController {
             void this.update();
           });
         }
+        break;
+      }
+      case 'openAnnotationSource': {
+        const file = this.data.annotationFile;
+        if (file && fs.existsSync(file)) await vscode.commands.executeCommand('vscode.open', vscode.Uri.file(file));
         break;
       }
       case 'openSource': {

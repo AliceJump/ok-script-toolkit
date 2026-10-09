@@ -385,6 +385,20 @@ export function formatConsoleOutputLine(line: string, now = new Date()): string 
  * 触发任务；一次性任务以入队方式交给同一个执行器跑一次。
  * 因此本类不再有「当前任务 / 单进程」语义，改为维护执行器会话与启用集合。
  */
+/** 状态横幅里的「下一步」按钮：webview 只回传动作 id，宿主决定怎么做 */
+type StatusAction = 'showLogs' | 'openProjectSetting' | 'openPythonSetting' | 'startExecutor' | 'refresh' | 'stopExecutor';
+
+function statusActionLabel(action: StatusAction): string {
+  switch (action) {
+    case 'showLogs': return tr('Show Logs');
+    case 'openProjectSetting': return tr('Set Project Path');
+    case 'openPythonSetting': return tr('Set Python Path');
+    case 'startExecutor': return tr('Retry');
+    case 'refresh': return tr('Reload Tasks');
+    case 'stopExecutor': return tr('Stop Executor');
+  }
+}
+
 /** 宿主侧执行器状态摘要：供状态栏、视图徽标和 context key 使用 */
 export interface ExecutorStateSummary {
   status: 'idle' | 'connecting' | 'running';
@@ -614,6 +628,9 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
           break;
         case 'openCharacterManager':
           this.openCharacterManager?.();
+          break;
+        case 'statusAction':
+          if (typeof msg.action === 'string') await this.runStatusAction(msg.action as StatusAction);
           break;
         case 'openPath':
           // 多账户存储等数据文件的「打开位置」：交给操作系统文件管理器定位
@@ -1076,6 +1093,7 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
         type: 'status',
         level: 'warn',
         text: tr('No ok-script project was found. Configure okScriptToolkit.okScriptProjectPath or open a folder containing src/config.py.'),
+        actions: this.statusActions(['openProjectSetting']),
       });
       return;
     }
@@ -1085,6 +1103,7 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
         type: 'status',
         level: 'warn',
         text: tr('Project directory does not exist: {path}', { path: projectDir }),
+        actions: this.statusActions(['openProjectSetting']),
       });
       return;
     }
@@ -1113,6 +1132,7 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
         type: 'status',
         level: this.knownTasks.length ? 'warn' : 'error',
         text: tr('Failed to load task list: {error}', { error: result.error || tr('Unknown error') }),
+        actions: this.statusActions(['refresh', 'openPythonSetting', 'showLogs']),
       });
       void this.probeSchemasInBackground(view, projectDir, pythonPath, locale, generation);
       return;
@@ -1168,6 +1188,7 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
         text: tr('Failed to collect task parameter schema (launch is still available): {error}', {
           error: probe.error || tr('Unknown error'),
         }),
+        actions: this.statusActions(['refresh', 'showLogs']),
       });
       return;
     }
@@ -1276,19 +1297,19 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
     const { projectDir, pythonPath } = this.getConfig();
     if (this.executor) {
       if (projectDir === this.executorProjectDir && projectDir === this.currentProjectDir) return true;
-      void vscode.window.showErrorMessage(tr('Stop the running executor before starting another project.'));
+      this.reportError(tr('Stop the running executor before starting another project.'), ['stopExecutor']);
       return false;
     }
     if (!projectDir) {
-      void vscode.window.showErrorMessage(tr('The ok-script project path is not configured.'));
+      this.reportError(tr('The ok-script project path is not configured.'), ['openProjectSetting']);
       return false;
     }
     if (!fs.existsSync(projectDir)) {
-      void vscode.window.showErrorMessage(tr('Project directory does not exist: {path}', { path: projectDir }));
+      this.reportError(tr('Project directory does not exist: {path}', { path: projectDir }), ['openProjectSetting']);
       return false;
     }
     if (!fs.existsSync(pythonPath) && pythonPath !== 'python') {
-      void vscode.window.showErrorMessage(tr('Python interpreter does not exist: {path}', { path: pythonPath }));
+      this.reportError(tr('Python interpreter does not exist: {path}', { path: pythonPath }), ['openPythonSetting']);
       return false;
     }
 
@@ -1367,9 +1388,8 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
       if (this.executor !== child) return;
       this.appendOutputLine('');
       this.appendOutputLine(tr('❌ Failed to start Python process: {error}', { error: err.message }));
-      void vscode.window.showErrorMessage(tr('Failed to launch task: {error}', { error: err.message }));
       this.resetExecutorState();
-      this.setStatus('error', tr('Failed to launch task: {error}', { error: err.message }));
+      this.reportError(tr('Failed to launch task: {error}', { error: err.message }), ['openPythonSetting', 'showLogs']);
     });
     child.on('close', (code) => {
       if (this.executor !== child) return;
@@ -1379,11 +1399,12 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
       this.appendOutputLine(code === 0
         ? tr('✅ Executor closed')
         : tr('❌ Executor exit code: {code}', { code: code ?? 'null' }));
-      this.setStatus(code === 0 ? 'ok' : 'error', code === 0
-        ? tr('✅ Executor closed')
-        : tr('❌ Executor exit code: {code}', { code: code ?? 'null' }));
-      if (!wasStopping && code !== 0) {
-        void vscode.window.showErrorMessage(tr('❌ Executor exit code: {code}', { code: code ?? 'null' }));
+      if (code === 0) {
+        this.setStatus('ok', tr('Executor closed'));
+      } else if (!wasStopping) {
+        this.reportError(tr('Executor exited with code {code}', { code: code ?? 'null' }), ['showLogs', 'startExecutor']);
+      } else {
+        this.setStatus('error', tr('Executor exited with code {code}', { code: code ?? 'null' }), ['showLogs']);
       }
     });
     this.pushExecutorState(view);
@@ -1650,8 +1671,52 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
     return false;
   }
 
-  private setStatus(level: 'ok' | 'warn' | 'error' | 'info', text: string): void {
-    void this.view?.webview.postMessage({ type: 'status', level, text });
+  private setStatus(level: 'ok' | 'warn' | 'error' | 'info', text: string, actions: StatusAction[] = []): void {
+    void this.view?.webview.postMessage({ type: 'status', level, text, actions: this.statusActions(actions) });
+  }
+
+  private statusActions(actions: StatusAction[]): { action: StatusAction; label: string }[] {
+    return actions.map((action) => ({ action, label: statusActionLabel(action) }));
+  }
+
+  /**
+   * 错误就地显示在控制台横幅（带下一步按钮）；控制台不可见时才退回通知，
+   * 通知同样带这些按钮 —— 避免「一闪而过的通知是唯一线索」。
+   */
+  private reportError(text: string, actions: StatusAction[] = []): void {
+    if (this.view?.visible) {
+      this.setStatus('error', text, actions);
+      return;
+    }
+    const labels = actions.map(statusActionLabel);
+    void vscode.window.showErrorMessage(text, ...labels).then((picked) => {
+      const index = picked ? labels.indexOf(picked) : -1;
+      if (index >= 0) void this.runStatusAction(actions[index]);
+    });
+    this.setStatus('error', text, actions);
+  }
+
+  private async runStatusAction(action: StatusAction): Promise<void> {
+    switch (action) {
+      case 'showLogs':
+        this.output.show(true);
+        break;
+      case 'openProjectSetting':
+        await vscode.commands.executeCommand('workbench.action.openSettings', 'okScriptToolkit.okScriptProjectPath');
+        break;
+      case 'openPythonSetting':
+        await vscode.commands.executeCommand('workbench.action.openSettings', 'okScriptToolkit.okScriptPython');
+        break;
+      case 'startExecutor':
+        await this.startExecutor(this.view ?? undefined);
+        break;
+      case 'refresh':
+        await this.commandRefresh();
+        break;
+      case 'stopExecutor':
+        this.stopExecutor();
+        break;
+    }
   }
 
   /**

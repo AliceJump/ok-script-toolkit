@@ -278,5 +278,13 @@
   "{count} temporary screenshot(s) waiting to be sorted": "{count} temporary screenshot(s) waiting to be sorted",
   "No one-time tasks are loaded yet. Open the Console and wait for the task list to load.": "No one-time tasks are loaded yet. Open the Console and wait for the task list to load.",
   "Select a task to queue": "Select a task to queue",
-  "Select a task to run (the executor will start first)": "Select a task to run (the executor will start first)"
+  "Select a task to run (the executor will start first)": "Select a task to run (the executor will start first)",
+  "Show Logs": "Show Logs",
+  "Set Project Path": "Set Project Path",
+  "Set Python Path": "Set Python Path",
+  "Retry": "Retry",
+  "Reload Tasks": "Reload Tasks",
+  "Stop Executor": "Stop Executor",
+  "Executor closed": "Executor closed",
+  "Executor exited with code {code}": "Executor exited with code {code}"
 }

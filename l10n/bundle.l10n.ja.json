@@ -278,5 +278,13 @@
   "{count} temporary screenshot(s) waiting to be sorted": "未整理の一時スクリーンショット {count} 枚",
   "No one-time tasks are loaded yet. Open the Console and wait for the task list to load.": "一回限りのタスクがまだ読み込まれていません。コンソールを開いてタスク一覧の読み込みを待ってください。",
   "Select a task to queue": "キューに追加するタスクを選択",
-  "Select a task to run (the executor will start first)": "実行するタスクを選択（先にエグゼキューターを起動します）"
+  "Select a task to run (the executor will start first)": "実行するタスクを選択（先にエグゼキューターを起動します）",
+  "Show Logs": "ログを表示",
+  "Set Project Path": "プロジェクトパスを設定",
+  "Set Python Path": "Python パスを設定",
+  "Retry": "再試行",
+  "Reload Tasks": "タスクを再読み込み",
+  "Stop Executor": "エグゼキューターを停止",
+  "Executor closed": "エグゼキューターを終了しました",
+  "Executor exited with code {code}": "エグゼキューターが終了しました（終了コード {code}）"
 }

@@ -278,5 +278,13 @@
   "{count} temporary screenshot(s) waiting to be sorted": "{count} 張臨時截圖待整理",
   "No one-time tasks are loaded yet. Open the Console and wait for the task list to load.": "尚未載入一次性任務。請開啟控制台，等任務列表載入完成。",
   "Select a task to queue": "選擇要加入佇列的任務",
-  "Select a task to run (the executor will start first)": "選擇要執行的任務（將先啟動執行器）"
+  "Select a task to run (the executor will start first)": "選擇要執行的任務（將先啟動執行器）",
+  "Show Logs": "查看日誌",
+  "Set Project Path": "設定專案路徑",
+  "Set Python Path": "設定 Python 路徑",
+  "Retry": "重試",
+  "Reload Tasks": "重新載入任務",
+  "Stop Executor": "關閉執行器",
+  "Executor closed": "執行器已關閉",
+  "Executor exited with code {code}": "執行器異常結束（結束碼 {code}）"
 }

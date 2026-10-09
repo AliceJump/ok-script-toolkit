@@ -278,5 +278,13 @@
   "{count} temporary screenshot(s) waiting to be sorted": "정리 대기 중인 임시 스크린샷 {count}개",
   "No one-time tasks are loaded yet. Open the Console and wait for the task list to load.": "일회성 작업이 아직 로드되지 않았습니다. 콘솔을 열고 작업 목록이 로드될 때까지 기다리세요.",
   "Select a task to queue": "대기열에 추가할 작업 선택",
-  "Select a task to run (the executor will start first)": "실행할 작업 선택(먼저 실행기를 시작합니다)"
+  "Select a task to run (the executor will start first)": "실행할 작업 선택(먼저 실행기를 시작합니다)",
+  "Show Logs": "로그 보기",
+  "Set Project Path": "프로젝트 경로 설정",
+  "Set Python Path": "Python 경로 설정",
+  "Retry": "다시 시도",
+  "Reload Tasks": "작업 다시 로드",
+  "Stop Executor": "실행기 종료",
+  "Executor closed": "실행기가 종료되었습니다",
+  "Executor exited with code {code}": "실행기가 종료되었습니다(종료 코드 {code})"
 }

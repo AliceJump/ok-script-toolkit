@@ -88,7 +88,7 @@
         document.getElementById('openCharacterManager').hidden = message.characterData !== true;
         break;
       case 'status':
-        setStatus(message.level, message.text);
+        setStatus(message.level, message.text, message.actions || []);
         break;
       default:
         break;

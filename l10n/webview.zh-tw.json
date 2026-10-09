@@ -248,7 +248,6 @@
   "templatesHint": "單擊=插入 · 雙擊=複製 · 右下角按鈕可直接操作",
   "templatesCount": "{shown}/{total} 個模板",
   "noTemplates": "找不到任何模板。",
-  "noTemplatesWithHint": "找不到任何模板。\n請確認工作區存在 assets/coco_annotations.json\n（或 ok_tasks/assets/coco_annotations.json）。",
   "noTemplateMatch": "沒有符合「{query}」的模板。",
   "viewOriginal": "檢視原圖（標示位置）",
   "thumbnailStats": "已載入 {loaded} 個縮圖",
@@ -258,8 +257,6 @@
   "templateSource": "來源：{path}",
   "templateAssetsTitle": "標註管理",
   "templateAssetsHint": "單擊或點擊編輯按鈕開啟標註編輯器",
-  "noTemplateAssets": "暂无模板素材。\n点击 Import 导入图片。",
-  "noTemplateAssetsHint": "暂无模板素材。",
   "screenshotSaved": "截图已保存: {name}",
   "screenshotFailed": "截图保存失败: {error}",
   "noClipboardImage": "剪贴板中没有图片。",
@@ -385,5 +382,13 @@
   "conflictFields": "欄位",
   "resourcesTitle": "資源預覽",
   "resourcesSearch": "搜尋資源名稱或運算式…",
-  "resourcesEmpty": "目前模式沒有資源。"
+  "resourcesEmpty": "目前模式沒有資源。",
+  "assetsEmptyTitle": "還沒有可標註的圖片",
+  "assetsEmptyBody": "截圖或匯入圖片，也可以把「臨時截圖」裡的圖拖到這裡。",
+  "openAnnotationSource": "開啟原始檔",
+  "previewEmptyTemplateTitle": "還沒有已發布的模板",
+  "previewEmptyTemplateBody": "資源預覽只顯示已發布的資源。請先在標註管理中標註，再點「發布」。",
+  "previewEmptyPositionBody": "請在標註管理中用 Box / Point 模式標註。",
+  "previewCheckedPaths": "已檢查：\n{paths}",
+  "openAnnotationManagement": "開啟標註管理"
 }

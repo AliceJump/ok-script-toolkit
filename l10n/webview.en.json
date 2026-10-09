@@ -248,7 +248,6 @@
   "templatesHint": "Click=insert · Double-click=copy · Use the bottom-right buttons for direct actions",
   "templatesCount": "{shown}/{total} templates",
   "noTemplates": "No templates found.",
-  "noTemplatesWithHint": "No templates found.\nMake sure the workspace contains assets/coco_annotations.json\n(or ok_tasks/assets/coco_annotations.json).",
   "noTemplateMatch": "No templates match “{query}”.",
   "viewOriginal": "View source image with highlighted bounds",
   "thumbnailStats": "{loaded} thumbnails loaded",
@@ -258,8 +257,6 @@
   "templateSource": "Source: {path}",
   "templateAssetsTitle": "Annotation Management",
   "templateAssetsHint": "Click an image or its edit button to open annotations",
-  "noTemplateAssets": "No template assets yet.\nClick Import to add images.",
-  "noTemplateAssetsHint": "No template assets.",
   "screenshotSaved": "Screenshot saved: {name}",
   "screenshotFailed": "Screenshot failed: {error}",
   "noClipboardImage": "No image in clipboard.",
@@ -385,5 +382,13 @@
   "conflictFields": "Fields",
   "resourcesTitle": "Resource Preview",
   "resourcesSearch": "Search resource names or expressions…",
-  "resourcesEmpty": "No resources in this mode."
+  "resourcesEmpty": "No resources in this mode.",
+  "assetsEmptyTitle": "No images to annotate yet",
+  "assetsEmptyBody": "Capture or import an image, or drag one in from Temp Shots.",
+  "openAnnotationSource": "Open source file",
+  "previewEmptyTemplateTitle": "No published templates yet",
+  "previewEmptyTemplateBody": "Resource Preview shows published resources. Annotate images in Annotation Management, then publish them.",
+  "previewEmptyPositionBody": "Draw boxes or points in Annotation Management (Box / Point mode).",
+  "previewCheckedPaths": "Checked:\n{paths}",
+  "openAnnotationManagement": "Open Annotation Management"
 }

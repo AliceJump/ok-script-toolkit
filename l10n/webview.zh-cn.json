@@ -248,7 +248,6 @@
   "templatesHint": "单击=插入 · 双击=复制 · 右下角按钮可直接操作",
   "templatesCount": "{shown}/{total} 个模板",
   "noTemplates": "未找到任何模板。",
-  "noTemplatesWithHint": "未找到任何模板。\n请确认工作区存在 assets/coco_annotations.json\n（或 ok_tasks/assets/coco_annotations.json）。",
   "noTemplateMatch": "没有匹配“{query}”的模板。",
   "viewOriginal": "查看原图（红框标注位置）",
   "thumbnailStats": "缩略图 {loaded} 成功",
@@ -258,8 +257,6 @@
   "templateSource": "来源: {path}",
   "templateAssetsTitle": "标注管理",
   "templateAssetsHint": "单击或点击编辑按钮打开标注编辑器",
-  "noTemplateAssets": "暂无模板素材。\n点击 Import 导入图片。",
-  "noTemplateAssetsHint": "暂无模板素材。",
   "screenshotSaved": "截图已保存: {name}",
   "screenshotFailed": "截图保存失败: {error}",
   "noClipboardImage": "剪贴板中没有图片。",
@@ -385,5 +382,13 @@
   "conflictFields": "字段",
   "resourcesTitle": "资源预览",
   "resourcesSearch": "搜索资源名或表达式…",
-  "resourcesEmpty": "当前模式没有资源。"
+  "resourcesEmpty": "当前模式没有资源。",
+  "assetsEmptyTitle": "还没有可标注的图片",
+  "assetsEmptyBody": "截图或导入图片，也可以把「临时截图」里的图拖到这里。",
+  "openAnnotationSource": "打开源文件",
+  "previewEmptyTemplateTitle": "还没有已发布的模板",
+  "previewEmptyTemplateBody": "资源预览只显示已发布的资源。请先在标注管理中标注，再点「发布」。",
+  "previewEmptyPositionBody": "请在标注管理中用 Box / Point 模式标注。",
+  "previewCheckedPaths": "已检查：\n{paths}",
+  "openAnnotationManagement": "打开标注管理"
 }

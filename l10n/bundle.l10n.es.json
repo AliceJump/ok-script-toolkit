@@ -278,5 +278,13 @@
   "{count} temporary screenshot(s) waiting to be sorted": "{count} captura(s) temporal(es) por ordenar",
   "No one-time tasks are loaded yet. Open the Console and wait for the task list to load.": "Aún no se han cargado tareas únicas. Abre la consola y espera a que se cargue la lista.",
   "Select a task to queue": "Selecciona una tarea para poner en cola",
-  "Select a task to run (the executor will start first)": "Selecciona una tarea para ejecutar (primero se iniciará el ejecutor)"
+  "Select a task to run (the executor will start first)": "Selecciona una tarea para ejecutar (primero se iniciará el ejecutor)",
+  "Show Logs": "Ver registros",
+  "Set Project Path": "Configurar ruta del proyecto",
+  "Set Python Path": "Configurar ruta de Python",
+  "Retry": "Reintentar",
+  "Reload Tasks": "Recargar tareas",
+  "Stop Executor": "Detener ejecutor",
+  "Executor closed": "Ejecutor cerrado",
+  "Executor exited with code {code}": "El ejecutor terminó con el código {code}"
 }

@@ -181,6 +181,35 @@ input[type='radio'] { accent-color: var(--border-strong); }
   font-size: var(--font-sm);
   white-space: pre-wrap;
 }
+.panel-empty__title {
+  margin-bottom: var(--space-xs);
+  color: var(--text-primary);
+  font-size: var(--font-md);
+  font-weight: var(--weight-medium);
+}
+.panel-empty__path {
+  font-family: var(--font-mono);
+  font-size: var(--font-xs);
+  word-break: break-all;
+}
+/* 空态 / 错误横幅里的下一步动作按钮 */
+.panel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-sm);
+  margin-top: var(--space-md);
+}
+.panel-actions--start { justify-content: flex-start; margin-top: var(--space-sm); }
+.panel-banner {
+  margin: var(--space-sm);
+  border: var(--border-width) solid color-mix(in srgb, var(--err) 45%, var(--border));
+  border-radius: var(--radius-md);
+  padding: var(--space-sm) var(--space-md);
+  background: var(--danger-bg);
+  font-size: var(--font-sm);
+  white-space: pre-wrap;
+}
 .panel-hint {
   color: var(--text-muted);
   font-size: var(--font-xs);
