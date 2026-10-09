@@ -22,6 +22,7 @@
   document.getElementById('rectModeBtn').textContent = t('modeRect');
   document.getElementById('pointModeBtn').textContent = t('modePoint');
   document.querySelector('.hint').textContent = t('templatesHint');
+  ThumbnailActions.bindGrid(grid, t('resourcesTitle'));
 
   function shownCount() {
     let n = 0;
@@ -82,11 +83,12 @@
     m.append(nm, sz);
     card.append(box, m);
 
-    ThumbnailActions.bindClicks(
-      card,
-      () => vscode.postMessage({ type: 'insert', expression: meta.expression }),
-      () => vscode.postMessage({ type: 'copy', expression: meta.expression }),
-    );
+    // 单击 = 选中；双击 / Enter = 插入引用；Ctrl+C = 复制引用（三处缩略图同一套手势）
+    ThumbnailActions.bindCard(card, {
+      label: meta.name,
+      onPrimary: () => vscode.postMessage({ type: 'insert', expression: meta.expression }),
+      onCopy: () => vscode.postMessage({ type: 'copy', expression: meta.expression }),
+    });
     return card;
   }
 
@@ -101,6 +103,7 @@
       if (ok) shown++;
     }
     updateCount();
+    ThumbnailActions.refreshTabStop(grid);
     emptyEl.style.display = 'none';
     emptyEl.textContent = '';
     if (metas.length === 0) {

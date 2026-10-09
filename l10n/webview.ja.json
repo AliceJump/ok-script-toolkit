@@ -245,7 +245,7 @@
   "overriddenTasksLabel": "上書きありのタスク",
   "templatesSearch": "テンプレート名を検索…",
   "templatesTitle": "リソースプレビュー",
-  "templatesHint": "クリック=挿入 · ダブルクリック=コピー · 右下のボタンで直接操作",
+  "templatesHint": "ダブルクリック / Enter = 挿入 · Ctrl+C = コピー · カード右下のボタンで直接操作",
   "templatesCount": "{shown}/{total} テンプレート",
   "noTemplates": "テンプレートが見つかりません。",
   "noTemplateMatch": "「{query}」に一致するテンプレートがありません。",
@@ -390,5 +390,7 @@
   "previewEmptyTemplateBody": "リソースプレビューには公開済みのリソースだけが表示されます。アノテーション管理で注釈を付けてから公開してください。",
   "previewEmptyPositionBody": "アノテーション管理の Box / Point モードで注釈を付けてください。",
   "previewCheckedPaths": "確認したパス:\n{paths}",
-  "openAnnotationManagement": "アノテーション管理を開く"
+  "openAnnotationManagement": "アノテーション管理を開く",
+  "assetCardHint": "ダブルクリック / Enter / E: アノテーションエディターを開く · Delete: 削除",
+  "tempGridLabel": "一時スクリーンショット"
 }

@@ -245,7 +245,7 @@
   "overriddenTasksLabel": "Overridden tasks",
   "templatesSearch": "Search template names…",
   "templatesTitle": "Resource Preview",
-  "templatesHint": "Click=insert · Double-click=copy · Use the bottom-right buttons for direct actions",
+  "templatesHint": "Double-click / Enter = insert · Ctrl+C = copy · Buttons on each card for direct actions",
   "templatesCount": "{shown}/{total} templates",
   "noTemplates": "No templates found.",
   "noTemplateMatch": "No templates match “{query}”.",
@@ -390,5 +390,7 @@
   "previewEmptyTemplateBody": "Resource Preview shows published resources. Annotate images in Annotation Management, then publish them.",
   "previewEmptyPositionBody": "Draw boxes or points in Annotation Management (Box / Point mode).",
   "previewCheckedPaths": "Checked:\n{paths}",
-  "openAnnotationManagement": "Open Annotation Management"
+  "openAnnotationManagement": "Open Annotation Management",
+  "assetCardHint": "Double-click / Enter / E: open annotation editor · Delete: delete",
+  "tempGridLabel": "Temporary screenshots"
 }

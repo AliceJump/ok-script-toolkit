@@ -46,7 +46,10 @@ const flush = w => new Promise(r => w.setTimeout(r, 0));
   const card = name => d.querySelector(`.card[data-name="${name}"]`);
   assert.strictEqual(card('1.png').querySelectorAll('.actions button').length, 3, 'cards expose open/swap/delete only');
   assert.strictEqual(card('1.png').querySelector('[data-action="edit"]'), null, 'edit button is removed');
+  // 单击只选中；双击（或 Enter）才打开标注编辑器
   card('1.png').dispatchEvent(new w.MouseEvent('click', { bubbles:true }));
+  assert.notStrictEqual(sent.at(-1)?.type, 'openAnnotation', 'single click only selects');
+  card('1.png').dispatchEvent(new w.MouseEvent('dblclick', { bubbles:true }));
   assert.deepStrictEqual(sent.at(-1), { type:'openAnnotation', imagePath:'C:/p/1.png' });
   card('1.png').querySelector('[data-action="open"]').click();
   assert.deepStrictEqual(sent.at(-1), { type:'openSource', imagePath:'C:/p/1.png' });

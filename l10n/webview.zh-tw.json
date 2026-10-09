@@ -245,7 +245,7 @@
   "overriddenTasksLabel": "有覆寫的任務",
   "templatesSearch": "搜尋模板名稱…",
   "templatesTitle": "資源預覽",
-  "templatesHint": "單擊=插入 · 雙擊=複製 · 右下角按鈕可直接操作",
+  "templatesHint": "雙擊 / Enter = 插入 · Ctrl+C = 複製 · 卡片右下角按鈕可直接操作",
   "templatesCount": "{shown}/{total} 個模板",
   "noTemplates": "找不到任何模板。",
   "noTemplateMatch": "沒有符合「{query}」的模板。",
@@ -390,5 +390,7 @@
   "previewEmptyTemplateBody": "資源預覽只顯示已發布的資源。請先在標註管理中標註，再點「發布」。",
   "previewEmptyPositionBody": "請在標註管理中用 Box / Point 模式標註。",
   "previewCheckedPaths": "已檢查：\n{paths}",
-  "openAnnotationManagement": "開啟標註管理"
+  "openAnnotationManagement": "開啟標註管理",
+  "assetCardHint": "雙擊 / Enter / E：開啟標註編輯器 · Delete：刪除",
+  "tempGridLabel": "臨時截圖"
 }

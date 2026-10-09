@@ -245,7 +245,7 @@
   "overriddenTasksLabel": "Tareas con anulaciones",
   "templatesSearch": "Buscar nombres de plantillas…",
   "templatesTitle": "Vista previa de recursos",
-  "templatesHint": "Clic=insertar · Doble clic=copiar · Use los botones inferiores derechos para acciones directas",
+  "templatesHint": "Doble clic / Enter = insertar · Ctrl+C = copiar · Usa los botones de cada tarjeta para acciones directas",
   "templatesCount": "{shown}/{total} plantillas",
   "noTemplates": "No se encontraron plantillas.",
   "noTemplateMatch": "No hay plantillas que coincidan con «{query}».",
@@ -390,5 +390,7 @@
   "previewEmptyTemplateBody": "La vista previa muestra recursos publicados. Anota imágenes en Gestión de anotaciones y luego publícalas.",
   "previewEmptyPositionBody": "Dibuja cajas o puntos en Gestión de anotaciones (modo Box / Point).",
   "previewCheckedPaths": "Rutas comprobadas:\n{paths}",
-  "openAnnotationManagement": "Abrir gestión de anotaciones"
+  "openAnnotationManagement": "Abrir gestión de anotaciones",
+  "assetCardHint": "Doble clic / Enter / E: abrir editor de anotaciones · Supr: eliminar",
+  "tempGridLabel": "Capturas temporales"
 }

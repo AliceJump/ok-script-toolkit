@@ -269,6 +269,17 @@ input[type='radio'] { accent-color: var(--border-strong); }
   background: var(--bg-control-hover);
   border-color: var(--border);
 }
+/* 危险动作（删除）与查看/交换分开放：卡片右上角，悬停才转危险色 */
+.thumbnail-actions--danger { top: 3px; bottom: auto; }
+.thumbnail-actions button.is-danger:hover,
+.thumbnail-actions button.is-danger:focus-visible {
+  color: var(--err);
+  border-color: var(--err);
+}
+
+/* 缩略图卡片选中 / 键盘焦点（单击 = 选中，Enter / 双击 = 主操作） */
+.card.is-selected { border-color: var(--border-strong); box-shadow: inset 0 0 0 1px var(--border-strong); }
+.card:focus-visible { outline: 1px solid var(--border-strong); outline-offset: 2px; }
 
 /* 行级可点击区（组头 / 折叠标题行 / tab）：极浅色调，不参与按钮权重 */
 .seg__btn:not(.is-active),

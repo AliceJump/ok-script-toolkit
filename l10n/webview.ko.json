@@ -245,7 +245,7 @@
   "overriddenTasksLabel": "재정의가 있는 작업",
   "templatesSearch": "템플릿 이름 검색…",
   "templatesTitle": "리소스 미리보기",
-  "templatesHint": "클릭=삽입 · 더블클릭=복사 · 오른쪽 아래 버튼으로 바로 실행",
+  "templatesHint": "더블클릭 / Enter = 삽입 · Ctrl+C = 복사 · 카드 오른쪽 아래 버튼으로 바로 실행",
   "templatesCount": "{shown}/{total} 템플릿",
   "noTemplates": "템플릿을 찾을 수 없습니다.",
   "noTemplateMatch": "“{query}”와 일치하는 템플릿이 없습니다.",
@@ -390,5 +390,7 @@
   "previewEmptyTemplateBody": "리소스 미리보기에는 게시된 리소스만 표시됩니다. 어노테이션 관리에서 주석을 단 뒤 게시하세요.",
   "previewEmptyPositionBody": "어노테이션 관리의 Box / Point 모드로 주석을 다세요.",
   "previewCheckedPaths": "확인한 경로:\n{paths}",
-  "openAnnotationManagement": "어노테이션 관리 열기"
+  "openAnnotationManagement": "어노테이션 관리 열기",
+  "assetCardHint": "더블클릭 / Enter / E: 어노테이션 편집기 열기 · Delete: 삭제",
+  "tempGridLabel": "임시 스크린샷"
 }

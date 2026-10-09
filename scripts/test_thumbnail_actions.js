@@ -64,40 +64,37 @@ for (const { mode, resource } of previewCases) {
   assert.strictEqual(buttons.length, 3, `${mode} preview exposes insert, copy and view`);
   assert(buttons.every(button => button.title && button.getAttribute('aria-label') === button.title));
 
-  const click = detail => card.dispatchEvent(new w.MouseEvent('click', { bubbles: true, detail }));
-  click(1);
-  flush();
-  assert.strictEqual(sent.length, 1);
-  assert.strictEqual(sent[0].type, 'insert');
-  assert.strictEqual(sent[0].expression, resource.expression);
+  const grid = w.document.getElementById('grid');
+  assert.strictEqual(grid.getAttribute('role'), 'listbox', 'resource grid is a listbox');
+  assert.strictEqual(card.getAttribute('role'), 'option', 'cards are listbox options');
+  assert.strictEqual(card.tabIndex, 0, 'the only card is the keyboard entry point');
 
-  sent.length = 0;
-  click(1); click(2); click(3);
+  const key = (k, extra = {}) => card.dispatchEvent(new w.KeyboardEvent('keydown', { key: k, bubbles: true, ...extra }));
+  // 单击 = 选中，无副作用（不再有 500ms 延迟插入）
+  card.dispatchEvent(new w.MouseEvent('click', { bubbles: true, detail: 1 }));
+  flush();
+  assert.strictEqual(sent.length, 0, 'single click only selects');
+  assert(card.classList.contains('is-selected') && card.getAttribute('aria-selected') === 'true', 'single click selects the card');
+
+  // 双击 / Enter = 插入
   card.dispatchEvent(new w.MouseEvent('dblclick', { bubbles: true }));
-  flush();
-  assert.strictEqual(sent.length, 1, 'double-click never inserts before copying');
-  assert.strictEqual(sent[0].type, 'copy');
-  assert.strictEqual(sent[0].expression, resource.expression);
+  assert.deepStrictEqual(sent.splice(0), [{ type: 'insert', expression: resource.expression }], 'double-click inserts');
+  key('Enter');
+  assert.deepStrictEqual(sent.splice(0), [{ type: 'insert', expression: resource.expression }], 'Enter inserts');
+  // Ctrl+C = 复制
+  key('c', { ctrlKey: true });
+  assert.deepStrictEqual(sent.splice(0), [{ type: 'copy', expression: resource.expression }], 'Ctrl+C copies the reference');
+  key('Delete');
+  assert.strictEqual(sent.length, 0, 'resource preview has no delete gesture');
 
-  sent.length = 0;
-  // A native double-click arriving after the gesture window cannot turn an already committed click into a copy.
-  click(1); flush();
-  click(2);
-  card.dispatchEvent(new w.MouseEvent('dblclick', { bubbles: true }));
-  flush();
-  assert.strictEqual(sent.length, 2, 'expired clicks commit as independent single gestures');
-  assert(sent.every(message => message.type === 'insert'), 'a late native dblclick cannot copy an already committed gesture');
-
-  sent.length = 0;
-  click(1); buttons[2].click();
+  // 卡内按钮只做自己的事，不触发卡片手势
+  buttons[2].click();
   buttons[2].dispatchEvent(new w.MouseEvent('dblclick', { bubbles: true }));
-  flush();
-  assert.strictEqual(sent.length, 1, 'source button cancels pending insertion and never copies the card');
+  assert.strictEqual(sent.length, 1, 'source button never triggers the card gesture');
   assert.strictEqual(sent[0].type, 'open');
-
   sent.length = 0;
-  click(1); flush();
-  assert.strictEqual(sent.length, 1, 'a direct button clears pending gesture state');
+  buttons[1].click();
+  assert.deepStrictEqual(sent.splice(0), [{ type: 'copy', expression: resource.expression }]);
   dom.window.close();
 }
 
@@ -108,7 +105,18 @@ const card = w.document.querySelector('.card');
 assert.strictEqual(card.querySelectorAll('.thumbnail-actions button').length, 3, 'asset card exposes only source, swap and delete actions');
 assert.strictEqual(card.querySelector('[data-action="edit"]'), null, 'clicking the card itself is the annotation edit action');
 card.dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+assert.strictEqual(sent.length, 0, 'single click on an asset card only selects it');
+card.dispatchEvent(new w.MouseEvent('dblclick', { bubbles: true }));
 assert.deepStrictEqual(sent.pop(), { type: 'openAnnotation', imagePath: 'source.png' });
+card.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+assert.deepStrictEqual(sent.pop(), { type: 'openAnnotation', imagePath: 'source.png' });
+card.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'e', bubbles: true }));
+assert.deepStrictEqual(sent.pop(), { type: 'openAnnotation', imagePath: 'source.png' });
+card.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Delete', bubbles: true }));
+assert.deepStrictEqual(sent.pop(), { type: 'deleteImage', imagePath: 'source.png' });
+const deleteButton = card.querySelector('[data-action="delete"]');
+assert(deleteButton.closest('.thumbnail-actions--danger'), 'delete sits apart from view/swap actions');
+assert(!card.querySelector('[data-action="open"]').closest('.thumbnail-actions--danger'), 'view action is not in the danger slot');
 card.querySelector('[data-action="open"]').click();
 assert.deepStrictEqual(sent.pop(), { type: 'openSource', imagePath: 'source.png' });
 assert.strictEqual(sent.length, 0, 'direct asset actions never trigger a second card action');
@@ -120,4 +128,21 @@ assert.strictEqual(w.document.querySelector('.card'), card, 'annotation refresh 
 assert.strictEqual(card.querySelector('.cats').textContent, 'screen.updated', 'annotation metadata updates in place');
 
 dom.window.close();
+
+// 键盘：方向键 / Home / End 在网格内移动选中，Tab 入口只有一个
+{
+  const many = ['a.png', 'b.png', 'c.png'].map(name => ({ name, imagePath: name, width: 1, height: 1, categories: [], annotations: 0 }));
+  const { dom: d2, w: w2 } = gallery('templateAssetPanel', { type: 'templates', templates: many });
+  const cards = [...w2.document.querySelectorAll('.card')];
+  assert.deepStrictEqual(cards.map(c => c.tabIndex), [0, -1, -1], 'one roving tab stop');
+  const press = (el, k) => el.dispatchEvent(new w2.KeyboardEvent('keydown', { key: k, bubbles: true }));
+  press(cards[0], 'ArrowRight');
+  assert(cards[1].classList.contains('is-selected') && w2.document.activeElement === cards[1], 'ArrowRight moves to the next card');
+  press(cards[1], 'End');
+  assert(cards[2].classList.contains('is-selected'), 'End jumps to the last card');
+  press(cards[2], 'Home');
+  assert(cards[0].classList.contains('is-selected'), 'Home jumps to the first card');
+  assert.deepStrictEqual(cards.map(c => c.tabIndex), [0, -1, -1], 'tab stop follows the selection');
+  d2.window.close();
+}
 console.log('thumbnail action parity: unified template/rect/point preview and asset actions OK');
