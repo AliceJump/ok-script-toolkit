@@ -8,7 +8,7 @@
 
 **Bring ok-script's language keys, OCR fixes, templates, skills and task data straight into your VS Code workflow.**
 
-Language key completion · OCR fix hints · Template browsing · Task launching · Character skill management
+Language key completion · OCR fix hints · Resource preview & annotation · Console · Character skill management
 
 [![VS Code Marketplace](https://img.shields.io/badge/VS%20Code%20Marketplace-ok--script%20Toolkit-007ACC?logo=visualstudiocode&logoColor=white)](https://marketplace.visualstudio.com/items?itemName=AliceJump.ok-script-toolkit)
 [![JetBrains Marketplace](https://img.shields.io/badge/JetBrains%20Marketplace-ok--script%20Toolkit-000000?logo=jetbrains&logoColor=white)](https://plugins.jetbrains.com/plugin/34091-ok-script-toolkit)
@@ -23,7 +23,7 @@ Language key completion · OCR fix hints · Template browsing · Task launching 
 
 ---
 
-A VS Code extension that brings ok-script language keys, OCR fixes, templates, skill effects, and task data directly into your Python development workflow. It also includes built-in template browsing, task launching, and character skill management panels.
+A VS Code extension that brings ok-script language keys, OCR fixes, templates, skill effects, and task data directly into your Python development workflow. It also includes built-in Resource Preview, Annotation Management, Console, and Character & Skill Manager panels.
 
 > [!TIP]
 > The demo images at the beginning of each feature section below are clickable — if the GIFs don't load, click the links to view them.
@@ -53,7 +53,7 @@ See [feature and documentation parity](docs/feature-parity.en.md) for current ho
 | [Code development assistance](#code-development-assistance) | Complete and explain `self.lang`, OCR regex, and skill effect IDs in the editor |
 | [Template management](#template-management) | Browse templates in a grid, click to insert `fL.<name>`, with thumbnail preview |
 | [Temp screenshots](#temp-screenshots) | 10-slot scratch area in the activity bar — box-select to copy normalized coordinates |
-| [Task launcher](#task-launcher) | Auto-generate parameter forms from `config.py` and run tasks, without writing to the target project's config |
+| [Console](#console-task-running) | Auto-generate parameter forms from `config.py` and run tasks, without writing to the target project's config |
 | [Character skill management](#character-skill-management) | Visual management and diagnostics for characters / skills / effects / enhancement groups |
 | [Multi-language support](#multi-language-support) | UI supports 6 languages; data hints follow the target project |
 
@@ -77,15 +77,16 @@ When editing Python code, the extension automatically detects ok-script-specific
 ### Template Management
 
 <p align="center">
-  <a href="screenshots/template-panel.gif"><img src="screenshots/template-panel.gif" alt="Template panel: search, thumbnail preview, and quick insert" width="900"></a>
+  <a href="screenshots/template-panel.gif"><img src="screenshots/template-panel.gif" alt="Resource Preview: search, thumbnail preview, and quick insert" width="900"></a>
 </p>
 
-- **Template panel**: Open via the sidebar icon or `Ctrl+Alt+T` shortcut (requires focus on a Python editor). Displays all workspace templates in a thumbnail grid with real-time name search and filtering.
-- **Quick insert**: Click a card to insert `fL.<template_name>` at the editor cursor, double-click to copy to clipboard, or use **View Original** to open the source. VS Code template and box galleries use a shared 500 ms card double-click window; clicks beyond that window are independent single clicks. The insert, copy and source buttons act immediately.
+- **Resource Preview**: Open via the sidebar icon or `Ctrl+Alt+T` shortcut (requires focus on a Python editor). Displays published template / box / point resources in a thumbnail grid with real-time name search and filtering. When there is nothing to show, it lists the COCO paths it actually checked and offers an **Open Annotation Management** button.
+- **Quick insert**: Thumbnail cards behave the same in Resource Preview, Annotation Management and Temp Screenshots — **click = select**, **double-click / Enter = primary action** (in Resource Preview: insert `fL.<template_name>` at the editor cursor), `Ctrl+C` copies the reference; the insert / copy / view-original buttons on the card act immediately. Cards are reachable with Tab and move with the arrow keys / Home / End.
 - **Template code hints**: Type `fL.` or `FeatureList.` to complete template names with size info. Hover shows thumbnail preview, dimensions, and source info.
-- You can also open a larger grid view in the editor area via the command **ok-script Toolkit: Open Template Panel in Editor**.
-- Supports both sidebar (template panel and template asset views) and large editor window browsing modes.
-- **Swap annotations**: in the template assets panel (annotation manager), the **⇄** button at the bottom-right of a thumbnail card swaps that image's whole annotation set with another image in the same list — the fix for "annotated the wrong image / images are in the wrong order". The target is picked from thumbnails (template names are mostly numeric, so names alone are not enough). When the two images differ in size, box coordinates are **scaled proportionally** and the confirmation dialog spells out both sizes. The swap is written in one go and **cannot be undone**, so it always asks before saving.
+- You can also open a larger grid view in the editor area via the command **ok-script Toolkit: Open Resource Preview in Editor**.
+- Supports both sidebar (Resource Preview and Annotation Management views) and large editor window browsing modes.
+- **Annotation Management**: double-click / Enter / `E` opens the annotation editor, `Delete` deletes (after a confirmation). The delete button sits alone in the card's top-right corner, apart from view / swap. The **Open Annotation Editor…** command lets you pick an image directly.
+- **Swap annotations**: in Annotation Management, the **Swap annotations** button (codicon `arrow-swap`) at the bottom-right of a thumbnail card swaps that image's whole annotation set with another image in the same list — the fix for "annotated the wrong image / images are in the wrong order". The target is picked from thumbnails (template names are mostly numeric, so names alone are not enough). When the two images differ in size, box coordinates are **scaled proportionally** and the confirmation dialog spells out both sizes. The swap is written in one go and always asks before saving; the completion notification has an **Undo** button that restores both images' original annotations as long as neither image changed since.
 
 ```python
 self.wait_click_feature(feature=fL.give_gift, time_out=10)
@@ -110,20 +111,20 @@ Box resource management reuses source annotation images and the COCO editor. Edi
 | Enqueue | `Ctrl+V` to paste a clipboard image, click "Screenshot" to capture the game window, or drag image files in directly |
 | 0.1s carousel | Cycles through all screenshots at 100ms intervals, useful for observing buttons with movement boundaries |
 | Box-select copy | In "Box Select Coords" mode, box-select to copy `x,y,tox,toy` normalized coordinates to the clipboard |
-| Import to annotation | The **→** button on the top-right of a thumbnail card imports that shot into the annotation manager (copies into `ok_templates` and registers COCO) |
+| Import to annotation | The **Add to Annotation Management** button (codicon `arrow-right`) at the bottom-right of a thumbnail card imports that shot into Annotation Management (copies into `ok_templates` and registers COCO); delete is in the top-right corner |
 
 Details:
 
 - The carousel and box-select are independent — the carousel keeps playing during box-select, and the selection box stays in place after release, making it easy to compare and fine-tune repeatedly.
 - Normalized coordinates are scaled to 0..1 based on image width/height, with 4 decimal places. Scroll zoom and middle-click/blank-area drag panning are also supported.
 - After box-select, the **box remains and can be adjusted** (with 8-directional handles and full drag support, same interaction as the template annotation box): **coordinates are re-copied on creation and after each adjustment**; the box itself is never written to annotation data or saved to disk. Click outside the box (beyond the frame and handles) to clear it.
-- Note: Cross-Webview drag-and-drop is not available in VS Code (each webview is an iframe with a different origin, `dataTransfer` is blocked), so the **→** button is the reliable entry point for import.
+- Note: Cross-Webview drag-and-drop is not available in VS Code (each webview is an iframe with a different origin, `dataTransfer` is blocked), so the **Add to Annotation Management** button is the reliable entry point for import.
 - The **annotation editor** also supports this mode: click "Coords (C)" in the toolbar or press `C` to enter box-select mode, copying the same `x,y,tox,toy` normalized coordinates without creating an annotation box or modifying COCO. The resulting box also has handles for fine-tuning, with coordinates re-copied after each adjustment; clicking outside the box in non-interactive areas clears it. Override with `copyCoords` in `okScriptToolkit.annotationKeybindings`.
 
-### Task Launcher
+### Console (Task Running)
 
 <p align="center">
-  <a href="screenshots/task-launcher.gif"><img src="screenshots/task-launcher.gif" alt="Task launcher: parameter form and run log" width="900"></a>
+  <a href="screenshots/task-launcher.gif"><img src="screenshots/task-launcher.gif" alt="Console: parameter form and run log" width="900"></a>
 </p>
 
 - Automatically parses all one-time tasks and trigger tasks from the target project's `src/config.py` / `config.py`, generating complete parameter configuration forms.
@@ -137,7 +138,10 @@ Details:
 - **No target-project config pollution**: While the executor runs, all ok-framework reads/writes to `configs/` and screenshots are redirected into the workspace sandbox `.vscode/ok-script-toolkit/`, so **the target project's config files and screenshots stay untouched** (`devices.json` is bridged by copy so the game connection is reused). Tweak parameters freely while debugging without dirtying the project.
 - The executor can be paused/resumed at any time (globally suspending polling and tasks), and you can "stop the current task" without closing the executor. Run logs are output to a dedicated output channel.
 - **Global config takeover**: the target project's global config groups (visible groups of the ok framework's GlobalConfig) are parsed by the probe as well and shown as parameter snapshots in the console's "Config" segment — edits save instantly and can be reset to defaults; changes are pushed live to the running executor via `gparams`, and the full snapshot is injected as `OK_TOOLKIT_GCONFIG` at executor launch. Still sandbox-only — the target project's config is never touched.
-- **Console view**: the task launcher and toolbox live together in the "ok-script console" with four segments (Tasks / Game / Config / Accounts); a health bar in the header reflects executor state in real time, and when idle the detail panel shows the run center (current task / execution queue / trigger polling). Task rows reveal a read-only summary on hover.
+- **Console view**: task running and the game connection live together in the **Console** with four segments (Tasks / Game / Config / Accounts); a health bar in the header reflects executor state in real time, and when idle the detail panel shows the run center (current task / execution queue / trigger polling). Task rows reveal a read-only summary on hover. In a narrow sidebar the segment navigation collapses to an icon rail (≤640px) or a top segmented bar (≤480px).
+- **Status bar and commands**: the status bar shows the executor state (idle / starting / running task + queued count / paused) and opens the Console on click. The Console view title bar and the Command Palette offer Run Task… / Start / Pause / Resume / Stop Current Task / Stop Executor / Show Logs / Connect Game, shown or hidden by executor state. The number of running + queued tasks appears as the view badge.
+- **Errors in place**: a missing project path, a missing Python interpreter or an executor crash is shown in the Console banner with next-step buttons (Set Project Path / Set Python Path / Show Logs / Retry). Only when the Console is hidden does it fall back to a notification (with the same buttons).
+- The **Character & Skill Manager** entry lives in the Config segment. It is hidden, together with its Command Palette command, when no character data is detected (neither `characterMasterFile` nor `characterSkillsDirectory` exists).
 
 ### Character Skill Management
 
@@ -152,8 +156,8 @@ Run the command **ok-script Toolkit: Open Character Skill Management Panel** to 
 
 ### Multi-language Support
 
-- The extension UI (notifications, output channel, hover, template panel, task launcher, toolbox, and character skill management panel) supports Simplified Chinese, Traditional Chinese, English, Japanese, Korean, and Spanish, defaulting to the VS Code display language.
-- The sidebar is split into three independent activity bar containers: **ok-script Toolbox** (toolbox + task launcher), **ok-script Templates** (template panel + template assets), and **ok-script Temp Shots**.
+- The extension UI (notifications, output channel, hover, Resource Preview, Annotation Management, Console, and the Character & Skill Manager) supports Simplified Chinese, Traditional Chinese, English, Japanese, Korean, and Spanish, defaulting to the VS Code display language.
+- The sidebar is split into three independent activity bar containers: **ok-script Tools** (Console), **ok-script Resources** (Resource Preview + Annotation Management), and **ok-script Temp Shots**. UI icons use VS Code codicons throughout.
 - Language data in code hints always uses the target project's own locale and original protocol values, unaffected by the plugin UI language.
 
 > [!NOTE]
@@ -184,6 +188,8 @@ See [DEVELOPMENT.en.md](DEVELOPMENT.en.md) for project structure, JetBrains vers
 
 ## Configuration
 
+In the Settings UI the options are grouped into 5 categories: **ok-script: Code Hints**, **Resources & Annotation**, **Screenshots**, **Console & Tasks**, and **Character Data**.
+
 | Setting | Default | Description |
 |---|---|---|
 | `okScriptToolkit.langDirectory` | `assets/lang` | lang JSON directory (relative to workspace root) |
@@ -196,15 +202,15 @@ See [DEVELOPMENT.en.md](DEVELOPMENT.en.md) for project structure, JetBrains vers
 | `okScriptToolkit.labelEnumPath` | empty | Path of the generated `LabelEnum.py` (relative to workspace root, with or without `.py`); empty follows the project convention. Maps to `labelEnum.path` |
 | `okScriptToolkit.labelEnumName` | empty | Class name of the generated enum; empty derives it from the file name. Maps to `labelEnum.name`. ⚠️ Project code imports this class by name, so renaming it breaks those imports — you will be asked to confirm before an existing file is overwritten |
 | `okScriptToolkit.effectsFile` | `src/data/effects.py` | Skill effect ID definition file (`EffectType` enum + `EFFECT_DESCRIPTIONS`), relative to workspace root |
-| `okScriptToolkit.okScriptProjectPath` | empty | ok-script project root for the task launcher; tries the current workspace when empty |
-| `okScriptToolkit.okScriptPython` | empty | Python for the task launcher; prefers `<project>/.venv/Scripts/python.exe` when empty |
+| `okScriptToolkit.okScriptProjectPath` | empty | ok-script project root used by the Console to run tasks; tries the current workspace when empty |
+| `okScriptToolkit.okScriptPython` | empty | Python used by the Console; prefers `<project>/.venv/Scripts/python.exe` when empty |
 | `okScriptToolkit.captureMethod` | `auto` | Game window capture method: `auto` / `wgc` / `bitblt` / `foreground` |
 | `okScriptToolkit.characterProjectPath` | empty | Data project for the character skill management panel; uses `okScriptProjectPath` or current workspace when empty |
 | `okScriptToolkit.characterMasterFile` | `assets/data/characters.json` | Character master table JSON |
 | `okScriptToolkit.characterSkillsDirectory` | `assets/data/character_skills` | Character skills JSON directory |
 | `okScriptToolkit.characterLocaleFile` | `assets/lang/characters.json` | Character name multi-language JSON |
 | `okScriptToolkit.characterAvatarTemplateRegex` | `^battle[_-]?icon[_-]?` | Character avatar template name regex; uses the first capture group if present, otherwise the name after the matched prefix, matched against the character master table's English slug; defaults to `battleicon`, `battle_icon`, and `battle-icon` prefixes |
-| `okScriptToolkit.okTemplatesDirectory` | `ok_templates` | ok_templates folder name (relative to workspace root), used by the template asset manager |
+| `okScriptToolkit.okTemplatesDirectory` | `ok_templates` | ok_templates folder name (relative to workspace root), used by Annotation Management |
 | `okScriptToolkit.annotationKeybindings` | see defaults | Annotation editor keyboard shortcuts; values are key names with modifier prefixes like `ctrl+z` |
 
 ### Project Convention File `ok-script-toolkit.json`
@@ -284,15 +290,19 @@ Command categories display as "ok-script 工具箱" / "ok-script Toolkit" depend
 
 | Command | Shortcut | Description |
 |---|---|---|
-| `ok-script 工具箱: Open Template Gallery` | `Ctrl+Alt+T` (macOS `Cmd+Alt+T`, requires Python editor focus) | Focus the template sidebar view in the activity bar |
-| `ok-script 工具箱: Open Template Gallery in Editor` | — | Open a large grid view in the editor area |
-| `ok-script 工具箱: Open Task Launcher` | — | Focus the task launcher view in the activity bar |
-| `ok-script 工具箱: Open Character & Skill Manager` | — | Open the character, skill, effect, enhancement group, and name localization management page |
-| `ok-script 工具箱: Open Template Assets` | — | Open the template asset management panel in the editor area |
-| `ok-script 工具箱: Open Annotation Editor` | — | Prompts to click an image in the template asset panel to enter the COCO annotation editor (the command itself does not open the editor directly) |
-| `ok-script 工具箱: Open Temp Screenshots` | — | Focus the temp screenshots view in the activity bar |
-| `ok-script 工具箱: Screenshot to Template Assets` | `Ctrl+Alt+S` (macOS `Cmd+Alt+S`) | Open the template asset panel and take a screenshot immediately. Reuses the panel's own screenshot action; the shot is registered into COCO. Rebindable in Keyboard Shortcuts |
-| `ok-script 工具箱: Project Convention vs My Settings` | — | List the settings that take part in the precedence chain and show **which layer each effective value comes from** (my settings / project convention / built-in default). Rows you have overridden carry a Revert button that drops your override and goes back to the project convention. Exists to fix "once I changed it, I can never see what the team changed" |
+| `ok-script Toolkit: Open Resource Preview` | `Ctrl+Alt+T` (macOS `Cmd+Alt+T`, requires Python editor focus) | Focus the Resource Preview view in the activity bar |
+| `ok-script Toolkit: Open Resource Preview in Editor` | — | Open a large grid view in the editor area |
+| `ok-script Toolkit: Open Console` | — | Focus the Console view in the activity bar |
+| `ok-script Toolkit: Console: Run Task…` | — | Pick a loaded one-time task and queue it (starts the executor first if needed) |
+| `ok-script Toolkit: Console: Start / Pause / Resume Executor, Stop Current Task, Stop Executor` | — | Same logic as the Console buttons; shown in the Command Palette and view title bar according to executor state |
+| `ok-script Toolkit: Console: Refresh Tasks / Show Logs / Connect Game / Disconnect Game` | — | Re-parse the task list, open the output channel, connect or disconnect the game window |
+| `ok-script Toolkit: Open Character & Skill Manager` | — | Open the character, skill, effect, enhancement group, and name localization management page; hidden in the Command Palette when no character data is detected |
+| `ok-script Toolkit: Open Annotation Management` | — | Open Annotation Management in the editor area |
+| `ok-script Toolkit: Open Annotation Editor…` | — | Pick an image from Annotation Management (with annotation counts) and open the COCO annotation editor directly |
+| `ok-script Toolkit: Publish Resources…` | — | Open Annotation Management and go straight into publishing: choose Template / Rect / Point, then publish |
+| `ok-script Toolkit: Open Temp Screenshots` | — | Focus the temp screenshots view in the activity bar |
+| `ok-script Toolkit: Screenshot to Annotation Management` | `Ctrl+Alt+S` (macOS `Cmd+Alt+S`) | Open Annotation Management and take a screenshot immediately. Reuses the panel's own screenshot action; the shot is registered into COCO. Rebindable in Keyboard Shortcuts |
+| `ok-script Toolkit: Project Convention vs My Settings` | — | List the settings that take part in the precedence chain and show **which layer each effective value comes from** (my settings / project convention / built-in default). Rows you have overridden carry a Revert button that drops your override and goes back to the project convention. Exists to fix "once I changed it, I can never see what the team changed" |
 
 ## Update Not Taking Effect
 
