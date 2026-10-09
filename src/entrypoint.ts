@@ -2,7 +2,9 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { activate as activateCore, deactivate as deactivateCore } from './extension';
+import { GlobalScreenshotHotkey } from './globalScreenshotHotkey';
 import { resolveProjectDir } from './projectConfig';
+import { getProjectConfig } from './screenshotCapture';
 
 const WALKTHROUGH_ID = 'okScriptToolkit.getStarted';
 const PROJECT_READY_CONTEXT = 'okScriptToolkit.projectReady';
@@ -29,6 +31,12 @@ function isSupportedProject(projectDir: string): boolean {
 
 export function activate(context: vscode.ExtensionContext): void {
   activateCore(context);
+
+  const globalScreenshotHotkey = new GlobalScreenshotHotkey(
+    context.extensionPath,
+    () => getProjectConfig().pythonPath,
+    () => { void vscode.commands.executeCommand('okScriptToolkit.screenshotToTemplate'); },
+  );
 
   const updateProjectReady = () => vscode.commands.executeCommand(
     'setContext',
@@ -89,12 +97,17 @@ export function activate(context: vscode.ExtensionContext): void {
       void updateProjectReady();
     }),
     vscode.workspace.onDidChangeConfiguration((event) => {
-      if (event.affectsConfiguration('okScriptToolkit.okScriptProjectPath')) {
+      const projectPathChanged = event.affectsConfiguration('okScriptToolkit.okScriptProjectPath');
+      if (projectPathChanged) {
         bindConfigWatchers();
         void updateProjectReady();
       }
+      if (projectPathChanged || event.affectsConfiguration('okScriptToolkit.okScriptPython')) {
+        globalScreenshotHotkey.restart();
+      }
     }),
     new vscode.Disposable(disposeConfigWatchers),
+    globalScreenshotHotkey,
   );
 
   void updateProjectReady();
