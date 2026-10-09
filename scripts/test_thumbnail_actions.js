@@ -10,6 +10,7 @@ try { jsdom = require('jsdom'); } catch {
 const { JSDOM } = jsdom;
 const root = path.resolve(__dirname, '..');
 const shared = fs.readFileSync(path.join(root, 'media/shared/thumbnailActions.js'), 'utf8');
+const icons = fs.readFileSync(path.join(root, 'media/shared/icons.js'), 'utf8');
 
 function gallery(panel, message) {
   const html = fs.readFileSync(path.join(root, 'media', panel, 'index.html'), 'utf8')
@@ -22,6 +23,7 @@ function gallery(panel, message) {
   w.setTimeout = fn => { timers.set(++nextTimer, fn); return nextTimer; };
   w.clearTimeout = id => timers.delete(id);
   w.acquireVsCodeApi = () => ({ postMessage: data => sent.push(JSON.parse(JSON.stringify(data))), getState: () => ({}), setState() {} });
+  w.eval(icons);
   w.eval(shared);
   w.eval(fs.readFileSync(path.join(root, 'media', panel, 'app.js'), 'utf8'));
   w.dispatchEvent(new w.MessageEvent('message', { data: message }));

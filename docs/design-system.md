@@ -106,7 +106,17 @@ media/shared/tokens.css      Colors · Typography · Spacing · Radius · Border
 media/shared/controls.css    Button(主/次/迷你/幽灵/图标) · Input · Select · Checkbox/Switch
                              · Tag · Card · Toolbar · SectionTitle · Empty/Broken/Hint · Divider
                              · 可点击性硬规范（[role=button]、真按钮/行级区分层清单）
+                             · .has-codicon / .is-icon-only（图标按钮的对齐与尺寸）
+media/shared/codicons/       @vscode/codicons 0.0.36（codicon.css + codicon.ttf，原样内置）
+media/shared/icons.js        OkIcons.icon / label / iconOnly —— 面板里生成图标的唯一入口
 ```
+
+**图标规范（2026-10-09）**：界面图标一律用 codicon（与 VS Code 原生 UI 同源），
+不再用 emoji 或 Unicode 符号（`▶ ⚙ ⇄ ⟲ ＋ 👁 × ↻` 等字形随字体漂移、读屏会念出符号名）。
+仅图标的按钮必须同时有 `title` 与 `aria-label`（`OkIcons.iconOnly` 自动处理）。
+同一语义只用一个图标：同步默认值 `sync`、恢复出厂 `discard`、交换标注 `arrow-swap`、删除 `trash`、
+查看原图 `go-to-file` / `eye`。面板 HTML 需引入 `__SHARED_CODICONS_URI__` 与 `__SHARED_ICONS_URI__`，
+CSP 需含 `font-src __CSP_SOURCE__`。
 
 新增面板接入方式（**三步，缺一步样式就静默失效**）：
 

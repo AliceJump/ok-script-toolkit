@@ -20,6 +20,7 @@ function localizeStaticUi() {
   document.querySelector('.title').textContent = t('charactersTitle');
   $('globalSearch').placeholder = t('searchCharacters');
   $('refresh').title = t('refresh');
+  $('refresh').setAttribute('aria-label', t('refresh'));
   const tabs = { characters: 'charactersTab', effects: 'effectsTab', locales: 'localesTab', issues: 'issuesTab' };
   for (const node of document.querySelectorAll('.tab')) {
     const badge = node.querySelector('.badge');
@@ -38,8 +39,8 @@ function localizeStaticUi() {
   $('effectUsage').options[1].textContent = t('usedOnly');
   $('effectUsage').options[2].textContent = t('unusedOnly');
   $('effectUsage').options[3].textContent = t('unknownOnly');
-  $('addEffectCategory').textContent = `＋ ${t('addEffectCategory')}`;
-  $('addEffect').textContent = `＋ ${t('addEffect')}`;
+  OkIcons.label($('addEffectCategory'), 'add', t('addEffectCategory'));
+  OkIcons.label($('addEffect'), 'add', t('addEffect'));
   document.querySelector('.locale-toolbar > span:first-child').textContent = t('localizationMatrix');
   document.querySelector('.locale-toolbar > span:last-child').textContent = t('localizationHint');
   $('issueSearch').placeholder = t('searchIssues');
@@ -49,8 +50,9 @@ function localizeStaticUi() {
   $('issueSeverity').options[3].textContent = t('info');
   $('loading').firstElementChild.textContent = t('readingCharacterData');
   $('modalClose').title = t('close');
-  $('modalCancel').textContent = `× ${t('cancel')}`;
-  $('modalSave').textContent = `✓ ${t('save')}`;
+  $('modalClose').setAttribute('aria-label', t('close'));
+  OkIcons.label($('modalCancel'), 'close', t('cancel'));
+  OkIcons.label($('modalSave'), 'check', t('save'));
 }
 
 function clear(node) { node.replaceChildren(); }
@@ -60,8 +62,10 @@ function element(tag, className, content) {
   if (content !== undefined) node.textContent = text(content);
   return node;
 }
-function button(label, className, handler, title) {
+/** icon 为 codicon 名（可选） */
+function button(label, className, handler, title, icon) {
   const node = element('button', className, label);
+  if (icon) OkIcons.label(node, icon, label);
   if (title) node.title = title;
   node.addEventListener('click', handler);
   return node;
@@ -220,9 +224,9 @@ function showModal(title, build, onSubmit, saveText) {
   $('modalBody').appendChild(form);
   const actionLabel = saveText || t('save');
   const actionKind = actionLabel === t('add') ? 'action-add' : actionLabel === t('modify') ? 'action-edit' : 'action-save';
-  const actionIcon = actionLabel === t('add') ? '＋ ' : actionLabel === t('modify') ? '✎ ' : '✓ ';
+  const actionIcon = actionLabel === t('add') ? 'add' : actionLabel === t('modify') ? 'edit' : 'check';
   $('modalSave').className = `action-button ${actionKind}`;
-  $('modalSave').textContent = actionIcon + actionLabel;
+  OkIcons.label($('modalSave'), actionIcon, actionLabel);
   modalSubmit = () => onSubmit(controls);
   $('modalBackdrop').classList.add('show');
   form.querySelector('input,select,textarea')?.focus();
@@ -433,7 +437,7 @@ function renderCharacterDetail(character) {
   $('characterDetail').appendChild(header);
   if (!character.skills.length) { $('characterDetail').appendChild(element('div', 'empty', t('noSkills'))); return; }
   const sectionTitle = element('div', 'section-title');
-  sectionTitle.append(element('span', '', t('skillsAndEnhancements')), button(`＋ ${t('addSkill')}`, 'action-button action-add compact', () => showSkillEditor(character, null)));
+  sectionTitle.append(element('span', '', t('skillsAndEnhancements')), button(t('addSkill'), 'action-button action-add compact', () => showSkillEditor(character, null), undefined, 'add'));
   $('characterDetail').appendChild(sectionTitle);
   for (const skill of character.skills) {
     const card = element('article', 'skill-card');
@@ -446,8 +450,8 @@ function renderCharacterDetail(character) {
     skillMeta.appendChild(makeChip(skillTypeLabel(skill.skillType)));
     if (skill.element) skillMeta.appendChild(makeChip(skill.element));
     if (skill.hasEnhancement) skillMeta.appendChild(makeChip(t('enhancedState')));
-    skillMeta.appendChild(button(`✎ ${t('modify')}`, 'action-button action-edit compact', () => showSkillEditor(character, skill), t('modifySkill')));
-    if (skill.source === 'custom') skillMeta.appendChild(button(`× ${t('delete')}`, 'action-button action-delete compact', () => confirmDelete(skill.name, () => mutate({ action: 'deleteSkill', characterId: character.characterId, skillId: skill.skillId }))));
+    skillMeta.appendChild(button(t('modify'), 'action-button action-edit compact', () => showSkillEditor(character, skill), t('modifySkill'), 'edit'));
+    if (skill.source === 'custom') skillMeta.appendChild(button(t('delete'), 'action-button action-delete compact', () => confirmDelete(skill.name, () => mutate({ action: 'deleteSkill', characterId: character.characterId, skillId: skill.skillId })), undefined, 'trash'));
     else skillMeta.appendChild(makeChip(t('syncedSkillLocked')));
     skillMeta.appendChild(button(`↗ ${t('open')}`, 'action-button action-open compact', () => postOpen('character', { characterId: character.characterId, skillId: skill.skillId }), t('openSource')));
     head.appendChild(skillMeta); card.appendChild(head);
@@ -463,7 +467,7 @@ function renderCharacterDetail(character) {
       const block = element('section', 'enhancement'); const enhancementHead = element('div', 'enhancement-head'); const name = element('div', 'enhancement-name', enhancement.name);
       if (enhancement.visiblePulse) name.appendChild(element('span', 'pulse', t('visiblePulse')));
       const enhancementActions = element('div', 'enhancement-actions');
-      enhancementActions.append(button(`✎ ${t('modify')}`, 'action-button action-edit compact', () => showEnhancementEditor(character, skill, enhancement, index), t('modifyEnhancement')), button(`× ${t('delete')}`, 'action-button action-delete compact', () => confirmDelete(enhancement.name, () => mutate({ action: 'deleteEnhancement', characterId: character.characterId, skillId: skill.skillId, enhancementIndex: index }))));
+      enhancementActions.append(button(t('modify'), 'action-button action-edit compact', () => showEnhancementEditor(character, skill, enhancement, index), t('modifyEnhancement'), 'edit'), button(t('delete'), 'action-button action-delete compact', () => confirmDelete(enhancement.name, () => mutate({ action: 'deleteEnhancement', characterId: character.characterId, skillId: skill.skillId, enhancementIndex: index }))), undefined, 'trash'));
       enhancementHead.append(name, enhancementActions); block.appendChild(enhancementHead);
       if (enhancement.triggerText) block.appendChild(element('div', 'enhancement-trigger', enhancement.triggerText));
       if (enhancement.enhancementEffect) block.appendChild(element('div', 'item-sub', enhancement.enhancementEffect));
@@ -507,7 +511,7 @@ function renderCharacterDetail(character) {
       }
       body.appendChild(block);
     }
-    body.appendChild(button(`＋ ${t('addEnhancement')}`, 'action-button action-add compact add-enhancement-action', () => showEnhancementEditor(character, skill, null, -1)));
+    body.appendChild(button(t('addEnhancement'), 'action-button action-add compact add-enhancement-action', () => showEnhancementEditor(character, skill, null, -1), undefined, 'add'));
     card.appendChild(body); $('characterDetail').appendChild(card);
   }
 }

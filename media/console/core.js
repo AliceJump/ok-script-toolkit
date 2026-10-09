@@ -63,10 +63,8 @@
   function initializeStaticUi() {
     document.documentElement.lang = navigator.language || 'en';
     document.title = t('taskTitle');
-    elements.refresh.textContent = '↻';
-    elements.refresh.title = t('refresh');
-    elements.refresh.setAttribute('aria-label', t('refresh'));
-    elements.stopExecutor.textContent = `✕ ${t('stopExecutor')}`;
+    OkIcons.iconOnly(elements.refresh, 'refresh', t('refresh'));
+    OkIcons.label(elements.stopExecutor, 'debug-stop', t('stopExecutor'));
     elements.empty.textContent = t('noTasks');
   }
 

@@ -135,3 +135,9 @@ body {
 /* hidden 属性兜底：作者样式里的 display 会覆盖 UA 的 [hidden]{display:none}，
    导致所有基于 hidden 的折叠/显隐在真机上失效（jsdom 测试只查属性所以测不出来）。 */
 [hidden] { display: none !important; }
+
+/* ── 图标（codicons）：尺寸走 token，按钮内图文对齐 ── */
+:root {
+  --icon-sm: 14px;
+  --icon-md: 16px;
+}

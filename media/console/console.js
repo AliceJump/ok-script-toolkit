@@ -138,7 +138,7 @@
     head.tabIndex = 0;
     const chev = document.createElement('span');
     chev.className = 'gconfig-card__chev';
-    chev.textContent = expanded ? '▾' : '▸';
+    chev.replaceChildren(OkIcons.icon(expanded ? 'chevron-down' : 'chevron-right'));
     const title = document.createElement('div');
     title.className = 'gconfig-card__name';
     title.textContent = group.displayName || group.name;
@@ -175,11 +175,11 @@
     actions.className = 'gconfig-card__actions';
     const sync = document.createElement('button');
     sync.className = 'btn-mini';
-    sync.textContent = `⇄ ${t('syncDefaultBtn')}`;
+    OkIcons.label(sync, 'sync', t('syncDefaultBtn'));
     sync.addEventListener('click', () => post({ type: 'syncDefault', target: 'global', name: group.name }));
     const reset = document.createElement('button');
     reset.className = 'btn-mini';
-    reset.textContent = `⟲ ${t('resetDefaultBtn')}`;
+    OkIcons.label(reset, 'discard', t('resetDefaultBtn'));
     reset.addEventListener('click', () => post({ type: 'resetDefault', target: 'global', name: group.name }));
     actions.append(sync, reset);
     head.appendChild(actions);
@@ -287,12 +287,12 @@
     } else if (info.hasStoreModule === false) {
       const warn = document.createElement('div');
       warn.className = 'config-broken';
-      warn.textContent = `⚠ ${t('accountNoEditor')}`;
+      warn.append(OkIcons.icon('warning'), ` ${t('accountNoEditor')}`);
       host.appendChild(warn);
     } else {
       const warn = document.createElement('div');
       warn.className = 'config-broken';
-      warn.textContent = `⚠ ${t('accountStoreUnavailable')}${storeError ? `\n${storeError}` : ''}\n${t('accountStoreSeeOutput')}`;
+      warn.append(OkIcons.icon('warning'), ` ${t('accountStoreUnavailable')}${storeError ? `\n${storeError}` : ''}\n${t('accountStoreSeeOutput')}`);
       host.appendChild(warn);
     }
   }
@@ -426,7 +426,7 @@
     head.tabIndex = 0;
     const chev = document.createElement('span');
     chev.className = 'gconfig-card__chev';
-    chev.textContent = '▾';
+    chev.replaceChildren(OkIcons.icon('chevron-down'));
     const title = document.createElement('div');
     title.className = 'gconfig-card__name';
     title.textContent = t('overrideTitle');
@@ -439,7 +439,7 @@
     // 整卡可折叠——点组头把表单收起只留标题行；状态落盘（uiState）重开复用
     const cardKey = 'cardCollapsed::accountOverride';
     const applyCardOpen = open => {
-      chev.textContent = open ? '▾' : '▸';
+      chev.replaceChildren(OkIcons.icon(open ? 'chevron-down' : 'chevron-right'));
       head.setAttribute('aria-expanded', String(open));
       body.hidden = !open;
       head.setAttribute('aria-expanded', String(open));
@@ -781,9 +781,7 @@
     search.placeholder = t('searchTasks');
     search.addEventListener('input', () => globalThis.TaskLauncherTaskCard.setSearch(search.value));
     const refresh = $('refresh');
-    refresh.textContent = '↻';
-    refresh.title = t('refresh');
-    refresh.setAttribute('aria-label', t('refresh'));
+    OkIcons.iconOnly(refresh, 'refresh', t('refresh'));
     $('consoleHint').textContent = t('consoleHint');
     $('takeoverBanner').textContent = t('takeoverBanner');
     bindGroupHead('triggerHead', 'trigger');

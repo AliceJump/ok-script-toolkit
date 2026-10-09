@@ -40,7 +40,7 @@ export function sharedResourceRoot(extensionUri: vscode.Uri): vscode.Uri {
 }
 
 /**
- * 把共享设计层的 URI 注入面板 HTML 的两个占位符。
+ * 把共享设计层的 URI 注入面板 HTML 的占位符（tokens / controls / codicons / 缩略图动作）。
  *
  * 顺序语义由面板 HTML 保证：`__SHARED_TOKENS_URI__` / `__SHARED_CONTROLS_URI__`
  * 两个 `<link>` 必须排在面板自身样式之前，面板才能覆盖共享层。
@@ -57,9 +57,11 @@ export function applySharedAssets(
     joinPath(extensionUri, 'media', 'shared', name),
   ).toString(true);
   return html
+    .split('__SHARED_CODICONS_URI__').join(uri('codicons/codicon.css'))
     .split('__SHARED_TOKENS_URI__').join(uri('tokens.css'))
     .split('__SHARED_CONTROLS_URI__').join(uri('controls.css'))
-    .split('__SHARED_THUMBNAIL_ACTIONS_URI__').join(uri('thumbnailActions.js'));
+    .split('__SHARED_THUMBNAIL_ACTIONS_URI__').join(uri('thumbnailActions.js'))
+    .split('__SHARED_ICONS_URI__').join(uri('icons.js'));
 }
 
 /**

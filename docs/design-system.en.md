@@ -95,7 +95,12 @@ media/shared/tokens.css      Colors · Typography · Spacing · Radius · Border
 media/shared/controls.css    Button(primary/secondary/mini/ghost/icon) · Input · Select · Checkbox/Switch
                              · Tag · Card · Toolbar · SectionTitle · Empty/Broken/Hint · Divider
                              · Clickability rules ([role=button], actual-button/clickable-row categories)
+                             · .has-codicon / .is-icon-only (icon button alignment and size)
+media/shared/codicons/       @vscode/codicons 0.0.36 (codicon.css + codicon.ttf, vendored unchanged)
+media/shared/icons.js        OkIcons.icon / label / iconOnly — the single way panels create icons
 ```
+
+**Icon rule (2026-10-09):** UI icons always use codicons (the same set as native VS Code UI). Emoji and Unicode glyphs (`▶ ⚙ ⇄ ⟲ ＋ 👁 × ↻` and similar) are no longer used: they drift with the font and screen readers read out the symbol names. Icon-only buttons must have both `title` and `aria-label` (`OkIcons.iconOnly` handles this). One meaning, one icon: sync defaults `sync`, restore factory defaults `discard`, swap annotations `arrow-swap`, delete `trash`, view original `go-to-file` / `eye`. Panel HTML must load `__SHARED_CODICONS_URI__` and `__SHARED_ICONS_URI__`, and the CSP must include `font-src __CSP_SOURCE__`.
 
 Connect a new panel in **three steps; omitting any step silently breaks styling**:
 

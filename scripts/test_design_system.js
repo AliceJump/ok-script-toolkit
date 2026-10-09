@@ -123,4 +123,22 @@ for (const file of fs.readdirSync(sharedDir)) {
 }
 assert(offenders.length === 0, `以下文件直引了 --vscode-*：${offenders.join(', ')}`);
 
+console.log('7. 图标统一走 codicons（引入 + CSP font-src + 不再用 emoji/Unicode 图标字形）');
+const ICON_GLYPHS = /[▶⚙⇄⟲＋⧉👁✕↻↩↪◀⏸⏹✓✔⚠✎▲▼▸▾❌]/u;
+for (const panel of panels) {
+  const dir = path.join(mediaDir, panel);
+  const html = read(path.join(dir, 'index.html'));
+  assert(html.includes('__SHARED_CODICONS_URI__'), `${panel}/index.html 未引入 codicons`);
+  assert(html.includes('__SHARED_ICONS_URI__'), `${panel}/index.html 未引入 shared/icons.js`);
+  assert(/font-src __CSP_SOURCE__/.test(html), `${panel}/index.html 的 CSP 缺少 font-src（codicon 字体会被拦截）`);
+  for (const file of fs.readdirSync(dir).filter((f) => f.endsWith('.js') || f.endsWith('.html'))) {
+    const code = read(path.join(dir, file))
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/^\s*\/\/.*$/gm, '')
+      .replace(/<!--[\s\S]*?-->/g, '');
+    const hit = code.match(ICON_GLYPHS);
+    assert(!hit, `media/${panel}/${file} 仍用字形 ${hit && hit[0]} 当图标（改用 OkIcons / codicon）`);
+  }
+}
+
 console.log('\n全部通过');

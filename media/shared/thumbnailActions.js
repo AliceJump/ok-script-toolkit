@@ -3,7 +3,9 @@
     button(icon, label, onClick) {
       const button = document.createElement('button');
       button.type = 'button';
-      button.textContent = icon;
+      // icon 是 codicon 名（如 'add' / 'trash'）；OkIcons 由 media/shared/icons.js 提供
+      if (window.OkIcons && /^[a-z][a-z0-9-]*$/.test(icon)) window.OkIcons.iconOnly(button, icon, label);
+      else button.textContent = icon;
       button.title = label;
       button.setAttribute('aria-label', label);
       button.addEventListener('click', (event) => {

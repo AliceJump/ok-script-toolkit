@@ -52,7 +52,7 @@
     const title = sectionTitle(t('launchSettings'));
     const savedBadge = document.createElement('span');
     savedBadge.className = 'config-saved';
-    savedBadge.textContent = `✓ ${t('saved')}`;
+    savedBadge.append(OkIcons.icon('check'), ` ${t('saved')}`);
     savedBadge.hidden = true;
     title.appendChild(savedBadge);
     panel.appendChild(title);
@@ -101,7 +101,7 @@
     if (schema?.broken) {
       const broken = document.createElement('div');
       broken.className = 'config-broken';
-      broken.textContent = `⚠ ${t('schemaFailed', { error: schema.error || '' })}`;
+      broken.append(OkIcons.icon('warning'), ` ${t('schemaFailed', { error: schema.error || '' })}`);
       panel.appendChild(broken);
     } else if (schema?.fields?.length) {
       const host = document.createElement('div');
@@ -246,7 +246,7 @@
       const stateKey = `groupOpen::${taskKey(task)}::${path.join('>')}`;
       const setOpen = (open, persist = true) => {
         group.classList.toggle('open', open);
-        toggle.textContent = open ? '▲' : '▼';
+        toggle.replaceChildren(OkIcons.icon(open ? 'chevron-up' : 'chevron-down'));
         toggle.title = open ? t('collapseParameters') : t('parameters');
         if (persist) uiState.set(stateKey, open);
       };

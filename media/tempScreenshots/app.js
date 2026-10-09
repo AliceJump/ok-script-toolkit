@@ -290,9 +290,9 @@
 
       const actions = document.createElement('div');
       actions.className = 'actions thumbnail-actions';
-      const sendBtn = ThumbnailActions.button('→', t('tempSendToAssets'), () => vscode.postMessage({ type: 'sendToAssets', id: meta.id }));
+      const sendBtn = ThumbnailActions.button('arrow-right', t('tempSendToAssets'), () => vscode.postMessage({ type: 'sendToAssets', id: meta.id }));
       sendBtn.className = 'send';
-      const delBtn = ThumbnailActions.button('×', t('tempDelete'), () => vscode.postMessage({ type: 'deleteTemp', id: meta.id }));
+      const delBtn = ThumbnailActions.button('trash', t('tempDelete'), () => vscode.postMessage({ type: 'deleteTemp', id: meta.id }));
       delBtn.className = 'del';
       actions.append(sendBtn, delBtn);
       preview.appendChild(actions);

@@ -60,9 +60,9 @@
     const actions = document.createElement('div');
     actions.className = 'actions thumbnail-actions';
     actions.append(
-      ThumbnailActions.button('＋', t('insertExpression'), () => vscode.postMessage({ type: 'insert', expression: meta.expression })),
-      ThumbnailActions.button('⧉', t('copyExpression'), () => vscode.postMessage({ type: 'copy', expression: meta.expression })),
-      ThumbnailActions.button('👁', t('viewOriginal'), () => vscode.postMessage({
+      ThumbnailActions.button('add', t('insertExpression'), () => vscode.postMessage({ type: 'insert', expression: meta.expression })),
+      ThumbnailActions.button('copy', t('copyExpression'), () => vscode.postMessage({ type: 'copy', expression: meta.expression })),
+      ThumbnailActions.button('eye', t('viewOriginal'), () => vscode.postMessage({
         type: 'open', imagePath: meta.imagePath, name: meta.name, bbox: JSON.stringify(meta.bbox),
       })),
     );

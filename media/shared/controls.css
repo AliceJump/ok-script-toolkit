@@ -249,3 +249,15 @@ input[type='radio'] { accent-color: var(--border-strong); }
 .config-section-title--toggle {
   background: var(--bg-row);
 }
+
+/* ═══ Codicon 图标（media/shared/codicons + icons.js） ═════════════ */
+.has-codicon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-xs);
+}
+.has-codicon .codicon,
+.codicon.codicon--sm { font-size: var(--icon-sm); }
+.is-icon-only { min-width: 24px; padding-inline: var(--space-xs); }
+.is-icon-only .codicon { font-size: var(--icon-md); }

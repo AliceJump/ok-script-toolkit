@@ -3,8 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src __CSP_SOURCE__; script-src __CSP_SOURCE__ 'nonce-__CSP_NONCE__'; img-src __CSP_SOURCE__ data:">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src __CSP_SOURCE__; script-src __CSP_SOURCE__ 'nonce-__CSP_NONCE__'; font-src __CSP_SOURCE__; img-src __CSP_SOURCE__ data:">
   <title></title>
+  <link rel="stylesheet" href="__SHARED_CODICONS_URI__">
   <link rel="stylesheet" href="__SHARED_TOKENS_URI__">
 <link rel="stylesheet" href="__SHARED_CONTROLS_URI__">
 <link rel="stylesheet" href="__STYLE_URI__">
@@ -17,7 +18,7 @@
         <div id="project"></div>
         <div class="spacer"></div>
         <input id="globalSearch" type="search">
-        <button id="refresh" class="utility-button" type="button">↻</button>
+        <button id="refresh" class="utility-button has-codicon" type="button"><span class="codicon codicon-refresh" aria-hidden="true"></span></button>
       </div>
       <nav class="tabs">
         <button class="tab active" data-tab="characters" type="button"><span id="charactersBadge" class="badge">0</span></button>
@@ -71,7 +72,7 @@
     </main>
     <div id="modalBackdrop" class="modal-backdrop">
       <div class="modal" role="dialog" aria-modal="true">
-        <div class="modal-head"><div id="modalTitle" class="modal-title"></div><div class="spacer"></div><button id="modalClose" class="utility-button" type="button">✕</button></div>
+        <div class="modal-head"><div id="modalTitle" class="modal-title"></div><div class="spacer"></div><button id="modalClose" class="utility-button has-codicon" type="button"><span class="codicon codicon-close" aria-hidden="true"></span></button></div>
         <div id="modalBody" class="modal-body"></div>
         <div id="modalError" class="form-error modal-error"></div>
         <div class="modal-actions"><button id="modalCancel" class="action-button action-cancel" type="button"></button><button id="modalSave" class="action-button action-save" type="button"></button></div>
@@ -79,6 +80,7 @@
     </div>
   </div>
   <div id="characterManagerI18n" hidden>__I18N_JSON__</div>
+  <script src="__SHARED_ICONS_URI__"></script>
   <script src="__APP_SCRIPT_URI__"></script>
 </body>
 </html>

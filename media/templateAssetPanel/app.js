@@ -60,9 +60,9 @@
     const actDiv = document.createElement('div');
     actDiv.className = 'actions thumbnail-actions';
     actDiv.append(
-      ThumbnailActions.button('👁', t('openSourceImage'), () => vscode.postMessage({ type: 'openSource', imagePath: meta.imagePath })),
-      ThumbnailActions.button('⇄', t('assetSwapTooltip'), () => openSwapPicker(meta)),
-      ThumbnailActions.button('×', t('assetDeleteTooltip'), () => vscode.postMessage({ type: 'deleteImage', imagePath: meta.imagePath })),
+      ThumbnailActions.button('go-to-file', t('openSourceImage'), () => vscode.postMessage({ type: 'openSource', imagePath: meta.imagePath })),
+      ThumbnailActions.button('arrow-swap', t('assetSwapTooltip'), () => openSwapPicker(meta)),
+      ThumbnailActions.button('trash', t('assetDeleteTooltip'), () => vscode.postMessage({ type: 'deleteImage', imagePath: meta.imagePath })),
     );
     ['open', 'swap', 'delete'].forEach((action, index) => { actDiv.children[index].dataset.action = action; });
     box.appendChild(actDiv);

@@ -21,10 +21,12 @@
   const isGroupCollapsed = key => uiState.get(groupCollapseKey(key), false) === true;
   const setGroupCollapsed = (key, collapsed) => uiState.set(groupCollapseKey(key), collapsed);
 
-  function createButton(className, text, handler) {
+  /** text 为字符串；icon（codicon 名）可选，图标与文字同行 */
+  function createButton(className, text, handler, icon) {
     const button = document.createElement('button');
     button.className = className;
-    button.textContent = text;
+    if (icon) OkIcons.label(button, icon, text);
+    else button.textContent = text;
     button.addEventListener('click', handler);
     return button;
   }
@@ -48,9 +50,9 @@
 
   /** 一次性任务：入队到常驻执行器，执行一次后自动出队 */
   function buildLaunchButton(task) {
-    const launch = createButton('task-card__launch', `▶ ${t('launch')}`, () => {
+    const launch = createButton('task-card__launch', t('launch'), () => {
       post({ type: 'enqueue', task: { ...task } });
-    });
+    }, 'play');
     launch.dataset.role = 'launch';
     return launch;
   }
@@ -66,9 +68,9 @@
   /** 参数入口：badge 样式按钮，点击把该任务的参数表单搬进抽屉 */
   function buildConfigButton(task) {
     const key = taskKey(task);
-    const button = createButton('task-card__config', `⚙ ${t('parameters')}`, () => {
+    const button = createButton('task-card__config', t('parameters'), () => {
       globalThis.TaskLauncherConsole.openDrawer(task);
-    });
+    }, 'settings-gear');
     button.dataset.role = 'config-toggle';
     button.dataset.taskKey = key;
     button.classList.toggle('has-overrides', snapshotDiffersFromFactory(key));
@@ -115,14 +117,14 @@
   function buildSnapshotButtons(key) {
     const schema = state.schemas[key];
     if (!schema || schema.broken || !schema.fields?.length) return [];
-    const sync = createButton('task-card__snap', '⇄', () => {
+    const sync = createButton('task-card__snap', '', () => {
       post({ type: 'syncDefault', target: 'task', name: key });
     });
-    sync.title = t('syncDefaultBtn');
-    const reset = createButton('task-card__snap', '⟲', () => {
+    OkIcons.iconOnly(sync, 'sync', t('syncDefaultBtn'));
+    const reset = createButton('task-card__snap', '', () => {
       post({ type: 'resetDefault', target: 'task', name: key });
     });
-    reset.title = t('resetDefaultBtn');
+    OkIcons.iconOnly(reset, 'discard', t('resetDefaultBtn'));
     return [sync, reset];
   }
 
@@ -672,13 +674,14 @@
     // 显式启动：执行器起来之前才显示，起来后让位给暂停/停止
     elements.startExecutor.hidden = active;
     elements.startExecutor.disabled = active;
-    elements.startExecutor.textContent = `▶ ${t('startExecutor')}`;
+    OkIcons.label(elements.startExecutor, 'debug-start', t('startExecutor'));
     elements.pauseToggle.hidden = !active || executor.projectMismatch;
     elements.pauseToggle.disabled = executor.status !== 'running' || executor.projectMismatch;
-    elements.pauseToggle.textContent = executor.paused ? `▶ ${t('resume')}` : `⏸ ${t('pause')}`;
+    if (executor.paused) OkIcons.label(elements.pauseToggle, 'debug-continue', t('resume'));
+    else OkIcons.label(elements.pauseToggle, 'debug-pause', t('pause'));
     elements.stopCurrent.hidden = !active || executor.projectMismatch;
     elements.stopCurrent.disabled = !executor.current;
-    elements.stopCurrent.textContent = `⏹ ${t('stopCurrent')}`;
+    OkIcons.label(elements.stopCurrent, 'stop-circle', t('stopCurrent'));
     elements.stopExecutor.hidden = !active;
   }
 
@@ -743,7 +746,7 @@
       head.tabIndex = 0;
       const chev = document.createElement('span');
       chev.className = 'subgroup-head__chev';
-      chev.textContent = collapsed ? '▸' : '▾';
+      chev.replaceChildren(OkIcons.icon(collapsed ? 'chevron-right' : 'chevron-down'));
       const title = document.createElement('span');
       title.textContent = label;
       const count = document.createElement('span');

@@ -214,7 +214,9 @@
     document.getElementById('undoBtn').disabled = !canUndo();
     document.getElementById('redoBtn').disabled = !canRedo();
     document.getElementById('undoBtn').title = t('undo') + ' (' + keybindings.undo + ')';
+    document.getElementById('undoBtn').setAttribute('aria-label', t('undo'));
     document.getElementById('redoBtn').title = t('redo') + ' (' + keybindings.redo + ')';
+    document.getElementById('redoBtn').setAttribute('aria-label', t('redo'));
   }
 
   function parseKeybinding(kb) {
@@ -1104,7 +1106,9 @@
     document.getElementById('hideAllBtn').textContent = t('hideAllAnnotations');
     document.getElementById('onlyCurrentBtn').textContent = t('showOnlyCurrent');
     document.getElementById('prevBtn').title = t('prevImage');
+    document.getElementById('prevBtn').setAttribute('aria-label', t('prevImage'));
     document.getElementById('nextBtn').title = t('nextImage');
+    document.getElementById('nextBtn').setAttribute('aria-label', t('nextImage'));
     document.getElementById('emptyMsg').textContent = t('noImageLoaded');
     updateModeUi();
   }

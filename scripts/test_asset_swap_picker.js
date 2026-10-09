@@ -19,6 +19,7 @@ const dictionary = {
   cancel: 'Cancel', loadFailed: 'Failed', assetNoMatch: 'No match', noTemplatesWithHint: 'No templates', assetDropHint: 'Drop',
 };
 let html = fs.readFileSync(path.join(componentRoot, 'index.html'), 'utf8');
+html = html.replace('<script src="__SHARED_ICONS_URI__"></script>', () => `<script>${fs.readFileSync(path.join(componentRoot, '..', 'shared', 'icons.js'), 'utf8')}</script>`);
 html = html.replaceAll('__CSP_NONCE__', 'test').replaceAll('__CSP_SOURCE__', "'self'")
   .replaceAll('__I18N_JSON__', JSON.stringify(dictionary)).replaceAll('__SHARED_TOKENS_URI__', '').replaceAll('__SHARED_CONTROLS_URI__', '')
   .replace('<script src="__SHARED_THUMBNAIL_ACTIONS_URI__"></script>', `<script>${fs.readFileSync(path.join(root, 'media/shared/thumbnailActions.js'), 'utf8')}</script>`)
