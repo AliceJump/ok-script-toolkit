@@ -385,8 +385,26 @@ export function formatConsoleOutputLine(line: string, now = new Date()): string 
  * 触发任务；一次性任务以入队方式交给同一个执行器跑一次。
  * 因此本类不再有「当前任务 / 单进程」语义，改为维护执行器会话与启用集合。
  */
+/** 宿主侧执行器状态摘要：供状态栏、视图徽标和 context key 使用 */
+export interface ExecutorStateSummary {
+  status: 'idle' | 'connecting' | 'running';
+  paused: boolean;
+  /** 当前任务显示名（空闲为空） */
+  current: string;
+  /** 一次性任务等待数 */
+  queued: number;
+  /** 已启用的触发任务数 */
+  triggers: number;
+}
+
 export class ConsoleViewProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'okScriptToolkit.console';
+
+  /** 是否检测到角色数据（无则隐藏「角色技能管理」入口） */
+  private characterDataAvailable = false;
+  private readonly executorStateEmitter = new vscode.EventEmitter<ExecutorStateSummary>();
+  /** 执行器状态翻转（启动/就绪/暂停/任务切换/退出）时触发 */
+  readonly onDidChangeExecutorState = this.executorStateEmitter.event;
 
   private readonly output: vscode.OutputChannel;
   private configModule = 'src.config';
@@ -479,6 +497,7 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
           // webview 重建后同步执行器状态，避免切换侧边栏再回来时状态丢失
           this.pushExecutorState(view);
           this.pushGameState();
+          this.pushCapabilities();
           break;
         case 'refresh':
           await this.refreshTasks(view);
@@ -1241,19 +1260,19 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
   }
 
   /** 显式启动执行器（状态条按钮）：环境不满足时会在 UI 提示 */
-  private async startExecutor(view: vscode.WebviewView): Promise<void> {
+  private async startExecutor(view?: vscode.WebviewView): Promise<void> {
     if (!(await this.ensureExecutor(view))) return;
     this.pushExecutorState(view);
   }
 
   /** 一次性任务入队：由常驻执行器执行一次后自动出队 */
-  private async enqueueOnetime(view: vscode.WebviewView, task: TaskInfo): Promise<void> {
+  private async enqueueOnetime(view: vscode.WebviewView | undefined, task: TaskInfo): Promise<void> {
     if (!(await this.ensureExecutor(view))) return;
     this.writeCommand(`onetime_enqueue ${this.taskKey(task)}`);
   }
 
   /** 确保执行器已启动；返回 false 表示环境不满足（已在 UI 提示） */
-  private async ensureExecutor(view: vscode.WebviewView): Promise<boolean> {
+  private async ensureExecutor(view?: vscode.WebviewView): Promise<boolean> {
     const { projectDir, pythonPath } = this.getConfig();
     if (this.executor) {
       if (projectDir === this.executorProjectDir && projectDir === this.currentProjectDir) return true;
@@ -1510,8 +1529,14 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
 
   /** 把执行器状态推给 webview */
   private pushExecutorState(view?: vscode.WebviewView): void {
+    const summary = this.executorState();
+    this.executorStateEmitter.fire(summary);
     const target = view ?? this.view;
     if (!target) return;
+    const active = (summary.current ? 1 : 0) + summary.queued;
+    target.badge = active > 0
+      ? { value: active, tooltip: tr('{count} task(s) running or queued', { count: active }) }
+      : undefined;
     const projectMismatch = this.executor !== null && !this.isCurrentProjectExecutor();
     void target.webview.postMessage({
       type: 'executor',
@@ -1536,6 +1561,93 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
       game: state.game || null,
       overlay: state.overlay === true,
     });
+  }
+
+  // ── 命令面板 / 视图标题栏 / 状态栏入口（与 webview 按钮走同一套逻辑）──
+
+  executorState(): ExecutorStateSummary {
+    const own = this.executor !== null && this.isCurrentProjectExecutor();
+    const currentKey = own ? (this.snapshot.current || '') : '';
+    return {
+      status: this.executor ? (this.connecting ? 'connecting' : 'running') : 'idle',
+      paused: own && this.snapshot.paused === true,
+      current: currentKey ? this.taskLabel(currentKey) : '',
+      queued: own ? (this.snapshot.onetimeQueue || []).length : 0,
+      triggers: this.enabledTriggers.size,
+    };
+  }
+
+  private taskLabel(key: string): string {
+    return this.knownTasks.find((task) => this.taskKey(task) === key)?.displayName || key.split('::').pop() || key;
+  }
+
+  async commandStartExecutor(): Promise<void> {
+    await this.startExecutor(this.view ?? undefined);
+  }
+
+  commandPause(): void {
+    if (this.requireOwnExecutor()) this.writeCommand('pause');
+  }
+
+  commandResume(): void {
+    if (this.requireOwnExecutor()) this.writeCommand('resume');
+  }
+
+  commandStopCurrent(): void {
+    if (this.requireOwnExecutor()) this.writeCommand('task_disable');
+  }
+
+  commandStopExecutor(): void {
+    this.stopExecutor();
+  }
+
+  setCharacterDataAvailable(available: boolean): void {
+    if (this.characterDataAvailable === available) return;
+    this.characterDataAvailable = available;
+    this.pushCapabilities();
+  }
+
+  private pushCapabilities(): void {
+    void this.view?.webview.postMessage({ type: 'capabilities', characterData: this.characterDataAvailable });
+  }
+
+  showLogs(): void {
+    this.output.show(true);
+  }
+
+  /** 刷新任务列表；视图尚未打开时先聚焦（视图 ready 时会自行刷新） */
+  async commandRefresh(): Promise<void> {
+    if (this.view) {
+      await this.refreshTasks(this.view);
+      return;
+    }
+    await vscode.commands.executeCommand(`${ConsoleViewProvider.viewType}.focus`);
+  }
+
+  /** 「运行任务…」：从已加载的一次性任务里选一个入队（与卡片「启动」等价，必要时会启动执行器） */
+  async commandRunTask(): Promise<void> {
+    const tasks = this.knownTasks.filter((task) => task.kind !== 'trigger');
+    if (!tasks.length) {
+      await vscode.commands.executeCommand(`${ConsoleViewProvider.viewType}.focus`);
+      void vscode.window.showInformationMessage(tr('No one-time tasks are loaded yet. Open the Console and wait for the task list to load.'));
+      return;
+    }
+    const picked = await vscode.window.showQuickPick(
+      tasks.map((task) => ({ label: task.displayName, description: task.className, detail: task.module, task })),
+      {
+        placeHolder: this.executor
+          ? tr('Select a task to queue')
+          : tr('Select a task to run (the executor will start first)'),
+        matchOnDescription: true,
+      },
+    );
+    if (picked) await this.enqueueOnetime(this.view ?? undefined, picked.task);
+  }
+
+  private requireOwnExecutor(): boolean {
+    if (this.isCurrentProjectExecutor()) return true;
+    void vscode.window.showWarningMessage(tr('The executor is not running.'));
+    return false;
   }
 
   private setStatus(level: 'ok' | 'warn' | 'error' | 'info', text: string): void {
@@ -1648,6 +1760,7 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
     this.toolboxSubscription?.dispose();
     this.toolboxSubscription = undefined;
     this.gameConnect.detachUi();
+    this.executorStateEmitter.dispose();
     this.output.dispose();
   }
 

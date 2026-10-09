@@ -67,5 +67,15 @@
   "configuration.resources": "ok-script：資源與標註",
   "configuration.screenshots": "ok-script：截圖",
   "configuration.console": "ok-script：控制台與任務",
-  "configuration.characters": "ok-script：角色資料"
+  "configuration.characters": "ok-script：角色資料",
+  "command.console.refresh": "控制台：重新整理任務",
+  "command.console.runTask": "控制台：執行任務…",
+  "command.console.startExecutor": "控制台：啟動執行器",
+  "command.console.pause": "控制台：暫停執行器",
+  "command.console.resume": "控制台：繼續執行器",
+  "command.console.stopCurrentTask": "控制台：停止目前任務",
+  "command.console.stopExecutor": "控制台：關閉執行器",
+  "command.console.showLogs": "控制台：查看日誌",
+  "command.console.connectGame": "控制台：連線遊戲",
+  "command.console.disconnectGame": "控制台：中斷遊戲連線"
 }

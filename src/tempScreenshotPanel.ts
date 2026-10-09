@@ -326,11 +326,22 @@ export class TempScreenshotViewProvider implements vscode.WebviewViewProvider {
       () => view.visible,
     );
     controller.attachHtml();
+    const updateBadge = () => {
+      const count = this.store.list().length;
+      view.badge = count > 0
+        ? { value: count, tooltip: tr('{count} temporary screenshot(s) waiting to be sorted', { count }) }
+        : undefined;
+    };
+    updateBadge();
+    const storeSubscription = this.store.onChange(updateBadge);
     if (view.visible) void prewarmScreenshotCapture();
     view.onDidChangeVisibility(() => {
       if (view.visible) { void prewarmScreenshotCapture(); void controller.refresh(); }
     });
-    view.onDidDispose(() => controller.dispose());
+    view.onDidDispose(() => {
+      storeSubscription.dispose();
+      controller.dispose();
+    });
   }
 }
 

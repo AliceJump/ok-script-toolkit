@@ -263,5 +263,20 @@
   "Open Annotation Management": "打开标注管理",
   "No images to annotate yet. Capture or import one in Annotation Management first.": "还没有可标注的图片。请先在标注管理中截图或导入。",
   "{count} annotations": "{count} 个标注",
-  "Select an image to annotate": "选择要标注的图片"
+  "Select an image to annotate": "选择要标注的图片",
+  "ok-script Executor": "ok-script 执行器",
+  "ok-script: idle": "ok-script：空闲",
+  "ok-script: starting…": "ok-script：启动中…",
+  "ok-script: paused": "ok-script：已暂停",
+  "ok-script: ready": "ok-script：就绪",
+  "Executor is not running. Click to open the Console.": "执行器未启动。点击打开控制台。",
+  "Executor is starting. Click to open the Console.": "执行器启动中。点击打开控制台。",
+  "Executor is paused. Click to open the Console.": "执行器已暂停。点击打开控制台。",
+  "Running: {task} · queued: {count}. Click to open the Console.": "运行中：{task} · 排队：{count}。点击打开控制台。",
+  "Executor is ready · {count} trigger task(s) enabled. Click to open the Console.": "执行器就绪 · 已启用 {count} 个触发任务。点击打开控制台。",
+  "{count} task(s) running or queued": "{count} 个任务运行或排队中",
+  "{count} temporary screenshot(s) waiting to be sorted": "{count} 张临时截图待整理",
+  "No one-time tasks are loaded yet. Open the Console and wait for the task list to load.": "尚未加载一次性任务。请打开控制台，等任务列表加载完成。",
+  "Select a task to queue": "选择要加入队列的任务",
+  "Select a task to run (the executor will start first)": "选择要运行的任务（将先启动执行器）"
 }

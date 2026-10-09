@@ -263,5 +263,20 @@
   "Open Annotation Management": "Abrir gestión de anotaciones",
   "No images to annotate yet. Capture or import one in Annotation Management first.": "Aún no hay imágenes para anotar. Captura o importa una en Gestión de anotaciones.",
   "{count} annotations": "{count} anotaciones",
-  "Select an image to annotate": "Selecciona una imagen para anotar"
+  "Select an image to annotate": "Selecciona una imagen para anotar",
+  "ok-script Executor": "Ejecutor de ok-script",
+  "ok-script: idle": "ok-script: inactivo",
+  "ok-script: starting…": "ok-script: iniciando…",
+  "ok-script: paused": "ok-script: en pausa",
+  "ok-script: ready": "ok-script: listo",
+  "Executor is not running. Click to open the Console.": "El ejecutor no está en marcha. Haz clic para abrir la consola.",
+  "Executor is starting. Click to open the Console.": "El ejecutor se está iniciando. Haz clic para abrir la consola.",
+  "Executor is paused. Click to open the Console.": "El ejecutor está en pausa. Haz clic para abrir la consola.",
+  "Running: {task} · queued: {count}. Click to open the Console.": "En ejecución: {task} · en cola: {count}. Haz clic para abrir la consola.",
+  "Executor is ready · {count} trigger task(s) enabled. Click to open the Console.": "Ejecutor listo · {count} tarea(s) de activación habilitada(s). Haz clic para abrir la consola.",
+  "{count} task(s) running or queued": "{count} tarea(s) en ejecución o en cola",
+  "{count} temporary screenshot(s) waiting to be sorted": "{count} captura(s) temporal(es) por ordenar",
+  "No one-time tasks are loaded yet. Open the Console and wait for the task list to load.": "Aún no se han cargado tareas únicas. Abre la consola y espera a que se cargue la lista.",
+  "Select a task to queue": "Selecciona una tarea para poner en cola",
+  "Select a task to run (the executor will start first)": "Selecciona una tarea para ejecutar (primero se iniciará el ejecutor)"
 }

@@ -67,5 +67,15 @@
   "configuration.resources": "ok-script: 리소스 및 어노테이션",
   "configuration.screenshots": "ok-script: 스크린샷",
   "configuration.console": "ok-script: 콘솔 및 작업",
-  "configuration.characters": "ok-script: 캐릭터 데이터"
+  "configuration.characters": "ok-script: 캐릭터 데이터",
+  "command.console.refresh": "콘솔: 작업 새로 고침",
+  "command.console.runTask": "콘솔: 작업 실행…",
+  "command.console.startExecutor": "콘솔: 실행기 시작",
+  "command.console.pause": "콘솔: 실행기 일시 중지",
+  "command.console.resume": "콘솔: 실행기 재개",
+  "command.console.stopCurrentTask": "콘솔: 현재 작업 중지",
+  "command.console.stopExecutor": "콘솔: 실행기 종료",
+  "command.console.showLogs": "콘솔: 로그 보기",
+  "command.console.connectGame": "콘솔: 게임 연결",
+  "command.console.disconnectGame": "콘솔: 게임 연결 해제"
 }

@@ -5,7 +5,7 @@ import { setCaptureLogger, disposeCaptureWorker } from './screenshotCapture';
 import { LangData, poDirectorySetting } from './langData';
 import { tr } from './localization';
 import { cocoFeatureRelPaths, refreshCocoFeaturePath } from './cocoFeaturePath';
-import { effectsFileSetting, i18nLangDirectorySetting, resolveProjectDir, templatesDirectory } from './projectConfig';
+import { effectsFileSetting, i18nLangDirectorySetting, isSupportedProject, resolveProjectDir, templatesDirectory } from './projectConfig';
 import { showConventionSources } from './conventionSources';
 import { FeatureData } from './featureData';
 import { EffectData } from './effectData';
@@ -22,8 +22,8 @@ import {
   TemplateGalleryViewProvider,
   repaintAllGalleries,
 } from './templatePanel';
-import { ConsoleViewProvider } from './consolePanel';
-import { CharacterManagerPanel } from './characterPanel';
+import { ConsoleViewProvider, ExecutorStateSummary } from './consolePanel';
+import { CharacterManagerPanel, detectCharacterData } from './characterPanel';
 import { GameConnectService } from './toolboxConnect';
 import { TemplateAssetData } from './templateAssetData';
 import {
@@ -301,6 +301,59 @@ export function activate(context: vscode.ExtensionContext): void {
   }
   context.subscriptions.push(gameConnect, okConsole);
 
+  // ── 执行器状态 → 状态栏 + context key（视图标题栏 / 命令面板按状态显隐）──
+  const executorStatusItem = vscode.window.createStatusBarItem('okScriptToolkit.executor', vscode.StatusBarAlignment.Left, 50);
+  executorStatusItem.name = tr('ok-script Executor');
+  executorStatusItem.command = 'okScriptToolkit.showTaskLauncher';
+  const renderExecutorStatus = (state: ExecutorStateSummary) => {
+    void vscode.commands.executeCommand('setContext', 'okScriptToolkit.executorRunning', state.status !== 'idle');
+    void vscode.commands.executeCommand('setContext', 'okScriptToolkit.executorPaused', state.paused);
+    void vscode.commands.executeCommand('setContext', 'okScriptToolkit.taskRunning', Boolean(state.current));
+    if (state.status === 'idle') {
+      executorStatusItem.text = `$(debug-stop) ${tr('ok-script: idle')}`;
+      executorStatusItem.tooltip = tr('Executor is not running. Click to open the Console.');
+    } else if (state.status === 'connecting') {
+      executorStatusItem.text = `$(loading~spin) ${tr('ok-script: starting…')}`;
+      executorStatusItem.tooltip = tr('Executor is starting. Click to open the Console.');
+    } else if (state.paused) {
+      executorStatusItem.text = `$(debug-pause) ${tr('ok-script: paused')}`;
+      executorStatusItem.tooltip = tr('Executor is paused. Click to open the Console.');
+    } else if (state.current) {
+      const queued = state.queued ? ` +${state.queued}` : '';
+      executorStatusItem.text = `$(sync~spin) ${state.current}${queued}`;
+      executorStatusItem.tooltip = tr('Running: {task} · queued: {count}. Click to open the Console.', { task: state.current, count: state.queued });
+    } else {
+      executorStatusItem.text = `$(pass) ${tr('ok-script: ready')}`;
+      executorStatusItem.tooltip = tr('Executor is ready · {count} trigger task(s) enabled. Click to open the Console.', { count: state.triggers });
+    }
+    // 空闲且当前工作区不是 ok-script 项目时不占状态栏
+    if (state.status === 'idle' && !isSupportedProject(resolveProjectDir())) executorStatusItem.hide();
+    else executorStatusItem.show();
+  };
+  renderExecutorStatus(okConsole.executorState());
+  context.subscriptions.push(executorStatusItem, okConsole.onDidChangeExecutorState(renderExecutorStatus));
+
+  // ── 角色数据检测 → 隐藏/露出「角色技能管理」入口 ──
+  const updateCharacterDataContext = () => {
+    const available = detectCharacterData();
+    void vscode.commands.executeCommand('setContext', 'okScriptToolkit.hasCharacterData', available);
+    okConsole.setCharacterDataAvailable(available);
+  };
+  updateCharacterDataContext();
+  const characterDataWatcher = vscode.workspace.createFileSystemWatcher('**/assets/data/{characters.json,character_skills}');
+  context.subscriptions.push(
+    characterDataWatcher,
+    characterDataWatcher.onDidCreate(updateCharacterDataContext),
+    characterDataWatcher.onDidDelete(updateCharacterDataContext),
+    vscode.workspace.onDidChangeWorkspaceFolders(updateCharacterDataContext),
+    vscode.workspace.onDidChangeConfiguration((event) => {
+      if (event.affectsConfiguration('okScriptToolkit')) {
+        updateCharacterDataContext();
+        renderExecutorStatus(okConsole.executorState());
+      }
+    }),
+  );
+
   context.subscriptions.push(
     vscode.languages.registerInlayHintsProvider(
       { language: 'python', scheme: 'file' },
@@ -369,6 +422,16 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('okScriptToolkit.openCharacterManager', () => {
       CharacterManagerPanel.show(characterManagerDependencies);
     }),
+    vscode.commands.registerCommand('okScriptToolkit.console.refresh', () => okConsole.commandRefresh()),
+    vscode.commands.registerCommand('okScriptToolkit.console.runTask', () => okConsole.commandRunTask()),
+    vscode.commands.registerCommand('okScriptToolkit.console.startExecutor', () => okConsole.commandStartExecutor()),
+    vscode.commands.registerCommand('okScriptToolkit.console.pause', () => okConsole.commandPause()),
+    vscode.commands.registerCommand('okScriptToolkit.console.resume', () => okConsole.commandResume()),
+    vscode.commands.registerCommand('okScriptToolkit.console.stopCurrentTask', () => okConsole.commandStopCurrent()),
+    vscode.commands.registerCommand('okScriptToolkit.console.stopExecutor', () => okConsole.commandStopExecutor()),
+    vscode.commands.registerCommand('okScriptToolkit.console.showLogs', () => okConsole.showLogs()),
+    vscode.commands.registerCommand('okScriptToolkit.console.connectGame', () => gameConnect.connect()),
+    vscode.commands.registerCommand('okScriptToolkit.console.disconnectGame', () => gameConnect.disconnect()),
     vscode.commands.registerCommand('okScriptToolkit.openTemplateAssets', () => {
       TemplateAssetPanel.show(templateAssetData, thumbDir, context.extensionUri, tempScreenshotStore);
     }),

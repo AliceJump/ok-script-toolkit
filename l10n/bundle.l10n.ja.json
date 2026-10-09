@@ -263,5 +263,20 @@
   "Open Annotation Management": "アノテーション管理を開く",
   "No images to annotate yet. Capture or import one in Annotation Management first.": "アノテーションできる画像がまだありません。先にアノテーション管理でキャプチャまたはインポートしてください。",
   "{count} annotations": "{count} 件のアノテーション",
-  "Select an image to annotate": "アノテーションする画像を選択"
+  "Select an image to annotate": "アノテーションする画像を選択",
+  "ok-script Executor": "ok-script エグゼキューター",
+  "ok-script: idle": "ok-script: 待機中",
+  "ok-script: starting…": "ok-script: 起動中…",
+  "ok-script: paused": "ok-script: 一時停止中",
+  "ok-script: ready": "ok-script: 準備完了",
+  "Executor is not running. Click to open the Console.": "エグゼキューターは起動していません。クリックしてコンソールを開きます。",
+  "Executor is starting. Click to open the Console.": "エグゼキューターを起動しています。クリックしてコンソールを開きます。",
+  "Executor is paused. Click to open the Console.": "エグゼキューターは一時停止中です。クリックしてコンソールを開きます。",
+  "Running: {task} · queued: {count}. Click to open the Console.": "実行中: {task} · 待機: {count}。クリックしてコンソールを開きます。",
+  "Executor is ready · {count} trigger task(s) enabled. Click to open the Console.": "エグゼキューター準備完了 · トリガータスク {count} 件有効。クリックしてコンソールを開きます。",
+  "{count} task(s) running or queued": "{count} 件のタスクが実行中または待機中",
+  "{count} temporary screenshot(s) waiting to be sorted": "未整理の一時スクリーンショット {count} 枚",
+  "No one-time tasks are loaded yet. Open the Console and wait for the task list to load.": "一回限りのタスクがまだ読み込まれていません。コンソールを開いてタスク一覧の読み込みを待ってください。",
+  "Select a task to queue": "キューに追加するタスクを選択",
+  "Select a task to run (the executor will start first)": "実行するタスクを選択（先にエグゼキューターを起動します）"
 }

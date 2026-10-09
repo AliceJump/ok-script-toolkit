@@ -56,7 +56,8 @@
       {
         "command": "okScriptToolkit.openTemplatesEditor",
         "title": "%command.openTemplatesEditor%",
-        "category": "%command.category%"
+        "category": "%command.category%",
+        "icon": "$(link-external)"
       },
       {
         "command": "okScriptToolkit.showTaskLauncher",
@@ -66,22 +67,26 @@
       {
         "command": "okScriptToolkit.openCharacterManager",
         "title": "%command.openCharacterManager%",
-        "category": "%command.category%"
+        "category": "%command.category%",
+        "icon": "$(person)"
       },
       {
         "command": "okScriptToolkit.openTemplateAssets",
         "title": "%command.openTemplateAssets%",
-        "category": "%command.category%"
+        "category": "%command.category%",
+        "icon": "$(link-external)"
       },
       {
         "command": "okScriptToolkit.openResourcePublisher",
         "title": "%command.openResourcePublisher%",
-        "category": "%command.category%"
+        "category": "%command.category%",
+        "icon": "$(cloud-upload)"
       },
       {
         "command": "okScriptToolkit.openAnnotationEditor",
         "title": "%command.openAnnotationEditor%",
-        "category": "%command.category%"
+        "category": "%command.category%",
+        "icon": "$(edit)"
       },
       {
         "command": "okScriptToolkit.showTempScreenshots",
@@ -91,12 +96,73 @@
       {
         "command": "okScriptToolkit.screenshotToTemplate",
         "title": "%command.screenshotToTemplate%",
-        "category": "%command.category%"
+        "category": "%command.category%",
+        "icon": "$(device-camera)"
       },
       {
         "command": "okScriptToolkit.showConventionSources",
         "title": "%command.showConventionSources%",
         "category": "%command.category%"
+      },
+      {
+        "command": "okScriptToolkit.console.refresh",
+        "title": "%command.console.refresh%",
+        "category": "%command.category%",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "okScriptToolkit.console.runTask",
+        "title": "%command.console.runTask%",
+        "category": "%command.category%",
+        "icon": "$(play)"
+      },
+      {
+        "command": "okScriptToolkit.console.startExecutor",
+        "title": "%command.console.startExecutor%",
+        "category": "%command.category%",
+        "icon": "$(debug-start)"
+      },
+      {
+        "command": "okScriptToolkit.console.pause",
+        "title": "%command.console.pause%",
+        "category": "%command.category%",
+        "icon": "$(debug-pause)"
+      },
+      {
+        "command": "okScriptToolkit.console.resume",
+        "title": "%command.console.resume%",
+        "category": "%command.category%",
+        "icon": "$(debug-continue)"
+      },
+      {
+        "command": "okScriptToolkit.console.stopCurrentTask",
+        "title": "%command.console.stopCurrentTask%",
+        "category": "%command.category%",
+        "icon": "$(debug-step-out)"
+      },
+      {
+        "command": "okScriptToolkit.console.stopExecutor",
+        "title": "%command.console.stopExecutor%",
+        "category": "%command.category%",
+        "icon": "$(debug-stop)"
+      },
+      {
+        "command": "okScriptToolkit.console.showLogs",
+        "title": "%command.console.showLogs%",
+        "category": "%command.category%",
+        "icon": "$(output)"
+      },
+      {
+        "command": "okScriptToolkit.console.connectGame",
+        "title": "%command.console.connectGame%",
+        "category": "%command.category%",
+        "icon": "$(plug)"
+      },
+      {
+        "command": "okScriptToolkit.console.disconnectGame",
+        "title": "%command.console.disconnectGame%",
+        "category": "%command.category%",
+        "icon": "$(debug-disconnect)"
       }
     ],
     "walkthroughs": [
@@ -458,7 +524,137 @@
         "fileMatch": "ok-script-toolkit.json",
         "url": "./schemas/ok-script-toolkit.schema.json"
       }
-    ]
+    ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "okScriptToolkit.console.refresh",
+          "when": "okScriptToolkit.projectReady"
+        },
+        {
+          "command": "okScriptToolkit.console.runTask",
+          "when": "okScriptToolkit.projectReady"
+        },
+        {
+          "command": "okScriptToolkit.console.startExecutor",
+          "when": "okScriptToolkit.projectReady && !okScriptToolkit.executorRunning"
+        },
+        {
+          "command": "okScriptToolkit.console.pause",
+          "when": "okScriptToolkit.executorRunning && !okScriptToolkit.executorPaused"
+        },
+        {
+          "command": "okScriptToolkit.console.resume",
+          "when": "okScriptToolkit.executorPaused"
+        },
+        {
+          "command": "okScriptToolkit.console.stopCurrentTask",
+          "when": "okScriptToolkit.taskRunning"
+        },
+        {
+          "command": "okScriptToolkit.console.stopExecutor",
+          "when": "okScriptToolkit.executorRunning"
+        },
+        {
+          "command": "okScriptToolkit.console.showLogs",
+          "when": "okScriptToolkit.projectReady"
+        },
+        {
+          "command": "okScriptToolkit.console.connectGame",
+          "when": "okScriptToolkit.projectReady"
+        },
+        {
+          "command": "okScriptToolkit.console.disconnectGame",
+          "when": "okScriptToolkit.projectReady"
+        },
+        {
+          "command": "okScriptToolkit.openCharacterManager",
+          "when": "okScriptToolkit.hasCharacterData"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "okScriptToolkit.console.runTask",
+          "when": "view == okScriptToolkit.console",
+          "group": "navigation@1"
+        },
+        {
+          "command": "okScriptToolkit.console.startExecutor",
+          "when": "view == okScriptToolkit.console && !okScriptToolkit.executorRunning",
+          "group": "navigation@2"
+        },
+        {
+          "command": "okScriptToolkit.console.pause",
+          "when": "view == okScriptToolkit.console && okScriptToolkit.executorRunning && !okScriptToolkit.executorPaused",
+          "group": "navigation@2"
+        },
+        {
+          "command": "okScriptToolkit.console.resume",
+          "when": "view == okScriptToolkit.console && okScriptToolkit.executorPaused",
+          "group": "navigation@2"
+        },
+        {
+          "command": "okScriptToolkit.console.stopExecutor",
+          "when": "view == okScriptToolkit.console && okScriptToolkit.executorRunning",
+          "group": "navigation@3"
+        },
+        {
+          "command": "okScriptToolkit.console.refresh",
+          "when": "view == okScriptToolkit.console",
+          "group": "navigation@4"
+        },
+        {
+          "command": "okScriptToolkit.console.stopCurrentTask",
+          "when": "view == okScriptToolkit.console && okScriptToolkit.taskRunning",
+          "group": "1_run@1"
+        },
+        {
+          "command": "okScriptToolkit.console.showLogs",
+          "when": "view == okScriptToolkit.console",
+          "group": "2_view@1"
+        },
+        {
+          "command": "okScriptToolkit.openCharacterManager",
+          "when": "view == okScriptToolkit.console && okScriptToolkit.hasCharacterData",
+          "group": "2_view@2"
+        },
+        {
+          "command": "okScriptToolkit.console.connectGame",
+          "when": "view == okScriptToolkit.console",
+          "group": "3_game@1"
+        },
+        {
+          "command": "okScriptToolkit.console.disconnectGame",
+          "when": "view == okScriptToolkit.console",
+          "group": "3_game@2"
+        },
+        {
+          "command": "okScriptToolkit.openTemplatesEditor",
+          "when": "view == okScriptToolkit.templateGallery",
+          "group": "navigation@1"
+        },
+        {
+          "command": "okScriptToolkit.screenshotToTemplate",
+          "when": "view == okScriptToolkit.templateAssets",
+          "group": "navigation@1"
+        },
+        {
+          "command": "okScriptToolkit.openAnnotationEditor",
+          "when": "view == okScriptToolkit.templateAssets",
+          "group": "navigation@2"
+        },
+        {
+          "command": "okScriptToolkit.openResourcePublisher",
+          "when": "view == okScriptToolkit.templateAssets",
+          "group": "navigation@3"
+        },
+        {
+          "command": "okScriptToolkit.openTemplateAssets",
+          "when": "view == okScriptToolkit.templateAssets",
+          "group": "navigation@4"
+        }
+      ]
+    }
   },
   "scripts": {
     "compile": "tsc -p ./",

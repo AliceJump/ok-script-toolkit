@@ -263,5 +263,20 @@
   "Open Annotation Management": "Open Annotation Management",
   "No images to annotate yet. Capture or import one in Annotation Management first.": "No images to annotate yet. Capture or import one in Annotation Management first.",
   "{count} annotations": "{count} annotations",
-  "Select an image to annotate": "Select an image to annotate"
+  "Select an image to annotate": "Select an image to annotate",
+  "ok-script Executor": "ok-script Executor",
+  "ok-script: idle": "ok-script: idle",
+  "ok-script: starting…": "ok-script: starting…",
+  "ok-script: paused": "ok-script: paused",
+  "ok-script: ready": "ok-script: ready",
+  "Executor is not running. Click to open the Console.": "Executor is not running. Click to open the Console.",
+  "Executor is starting. Click to open the Console.": "Executor is starting. Click to open the Console.",
+  "Executor is paused. Click to open the Console.": "Executor is paused. Click to open the Console.",
+  "Running: {task} · queued: {count}. Click to open the Console.": "Running: {task} · queued: {count}. Click to open the Console.",
+  "Executor is ready · {count} trigger task(s) enabled. Click to open the Console.": "Executor is ready · {count} trigger task(s) enabled. Click to open the Console.",
+  "{count} task(s) running or queued": "{count} task(s) running or queued",
+  "{count} temporary screenshot(s) waiting to be sorted": "{count} temporary screenshot(s) waiting to be sorted",
+  "No one-time tasks are loaded yet. Open the Console and wait for the task list to load.": "No one-time tasks are loaded yet. Open the Console and wait for the task list to load.",
+  "Select a task to queue": "Select a task to queue",
+  "Select a task to run (the executor will start first)": "Select a task to run (the executor will start first)"
 }

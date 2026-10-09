@@ -67,5 +67,15 @@
   "configuration.resources": "ok-script: Resources & Annotation",
   "configuration.screenshots": "ok-script: Screenshots",
   "configuration.console": "ok-script: Console & Tasks",
-  "configuration.characters": "ok-script: Character Data"
+  "configuration.characters": "ok-script: Character Data",
+  "command.console.refresh": "Console: Refresh Tasks",
+  "command.console.runTask": "Console: Run Task…",
+  "command.console.startExecutor": "Console: Start Executor",
+  "command.console.pause": "Console: Pause Executor",
+  "command.console.resume": "Console: Resume Executor",
+  "command.console.stopCurrentTask": "Console: Stop Current Task",
+  "command.console.stopExecutor": "Console: Stop Executor",
+  "command.console.showLogs": "Console: Show Logs",
+  "command.console.connectGame": "Console: Connect Game",
+  "command.console.disconnectGame": "Console: Disconnect Game"
 }

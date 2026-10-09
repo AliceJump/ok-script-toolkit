@@ -67,5 +67,15 @@
   "configuration.resources": "ok-script: リソースとアノテーション",
   "configuration.screenshots": "ok-script: スクリーンショット",
   "configuration.console": "ok-script: コンソールとタスク",
-  "configuration.characters": "ok-script: キャラクターデータ"
+  "configuration.characters": "ok-script: キャラクターデータ",
+  "command.console.refresh": "コンソール: タスクを再読み込み",
+  "command.console.runTask": "コンソール: タスクを実行…",
+  "command.console.startExecutor": "コンソール: エグゼキューターを起動",
+  "command.console.pause": "コンソール: エグゼキューターを一時停止",
+  "command.console.resume": "コンソール: エグゼキューターを再開",
+  "command.console.stopCurrentTask": "コンソール: 現在のタスクを停止",
+  "command.console.stopExecutor": "コンソール: エグゼキューターを停止",
+  "command.console.showLogs": "コンソール: ログを表示",
+  "command.console.connectGame": "コンソール: ゲームに接続",
+  "command.console.disconnectGame": "コンソール: ゲームから切断"
 }
