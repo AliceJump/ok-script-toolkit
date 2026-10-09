@@ -193,7 +193,6 @@
   "Not set — follows the project convention": "未设置 —— 跟随项目约定",
   "LabelEnum class name (leave empty to follow the project convention)": "LabelEnum 类名（留空则跟随项目约定）",
   "e.g. assets/data/LabelEnum.py or src/label_enum.py": "例如 assets/data/LabelEnum.py 或 src/label_enum.py",
-  "Please click an image in the Template Assets panel to open the annotation editor.": "请先在「模板资源」面板中单击一张图片，以打开标注编辑器。",
   "The target file currently defines class {old}.": "目标文件当前的类名是 {old}。",
   "The target file already exists but its class name could not be recognized.": "目标文件已存在，但没能识别出它的类名。",
   "This save will rename it to {new}.": "这次保存会把它改名为 {new}。",
@@ -259,5 +258,10 @@
   "Annotation Management": "标注管理",
   "Added to Annotation Management: {name}": "已添加到标注管理：{name}",
   "Failed to add to Annotation Management: {error}": "添加到标注管理失败：{error}",
-  "Reusing the Console game connection: {title} (PID {pid})": "复用控制台的游戏连接：{title}（PID {pid}）"
+  "Reusing the Console game connection: {title} (PID {pid})": "复用控制台的游戏连接：{title}（PID {pid}）",
+  "This image is not in Annotation Management yet. Add it there first.": "这张图片还不在标注管理中，请先添加。",
+  "Open Annotation Management": "打开标注管理",
+  "No images to annotate yet. Capture or import one in Annotation Management first.": "还没有可标注的图片。请先在标注管理中截图或导入。",
+  "{count} annotations": "{count} 个标注",
+  "Select an image to annotate": "选择要标注的图片"
 }

@@ -193,7 +193,6 @@
   "Not set — follows the project convention": "설정 안 됨 — 프로젝트 규약을 따름",
   "LabelEnum class name (leave empty to follow the project convention)": "LabelEnum 클래스 이름(비워 두면 프로젝트 규약을 따름)",
   "e.g. assets/data/LabelEnum.py or src/label_enum.py": "예: assets/data/LabelEnum.py 또는 src/label_enum.py",
-  "Please click an image in the Template Assets panel to open the annotation editor.": "주석 편집기를 열려면 \"템플릿 에셋\" 패널에서 이미지를 클릭하세요.",
   "The target file currently defines class {old}.": "대상 파일의 현재 클래스 이름은 {old} 입니다.",
   "The target file already exists but its class name could not be recognized.": "대상 파일이 이미 있지만 클래스 이름을 인식하지 못했습니다.",
   "This save will rename it to {new}.": "이번 저장으로 {new} 로 이름이 바뀝니다.",
@@ -259,5 +258,10 @@
   "Annotation Management": "어노테이션 관리",
   "Added to Annotation Management: {name}": "어노테이션 관리에 추가됨: {name}",
   "Failed to add to Annotation Management: {error}": "어노테이션 관리 추가 실패: {error}",
-  "Reusing the Console game connection: {title} (PID {pid})": "콘솔의 게임 연결 재사용: {title}(PID {pid})"
+  "Reusing the Console game connection: {title} (PID {pid})": "콘솔의 게임 연결 재사용: {title}(PID {pid})",
+  "This image is not in Annotation Management yet. Add it there first.": "이 이미지는 아직 어노테이션 관리에 없습니다. 먼저 추가하세요.",
+  "Open Annotation Management": "어노테이션 관리 열기",
+  "No images to annotate yet. Capture or import one in Annotation Management first.": "어노테이션할 이미지가 아직 없습니다. 먼저 어노테이션 관리에서 캡처하거나 가져오세요.",
+  "{count} annotations": "어노테이션 {count}개",
+  "Select an image to annotate": "어노테이션할 이미지 선택"
 }

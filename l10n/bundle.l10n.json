@@ -133,7 +133,6 @@
   "Source": "Source",
   "At runtime, fix_match_regex translates this pattern using ocr.po before calling re.compile.": "At runtime, fix_match_regex translates this pattern using ocr.po before calling re.compile.",
   "{count} keys": "{count} keys",
-  "Please click an image in the Template Assets panel to open the annotation editor.": "Please click an image in the Template Assets panel to open the annotation editor.",
   "LabelEnum.py file path (relative to workspace root, leave empty to skip)": "LabelEnum.py file path (relative to workspace root, leave empty to skip)",
   "Enum file path must be relative and stay within the workspace root.": "Enum file path must be relative and stay within the workspace root.",
   "Enum file path": "Enum file path",
@@ -259,5 +258,10 @@
   "Annotation Management": "Annotation Management",
   "Added to Annotation Management: {name}": "Added to Annotation Management: {name}",
   "Failed to add to Annotation Management: {error}": "Failed to add to Annotation Management: {error}",
-  "Reusing the Console game connection: {title} (PID {pid})": "Reusing the Console game connection: {title} (PID {pid})"
+  "Reusing the Console game connection: {title} (PID {pid})": "Reusing the Console game connection: {title} (PID {pid})",
+  "This image is not in Annotation Management yet. Add it there first.": "This image is not in Annotation Management yet. Add it there first.",
+  "Open Annotation Management": "Open Annotation Management",
+  "No images to annotate yet. Capture or import one in Annotation Management first.": "No images to annotate yet. Capture or import one in Annotation Management first.",
+  "{count} annotations": "{count} annotations",
+  "Select an image to annotate": "Select an image to annotate"
 }

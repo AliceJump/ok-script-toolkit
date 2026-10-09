@@ -193,7 +193,6 @@
   "Not set — follows the project convention": "Sin configurar — sigue la convención del proyecto",
   "LabelEnum class name (leave empty to follow the project convention)": "Nombre de la clase LabelEnum (vacío para seguir la convención del proyecto)",
   "e.g. assets/data/LabelEnum.py or src/label_enum.py": "p. ej. assets/data/LabelEnum.py o src/label_enum.py",
-  "Please click an image in the Template Assets panel to open the annotation editor.": "Haz clic en una imagen del panel «Recursos de plantilla» para abrir el editor de anotaciones.",
   "The target file currently defines class {old}.": "El archivo de destino define actualmente la clase {old}.",
   "The target file already exists but its class name could not be recognized.": "El archivo de destino ya existe, pero no se pudo reconocer su nombre de clase.",
   "This save will rename it to {new}.": "Este guardado la renombrará a {new}.",
@@ -259,5 +258,10 @@
   "Annotation Management": "Gestión de anotaciones",
   "Added to Annotation Management: {name}": "Añadido a Gestión de anotaciones: {name}",
   "Failed to add to Annotation Management: {error}": "No se pudo añadir a Gestión de anotaciones: {error}",
-  "Reusing the Console game connection: {title} (PID {pid})": "Reutilizando la conexión del juego de la consola: {title} (PID {pid})"
+  "Reusing the Console game connection: {title} (PID {pid})": "Reutilizando la conexión del juego de la consola: {title} (PID {pid})",
+  "This image is not in Annotation Management yet. Add it there first.": "Esta imagen aún no está en Gestión de anotaciones. Añádela primero.",
+  "Open Annotation Management": "Abrir gestión de anotaciones",
+  "No images to annotate yet. Capture or import one in Annotation Management first.": "Aún no hay imágenes para anotar. Captura o importa una en Gestión de anotaciones.",
+  "{count} annotations": "{count} anotaciones",
+  "Select an image to annotate": "Selecciona una imagen para anotar"
 }

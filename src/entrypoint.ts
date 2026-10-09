@@ -95,9 +95,6 @@ export function activate(context: vscode.ExtensionContext): void {
       const walkthrough = `${context.extension.id}#${WALKTHROUGH_ID}`;
       return vscode.commands.executeCommand('workbench.action.openWalkthrough', walkthrough);
     }),
-    vscode.commands.registerCommand('okScriptToolkit.openResourcePublisher', () => {
-      return vscode.commands.executeCommand('okScriptToolkit.openTemplateAssets');
-    }),
     vscode.workspace.onDidChangeWorkspaceFolders(() => {
       bindConfigWatchers();
       void updateProjectReady();

@@ -310,7 +310,7 @@ class AssetGalleryController {
 
   /* ---------- 统一发布 ---------- */
 
-  private async handlePublish(): Promise<void> {
+  async handlePublish(): Promise<void> {
     const folder = vscode.workspace.workspaceFolders?.[0];
     if (!folder) {
       void vscode.window.showWarningMessage(tr('No workspace folder open.'));
@@ -902,6 +902,17 @@ export class TemplateAssetPanel {
   ): void {
     TemplateAssetPanel.show(data, thumbDir, extensionUri, tempStore);
     void TemplateAssetPanel.current?.controller.handleScreenshot();
+  }
+
+  /** 「发布资源…」命令：打开标注管理（让发布结果可见）并直接进入发布选择流程。 */
+  static async publish(
+    data: TemplateAssetData,
+    thumbDir: string,
+    extensionUri: vscode.Uri,
+    tempStore?: TempScreenshotStore,
+  ): Promise<void> {
+    TemplateAssetPanel.show(data, thumbDir, extensionUri, tempStore);
+    await TemplateAssetPanel.current?.controller.handlePublish();
   }
 
   private constructor(

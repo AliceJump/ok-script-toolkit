@@ -34,6 +34,7 @@ import {
 import { TempScreenshotStore } from './tempScreenshotStore';
 import { TempScreenshotViewProvider } from './tempScreenshotPanel';
 import { notifyAnnotationDataChanged } from './cocoAnnotationData';
+import { AnnotationPanel } from './annotationPanel';
 
 /** 缩略图缓存 key 版本：内容 hash 化后旧命名（t_/a_）需要清理一次 */
 const THUMB_KEY_VERSION = 'content-hash-v2';
@@ -377,8 +378,41 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('okScriptToolkit.showTempScreenshots', () => {
       void vscode.commands.executeCommand(`${TempScreenshotViewProvider.viewType}.focus`);
     }),
-    vscode.commands.registerCommand('okScriptToolkit.openAnnotationEditor', () => {
-      void vscode.window.showInformationMessage(tr('Please click an image in the Template Assets panel to open the annotation editor.'));
+    vscode.commands.registerCommand('okScriptToolkit.openAnnotationEditor', async (target?: vscode.Uri | string) => {
+      // 资源管理器右键 / 带参数调用时直接打开；否则让用户从标注管理的图片里选一张。
+      templateAssetData.load();
+      const images = templateAssetData.listImages();
+      const fromArg = typeof target === 'string' ? target : target?.fsPath;
+      let imagePath = fromArg && images.find((image) => path.resolve(image) === path.resolve(fromArg));
+      if (fromArg && !imagePath) {
+        void vscode.window.showWarningMessage(tr('This image is not in Annotation Management yet. Add it there first.'));
+        return;
+      }
+      if (!imagePath) {
+        if (!images.length) {
+          const add = tr('Open Annotation Management');
+          const choice = await vscode.window.showInformationMessage(tr('No images to annotate yet. Capture or import one in Annotation Management first.'), add);
+          if (choice === add) TemplateAssetPanel.show(templateAssetData, thumbDir, context.extensionUri, tempScreenshotStore);
+          return;
+        }
+        const picked = await vscode.window.showQuickPick(
+          images.map((image) => ({
+            label: path.basename(image),
+            description: tr('{count} annotations', { count: templateAssetData.getAnnotationsForImage(image, true).length }),
+            detail: path.relative(targetRoot || path.dirname(image), image),
+            image,
+          })),
+          { placeHolder: tr('Select an image to annotate'), matchOnDetail: true },
+        );
+        imagePath = picked?.image;
+      }
+      if (!imagePath) return;
+      AnnotationPanel.show(context.extensionUri, templateAssetData, thumbDir, imagePath, images, () => {
+        repaintAllAssetGalleries();
+      });
+    }),
+    vscode.commands.registerCommand('okScriptToolkit.openResourcePublisher', () => {
+      return TemplateAssetPanel.publish(templateAssetData, thumbDir, context.extensionUri, tempScreenshotStore);
     }),
     vscode.commands.registerCommand('okScriptToolkit.showConventionSources', () => {
       showConventionSources();
