@@ -286,5 +286,9 @@
   "Reload Tasks": "Recargar tareas",
   "Stop Executor": "Detener ejecutor",
   "Executor closed": "Ejecutor cerrado",
-  "Executor exited with code {code}": "El ejecutor terminó con el código {code}"
+  "Executor exited with code {code}": "El ejecutor terminó con el código {code}",
+  "Undo": "Deshacer",
+  "Annotations changed after the swap, so it cannot be undone automatically.": "Las anotaciones cambiaron después del intercambio; no se puede deshacer automáticamente.",
+  "Failed to undo the swap.": "No se pudo deshacer el intercambio.",
+  "Swap undone: '{first}' and '{second}' have their original annotations again.": "Intercambio deshecho: '{first}' y '{second}' recuperan sus anotaciones originales."
 }

@@ -286,5 +286,9 @@
   "Reload Tasks": "重新載入任務",
   "Stop Executor": "關閉執行器",
   "Executor closed": "執行器已關閉",
-  "Executor exited with code {code}": "執行器異常結束（結束碼 {code}）"
+  "Executor exited with code {code}": "執行器異常結束（結束碼 {code}）",
+  "Undo": "復原",
+  "Annotations changed after the swap, so it cannot be undone automatically.": "交換之後標註又有變動，無法自動復原。",
+  "Failed to undo the swap.": "復原交換失敗。",
+  "Swap undone: '{first}' and '{second}' have their original annotations again.": "已復原交換：「{first}」和「{second}」恢復了原本的標註。"
 }

@@ -775,9 +775,34 @@ class AssetGalleryController {
     }
     await this.update();
     AnnotationPanel.current?.controller.reloadIfShowing([sourcePath, targetPath]);
-    void vscode.window.showInformationMessage(
+    // 交换是整体写盘：给一次撤销机会（只在两张图的框仍是交换后的样子时才执行，避免覆盖之后的编辑）
+    const swappedSource = scaleBoxes(targetBoxes, targetSize, sourceSize);
+    const swappedTarget = scaleBoxes(sourceBoxes, sourceSize, targetSize);
+    const undo = tr('Undo');
+    const picked = await vscode.window.showInformationMessage(
       tr("Swapped annotations between '{first}' and '{second}'.", { first, second }),
+      undo,
     );
+    if (picked !== undo) return;
+    this.data.load();
+    if (JSON.stringify(this.boxesOf(sourcePath)) !== JSON.stringify(swappedSource)
+      || JSON.stringify(this.boxesOf(targetPath)) !== JSON.stringify(swappedTarget)) {
+      void vscode.window.showWarningMessage(tr('Annotations changed after the swap, so it cannot be undone automatically.'));
+      return;
+    }
+    let restored = false;
+    try {
+      restored = this.data.swapAnnotationsForImages(sourcePath, targetPath, sourceBoxes, targetBoxes, sourceSize, targetSize);
+    } catch {
+      restored = false;
+    }
+    if (!restored) {
+      void vscode.window.showErrorMessage(tr('Failed to undo the swap.'));
+      return;
+    }
+    await this.update();
+    AnnotationPanel.current?.controller.reloadIfShowing([sourcePath, targetPath]);
+    void vscode.window.showInformationMessage(tr("Swap undone: '{first}' and '{second}' have their original annotations again.", { first, second }));
   }
 
   private boxesOf(imagePath: string): SwapBox[] {

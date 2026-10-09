@@ -286,5 +286,9 @@
   "Reload Tasks": "작업 다시 로드",
   "Stop Executor": "실행기 종료",
   "Executor closed": "실행기가 종료되었습니다",
-  "Executor exited with code {code}": "실행기가 종료되었습니다(종료 코드 {code})"
+  "Executor exited with code {code}": "실행기가 종료되었습니다(종료 코드 {code})",
+  "Undo": "실행 취소",
+  "Annotations changed after the swap, so it cannot be undone automatically.": "교환 후 어노테이션이 변경되어 자동으로 되돌릴 수 없습니다.",
+  "Failed to undo the swap.": "교환을 되돌리지 못했습니다.",
+  "Swap undone: '{first}' and '{second}' have their original annotations again.": "교환 취소됨: '{first}'와 '{second}'가 원래 어노테이션으로 돌아갔습니다."
 }

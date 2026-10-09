@@ -286,5 +286,9 @@
   "Reload Tasks": "タスクを再読み込み",
   "Stop Executor": "エグゼキューターを停止",
   "Executor closed": "エグゼキューターを終了しました",
-  "Executor exited with code {code}": "エグゼキューターが終了しました（終了コード {code}）"
+  "Executor exited with code {code}": "エグゼキューターが終了しました（終了コード {code}）",
+  "Undo": "元に戻す",
+  "Annotations changed after the swap, so it cannot be undone automatically.": "交換後にアノテーションが変更されたため、自動で元に戻せません。",
+  "Failed to undo the swap.": "交換を元に戻せませんでした。",
+  "Swap undone: '{first}' and '{second}' have their original annotations again.": "交換を元に戻しました: '{first}' と '{second}' は元のアノテーションに戻りました。"
 }

@@ -286,5 +286,9 @@
   "Reload Tasks": "重新加载任务",
   "Stop Executor": "关闭执行器",
   "Executor closed": "执行器已关闭",
-  "Executor exited with code {code}": "执行器异常退出（退出码 {code}）"
+  "Executor exited with code {code}": "执行器异常退出（退出码 {code}）",
+  "Undo": "撤销",
+  "Annotations changed after the swap, so it cannot be undone automatically.": "交换之后标注又有改动，无法自动撤销。",
+  "Failed to undo the swap.": "撤销交换失败。",
+  "Swap undone: '{first}' and '{second}' have their original annotations again.": "已撤销交换：「{first}」和「{second}」恢复了原来的标注。"
 }

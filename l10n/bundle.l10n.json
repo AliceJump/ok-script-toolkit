@@ -286,5 +286,9 @@
   "Reload Tasks": "Reload Tasks",
   "Stop Executor": "Stop Executor",
   "Executor closed": "Executor closed",
-  "Executor exited with code {code}": "Executor exited with code {code}"
+  "Executor exited with code {code}": "Executor exited with code {code}",
+  "Undo": "Undo",
+  "Annotations changed after the swap, so it cannot be undone automatically.": "Annotations changed after the swap, so it cannot be undone automatically.",
+  "Failed to undo the swap.": "Failed to undo the swap.",
+  "Swap undone: '{first}' and '{second}' have their original annotations again.": "Swap undone: '{first}' and '{second}' have their original annotations again."
 }
