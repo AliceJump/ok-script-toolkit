@@ -829,7 +829,7 @@
       post({ type: 'setOverlay', enabled: $('overlayToggle').checked });
     });
     const characterButton = $('openCharacterManager');
-    characterButton.textContent = t('toolboxOpenCharacterManager');
+    OkIcons.label(characterButton, 'person', t('toolboxOpenCharacterManager'));
     characterButton.addEventListener('click', () => post({ type: 'openCharacterManager' }));
 
     // 抽屉

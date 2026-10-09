@@ -102,6 +102,8 @@
     <section class="page" id="pageConfig" role="tabpanel" hidden>
       <div class="takeover-banner" id="takeoverBanner"></div>
       <div id="configList" class="gconfig-list" aria-live="polite"></div>
+      <!-- 角色技能数据属于项目数据，放在配置段；未检测到角色数据时隐藏（宿主 capabilities） -->
+      <button id="openCharacterManager" class="secondary-btn tool-entry" type="button" hidden></button>
     </section>
 
     <!-- ── 分段：账号（多账户存储只读概要）───────────────────────── -->
@@ -132,7 +134,6 @@
         </label>
       </div>
 
-      <button id="openCharacterManager" class="secondary-btn tool-entry" type="button" hidden></button>
     </section>
 
     </div><!-- /lay-main -->
