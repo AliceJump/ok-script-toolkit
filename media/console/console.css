@@ -5,7 +5,7 @@
 .console {
   width: min(100%, 1080px);
   margin: 0 auto;
-  padding: 0 12px 28px;
+  padding: 0 var(--space-md) var(--space-xl);
 }
 
 /* ── 全局状态条：游戏连接 + 常驻执行器（两个分段共享） ─────────── */
@@ -124,7 +124,7 @@
 }
 
 .seg__btn.is-active {
-  border-color: var(--border);
+  border-color: color-mix(in srgb, var(--border) 60%, transparent);
   background: var(--bg-control);
   color: var(--text-primary);
 }
@@ -199,22 +199,21 @@
 .group-head.is-collapsed .group-head__chev { transform: rotate(-90deg); }
 .group-head__count { color: color-mix(in srgb, var(--muted) 72%, transparent); font-weight: 500; }
 
-.group-body { display: grid; gap: 8px; }
+.group-body { display: grid; gap: var(--space-sm); }
 .group-body.is-collapsed { display: none; }
 
 /* ── 任务卡片（新布局：单行主区 + 参数徽标 + 状态徽标） ─────────── */
 .task-card {
   overflow: hidden;
-  border: 1px solid var(--border);
+  border: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
   border-radius: var(--radius-lg);
   background: var(--surface);
-  box-shadow: 0 1px 0 color-mix(in srgb, var(--text-primary) 4%, transparent);
-  transition: border-color .14s ease, box-shadow .14s ease;
+  transition: border-color .14s ease, background-color .14s ease;
 }
 
 .task-card:hover {
-  border-color: color-mix(in srgb, var(--border-strong) 58%, var(--border));
-  box-shadow: var(--shadow);
+  border-color: var(--border);
+  background: color-mix(in srgb, var(--surface) 92%, var(--surface-hover));
 }
 
 .task-card.is-active { border-color: var(--border-strong); }
@@ -223,9 +222,9 @@
 .task-card__header {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 10px;
+  gap: var(--space-md);
   align-items: start;
-  padding: 12px 13px 10px;
+  padding: var(--space-md) var(--space-lg) var(--space-sm);
 }
 
 .task-card__identity { min-width: 0; }
@@ -241,11 +240,11 @@
 
 .task-card__kind {
   flex: 0 0 auto;
-  border: 1px solid var(--border);
+  border: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
   border-radius: var(--radius-pill);
   padding: 1px 7px;
   color: var(--muted);
-  background: color-mix(in srgb, var(--surface-raised) 82%, transparent);
+  background: var(--bg-row);
   font-size: var(--font-2xs);
   font-weight: 500;
 }
@@ -317,7 +316,7 @@
   align-items: center;
   gap: 5px;
   min-height: var(--control-h-sm, 24px);
-  border: var(--border-width, 1px) solid var(--border);
+  border: var(--border-width, 1px) solid color-mix(in srgb, var(--border) 55%, transparent);
   border-radius: var(--radius-pill, 999px);
   padding: 2px 10px;
   color: var(--text-primary);
@@ -327,7 +326,7 @@
 }
 .task-card__config:hover:not(:disabled) {
   background: var(--bg-control-hover);
-  border-color: var(--border-strong);
+  border-color: var(--border);
 }
 .task-card__config.has-overrides {
   border-color: var(--border-strong);
@@ -343,9 +342,9 @@
 
 /* ── 游戏分段 ─────────────────────────────────────────────────── */
 .connect-card {
-  margin-top: 12px;
-  padding: 18px 16px 16px;
-  border: 1px solid var(--border);
+  margin-top: var(--space-md);
+  padding: var(--space-xl) var(--space-lg) var(--space-lg);
+  border: 1px solid color-mix(in srgb, var(--border) 45%, transparent);
   border-radius: var(--radius-lg);
   background: var(--surface);
   text-align: center;
@@ -403,10 +402,10 @@
 .tool-row {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-top: 10px;
-  padding: 11px 13px;
-  border: 1px solid var(--border);
+  gap: var(--space-md);
+  margin-top: var(--space-md);
+  padding: var(--space-md) var(--space-lg);
+  border: 1px solid color-mix(in srgb, var(--border) 45%, transparent);
   border-radius: var(--radius-lg);
   background: var(--surface);
 }
@@ -655,7 +654,7 @@
 
 .config-group {
   overflow: hidden;
-  border: 1px solid var(--border);
+  border: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
   border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--surface-raised) 72%, transparent);
 }
@@ -711,10 +710,10 @@
 }
 
 .status-banner {
-  margin-top: 8px;
-  border: 1px solid var(--border);
+  margin-top: var(--space-sm);
+  border: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
   border-radius: var(--radius-md);
-  padding: 8px 10px;
+  padding: var(--space-sm) var(--space-md);
   font-size: var(--font-xs);
   line-height: 1.45;
   background: var(--surface-raised);
@@ -878,7 +877,7 @@
 }
 .gconfig-list { display: flex; flex-direction: column; gap: 10px; }
 .gconfig-card {
-  border: 1px solid var(--border);
+  border: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
   border-radius: var(--radius-md);
   overflow: hidden;
   background: var(--surface);
@@ -969,9 +968,9 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
-  border: 1px solid var(--border);
+  border: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
   border-radius: var(--radius-sm);
-  padding: 4px;
+  padding: var(--space-xs);
   background: color-mix(in srgb, var(--surface) 70%, transparent);
 }
 .ms-list__item {
@@ -1003,7 +1002,7 @@
   flex: 0 0 auto;
   max-height: 100vh;
   padding: 6px 6px 6px 0;
-  border-right: 1px solid var(--border);
+  border-right: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
   background: var(--bg-page);
 }
 .lay-side__item {
@@ -1040,10 +1039,10 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px 18px;
-  margin: 0 0 10px;
-  padding: 9px 12px;
-  border: 1px solid var(--border);
+  gap: var(--space-sm) var(--space-lg);
+  margin: 0 0 var(--space-md);
+  padding: var(--space-sm) var(--space-md);
+  border: 1px solid color-mix(in srgb, var(--border) 45%, transparent);
   border-radius: var(--radius-md);
   background: var(--surface);
 }
@@ -1061,10 +1060,10 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px 12px;
-  margin: 0 0 10px;
-  padding: 8px 12px;
-  border: 1px dashed var(--border-strong);
+  gap: var(--space-sm) var(--space-md);
+  margin: 0 0 var(--space-md);
+  padding: var(--space-sm) var(--space-md);
+  border: 1px dashed color-mix(in srgb, var(--border-strong) 55%, var(--border));
   border-radius: var(--radius-md);
   background: var(--surface);
 }
@@ -1253,12 +1252,12 @@
 .gconfig-card__head--toggle:hover { background: var(--bg-row-hover); }
 .gconfig-card__head--toggle:focus-visible { outline: 1px solid var(--border-strong); outline-offset: -1px; }
 
-/* 配置分组折叠按键：只有 ▲/▼ 符号，描边 + 静态底色使其成为可见控件 */
+/* 配置分组折叠按键：只有 ▲/▼ 符号，轻描边 + 静态底色使其成为可见控件 */
 .config-group__toggle {
-  border: var(--border-width, 1px) solid var(--border);
+  border: var(--border-width, 1px) solid color-mix(in srgb, var(--border) 55%, transparent);
   background: var(--bg-control);
 }
-.config-group__toggle:hover:not(:disabled) { border-color: var(--border-strong); }
+.config-group__toggle:hover:not(:disabled) { border-color: var(--border); }
 
 /* kind 级任务组头（触发任务/一次性）：行级可点击区（同上） */
 .group-head {

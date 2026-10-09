@@ -59,7 +59,7 @@ Dialog·Modal / 状态提示 / Loading / 空状态 / 错误状态。同类组件
 
 ## 4. 统一尺寸体系
 
-- 间距：`--space-xs(4) / sm(6) / md(10) / lg(14) / xl(20)`
+- 间距：`--space-xs(4) / sm(8) / md(12) / lg(16) / xl(24)`
 - 控件高度：`--control-h-sm(24) / md(30) / lg(34)`
 - 圆角：`--radius-sm(5) / md(8) / lg(11) / pill`
 - 字号：`--font-xs(11) / sm(12) / md(13) / lg(15)`；字重仅 `--weight-regular(400)` / `--weight-medium(500)`

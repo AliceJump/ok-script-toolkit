@@ -4,7 +4,7 @@
 
 body {
   margin: 0;
-  padding: var(--space-md) 12px var(--space-xl);
+  padding: var(--space-md) var(--space-md) var(--space-xl);
   color: var(--text-primary);
   background: var(--bg-page);
   font-family: var(--font-ui);
@@ -15,7 +15,7 @@ body {
   display: inline-flex;
   gap: 2px;
   padding: 2px;
-  border: var(--border-width) solid var(--border);
+  border: var(--border-width) solid color-mix(in srgb, var(--border) 55%, transparent);
   border-radius: var(--radius-sm);
   background: var(--bg-container);
 }
@@ -27,8 +27,8 @@ body {
 #grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
-  gap: var(--space-sm);
-  margin-top: var(--space-xs);
+  gap: var(--space-md);
+  margin-top: var(--space-sm);
 }
 
 .card {
@@ -52,7 +52,7 @@ body {
 .thumb-box img { max-width: 100%; max-height: 100%; image-rendering: pixelated; }
 .placeholder { color: var(--text-muted); font-size: var(--font-xs); }
 
-.meta { padding: 5px 7px 6px; }
+.meta { padding: var(--space-xs) var(--space-sm) var(--space-sm); }
 .name {
   font-weight: var(--weight-medium);
   white-space: nowrap;

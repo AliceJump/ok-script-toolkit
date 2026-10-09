@@ -55,7 +55,7 @@ Buttons of the same kind share height (`--control-h-sm/md/lg`), padding (`--spac
 
 ## 4. Shared Size Scale
 
-- Spacing: `--space-xs(4) / sm(6) / md(10) / lg(14) / xl(20)`.
+- Spacing: `--space-xs(4) / sm(8) / md(12) / lg(16) / xl(24)`.
 - Control height: `--control-h-sm(24) / md(30) / lg(34)`.
 - Radius: `--radius-sm(5) / md(8) / lg(11) / pill`.
 - Font size: `--font-xs(11) / sm(12) / md(13) / lg(15)`; weights only `--weight-regular(400)` / `--weight-medium(500)`.
