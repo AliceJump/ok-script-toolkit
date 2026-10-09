@@ -23,12 +23,6 @@ export class GlobalScreenshotHotkey {
     this.start();
   }
 
-  restart(): void {
-    if (this.disposed) return;
-    this.stop();
-    this.start();
-  }
-
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
