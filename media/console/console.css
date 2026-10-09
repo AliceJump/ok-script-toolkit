@@ -83,6 +83,9 @@
   gap: 5px;
 }
 
+/* 状态条是 grid：子项默认 min-width:auto 会按内容撑宽，窄宽时整行溢出视口 */
+.gbar > * { min-width: 0; }
+
 .gbar__sub {
   padding-left: 31px;
   color: var(--muted);
@@ -313,6 +316,9 @@
 }
 
 .task-card__actions button { white-space: nowrap; }
+/* 主操作（启动 / 启用开关）永远完整可见：不被压缩；可压缩的是「参数」按钮 */
+.task-card__actions > :last-child { flex-shrink: 0; }
+.task-card__config { min-width: 0; overflow: hidden; }
 
 /* 参数入口：统一「中性图标按钮」形态（design-system 第 3 条：默认态即可识别，
    不靠 hover 首次显形）。全部状态保持中性，不用警示色——「已修改」以描边强化表达。 */
@@ -1053,7 +1059,7 @@
 @media (max-width: 640px) {
   .gbar__row { flex-wrap: wrap; row-gap: 2px; }
   .gbar__val { flex: 1 1 0; }
-  .gbar__actions { flex-wrap: wrap; margin-left: auto; }
+  .gbar__actions { flex: 0 1 auto; flex-wrap: wrap; justify-content: flex-end; min-width: 0; max-width: 100%; margin-left: auto; }
   .task-card__actions { flex-wrap: wrap; }
   .shell { gap: var(--space-sm); }
   .lay-side { width: 44px; padding: 6px 4px 6px 0; }
@@ -1093,6 +1099,13 @@
 }
 @media (max-width: 340px) {
   .lay-side__ico { display: none; }
+  /* 极窄（≤340，含 260）：标题允许换行而不是省略成「每周…」，类名/描述继续截断；
+     「参数」只留图标，把宽度让给「启动」 */
+  .task-card__title-row { flex-wrap: wrap; row-gap: 3px; }
+  .task-card__name { white-space: normal; overflow-wrap: anywhere; }
+  .task-card__actions button { flex: 0 0 auto; }
+  .task-card__actions .task-card__config { flex: 1 1 auto; justify-content: center; }
+  .task-card__actions > :last-child { flex: 1 0 auto; }
 }
 
 /* ═══ 配置健康度条（任务分段顶部，真实快照数据） ══════════════ */
