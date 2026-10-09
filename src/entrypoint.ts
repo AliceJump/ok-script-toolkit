@@ -97,13 +97,9 @@ export function activate(context: vscode.ExtensionContext): void {
       void updateProjectReady();
     }),
     vscode.workspace.onDidChangeConfiguration((event) => {
-      const projectPathChanged = event.affectsConfiguration('okScriptToolkit.okScriptProjectPath');
-      if (projectPathChanged) {
+      if (event.affectsConfiguration('okScriptToolkit.okScriptProjectPath')) {
         bindConfigWatchers();
         void updateProjectReady();
-      }
-      if (projectPathChanged || event.affectsConfiguration('okScriptToolkit.okScriptPython')) {
-        globalScreenshotHotkey.restart();
       }
     }),
     new vscode.Disposable(disposeConfigWatchers),
