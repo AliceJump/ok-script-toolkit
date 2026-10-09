@@ -199,7 +199,7 @@
 .group-head.is-collapsed .group-head__chev { transform: rotate(-90deg); }
 .group-head__count { color: color-mix(in srgb, var(--muted) 72%, transparent); font-weight: 500; }
 
-.group-body { display: grid; gap: var(--space-sm); }
+.group-body { display: grid; gap: 6px; }
 .group-body.is-collapsed { display: none; }
 
 /* ── 任务卡片（新布局：单行主区 + 参数徽标 + 状态徽标） ─────────── */
@@ -222,9 +222,9 @@
 .task-card__header {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: var(--space-md);
+  gap: var(--space-sm);
   align-items: start;
-  padding: var(--space-md) var(--space-lg) var(--space-sm);
+  padding: var(--space-sm) var(--space-md) 6px;
 }
 
 .task-card__identity { min-width: 0; }
@@ -234,7 +234,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: var(--font-lg);
+  font-size: var(--font-md);
   font-weight: 650;
 }
 
@@ -294,11 +294,16 @@
 }
 
 .task-card__description {
-  margin-top: 7px;
+  margin-top: var(--space-xs);
   color: var(--muted);
   font-size: var(--font-xs);
-  line-height: 1.55;
+  line-height: 1.45;
   white-space: pre-wrap;
+  /* 列表里最多两行，完整描述在悬停摘要/抽屉里 */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
 }
 
 .task-card__actions {
@@ -924,6 +929,16 @@
 }
 .subgroup-body { display: flex; flex-direction: column; gap: 8px; }
 .task-card__snap { min-width: 30px; font-size: var(--font-sm); }
+/* 快照操作是次要动作：中性底色 + 描边，不与「启动」主按钮抢视觉 */
+.task-card__actions .task-card__snap {
+  flex: 0 0 auto;
+  min-height: var(--control-h-sm);
+  padding: 2px 6px;
+  border: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
+  color: var(--text-primary);
+  background: var(--bg-control);
+}
+.task-card__actions .task-card__snap:hover:not(:disabled) { background: var(--bg-control-hover); border-color: var(--border); }
 .tag--store {
   font-size: var(--font-2xs);
   border: 1px solid var(--border-strong, var(--border));
@@ -1024,15 +1039,61 @@
   box-shadow: inset 2px 0 0 var(--border-strong);
 }
 .lay-side__ico {
-  width: 14px; height: 14px;
+  display: inline-flex;
   flex: 0 0 auto;
-  border-radius: var(--radius-sm);
-  background: var(--border-strong);
-  opacity: .7;
+  opacity: .8;
 }
+.lay-side__ico .codicon { font-size: var(--icon-md); }
 .lay-side__item.is-active .lay-side__ico { opacity: 1; }
+.lay-side__item:focus-visible { outline: 1px solid var(--border-strong); outline-offset: -1px; }
 .lay-side__foot { margin-top: auto; padding: 10px 12px; font-size: var(--font-xs); color: var(--muted); }
 .lay-main { flex: 1; min-width: 0; }
+
+/* 中等宽度：侧栏收成图标导航条（文字进 tooltip），把横向空间还给任务列表 */
+@media (max-width: 640px) {
+  .gbar__row { flex-wrap: wrap; row-gap: 2px; }
+  .gbar__val { flex: 1 1 0; }
+  .gbar__actions { flex-wrap: wrap; margin-left: auto; }
+  .task-card__actions { flex-wrap: wrap; }
+  .shell { gap: var(--space-sm); }
+  .lay-side { width: 44px; padding: 6px 4px 6px 0; }
+  .lay-side__item { justify-content: center; padding: 8px 0; }
+  .lay-side__label,
+  .lay-side__foot { display: none; }
+}
+
+/* 窄侧边栏（≈300px）：导航改为顶部分段条（图标 + 文字），主内容占满宽度 */
+@media (max-width: 480px) {
+  .shell { flex-direction: column; gap: var(--space-sm); }
+  .lay-side {
+    position: static;
+    flex-direction: row;
+    width: auto;
+    max-height: none;
+    align-self: stretch;
+    margin-inline: -8px;
+    padding: var(--space-xs) 8px;
+    border-right: 0;
+    border-bottom: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
+  }
+  .lay-side__item {
+    flex: 1 1 0;
+    min-width: 0;
+    gap: var(--space-xs);
+    padding: 5px var(--space-xs);
+    font-size: var(--font-sm);
+  }
+  .lay-side__item.is-active { box-shadow: inset 0 -2px 0 var(--border-strong); }
+  .lay-side__label {
+    display: inline;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+@media (max-width: 340px) {
+  .lay-side__ico { display: none; }
+}
 
 /* ═══ 配置健康度条（任务分段顶部，真实快照数据） ══════════════ */
 .rc-health {

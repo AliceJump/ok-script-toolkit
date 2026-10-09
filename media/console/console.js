@@ -758,20 +758,33 @@
 
     // 侧栏导航（主从双栏）：文案 + 点击/键盘切换
     const sideTabs = [
-      ['segTasks', 'consoleTabTasks'],
-      ['segGame', 'consoleTabGame'],
-      ['segConfig', 'consoleTabConfig'],
-      ['segAccounts', 'consoleTabAccounts'],
+      ['segTasks', 'consoleTabTasks', 'checklist'],
+      ['segGame', 'consoleTabGame', 'game'],
+      ['segConfig', 'consoleTabConfig', 'settings'],
+      ['segAccounts', 'consoleTabAccounts', 'account'],
     ];
-    for (const [id, key] of sideTabs) {
+    const tabItems = sideTabs.map(([id]) => $(id));
+    for (const [id, key, icon] of sideTabs) {
       const item = $(id);
+      item.querySelector('.lay-side__ico').replaceChildren(OkIcons.icon(icon));
       item.querySelector('.lay-side__label').textContent = t(key);
+      // 收成图标条时文字不可见：title 兜底提示，aria-label 保证读屏
+      item.title = t(key);
+      item.setAttribute('aria-label', t(key));
       item.addEventListener('click', () => switchSeg(item.dataset.seg));
       item.addEventListener('keydown', (event) => {
         if (event.key === 'Enter' || event.key === ' ') {
           event.preventDefault();
           switchSeg(item.dataset.seg);
+          return;
         }
+        // tablist 标准键位：方向键在分段间移动并切换
+        const step = { ArrowDown: 1, ArrowRight: 1, ArrowUp: -1, ArrowLeft: -1 }[event.key];
+        if (!step) return;
+        event.preventDefault();
+        const next = tabItems[(tabItems.indexOf(item) + step + tabItems.length) % tabItems.length];
+        next.focus();
+        switchSeg(next.dataset.seg);
       });
     }
     $('sideFoot').textContent = t('consoleTitle');
