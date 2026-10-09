@@ -49,7 +49,7 @@ export class GlobalScreenshotHotkey {
     let stdoutBuffer = '';
 
     try {
-      const child = spawn(pythonPath, [scriptPath], {
+      const child = spawn(pythonPath, [scriptPath, '--parent-pid', String(process.pid)], {
         windowsHide: true,
         stdio: ['ignore', 'pipe', 'pipe'],
       });
