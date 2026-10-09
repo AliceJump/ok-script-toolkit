@@ -257,7 +257,6 @@
   "templateSize": "尺寸：{width}×{height}",
   "templateSource": "來源：{path}",
   "templateAssetsTitle": "模板素材管理",
-  "boxAssetsTitle": "框資源管理",
   "templateAssetsHint": "單擊或點擊編輯按鈕開啟標註編輯器",
   "noTemplateAssets": "暂无模板素材。\n点击 Import 导入图片。",
   "noTemplateAssetsHint": "暂无模板素材。",

@@ -2,7 +2,7 @@
 
 [简体中文](design-system.md) | [English](design-system.en.md)
 
-> This is the authoritative UI specification for the entire project. All webview panels (console / templatePanel / templateAssetPanel / tempScreenshots / annotationPanel / characterManager / boxPanel) must follow it.
+> This is the authoritative UI specification for the entire project. All webview panels (console / templatePanel / templateAssetPanel / tempScreenshots / annotationPanel / characterManager) must follow it.
 > Implementation sources: `media/shared/tokens.css` (design tokens) and `media/shared/controls.css` (shared controls).
 > **Pages compose these classes; they must not independently redefine visual rules.**
 
@@ -122,7 +122,7 @@ Connect a new panel in **three steps; omitting any step silently breaks styling*
 
 ## Implementation Progress
 
-2026-10-01 addendum: box panels/galleries share `media/boxPanel`, connected through `src/boxPanels.ts` and included in the static audit. The table and six-panel record below describe the 2026-09-23 migration baseline, not a reason to omit newer panels.
+2026-10-09 addendum: the standalone box panel/gallery (`media/boxPanel`, `src/boxPanels.ts`) was folded into the unified annotation editor and resource preview and has been removed; the position-preview helpers used by hover and completion now live in `src/positionPreview.ts`. The table and six-panel record below describe the 2026-09-23 migration baseline; new panels must still be registered in the static audit.
 
 | Stage | Work | Status |
 |---|---|---|

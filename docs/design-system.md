@@ -3,7 +3,7 @@
 [简体中文](design-system.md) | [English](design-system.en.md)
 
 > 本文件是全项目 UI 的唯一权威规范。所有 webview 面板（console / templatePanel /
-> templateAssetPanel / tempScreenshots / annotationPanel / characterManager / boxPanel）必须遵循。
+> templateAssetPanel / tempScreenshots / annotationPanel / characterManager）必须遵循。
 > 实现真源：`media/shared/tokens.css`（Design Tokens）+ `media/shared/controls.css`（共享控件），
 > **页面只负责组合这些类，不得自行重定义视觉规则。**
 
@@ -138,7 +138,7 @@ media/shared/controls.css    Button(主/次/迷你/幽灵/图标) · Input · Se
 
 ## 落地进度
 
-2026-10-01 补充：框面板与框画廊共用 `media/boxPanel`，由 `src/boxPanels.ts` 接入共享层，静态审计已包含此目录。下表与“六个面板”记录的是 2026-09-23 的迁移基线，不能据此漏掉新增面板。
+2026-10-09 补充：独立的框面板 / 框画廊（`media/boxPanel`、`src/boxPanels.ts`）已并入统一标注编辑器与资源预览并被移除；悬停与补全使用的位置预览逻辑移到 `src/positionPreview.ts`。下表与“六个面板”记录的是 2026-09-23 的迁移基线，新增面板仍须登记进静态审计。
 
 | 阶段 | 内容 | 状态 |
 |---|---|---|

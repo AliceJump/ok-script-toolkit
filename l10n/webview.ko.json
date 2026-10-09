@@ -257,7 +257,6 @@
   "templateSize": "크기: {width}×{height}",
   "templateSource": "소스: {path}",
   "templateAssetsTitle": "Template Assets",
-  "boxAssetsTitle": "Box Assets",
   "templateAssetsHint": "이미지 또는 편집 버튼을 클릭하여 주석 편집기 열기",
   "noTemplateAssets": "No template assets yet.\nClick Import to add images.",
   "noTemplateAssetsHint": "No template assets.",

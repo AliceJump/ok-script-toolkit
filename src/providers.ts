@@ -13,7 +13,7 @@ import { DEFAULT_FEATURE_ALIASES, ideSetting, labelEnumAliases, loadProjectConfi
 import { annotatedImageToDataUrlCached, cropTemplateToDataUrlCached } from './pngCrop';
 import { selectedProjectLocale, tr } from './localization';
 import { getProjectConfig } from './screenshotCapture';
-import { posPaths, previewRectForPath } from './boxPanels';
+import { posPaths, previewRectForPath } from './positionPreview';
 
 /** 匹配 self.lang.<模块>.<key>（支持 Unicode 标识符，如中文 OCR 文本；负向后视避免匹配 self.langx 之类） */
 const EXPR_RE = /(?<![\w.])self\.lang\.([\p{L}\p{N}_]+)\.([\p{L}\p{N}_]+)/gu;

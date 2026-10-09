@@ -257,7 +257,6 @@
   "templateSize": "Tamaño: {width}×{height}",
   "templateSource": "Origen: {path}",
   "templateAssetsTitle": "Template Assets",
-  "boxAssetsTitle": "Box Assets",
   "templateAssetsHint": "Pulse la imagen o el botón de editar para abrir anotaciones",
   "noTemplateAssets": "No template assets yet.\nClick Import to add images.",
   "noTemplateAssetsHint": "No template assets.",

@@ -257,7 +257,6 @@
   "templateSize": "サイズ: {width}×{height}",
   "templateSource": "ソース: {path}",
   "templateAssetsTitle": "Template Assets",
-  "boxAssetsTitle": "Box Assets",
   "templateAssetsHint": "画像または編集ボタンをクリックしてアノテーションを開く",
   "noTemplateAssets": "No template assets yet.\nClick Import to add images.",
   "noTemplateAssetsHint": "No template assets.",

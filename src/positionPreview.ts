@@ -1,41 +1,10 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import * as vscode from 'vscode';
-import { AnnotationPanel } from './annotationPanel';
 import { readAuthoringFile } from './boxResourceStore';
-import { AUTHORING_FILE_NAME, PixelBox } from './boxResourcePure';
+import { PixelBox } from './boxResourcePure';
 import { templatesDirectory } from './projectConfig';
 import { readImageSize } from './pngCrop';
-import { TemplateAssetData } from './templateAssetData';
 import { readPoints } from './pointResourceStore';
-
-/** Cross-image rect path occupancy used by the unified annotation editor. */
-export function boxPathOccupancy(authoring: ReturnType<typeof readAuthoringFile>): Record<string, string> {
-  const occupied: Record<string, string> = {};
-  for (const box of authoring.boxes) occupied[box.path] = box.image;
-  return occupied;
-}
-
-/** Same editor/controller as template annotations; only the source file and name rule differ. */
-export function openBoxEditor(
-  extensionUri: vscode.Uri,
-  data: TemplateAssetData,
-  imagePath: string,
-  thumbDir = '',
-): void {
-  const boxes = data.fileName === AUTHORING_FILE_NAME
-    ? data
-    : new TemplateAssetData(data.root, AUTHORING_FILE_NAME);
-  AnnotationPanel.show(
-    extensionUri,
-    boxes,
-    thumbDir || boxes.templatesDir,
-    imagePath,
-    boxes.listImages(),
-    () => {},
-    true,
-  );
-}
 
 /**
  * Position preview source comes directly from current authoring data. There is no separately
