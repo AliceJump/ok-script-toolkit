@@ -254,173 +254,205 @@
         "mac": "cmd+alt+s"
       }
     ],
-    "configuration": {
-      "title": "%configuration.title%",
-      "properties": {
-        "okScriptToolkit.langDirectory": {
-          "type": "string",
-          "default": "assets/lang",
-          "description": "%config.langDirectory%"
-        },
-        "okScriptToolkit.poDirectory": {
-          "type": "string",
-          "default": "i18n",
-          "description": "%config.poDirectory%"
-        },
-        "okScriptToolkit.enablePoData": {
-          "type": "boolean",
-          "default": true,
-          "description": "%config.enablePoData%"
-        },
-        "okScriptToolkit.poDomains": {
-          "type": "array",
-          "items": {
-            "type": "string"
+    "configuration": [
+      {
+        "id": "okScriptToolkit.codeHints",
+        "title": "%configuration.codeHints%",
+        "order": 1,
+        "properties": {
+          "okScriptToolkit.langDirectory": {
+            "type": "string",
+            "default": "assets/lang",
+            "description": "%config.langDirectory%"
           },
-          "default": [
-            "ocr"
-          ],
-          "description": "%config.poDomains%"
-        },
-        "okScriptToolkit.displayLocale": {
-          "type": "string",
-          "default": "auto",
-          "enum": [
-            "auto",
-            "zh_CN",
-            "zh_TW",
-            "en_US",
-            "ja_JP",
-            "ko_KR",
-            "es_ES"
-          ],
-          "description": "%config.displayLocale%"
-        },
-        "okScriptToolkit.enableInlayHints": {
-          "type": "boolean",
-          "default": true,
-          "description": "%config.enableInlayHints%"
-        },
-        "okScriptToolkit.featureAliases": {
-          "type": "array",
-          "items": {
-            "type": "string"
+          "okScriptToolkit.poDirectory": {
+            "type": "string",
+            "default": "i18n",
+            "description": "%config.poDirectory%"
           },
-          "default": [
-            "fL",
-            "FeatureList",
-            "Labels"
-          ],
-          "description": "%config.featureAliases%"
-        },
-        "okScriptToolkit.labelEnumPath": {
-          "type": "string",
-          "default": "",
-          "scope": "resource",
-          "markdownDescription": "%config.labelEnumPath%"
-        },
-        "okScriptToolkit.labelEnumName": {
-          "type": "string",
-          "default": "",
-          "scope": "resource",
-          "markdownDescription": "%config.labelEnumName%"
-        },
-        "okScriptToolkit.positionJsonPath": {
-          "type": "string",
-          "default": "src/scene/positions.json",
-          "scope": "resource",
-          "markdownDescription": "%config.positionJsonPath%"
-        },
-        "okScriptToolkit.positionPythonDirectory": {
-          "type": "string",
-          "default": "src/scene",
-          "scope": "resource",
-          "markdownDescription": "%config.positionPythonDirectory%"
-        },
-        "okScriptToolkit.effectsFile": {
-          "type": "string",
-          "default": "src/data/effects.py",
-          "description": "%config.effectsFile%"
-        },
-        "okScriptToolkit.okScriptProjectPath": {
-          "type": "string",
-          "default": "",
-          "markdownDescription": "%config.okScriptProjectPath%"
-        },
-        "okScriptToolkit.okScriptPython": {
-          "type": "string",
-          "default": "",
-          "markdownDescription": "%config.okScriptPython%"
-        },
-        "okScriptToolkit.captureMethod": {
-          "type": "string",
-          "default": "auto",
-          "enum": [
-            "auto",
-            "wgc",
-            "bitblt",
-            "foreground"
-          ],
-          "markdownDescription": "%config.captureMethod%"
-        },
-        "okScriptToolkit.characterProjectPath": {
-          "type": "string",
-          "default": "",
-          "markdownDescription": "%config.characterProjectPath%"
-        },
-        "okScriptToolkit.characterMasterFile": {
-          "type": "string",
-          "default": "assets/data/characters.json",
-          "description": "%config.characterMasterFile%"
-        },
-        "okScriptToolkit.characterSkillsDirectory": {
-          "type": "string",
-          "default": "assets/data/character_skills",
-          "description": "%config.characterSkillsDirectory%"
-        },
-        "okScriptToolkit.characterLocaleFile": {
-          "type": "string",
-          "default": "assets/lang/characters.json",
-          "description": "%config.characterLocaleFile%"
-        },
-        "okScriptToolkit.characterAvatarTemplateRegex": {
-          "type": "string",
-          "default": "^battle[_-]?icon[_-]?",
-          "description": "%config.characterAvatarTemplateRegex%"
-        },
-        "okScriptToolkit.okTemplatesDirectory": {
-          "type": "string",
-          "default": "ok_templates",
-          "description": "%config.okTemplatesDirectory%"
-        },
-        "okScriptToolkit.copyCoordsSpace": {
-          "type": "boolean",
-          "default": true,
-          "scope": "application",
-          "description": "%config.copyCoordsSpace%"
-        },
-        "okScriptToolkit.annotationKeybindings": {
-          "type": "object",
-          "default": {
-            "drawBbox": "r",
-            "copyCoords": "c",
-            "deleteMode": "d",
-            "undo": "ctrl+z",
-            "redo": "ctrl+y",
-            "copy": "ctrl+c",
-            "paste": "ctrl+v",
-            "deleteSelected": "Delete",
-            "prevImage": "ArrowLeft",
-            "nextImage": "ArrowRight",
-            "cycleMode": "m"
+          "okScriptToolkit.enablePoData": {
+            "type": "boolean",
+            "default": true,
+            "description": "%config.enablePoData%"
           },
-          "additionalProperties": {
-            "type": "string"
+          "okScriptToolkit.poDomains": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": [
+              "ocr"
+            ],
+            "description": "%config.poDomains%"
           },
-          "markdownDescription": "%config.annotationKeybindings%"
+          "okScriptToolkit.displayLocale": {
+            "type": "string",
+            "default": "auto",
+            "enum": [
+              "auto",
+              "zh_CN",
+              "zh_TW",
+              "en_US",
+              "ja_JP",
+              "ko_KR",
+              "es_ES"
+            ],
+            "description": "%config.displayLocale%"
+          },
+          "okScriptToolkit.enableInlayHints": {
+            "type": "boolean",
+            "default": true,
+            "description": "%config.enableInlayHints%"
+          },
+          "okScriptToolkit.featureAliases": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": [
+              "fL",
+              "FeatureList",
+              "Labels"
+            ],
+            "description": "%config.featureAliases%"
+          },
+          "okScriptToolkit.effectsFile": {
+            "type": "string",
+            "default": "src/data/effects.py",
+            "description": "%config.effectsFile%"
+          }
+        }
+      },
+      {
+        "id": "okScriptToolkit.resources",
+        "title": "%configuration.resources%",
+        "order": 2,
+        "properties": {
+          "okScriptToolkit.okTemplatesDirectory": {
+            "type": "string",
+            "default": "ok_templates",
+            "description": "%config.okTemplatesDirectory%"
+          },
+          "okScriptToolkit.labelEnumPath": {
+            "type": "string",
+            "default": "",
+            "scope": "resource",
+            "markdownDescription": "%config.labelEnumPath%"
+          },
+          "okScriptToolkit.labelEnumName": {
+            "type": "string",
+            "default": "",
+            "scope": "resource",
+            "markdownDescription": "%config.labelEnumName%"
+          },
+          "okScriptToolkit.positionJsonPath": {
+            "type": "string",
+            "default": "src/scene/positions.json",
+            "scope": "resource",
+            "markdownDescription": "%config.positionJsonPath%"
+          },
+          "okScriptToolkit.positionPythonDirectory": {
+            "type": "string",
+            "default": "src/scene",
+            "scope": "resource",
+            "markdownDescription": "%config.positionPythonDirectory%"
+          },
+          "okScriptToolkit.annotationKeybindings": {
+            "type": "object",
+            "default": {
+              "drawBbox": "r",
+              "copyCoords": "c",
+              "deleteMode": "d",
+              "undo": "ctrl+z",
+              "redo": "ctrl+y",
+              "copy": "ctrl+c",
+              "paste": "ctrl+v",
+              "deleteSelected": "Delete",
+              "prevImage": "ArrowLeft",
+              "nextImage": "ArrowRight",
+              "cycleMode": "m"
+            },
+            "additionalProperties": {
+              "type": "string"
+            },
+            "markdownDescription": "%config.annotationKeybindings%"
+          }
+        }
+      },
+      {
+        "id": "okScriptToolkit.screenshots",
+        "title": "%configuration.screenshots%",
+        "order": 3,
+        "properties": {
+          "okScriptToolkit.captureMethod": {
+            "type": "string",
+            "default": "auto",
+            "enum": [
+              "auto",
+              "wgc",
+              "bitblt",
+              "foreground"
+            ],
+            "markdownDescription": "%config.captureMethod%"
+          },
+          "okScriptToolkit.copyCoordsSpace": {
+            "type": "boolean",
+            "default": true,
+            "scope": "application",
+            "description": "%config.copyCoordsSpace%"
+          }
+        }
+      },
+      {
+        "id": "okScriptToolkit.console",
+        "title": "%configuration.console%",
+        "order": 4,
+        "properties": {
+          "okScriptToolkit.okScriptProjectPath": {
+            "type": "string",
+            "default": "",
+            "markdownDescription": "%config.okScriptProjectPath%"
+          },
+          "okScriptToolkit.okScriptPython": {
+            "type": "string",
+            "default": "",
+            "markdownDescription": "%config.okScriptPython%"
+          }
+        }
+      },
+      {
+        "id": "okScriptToolkit.characters",
+        "title": "%configuration.characters%",
+        "order": 5,
+        "properties": {
+          "okScriptToolkit.characterProjectPath": {
+            "type": "string",
+            "default": "",
+            "markdownDescription": "%config.characterProjectPath%"
+          },
+          "okScriptToolkit.characterMasterFile": {
+            "type": "string",
+            "default": "assets/data/characters.json",
+            "description": "%config.characterMasterFile%"
+          },
+          "okScriptToolkit.characterSkillsDirectory": {
+            "type": "string",
+            "default": "assets/data/character_skills",
+            "description": "%config.characterSkillsDirectory%"
+          },
+          "okScriptToolkit.characterLocaleFile": {
+            "type": "string",
+            "default": "assets/lang/characters.json",
+            "description": "%config.characterLocaleFile%"
+          },
+          "okScriptToolkit.characterAvatarTemplateRegex": {
+            "type": "string",
+            "default": "^battle[_-]?icon[_-]?",
+            "description": "%config.characterAvatarTemplateRegex%"
+          }
         }
       }
-    },
+    ],
     "jsonValidation": [
       {
         "fileMatch": "ok-script-toolkit.json",

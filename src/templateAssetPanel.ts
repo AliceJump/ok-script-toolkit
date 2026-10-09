@@ -811,10 +811,10 @@ class AssetGalleryController {
     }
     const dst = this.data.importImageFile(target.filePath, true);
     if (!dst) {
-      void vscode.window.showErrorMessage(tr('Failed to add to template assets: {error}', { error: target.name }));
+      void vscode.window.showErrorMessage(tr('Failed to add to Annotation Management: {error}', { error: target.name }));
       return;
     }
-    void vscode.window.showInformationMessage(tr('Added to template assets: {name}', { name: path.basename(dst) }));
+    void vscode.window.showInformationMessage(tr('Added to Annotation Management: {name}', { name: path.basename(dst) }));
     await this.update();
   }
 
@@ -875,7 +875,7 @@ export class TemplateAssetPanel {
     }
     const panel = vscode.window.createWebviewPanel(
       'okScriptToolkitTemplateAssets',
-      tr('Template Assets'),
+      tr('Annotation Management'),
       vscode.ViewColumn.Beside,
       {
         enableScripts: true,

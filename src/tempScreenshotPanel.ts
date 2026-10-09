@@ -270,11 +270,11 @@ class TempScreenshotController {
     if (!target) return false;
     const dst = this.assetData.importImageFile(target.filePath, true);
     if (!dst) {
-      this.notice('error', tr('Failed to add to template assets: {error}', { error: target.name }));
+      this.notice('error', tr('Failed to add to Annotation Management: {error}', { error: target.name }));
       return false;
     }
     repaintAllAssetGalleries();
-    this.notice('info', tr('Added to template assets: {name}', { name: path.basename(dst) }));
+    this.notice('info', tr('Added to Annotation Management: {name}', { name: path.basename(dst) }));
     return true;
   }
 

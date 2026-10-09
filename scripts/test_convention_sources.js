@@ -172,7 +172,7 @@ const projectConfig = require(path.join(root, 'out', 'projectConfig.js'));
 // package.json 里的 default：被测逻辑必须**无视**它们（否则项目声明永远不生效）
 const pkg = require(path.join(root, 'package.json'));
 const PKG_DEFAULTS = {};
-for (const [fullKey, spec] of Object.entries(pkg.contributes.configuration.properties)) {
+for (const [fullKey, spec] of Object.entries(Object.assign({}, ...[].concat(pkg.contributes.configuration).map((section) => section.properties)))) {
   PKG_DEFAULTS[fullKey.replace(/^okScriptToolkit\./, '')] = spec.default;
 }
 for (const [key, value] of Object.entries(PKG_DEFAULTS)) vscode.__test.defaults.set(key, value);

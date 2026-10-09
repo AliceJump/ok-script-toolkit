@@ -1311,7 +1311,7 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
     if (toolbox.game) {
       // 实际复用由 connect_game.py 写入的 configs/devices.json selected_hwnd 驱动，
       // 这里仅记录连接来源，便于确认执行器与工具箱操作的是同一个窗口。
-      this.appendOutputLine(tr('Reusing game connection from toolbox: {title} (PID {pid})', {
+      this.appendOutputLine(tr('Reusing the Console game connection: {title} (PID {pid})', {
         title: toolbox.game.title || String(toolbox.game.hwnd),
         pid: toolbox.game.pid,
       }));
