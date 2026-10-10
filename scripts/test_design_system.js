@@ -30,6 +30,8 @@ const PANEL_HOST = {
   tempScreenshots: 'src/tempScreenshotPanel.ts',
   annotationPanel: 'src/annotationPanel.ts',
   characterManager: 'src/characterPanel.ts',
+  params: 'src/run/paramsView.ts',
+  resources: 'src/run/resourcesView.ts',
 };
 
 const read = (p) => fs.readFileSync(p, 'utf8');

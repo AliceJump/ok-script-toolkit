@@ -23,6 +23,13 @@ import {
   repaintAllGalleries,
 } from './templatePanel';
 import { ConsoleViewProvider, ExecutorStateSummary } from './consolePanel';
+import { RunTreeDataProvider } from './run/runTree';
+import { ParamsViewProvider } from './run/paramsView';
+import { ResourcesViewProvider } from './run/resourcesView';
+import type { RunTreeNode } from './run/treeModel';
+import { issuesToDiagnostics } from './run/characterDiagnostics';
+import { configuredCharacterDataPaths, loadCharacterManagerData } from './characterData';
+import { insertIntoPythonEditor } from './pythonEditor';
 import { CharacterManagerPanel, detectCharacterData } from './characterPanel';
 import { GameConnectService } from './toolboxConnect';
 import { TemplateAssetData } from './templateAssetData';
@@ -293,6 +300,18 @@ export function activate(context: vscode.ExtensionContext): void {
     path.join(context.globalStorageUri.fsPath, 'temp-screenshots', wsHash),
   );
   tempScreenshotStore.ensure();
+  const runTree = new RunTreeDataProvider(okConsole);
+  const paramsView = new ParamsViewProvider(context.extensionUri, okConsole, runTree);
+  const resourcesView = new ResourcesViewProvider(
+    context.extensionUri, templateAssetData, features, tempScreenshotStore, thumbDir,
+  );
+  void okConsole.activateHeadless();
+  const runTreeView = vscode.window.createTreeView(RunTreeDataProvider.viewId, {
+    treeDataProvider: runTree,
+    showCollapseAll: true,
+  });
+  runTree.attachTreeView(runTreeView);
+  runTree.refresh();
   const tempThumbDir = path.join(context.globalStorageUri.fsPath, 'temp-thumbs', wsHash);
   if (context.globalState.get<string>(LEGACY_THUMB_PURGE_KEY) !== THUMB_KEY_VERSION) {
     purgeLegacyThumbFiles(thumbDir);
@@ -334,10 +353,40 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(executorStatusItem, okConsole.onDidChangeExecutorState(renderExecutorStatus));
 
   // ── 角色数据检测 → 隐藏/露出「角色技能管理」入口 ──
+  const characterDiagnostics = vscode.languages.createDiagnosticCollection('okScriptToolkit.characters');
+  context.subscriptions.push(characterDiagnostics);
   const updateCharacterDataContext = () => {
     const available = detectCharacterData();
     void vscode.commands.executeCommand('setContext', 'okScriptToolkit.hasCharacterData', available);
     okConsole.setCharacterDataAvailable(available);
+    characterDiagnostics.clear();
+    if (!available) return;
+    try {
+      const projectDir = resolveProjectDir();
+      const paths = configuredCharacterDataPaths(projectDir);
+      const loaded = loadCharacterManagerData(paths);
+      const mapped = issuesToDiagnostics(loaded.snapshot.issues || [], {
+        masterFile: paths.masterFile,
+        localeFile: paths.localeFile,
+        characterDir: paths.skillsDir,
+      });
+      const byFile = new Map<string, vscode.Diagnostic[]>();
+      for (const item of mapped) {
+        const sev = item.severity === 'error' ? vscode.DiagnosticSeverity.Error
+          : item.severity === 'warning' ? vscode.DiagnosticSeverity.Warning
+          : vscode.DiagnosticSeverity.Information;
+        const diag = new vscode.Diagnostic(new vscode.Range(item.line, item.character, item.line, item.character + 1), item.message, sev);
+        diag.source = 'ok-script';
+        const list = byFile.get(item.file) || [];
+        list.push(diag);
+        byFile.set(item.file, list);
+      }
+      for (const [file, diags] of byFile) {
+        characterDiagnostics.set(vscode.Uri.file(file), diags);
+      }
+    } catch {
+      /* 诊断失败不阻塞主流程 */
+    }
   };
   updateCharacterDataContext();
   const characterDataWatcher = vscode.workspace.createFileSystemWatcher('**/assets/data/{characters.json,character_skills}');
@@ -394,30 +443,20 @@ export function activate(context: vscode.ExtensionContext): void {
       { language: 'jsonc', scheme: 'file' },
       jsonInlay,
     ),
-    vscode.window.registerWebviewViewProvider(
-      TemplateGalleryViewProvider.viewType,
-      new TemplateGalleryViewProvider(context.extensionUri, features, thumbDir),
-    ),
-    vscode.window.registerWebviewViewProvider(
-      ConsoleViewProvider.viewType,
-      okConsole,
-    ),
-    vscode.window.registerWebviewViewProvider(
-      TemplateAssetViewProvider.viewType,
-      new TemplateAssetViewProvider(templateAssetData, thumbDir, context.extensionUri, tempScreenshotStore),
-    ),
-    vscode.window.registerWebviewViewProvider(
-      TempScreenshotViewProvider.viewType,
-      new TempScreenshotViewProvider(tempScreenshotStore, templateAssetData, tempThumbDir, context.extensionUri),
-    ),
+    runTreeView,
+    runTree,
+    paramsView,
+    resourcesView,
+    vscode.window.registerWebviewViewProvider(ParamsViewProvider.viewType, paramsView),
+    vscode.window.registerWebviewViewProvider(ResourcesViewProvider.viewType, resourcesView),
     vscode.commands.registerCommand('okScriptToolkit.showTemplates', () => {
-      void vscode.commands.executeCommand(`${TemplateGalleryViewProvider.viewType}.focus`);
+      void vscode.commands.executeCommand(`${ResourcesViewProvider.viewType}.focus`);
     }),
     vscode.commands.registerCommand('okScriptToolkit.openTemplatesEditor', () => {
       TemplateGalleryPanel.show(features, thumbDir, context.extensionUri);
     }),
     vscode.commands.registerCommand('okScriptToolkit.showTaskLauncher', () => {
-      void vscode.commands.executeCommand(`${ConsoleViewProvider.viewType}.focus`);
+      void vscode.commands.executeCommand(`${RunTreeDataProvider.viewId}.focus`);
     }),
     vscode.commands.registerCommand('okScriptToolkit.openCharacterManager', () => {
       CharacterManagerPanel.show(characterManagerDependencies);
@@ -433,13 +472,42 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('okScriptToolkit.console.connectGame', () => gameConnect.connect()),
     vscode.commands.registerCommand('okScriptToolkit.console.disconnectGame', () => gameConnect.disconnect()),
     vscode.commands.registerCommand('okScriptToolkit.openTemplateAssets', () => {
-      TemplateAssetPanel.show(templateAssetData, thumbDir, context.extensionUri, tempScreenshotStore);
+      void vscode.commands.executeCommand(`${ResourcesViewProvider.viewType}.focus`);
     }),
     vscode.commands.registerCommand('okScriptToolkit.screenshotToTemplate', () => {
       TemplateAssetPanel.showScreenshot(templateAssetData, thumbDir, context.extensionUri, tempScreenshotStore);
     }),
     vscode.commands.registerCommand('okScriptToolkit.showTempScreenshots', () => {
-      void vscode.commands.executeCommand(`${TempScreenshotViewProvider.viewType}.focus`);
+      void vscode.commands.executeCommand(`${ResourcesViewProvider.viewType}.focus`);
+    }),
+    vscode.commands.registerCommand('okScriptToolkit.captureToInbox', () => resourcesView.captureToInbox()),
+    vscode.commands.registerCommand('okScriptToolkit.publishResources', () =>
+      TemplateAssetPanel.publish(templateAssetData, thumbDir, context.extensionUri, tempScreenshotStore)),
+    vscode.commands.registerCommand('okScriptToolkit.annotateImage', (target?: vscode.Uri | string) =>
+      vscode.commands.executeCommand('okScriptToolkit.openAnnotationEditor', target)),
+    vscode.commands.registerCommand('okScriptToolkit.insertResourceReference', async (expression?: string) => {
+      const text = expression || await vscode.window.showInputBox({ prompt: tr('Resource expression (e.g. fL.btn_claim)') });
+      if (text) insertIntoPythonEditor(text);
+    }),
+    vscode.commands.registerCommand('okScriptToolkit.revealResource', async (name?: string) => {
+      void vscode.commands.executeCommand(`${ResourcesViewProvider.viewType}.focus`);
+      if (name) void vscode.window.showInformationMessage(tr('Locate “{name}” in Resources', { name }));
+    }),
+    vscode.commands.registerCommand('okScriptToolkit.pickProject', async () => {
+      const picked = await vscode.window.showOpenDialog({
+        canSelectFiles: false, canSelectFolders: true, canSelectMany: false,
+        openLabel: tr('Use as ok-script project'),
+      });
+      if (picked?.[0]) {
+        await vscode.workspace.getConfiguration('okScriptToolkit').update('okScriptProjectPath', picked[0].fsPath, vscode.ConfigurationTarget.Workspace);
+      }
+    }),
+    vscode.commands.registerCommand('okScriptToolkit.run.openParams', (node?: RunTreeNode) => paramsView.openForNode(node)),
+    vscode.commands.registerCommand('okScriptToolkit.run.runTaskInline', async (node?: RunTreeNode) => {
+      if (node?.taskKey) await okConsole.enqueueByKey(node.taskKey);
+    }),
+    vscode.commands.registerCommand('okScriptToolkit.run.toggleTrigger', async (node?: RunTreeNode) => {
+      if (node?.taskKey) await okConsole.setTriggerEnabledByKey(node.taskKey, !node.checked);
     }),
     vscode.commands.registerCommand('okScriptToolkit.openAnnotationEditor', async (target?: vscode.Uri | string) => {
       // 资源管理器右键 / 带参数调用时直接打开；否则让用户从标注管理的图片里选一张。

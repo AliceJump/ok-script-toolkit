@@ -290,5 +290,14 @@
   "Undo": "Undo",
   "Annotations changed after the swap, so it cannot be undone automatically.": "Annotations changed after the swap, so it cannot be undone automatically.",
   "Failed to undo the swap.": "Failed to undo the swap.",
-  "Swap undone: '{first}' and '{second}' have their original annotations again.": "Swap undone: '{first}' and '{second}' have their original annotations again."
+  "Swap undone: '{first}' and '{second}' have their original annotations again.": "Swap undone: '{first}' and '{second}' have their original annotations again.",
+  "Running / queued tasks": "Running / queued tasks",
+  "Inbox screenshots": "Inbox screenshots",
+  "Screenshot failed": "Screenshot failed",
+  "Failed to add screenshot to drafts: {error}": "Failed to add screenshot to drafts: {error}",
+  "Open Parameters": "Open Parameters",
+  "paramsSandboxHint": "Saved to the sandbox only · pushed to the executor when running",
+  "Resource expression (e.g. fL.btn_claim)": "Resource expression (e.g. fL.btn_claim)",
+  "Locate “{name}” in Resources": "Locate “{name}” in Resources",
+  "Use as ok-script project": "Use as ok-script project"
 }

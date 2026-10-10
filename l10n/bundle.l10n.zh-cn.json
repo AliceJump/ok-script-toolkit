@@ -290,5 +290,14 @@
   "Undo": "撤销",
   "Annotations changed after the swap, so it cannot be undone automatically.": "交换之后标注又有改动，无法自动撤销。",
   "Failed to undo the swap.": "撤销交换失败。",
-  "Swap undone: '{first}' and '{second}' have their original annotations again.": "已撤销交换：「{first}」和「{second}」恢复了原来的标注。"
+  "Swap undone: '{first}' and '{second}' have their original annotations again.": "已撤销交换：「{first}」和「{second}」恢复了原来的标注。",
+  "Running / queued tasks": "运行中 / 排队任务",
+  "Inbox screenshots": "收件箱截图",
+  "Screenshot failed": "截图失败",
+  "Failed to add screenshot to drafts: {error}": "无法把截图加入草稿：{error}",
+  "Open Parameters": "打开参数",
+  "paramsSandboxHint": "仅写入沙箱 · 执行器运行中时会推送",
+  "Resource expression (e.g. fL.btn_claim)": "资源表达式（例如 fL.btn_claim）",
+  "Locate “{name}” in Resources": "在「资源」中定位 “{name}”",
+  "Use as ok-script project": "用作 ok-script 项目"
 }

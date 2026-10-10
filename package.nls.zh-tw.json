@@ -77,5 +77,19 @@
   "command.console.stopExecutor": "控制台：關閉執行器",
   "command.console.showLogs": "控制台：查看日誌",
   "command.console.connectGame": "控制台：連線遊戲",
-  "command.console.disconnectGame": "控制台：中斷遊戲連線"
+  "command.console.disconnectGame": "控制台：中斷遊戲連線",
+  "viewContainer.okScript.title": "ok-script",
+  "view.run": "執行",
+  "view.params": "參數",
+  "view.resources": "資源",
+  "viewsWelcome.run": "打開含 src/config.py 的 ok-script 專案資料夾，或 [選擇專案路徑](command:okScriptToolkit.pickProject)。",
+  "command.captureToInbox": "截到收件匣",
+  "command.annotateImage": "標註圖片…",
+  "command.publishResources": "發佈資源…",
+  "command.insertResourceReference": "插入資源引用",
+  "command.revealResource": "在資源中定位",
+  "command.run.openParams": "開啟參數",
+  "command.run.runTaskInline": "執行任務",
+  "command.run.toggleTrigger": "切換觸發啟用",
+  "command.pickProject": "選擇 ok-script 專案目錄…"
 }

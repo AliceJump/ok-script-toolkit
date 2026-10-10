@@ -77,5 +77,19 @@
   "command.console.stopExecutor": "Consola: detener ejecutor",
   "command.console.showLogs": "Consola: mostrar registros",
   "command.console.connectGame": "Consola: conectar juego",
-  "command.console.disconnectGame": "Consola: desconectar juego"
+  "command.console.disconnectGame": "Consola: desconectar juego",
+  "viewContainer.okScript.title": "ok-script",
+  "view.run": "Ejecutar",
+  "view.params": "Parámetros",
+  "view.resources": "Recursos",
+  "viewsWelcome.run": "Abre una carpeta de proyecto ok-script (con src/config.py) o [elige una ruta](command:okScriptToolkit.pickProject).",
+  "command.captureToInbox": "Capturar a la bandeja",
+  "command.annotateImage": "Anotar imagen…",
+  "command.publishResources": "Publicar recursos…",
+  "command.insertResourceReference": "Insertar referencia",
+  "command.revealResource": "Mostrar recurso",
+  "command.run.openParams": "Abrir parámetros",
+  "command.run.runTaskInline": "Ejecutar tarea",
+  "command.run.toggleTrigger": "Alternar disparador",
+  "command.pickProject": "Elegir carpeta del proyecto…"
 }

@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src __CSP_SOURCE__ 'nonce-__CSP_NONCE__'; script-src 'nonce-__CSP_NONCE__'; font-src __CSP_SOURCE__; img-src __CSP_SOURCE__ data: blob:;">
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="__SHARED_CODICONS_URI__" />
+  <link rel="stylesheet" href="__SHARED_TOKENS_URI__" />
+  <link rel="stylesheet" href="__SHARED_CONTROLS_URI__" />
+  <link rel="stylesheet" href="__STYLE_URI__" />
+</head>
+<body>
+  <div class="res">
+    <section class="res-inbox" aria-label="inbox">
+      <header class="res-sec-head">
+        <span class="res-sec-title" id="inboxTitle"></span>
+        <span class="res-sec-meta" id="inboxMeta"></span>
+      </header>
+      <div class="res-inbox__strip" id="inboxStrip" role="listbox"></div>
+      <div class="panel-empty res-inbox__empty" id="inboxEmpty" hidden></div>
+    </section>
+    <section class="res-library" aria-label="library">
+      <header class="res-sec-head">
+        <div class="seg" role="tablist" id="modeTabs">
+          <button type="button" class="seg__btn is-active" data-mode="draft" role="tab" id="tabDraft"></button>
+          <button type="button" class="seg__btn" data-mode="published" role="tab" id="tabPublished"></button>
+        </div>
+        <span class="res-sec-meta" id="libMeta"></span>
+      </header>
+      <div class="res-toolbar">
+        <input type="search" id="search" class="control-input" />
+        <div class="seg seg--sm" id="kindTabs">
+          <button type="button" class="seg__btn is-active" data-kind="template" id="kindTemplate"></button>
+          <button type="button" class="seg__btn" data-kind="rect" id="kindRect"></button>
+          <button type="button" class="seg__btn" data-kind="point" id="kindPoint"></button>
+        </div>
+      </div>
+      <div class="panel-hint" id="hint"></div>
+      <div class="res-grid" id="grid" role="listbox"></div>
+      <div class="panel-empty" id="libEmpty" hidden></div>
+      <footer class="res-foot" id="foot">
+        <span id="unpubText"></span>
+        <button type="button" class="mini-btn mini-btn--primary" id="publishBtn"></button>
+      </footer>
+    </section>
+  </div>
+  <div id="resourcesI18n" hidden>__I18N_JSON__</div>
+  <script nonce="__CSP_NONCE__" src="__SHARED_ICONS_URI__"></script>
+  <script nonce="__CSP_NONCE__" src="__SHARED_THUMBNAIL_ACTIONS_URI__"></script>
+  <script nonce="__CSP_NONCE__" src="__APP_SCRIPT_URI__"></script>
+</body>
+</html>

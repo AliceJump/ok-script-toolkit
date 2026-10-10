@@ -290,5 +290,14 @@
   "Undo": "復原",
   "Annotations changed after the swap, so it cannot be undone automatically.": "交換之後標註又有變動，無法自動復原。",
   "Failed to undo the swap.": "復原交換失敗。",
-  "Swap undone: '{first}' and '{second}' have their original annotations again.": "已復原交換：「{first}」和「{second}」恢復了原本的標註。"
+  "Swap undone: '{first}' and '{second}' have their original annotations again.": "已復原交換：「{first}」和「{second}」恢復了原本的標註。",
+  "Running / queued tasks": "執行中 / 排隊任務",
+  "Inbox screenshots": "收件匣截圖",
+  "Screenshot failed": "截圖失敗",
+  "Failed to add screenshot to drafts: {error}": "無法把截圖加入草稿：{error}",
+  "Open Parameters": "開啟參數",
+  "paramsSandboxHint": "僅寫入沙箱 · 執行器執行中時會推送",
+  "Resource expression (e.g. fL.btn_claim)": "資源運算式（例如 fL.btn_claim）",
+  "Locate “{name}” in Resources": "在「資源」中定位 “{name}”",
+  "Use as ok-script project": "用作 ok-script 專案"
 }

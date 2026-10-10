@@ -290,5 +290,14 @@
   "Undo": "Deshacer",
   "Annotations changed after the swap, so it cannot be undone automatically.": "Las anotaciones cambiaron después del intercambio; no se puede deshacer automáticamente.",
   "Failed to undo the swap.": "No se pudo deshacer el intercambio.",
-  "Swap undone: '{first}' and '{second}' have their original annotations again.": "Intercambio deshecho: '{first}' y '{second}' recuperan sus anotaciones originales."
+  "Swap undone: '{first}' and '{second}' have their original annotations again.": "Intercambio deshecho: '{first}' y '{second}' recuperan sus anotaciones originales.",
+  "Running / queued tasks": "En ejecución / en cola",
+  "Inbox screenshots": "Capturas de la bandeja",
+  "Screenshot failed": "Error al capturar",
+  "Failed to add screenshot to drafts: {error}": "No se pudo añadir a borradores: {error}",
+  "Open Parameters": "Abrir parámetros",
+  "paramsSandboxHint": "Solo en el sandbox · se envía al ejecutor si está activo",
+  "Resource expression (e.g. fL.btn_claim)": "Expresión de recurso (p. ej. fL.btn_claim)",
+  "Locate “{name}” in Resources": "Localizar “{name}” en Recursos",
+  "Use as ok-script project": "Usar como proyecto ok-script"
 }

@@ -290,5 +290,14 @@
   "Undo": "元に戻す",
   "Annotations changed after the swap, so it cannot be undone automatically.": "交換後にアノテーションが変更されたため、自動で元に戻せません。",
   "Failed to undo the swap.": "交換を元に戻せませんでした。",
-  "Swap undone: '{first}' and '{second}' have their original annotations again.": "交換を元に戻しました: '{first}' と '{second}' は元のアノテーションに戻りました。"
+  "Swap undone: '{first}' and '{second}' have their original annotations again.": "交換を元に戻しました: '{first}' と '{second}' は元のアノテーションに戻りました。",
+  "Running / queued tasks": "実行中 / 待機タスク",
+  "Inbox screenshots": "受信箱のスクリーンショット",
+  "Screenshot failed": "キャプチャに失敗しました",
+  "Failed to add screenshot to drafts: {error}": "下書きへの追加に失敗：{error}",
+  "Open Parameters": "パラメータを開く",
+  "paramsSandboxHint": "サンドボックスにのみ保存 · 実行中はエグゼキュータへ送出",
+  "Resource expression (e.g. fL.btn_claim)": "リソース式（例: fL.btn_claim）",
+  "Locate “{name}” in Resources": "「リソース」で “{name}” を表示",
+  "Use as ok-script project": "ok-script プロジェクトとして使う"
 }

@@ -290,5 +290,14 @@
   "Undo": "실행 취소",
   "Annotations changed after the swap, so it cannot be undone automatically.": "교환 후 어노테이션이 변경되어 자동으로 되돌릴 수 없습니다.",
   "Failed to undo the swap.": "교환을 되돌리지 못했습니다.",
-  "Swap undone: '{first}' and '{second}' have their original annotations again.": "교환 취소됨: '{first}'와 '{second}'가 원래 어노테이션으로 돌아갔습니다."
+  "Swap undone: '{first}' and '{second}' have their original annotations again.": "교환 취소됨: '{first}'와 '{second}'가 원래 어노테이션으로 돌아갔습니다.",
+  "Running / queued tasks": "실행 중 / 대기 작업",
+  "Inbox screenshots": "받은편지함 스크린샷",
+  "Screenshot failed": "스크린샷 실패",
+  "Failed to add screenshot to drafts: {error}": "초안에 스크린샷 추가 실패: {error}",
+  "Open Parameters": "매개 변수 열기",
+  "paramsSandboxHint": "샌드박스에만 저장 · 실행 중이면 실행기로 전송",
+  "Resource expression (e.g. fL.btn_claim)": "리소스 식(예: fL.btn_claim)",
+  "Locate “{name}” in Resources": "리소스에서 “{name}” 찾기",
+  "Use as ok-script project": "ok-script 프로젝트로 사용"
 }

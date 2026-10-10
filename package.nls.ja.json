@@ -77,5 +77,19 @@
   "command.console.stopExecutor": "コンソール: エグゼキューターを停止",
   "command.console.showLogs": "コンソール: ログを表示",
   "command.console.connectGame": "コンソール: ゲームに接続",
-  "command.console.disconnectGame": "コンソール: ゲームから切断"
+  "command.console.disconnectGame": "コンソール: ゲームから切断",
+  "viewContainer.okScript.title": "ok-script",
+  "view.run": "実行",
+  "view.params": "パラメータ",
+  "view.resources": "リソース",
+  "viewsWelcome.run": "src/config.py のある ok-script プロジェクトフォルダーを開くか、[プロジェクトパスを選択](command:okScriptToolkit.pickProject)してください。",
+  "command.captureToInbox": "受信箱にキャプチャ",
+  "command.annotateImage": "画像を注釈…",
+  "command.publishResources": "リソースを公開…",
+  "command.insertResourceReference": "リソース参照を挿入",
+  "command.revealResource": "リソースを表示",
+  "command.run.openParams": "パラメータを開く",
+  "command.run.runTaskInline": "タスクを実行",
+  "command.run.toggleTrigger": "トリガー切替",
+  "command.pickProject": "ok-script プロジェクトフォルダーを選択…"
 }

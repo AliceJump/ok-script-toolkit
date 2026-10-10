@@ -163,6 +163,59 @@
         "title": "%command.console.disconnectGame%",
         "category": "%command.category%",
         "icon": "$(debug-disconnect)"
+      },
+      {
+        "command": "okScriptToolkit.captureToInbox",
+        "title": "%command.captureToInbox%",
+        "category": "%command.category%",
+        "icon": "$(device-camera)"
+      },
+      {
+        "command": "okScriptToolkit.annotateImage",
+        "title": "%command.annotateImage%",
+        "category": "%command.category%",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "okScriptToolkit.publishResources",
+        "title": "%command.publishResources%",
+        "category": "%command.category%",
+        "icon": "$(cloud-upload)"
+      },
+      {
+        "command": "okScriptToolkit.insertResourceReference",
+        "title": "%command.insertResourceReference%",
+        "category": "%command.category%",
+        "icon": "$(add)"
+      },
+      {
+        "command": "okScriptToolkit.revealResource",
+        "title": "%command.revealResource%",
+        "category": "%command.category%",
+        "icon": "$(search)"
+      },
+      {
+        "command": "okScriptToolkit.run.openParams",
+        "title": "%command.run.openParams%",
+        "category": "%command.category%",
+        "icon": "$(settings-gear)"
+      },
+      {
+        "command": "okScriptToolkit.run.runTaskInline",
+        "title": "%command.run.runTaskInline%",
+        "category": "%command.category%",
+        "icon": "$(play)"
+      },
+      {
+        "command": "okScriptToolkit.run.toggleTrigger",
+        "title": "%command.run.toggleTrigger%",
+        "category": "%command.category%"
+      },
+      {
+        "command": "okScriptToolkit.pickProject",
+        "title": "%command.pickProject%",
+        "category": "%command.category%",
+        "icon": "$(folder)"
       }
     ],
     "walkthroughs": [
@@ -243,64 +296,32 @@
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "okTools",
-          "title": "%viewContainer.tools.title%",
+          "id": "okScript",
+          "title": "%viewContainer.okScript.title%",
           "icon": "media/icons/toolbox.svg"
-        },
-        {
-          "id": "okTemplates",
-          "title": "%viewContainer.templates.title%",
-          "icon": "media/icons/templates.svg"
-        },
-        {
-          "id": "okTempShots",
-          "title": "%viewContainer.tempShots.title%",
-          "icon": "media/icons/tempShots.svg"
         }
       ]
     },
     "views": {
-      "okTools": [
+      "okScript": [
+        {
+          "id": "okScriptToolkit.run",
+          "name": "%view.run%",
+          "type": "tree"
+        },
         {
           "type": "webview",
-          "id": "okScriptToolkit.console",
-          "name": "%view.console%",
-          "title": "%view.console.title%",
-          "icon": "media/icons/toolbox.svg",
-          "webviewOptions": {
-            "retainContextWhenHidden": true
-          }
-        }
-      ],
-      "okTemplates": [
-        {
-          "type": "webview",
-          "id": "okScriptToolkit.templateGallery",
-          "name": "%view.templateGallery%",
-          "title": "%view.templateGallery.title%",
-          "icon": "media/icons/templates.svg",
+          "id": "okScriptToolkit.params",
+          "name": "%view.params%",
+          "visibility": "collapsed",
           "webviewOptions": {
             "retainContextWhenHidden": true
           }
         },
         {
           "type": "webview",
-          "id": "okScriptToolkit.templateAssets",
-          "name": "%view.templateAssets%",
-          "title": "%view.templateAssets.title%",
-          "icon": "media/icons/templates.svg",
-          "webviewOptions": {
-            "retainContextWhenHidden": true
-          }
-        }
-      ],
-      "okTempShots": [
-        {
-          "type": "webview",
-          "id": "okScriptToolkit.tempScreenshots",
-          "name": "%view.tempScreenshots%",
-          "title": "%view.tempScreenshots.title%",
-          "icon": "media/icons/tempShots.svg",
+          "id": "okScriptToolkit.resources",
+          "name": "%view.resources%",
           "webviewOptions": {
             "retainContextWhenHidden": true
           }
@@ -315,7 +336,7 @@
         "when": "editorLangId == python"
       },
       {
-        "command": "okScriptToolkit.screenshotToTemplate",
+        "command": "okScriptToolkit.captureToInbox",
         "key": "ctrl+alt+s",
         "mac": "cmd+alt+s"
       }
@@ -570,91 +591,97 @@
         {
           "command": "okScriptToolkit.openCharacterManager",
           "when": "okScriptToolkit.hasCharacterData"
+        },
+        {
+          "command": "okScriptToolkit.captureToInbox",
+          "when": "okScriptToolkit.projectReady"
+        },
+        {
+          "command": "okScriptToolkit.annotateImage",
+          "when": "okScriptToolkit.projectReady"
+        },
+        {
+          "command": "okScriptToolkit.publishResources",
+          "when": "okScriptToolkit.projectReady"
+        },
+        {
+          "command": "okScriptToolkit.pickProject",
+          "when": "okScriptToolkit.projectReady"
+        },
+        {
+          "command": "okScriptToolkit.run.openParams",
+          "when": "false"
+        },
+        {
+          "command": "okScriptToolkit.run.runTaskInline",
+          "when": "false"
+        },
+        {
+          "command": "okScriptToolkit.run.toggleTrigger",
+          "when": "false"
+        },
+        {
+          "command": "okScriptToolkit.insertResourceReference",
+          "when": "false"
         }
       ],
       "view/title": [
         {
-          "command": "okScriptToolkit.console.runTask",
-          "when": "view == okScriptToolkit.console",
-          "group": "navigation@1"
-        },
-        {
           "command": "okScriptToolkit.console.startExecutor",
-          "when": "view == okScriptToolkit.console && !okScriptToolkit.executorRunning",
-          "group": "navigation@2"
-        },
-        {
-          "command": "okScriptToolkit.console.pause",
-          "when": "view == okScriptToolkit.console && okScriptToolkit.executorRunning && !okScriptToolkit.executorPaused",
-          "group": "navigation@2"
-        },
-        {
-          "command": "okScriptToolkit.console.resume",
-          "when": "view == okScriptToolkit.console && okScriptToolkit.executorPaused",
-          "group": "navigation@2"
-        },
-        {
-          "command": "okScriptToolkit.console.stopExecutor",
-          "when": "view == okScriptToolkit.console && okScriptToolkit.executorRunning",
-          "group": "navigation@3"
-        },
-        {
-          "command": "okScriptToolkit.console.refresh",
-          "when": "view == okScriptToolkit.console",
-          "group": "navigation@4"
-        },
-        {
-          "command": "okScriptToolkit.console.stopCurrentTask",
-          "when": "view == okScriptToolkit.console && okScriptToolkit.taskRunning",
-          "group": "1_run@1"
-        },
-        {
-          "command": "okScriptToolkit.console.showLogs",
-          "when": "view == okScriptToolkit.console",
-          "group": "2_view@1"
-        },
-        {
-          "command": "okScriptToolkit.openCharacterManager",
-          "when": "view == okScriptToolkit.console && okScriptToolkit.hasCharacterData",
-          "group": "2_view@2"
+          "when": "view == okScriptToolkit.run",
+          "group": "navigation@1"
         },
         {
           "command": "okScriptToolkit.console.connectGame",
-          "when": "view == okScriptToolkit.console",
-          "group": "3_game@1"
-        },
-        {
-          "command": "okScriptToolkit.console.disconnectGame",
-          "when": "view == okScriptToolkit.console",
-          "group": "3_game@2"
-        },
-        {
-          "command": "okScriptToolkit.openTemplatesEditor",
-          "when": "view == okScriptToolkit.templateGallery",
-          "group": "navigation@1"
-        },
-        {
-          "command": "okScriptToolkit.screenshotToTemplate",
-          "when": "view == okScriptToolkit.templateAssets",
-          "group": "navigation@1"
-        },
-        {
-          "command": "okScriptToolkit.openAnnotationEditor",
-          "when": "view == okScriptToolkit.templateAssets",
+          "when": "view == okScriptToolkit.run && !okScriptToolkit.executorRunning",
           "group": "navigation@2"
         },
         {
-          "command": "okScriptToolkit.openResourcePublisher",
-          "when": "view == okScriptToolkit.templateAssets",
+          "command": "okScriptToolkit.console.refresh",
+          "when": "view == okScriptToolkit.run",
           "group": "navigation@3"
         },
         {
-          "command": "okScriptToolkit.openTemplateAssets",
-          "when": "view == okScriptToolkit.templateAssets",
+          "command": "okScriptToolkit.console.showLogs",
+          "when": "view == okScriptToolkit.run",
           "group": "navigation@4"
+        },
+        {
+          "command": "okScriptToolkit.captureToInbox",
+          "when": "view == okScriptToolkit.resources",
+          "group": "navigation@1"
+        },
+        {
+          "command": "okScriptToolkit.publishResources",
+          "when": "view == okScriptToolkit.resources",
+          "group": "navigation@2"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "okScriptToolkit.run.runTaskInline",
+          "when": "view == okScriptToolkit.run && viewItem == run.task.onetime",
+          "group": "inline@1"
+        },
+        {
+          "command": "okScriptToolkit.run.openParams",
+          "when": "view == okScriptToolkit.run && viewItem =~ /^run\\.task/",
+          "group": "inline@2"
+        },
+        {
+          "command": "okScriptToolkit.console.stopCurrentTask",
+          "when": "view == okScriptToolkit.run && viewItem == run.task.running",
+          "group": "inline@1"
         }
       ]
-    }
+    },
+    "viewsWelcome": [
+      {
+        "view": "okScriptToolkit.run",
+        "when": "!okScriptToolkit.projectReady",
+        "contents": "%viewsWelcome.run%"
+      }
+    ]
   },
   "scripts": {
     "compile": "tsc -p ./",
@@ -663,7 +690,7 @@
     "verify:version": "node scripts/release/verify-version.js",
     "verify:l10n": "node scripts/release/verify-l10n.js",
     "release": "sh scripts/release.sh",
-"test": "npm run verify:version && npm run verify:l10n && npm run test:l10n-literals && npm run compile && npm run test:webview-l10n && npm run test:webview-html && npm run test:design-system && npm run test:command-contract && npm run test:thumbnail-actions && npm run test:task-launcher && npm run test:console-accountseg && npm run test:task-launcher-executor && npm run test:task-reconcile && npm run test:temp-screenshots && npm run test:annotation-coords && npm run test:annotation-clipboard && npm run test:annotation-swap && npm run test:annotation-merge && npm run test:annotation-history && npm run test:annotation-mode-cycle && npm run test:position-resource && npm run test:resource-host-contract && npm run test:position-publish-settings && npm run test:point-resource && npm run test:asset-swap-picker && npm run test:thumb-content-hash && npm run test:list-editor && npm run test:project-config && npm run test:project-config-schema && npm run test:convention-sources && npm run test:label-enum-guard && npm run test:save-to-assets-flow && npm run test:save-to-assets && npm run test:asset-pack-worker && npm run test:coco-feature-path && npm run test:box-resource && npm run test:probe-schemas && npm run test:probe-gui-group-names && npm run test:probe-qt-layer && npm run test:probe-multi-account-path && npm run test:probe-window-config && npm run test:screenshot-capture && npm run test:screenshot-worker && npm run test:background-screenshot && npm run test:global-hotkey && npm run test:run-sandbox && npm run test:startup-patches && npm run test:executor-runtime && npm run test:executor-project-config && npm run test:executor-gconfig && npm run test:project-store && npm run test:project-runtime",
+    "test": "npm run verify:version && npm run verify:l10n && npm run test:l10n-literals && npm run compile && npm run test:webview-l10n && npm run test:webview-html && npm run test:design-system && npm run test:command-contract && npm run test:run-tree-model && npm run test:publish-diff && npm run test:character-diagnostics && npm run test:thumbnail-actions && npm run test:task-launcher && npm run test:console-accountseg && npm run test:task-launcher-executor && npm run test:task-reconcile && npm run test:temp-screenshots && npm run test:annotation-coords && npm run test:annotation-clipboard && npm run test:annotation-swap && npm run test:annotation-merge && npm run test:annotation-history && npm run test:annotation-mode-cycle && npm run test:position-resource && npm run test:resource-host-contract && npm run test:position-publish-settings && npm run test:point-resource && npm run test:asset-swap-picker && npm run test:thumb-content-hash && npm run test:list-editor && npm run test:project-config && npm run test:project-config-schema && npm run test:convention-sources && npm run test:label-enum-guard && npm run test:save-to-assets-flow && npm run test:save-to-assets && npm run test:asset-pack-worker && npm run test:coco-feature-path && npm run test:box-resource && npm run test:probe-schemas && npm run test:probe-gui-group-names && npm run test:probe-qt-layer && npm run test:probe-multi-account-path && npm run test:probe-window-config && npm run test:screenshot-capture && npm run test:screenshot-worker && npm run test:background-screenshot && npm run test:global-hotkey && npm run test:run-sandbox && npm run test:startup-patches && npm run test:executor-runtime && npm run test:executor-project-config && npm run test:executor-gconfig && npm run test:project-store && npm run test:project-runtime",
     "test:webview-html": "node scripts/test_webview_html.js",
     "test:design-system": "node scripts/test_design_system.js",
     "test:thumbnail-actions": "node scripts/test_thumbnail_actions.js",
@@ -715,7 +742,10 @@
     "test:position-publish-settings": "node scripts/test_position_publish_settings.js",
     "test:webview-l10n": "node scripts/test_webview_l10n.js",
     "test:resource-host-contract": "node scripts/test_resource_host_contract.js",
-    "test:command-contract": "node scripts/test_command_contract.js"
+    "test:command-contract": "node scripts/test_command_contract.js",
+    "test:run-tree-model": "node scripts/test_run_tree_model.js",
+    "test:publish-diff": "node scripts/test_publish_diff.js",
+    "test:character-diagnostics": "node scripts/test_character_diagnostics.js"
   },
   "devDependencies": {
     "@types/jpeg-js": "^0.3.0",
