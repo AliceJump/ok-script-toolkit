@@ -8,7 +8,7 @@ import { TemplateAssetData } from '../templateAssetData';
 import { TemplateAssetPanel } from '../templateAssetPanel';
 import { TempScreenshotStore } from '../tempScreenshotStore';
 import { applySharedAssets, errorPage, getNonce } from '../webviewHtml';
-import { countUnpublished, diffPublishSets, fingerprintBox } from './publishDiff';
+import { countUnpublished, diffPublishSets } from './publishDiff';
 import { primaryFeatureAlias } from '../templatePanel';
 import { templatesDirectory } from '../projectConfig';
 
@@ -164,20 +164,24 @@ export class ResourcesViewProvider implements vscode.WebviewViewProvider, vscode
     this.features.refresh(true);
     const alias = primaryFeatureAlias();
     const draftImages = this.assets.listImages();
-    const draftItems = draftImages.map((imagePath) => {
-      const name = path.basename(imagePath, path.extname(imagePath));
-      const anns = this.assets.getAnnotationsForImage(imagePath, true);
-      const first = anns[0];
-      return {
-        name,
-        imagePath,
-        kind: 'template' as const,
-        expression: `${alias}.${name}`,
-        width: first?.bbox?.[2],
-        height: first?.bbox?.[3],
-        draftFingerprint: first?.bbox ? fingerprintBox({ bbox: first.bbox as number[] }) : undefined,
-      };
-    });
+    // 草稿按模板名（标注类别）列出，和已发布的 fL.<名字> 对得上；
+    // 不比较 bbox：发布会裁切 + 装箱，草稿与运行时坐标系不同（见 publishPreview.ts）
+    const draftItems: { name: string; imagePath: string; kind: 'template'; expression: string; width?: number; height?: number }[] = [];
+    const seen = new Set<string>();
+    for (const imagePath of draftImages) {
+      for (const ann of this.assets.getAnnotationsForImage(imagePath, true)) {
+        if (!ann.categoryName || seen.has(ann.categoryName)) continue;
+        seen.add(ann.categoryName);
+        draftItems.push({
+          name: ann.categoryName,
+          imagePath,
+          kind: 'template',
+          expression: `${alias}.${ann.categoryName}`,
+          width: ann.bbox?.[2] !== undefined ? Math.round(ann.bbox[2]) : undefined,
+          height: ann.bbox?.[3] !== undefined ? Math.round(ann.bbox[3]) : undefined,
+        });
+      }
+    }
     const published = [...this.features.all()].map((ft) => ({
       name: ft.name,
       imagePath: ft.imagePath,
@@ -185,11 +189,10 @@ export class ResourcesViewProvider implements vscode.WebviewViewProvider, vscode
       expression: `${alias}.${ft.name}`,
       width: ft.width,
       height: ft.height,
-      publishedFingerprint: fingerprintBox({ bbox: ft.bbox, width: ft.width, height: ft.height }),
     }));
     const diffs = diffPublishSets(
-      draftItems.map((d) => ({ name: d.name, draftFingerprint: d.draftFingerprint })),
-      published.map((p) => ({ name: p.name, publishedFingerprint: p.publishedFingerprint })),
+      draftItems.map((d) => ({ name: d.name })),
+      published.map((p) => ({ name: p.name })),
     );
     const statuses = Object.fromEntries(diffs.map((d) => [d.name, d.status]));
     const unpublished = countUnpublished(diffs);
