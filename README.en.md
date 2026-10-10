@@ -85,6 +85,9 @@ When editing Python code, the extension automatically detects ok-script-specific
 - **Template code hints**: Type `fL.` or `FeatureList.` to complete template names with size info. Hover shows thumbnail preview, dimensions, and source info.
 - You can also open a larger grid view in the editor area via the command **ok-script Toolkit: Open Resource Preview in Editor**.
 - Supports both sidebar (Resource Preview and Annotation Management views) and large editor window browsing modes.
+- **Reveal / Find References**: hovering `fL.xxx` in Python shows **Reveal in Resources** and **Find References** links under the preview (only these two extension commands are trusted). **Find Template References…** (editor context menu or Command Palette) searches workspace Python files for `fL.xxx`, `self.pos.xxx` and string keys `"xxx"`, lists them in a QuickPick and jumps on Enter (comment lines skipped).
+- **Explorer "Open with Annotation Editor"**: shown only on `.png/.jpg/.jpeg/.webp`. The image must already be registered in Annotation Management.
+- **Publish preview**: after choosing publish options and before anything is written, a read-only list shows the files to be written and templates that are new / overwritten / removed from published (compared by name; publishing re-crops and re-packs, so coordinates are not comparable). Enter on **Publish** writes; Esc writes nothing.
 - **Annotation Management**: double-click / Enter / `E` opens the annotation editor, `Delete` deletes (after a confirmation). The delete button sits alone in the card's top-right corner, apart from view / swap. The **Open Annotation Editor…** command lets you pick an image directly.
 - **Swap annotations**: in Annotation Management, the **Swap annotations** button (codicon `arrow-swap`) at the bottom-right of a thumbnail card swaps that image's whole annotation set with another image in the same list — the fix for "annotated the wrong image / images are in the wrong order". The target is picked from thumbnails (template names are mostly numeric, so names alone are not enough). When the two images differ in size, box coordinates are **scaled proportionally** and the confirmation dialog spells out both sizes. The swap is written in one go and always asks before saving; the completion notification has an **Undo** button that restores both images' original annotations as long as neither image changed since.
 
@@ -290,6 +293,8 @@ Command categories display as "ok-script 工具箱" / "ok-script Toolkit" depend
 
 | Command | Shortcut | Description |
 |---|---|---|
+| `ok-script Toolkit: Find Template References…` | — | Find `fL.xxx` / `self.pos.xxx` / `"xxx"` usages in workspace Python files and jump; also in the Python editor context menu |
+| `ok-script Toolkit: Open with Annotation Editor` | — | Explorer image context menu (png/jpg/jpeg/webp only); without an argument it asks for an image |
 | `ok-script Toolkit: Capture to Inbox` | `Ctrl+Alt+S` |
 | `ok-script Toolkit: Open Resource Preview` | `Ctrl+Alt+T` (macOS `Cmd+Alt+T`, requires Python editor focus) | Focus the Resource Preview view in the activity bar |
 | `ok-script Toolkit: Open Resource Preview in Editor` | — | Open a large grid view in the editor area |
