@@ -9,407 +9,63 @@ import { GameConnectService } from './toolboxConnect';
 import { applySharedAssets, errorPage, getNonce } from './webviewHtml';
 import { reconcileCachedTaskList, reconcileTaskList } from './taskReconcile';
 import { prewarmScreenshotCapture } from './screenshotCapture';
+import {
+  AccountStoreData,
+  ExecutorSnapshot,
+  GlobalConfigGroup,
+  MultiAccountInfo,
+  ProjectStore,
+  SchemaProbeResult,
+  TaskConfig,
+  TaskConfigStore,
+  TaskInfo,
+  TaskListResult,
+  TaskParamField,
+  TaskSchema,
+} from './run/types';
+import {
+  FORCE_KILL_DELAY_MS,
+  PARAMS_PUSH_DEBOUNCE_MS,
+  buildExecutorCommand,
+  configValuesEqual,
+  formatConsoleOutputLine,
+  parseConfigTasks,
+  parseJsonFromStdout,
+  probeTaskSchemas,
+  pythonScript,
+  resolveProjectContext,
+  runDirForProject,
+  runPython,
+} from './run/python';
+import { ExecutorStateSummary, StatusAction, statusActionLabel } from './run/status';
 
-/** 单个任务的元信息 */
-interface TaskInfo {
-  module: string;
-  className: string;
-  /** 显示名：优先任务的 name，回退类名 */
-  displayName: string;
-  /**
-   * 任务类型：触发任务走「勾选启用 → 入列轮询」，一次性任务走「启动 → 入队执行一次」。
-   * 由 parse_config_tasks.py 直接给出，不依赖 schema 采集完成。
-   */
-  kind?: 'onetime' | 'trigger';
-}
-
-/** 任务列表请求结果 */
-interface TaskListResult {
-  ok: boolean;
-  error?: string;
-  tasks?: TaskInfo[];
-  /** config 模块路径：`src.config` 或 `config`（取决于 config.py 所在位置） */
-  configModule?: string;
-}
-
-/** 每个任务可编辑的一项参数（对应项目任务 default_config 里的一个 key） */
-interface TaskParamField {
-  key: string;
-  displayKey?: string;
-  /** 默认值（决定控件类型：bool→开关、int/float→数字、str→文本框、list→多选/列表） */
-  default?: unknown;
-  /** 当前已保存值 */
-  value?: unknown;
-  /** config_type 元信息（drop_down / multi_selection 的 options 等） */
-  type?: Record<string, unknown>;
-  /** config_description 说明 */
-  desc?: string;
-  displayDesc?: string;
-}
-
-/** 从项目任务类采集到的 schema */
-interface TaskSchema {
-  /** 该任务可编辑的参数列表（按 default_config 顺序） */
-  fields: TaskParamField[];
-  /** 是否采集失败（broken） */
-  broken?: boolean;
-  error?: string;
-  displayName?: string;
-  description?: string;
-  kind?: 'onetime' | 'trigger';
-  /** 任务分组（BaseTask.group_name，源文案 key 走 tr）；空串 = standalone */
-  groupName?: string;
-  /** 组图标名（FluentIcon/Icon 的 enum name） */
-  groupIcon?: string;
-  /** 项目游戏 UI 的可见性声明；工具箱保留任务以供开发调试。 */
-  showInTaskTab?: boolean;
-  /** 项目声明的配置分组/子任务树：组名 -> 字段或子组 key。 */
-  configGroups?: Record<string, string[]>;
-  groupLabels?: Record<string, string>;
-  /** register_config_groups 生成的分组下拉字段。 */
-  groupSelector?: string;
-  locale?: string;
-}
-
-/** 全局配置组（框架 GlobalConfig 可见组，probe 的 globalConfigGroups 段） */
-interface GlobalConfigGroup {
-  name: string;
-  displayName?: string;
-  description?: string;
-  fields: TaskParamField[];
-  /** 来源：framework = 框架 GlobalConfig；project_store = 项目自建 store（Phase 5） */
-  source?: 'framework' | 'project_store';
-}
-
-/** 每个任务的独立配置（持久化到 .vscode/ok-script-toolkit-tasks.json）。
- *
- * params 在「配置接管」模式下是**全量快照**：schema 的每个键都有值（首建继承项目
- * configs 当前值，之后独立演化），执行器按它全量注入 —— UI 显示 = 实际执行。
- * extraArgs / env 是历史字段：常驻执行器把全部任务跑在同一个进程里，进程级参数
- * 无法再按任务区分，因此不再生效（仅保留数据，不做删除）。UI 早已移除这两项。
- */
-interface TaskConfig {
-  extraArgs?: string;
-  env?: Record<string, string>;
-  /** 任务参数快照：key=任务 default_config 的 key（含孤儿键），value=快照值 */
-  params?: Record<string, unknown>;
-}
-
-/** 单个项目的持久化数据 */
-interface ProjectStore {
-  tasks: Record<string, TaskConfig>;
-  /** 已勾选「启用」的触发任务 key（module::Class），重开面板 / IDE 自动入列 */
-  enabledTriggers?: string[];
-  /** 全局配置组快照：组名 -> {key: value}（配置接管模式的持久值） */
-  globalConfigs?: Record<string, Record<string, unknown>>;
-  /** 用户展开过的全局配置组（默认收起；重开面板按上次状态） */
-  expandedGlobalGroups?: string[];
-  /** webview UI 折叠状态（键 -> 值）：启动设置区、配置分组、卡片等，重开面板复用 */
-  uiState?: Record<string, unknown>;
-}
-
-/** 所有任务配置的持久化结构 */
-interface TaskConfigStore {
-  projects: Record<string, ProjectStore>;
-}
-
-/** schema 采集结果（刷新时全量 import 项目任务后落盘缓存） */
-interface SchemaProbeResult {
-  ok: boolean;
-  error?: string;
-  schemas?: Record<string, TaskSchema>;
-  /** 参与采集的任务总数 */
-  total?: number;
-  /** 全局配置组（框架 GlobalConfig 可见组） */
-  globalConfigGroups?: GlobalConfigGroup[];
-  /** 多账户存储只读概要（configs/account_scoped_overrides.json） */
-  multiAccount?: MultiAccountInfo;
-}
-
-/** 多账户存储只读概要（Phase 6 只读呈现，不做编辑器） */
-interface MultiAccountInfo {
-  available: boolean;
-  storePath?: string;
-  readable?: boolean;
-  hasStoreModule?: boolean;
-  accountCount?: number;
-  overrideAccounts?: number;
-  overriddenTasks?: string[];
-  /** 可进多账户的任务：taskKey -> {storageName, keys}（键筛选数据源） */
-  enabledTasks?: Record<string, { storageName: string; keys: string[] }>;
-}
-
-/** 多账户存储数据（python/account_store.py get 的结果，编辑器数据源） */
-interface AccountStoreData {
-  /** 账号列表原文（每行一个账号名） */
-  accountListText?: string;
-  /** 注册表：acc_id -> {username, aliases} */
-  registry?: Record<string, { username?: string; aliases?: string[] }>;
-  /** 覆盖表：acc_id -> {任务类名(或全局组名): {键: 值}} */
-  accounts?: Record<string, Record<string, Record<string, unknown>>>;
-  /** 每账号的地图 content（acc_id -> 文本） */
-  mapContents?: Record<string, string>;
-}
-
-/** 常驻执行器回推的状态快照（对应 run_executor.py 的 OK_TOOLKIT_STATE 标记行） */
-interface ExecutorSnapshot {
-  paused?: boolean;
-  /** 当前正在执行的任务 key（module::Class），空闲时为 null */
-  current?: string | null;
-  currentIsTrigger?: boolean;
-  /** 执行器侧的触发任务启用状态（权威值，宿主据此回写勾选集合） */
-  triggers?: { key?: string; enabled?: boolean }[];
-  /** 一次性任务等待队列 */
-  onetimeQueue?: string[];
-}
-
-/** 扩展根目录下 python/ 脚本的绝对路径 */
-export function pythonScript(extensionUri: vscode.Uri, name: string): string {
-  return path.join(extensionUri.fsPath, 'python', name);
-}
-
-/** All three Python entry points use the same VS Code sandbox for one project. */
-function runDirForProject(projectDir: string): string {
-  return path.join(projectDir, '.vscode', 'ok-script-toolkit');
-}
-
-/** 解析 Python 子进程 stdout 中最后一个 JSON 行（前面的输出可能是日志） */
-export function parseJsonFromStdout(stdout: string): any {
-  const lines = stdout.split('\n').filter(Boolean);
-  for (let i = lines.length - 1; i >= 0; i--) {
-    try {
-      return JSON.parse(lines[i]);
-    } catch { /* 跳过非 JSON 行 */ }
-  }
-  return null;
-}
-
-/** JSON-compatible config values use deep value equality; primitives retain strict comparison. */
-export function configValuesEqual(left: unknown, right: unknown): boolean {
-  if (left === right) return true;
-  if (!left || !right || typeof left !== 'object' || typeof right !== 'object') return false;
-  if (Array.isArray(left) || Array.isArray(right)) {
-    if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length) return false;
-    for (let index = 0; index < left.length; index += 1) {
-      if (!configValuesEqual(left[index], right[index])) return false;
-    }
-    return true;
-  }
-  const leftRecord = left as Record<string, unknown>;
-  const rightRecord = right as Record<string, unknown>;
-  const leftKeys = Object.keys(leftRecord);
-  const rightKeys = Object.keys(rightRecord);
-  if (leftKeys.length !== rightKeys.length) return false;
-  return leftKeys.every((key) => Object.prototype.hasOwnProperty.call(rightRecord, key)
-    && configValuesEqual(leftRecord[key], rightRecord[key]));
-}
-
-interface PythonResult {
-  stdout: string;
-  stderr: string;
-}
-
-/** 异步运行 Python，避免耗时探针阻塞 VS Code 扩展宿主。 */
-export function runPython(
-  pythonPath: string,
-  args: string[],
-  projectDir: string,
-  timeout: number,
-  extraEnv: NodeJS.ProcessEnv = {},
-): Promise<PythonResult> {
-  const env = { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1', ...extraEnv };
-  return new Promise((resolve, reject) => {
-    cp.execFile(pythonPath, args, {
-      cwd: projectDir,
-      env,
-      encoding: 'utf-8',
-      timeout,
-      windowsHide: true,
-      maxBuffer: 16 * 1024 * 1024,
-    }, (error, stdout, stderr) => {
-      if (error) {
-        // 项目脚本约定：失败时往 stdout 末尾打印 {"ok": false, "error": "..."}；
-        // 优先回传结构化错误，其次 stderr，最后才是通用命令失败信息。
-        const parsed = parseJsonFromStdout(stdout || '');
-        const message = (parsed && typeof parsed.error === 'string' && parsed.error)
-          || stderr?.trim()
-          || error.message;
-        reject(new Error(message));
-        return;
-      }
-      resolve({ stdout: stdout || '', stderr: stderr || '' });
-    });
-  });
-}
-
-/**
- * 用 Python 子进程 + AST 安全解析 ok-script 项目的 src/config.py，
- * 提取 onetime_tasks / trigger_tasks 注册表，不导入任何模块。
- */
-async function parseConfigTasks(extensionUri: vscode.Uri, projectDir: string, pythonPath: string): Promise<TaskListResult> {
-  try {
-    const result = await runPython(
-      pythonPath,
-      [pythonScript(extensionUri, 'parse_config_tasks.py'), projectDir],
-      projectDir,
-      15000,
-    );
-    const parsed = parseJsonFromStdout(result.stdout || '');
-    if (!parsed || !parsed.ok) {
-      return { ok: false, error: parsed?.error || tr('Failed to parse task list') };
-    }
-    const configModule = parsed.config_module || 'src.config';
-    const tasks: TaskInfo[] = [
-      ...(parsed.onetime || []).map((t: any) => ({ ...t, kind: 'onetime' })),
-      ...(parsed.trigger || []).map((t: any) => ({ ...t, kind: 'trigger' })),
-    ].map((t: any) => ({
-      module: t.module,
-      className: t['class'] || t.class,
-      displayName: t.name || t['class'] || t.module,
-      kind: t.kind === 'trigger' ? 'trigger' : 'onetime',
-    }));
-    return { ok: true, tasks, configModule };
-  } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : String(e) };
-  }
-}
-
-/**
- * 常驻执行器命令行：单一进程连接游戏并轮询全部已启用的触发任务。
- *
- * 与旧 run_task.py 的差异见 python/run_executor.py 顶部说明——旧路径走
- * `ok.run_task(config, task=<单个任务>)`，框架会把 executor.trigger_tasks 收窄成
- * 单个任务并 disable 其余触发任务，因此无法多触发任务串连轮询。
- */
-function buildExecutorCommand(extensionUri: vscode.Uri, configModule: string): string[] {
-  return [
-    pythonScript(extensionUri, 'run_executor.py'),
-    '--config-module', configModule,
-  ];
-}
-
-/**
- * 用 Python 子进程 + 全量 import 采集项目所有任务的配置 schema —— spawn
- * python/probe_task_schemas.py。复用 ok-script 的 OK(config) + TaskManager
- * 初始化来实例化任务，拿到经过继承链合并的真实 default_config / config_type /
- * config_description / 已保存 config。逐任务 try/except 容错，坏任务标记 broken。
- */
-async function probeTaskSchemas(
-  extensionUri: vscode.Uri,
-  projectDir: string,
-  pythonPath: string,
-  locale: string,
-  poDirectory: string,
-): Promise<SchemaProbeResult> {
-  try {
-    const result = await runPython(
-      pythonPath,
-      [pythonScript(extensionUri, 'probe_task_schemas.py'), projectDir, locale, poDirectory],
-      projectDir,
-      120000,
-      { OK_TOOLKIT_RUN_DIR: runDirForProject(projectDir) },
-    );
-    const parsed = parseJsonFromStdout(result.stdout || '');
-    if (!parsed || !parsed.ok) {
-      return { ok: false, error: parsed?.error || tr('Failed to collect task schema') };
-    }
-    return {
-      ok: true,
-      schemas: parsed.schemas,
-      total: parsed.total,
-      globalConfigGroups: parsed.globalConfigGroups || [],
-      multiAccount: parsed.multiAccount || { available: false },
-    };
-  } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : String(e) };
-  }
-}
-
-/**
- * 解析 ok-script 项目路径与 Python 解释器（工具箱与任务启动器共用）。
- * 配置未填写时，自动检测当前工作区根目录（若含 src/config.py 则视为 ok-script 项目）。
- */
-export function resolveProjectContext(): { projectDir: string; pythonPath: string; fromConfig: boolean } {
-  const cfg = vscode.workspace.getConfiguration('okScriptToolkit');
-  // 项目根解析统一走 projectConfig.resolveProjectDir()。这里原先是本文件与
-  // screenshotCapture.ts 各复制一份同样的逻辑，两处容易漂移成"界面与脚本看的不是
-  // 同一目录"。fromConfig 表示"来自显式设置"而不是自动探测到的。
-  const projectDir = resolveProjectDir();
-  const fromConfig = (cfg.get<string>('okScriptProjectPath') || '').trim().length > 0;
-
-  const python = cfg.get<string>('okScriptPython') || '';
-  let pythonPath = python;
-  if (!pythonPath) {
-    const venvPy = path.join(projectDir, '.venv', 'Scripts', 'python.exe');
-    pythonPath = fs.existsSync(venvPy) ? venvPy : 'python';
-  }
-  return { projectDir, pythonPath, fromConfig };
-}
-
-/** 强制结束执行器进程的超时（秒）：收到 stop 后仍未退出则 taskkill 兜底 */
-const FORCE_KILL_DELAY_MS = 12000;
-
-/** 参数覆盖推送防抖（毫秒）：表单自动保存很频繁，合并后再推给执行器 */
-const PARAMS_PUSH_DEBOUNCE_MS = 400;
-
-/** 已由 Python/framework logger 写出的时间戳不要重复添加。 */
-const OUTPUT_TIMESTAMP_RE = /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(?:[,.]\d+)?(?:\s|$)/;
-
-function padNumber(value: number, width = 2): string {
-  return String(value).padStart(width, '0');
-}
-
-/**
- * VS Code 普通 OutputChannel 不会替 append/appendLine 内容生成时间戳。
- * 执行器里的框架日志通常已经带时间；插件自己的状态行 / toolkit 行则没有。
- * 这里只给缺失时间戳的非空行补本地时间，保持 Python 原始日志不变且避免双时间戳。
- */
-export function formatConsoleOutputLine(line: string, now = new Date()): string {
-  if (!line || OUTPUT_TIMESTAMP_RE.test(line)) return line;
-  const timestamp = [
-    now.getFullYear(), '-', padNumber(now.getMonth() + 1), '-', padNumber(now.getDate()), ' ',
-    padNumber(now.getHours()), ':', padNumber(now.getMinutes()), ':', padNumber(now.getSeconds()), ',',
-    padNumber(now.getMilliseconds(), 3),
-  ].join('');
-  return `${timestamp} ${line}`;
-}
+// Re-exports for callers that historically imported helpers from consolePanel.
+export {
+  configValuesEqual,
+  formatConsoleOutputLine,
+  parseJsonFromStdout,
+  pythonScript,
+  resolveProjectContext,
+  runPython,
+};
+export type { ExecutorStateSummary } from './run/status';
+export type {
+  TaskInfo,
+  TaskSchema,
+  GlobalConfigGroup,
+  TaskConfig,
+  MultiAccountInfo,
+  AccountStoreData,
+} from './run/types';
 
 /**
  * 侧边栏「ok-script 控制台」视图 —— 任务启动器 + 游戏工具箱的统一宿主。
  *
- * 布局（media/console/）：顶部全局状态条（游戏连接 + 执行器），下方「任务 / 游戏」
- * 两个分段。原侧边栏工具箱视图（okScriptToolkit.toolbox）已并入这里。
+ * P1 起状态与执行器逻辑逐步抽到 src/run/，本类继续托管旧 webview；
+ * RunTreeDataProvider / ParamsViewProvider 共用同一套导出函数与类型。
  *
- * 进程模型：整个项目只维持 **一个常驻执行器进程**（python/run_executor.py）——
- * 它连接一次游戏，然后按 ok-script 框架原生的 TaskExecutor 循环轮询所有已启用的
- * 触发任务；一次性任务以入队方式交给同一个执行器跑一次。
- * 因此本类不再有「当前任务 / 单进程」语义，改为维护执行器会话与启用集合。
+ * 进程模型：整个项目只维持 **一个常驻执行器进程**（python/run_executor.py）。
  */
-/** 状态横幅里的「下一步」按钮：webview 只回传动作 id，宿主决定怎么做 */
-type StatusAction = 'showLogs' | 'openProjectSetting' | 'openPythonSetting' | 'startExecutor' | 'refresh' | 'stopExecutor';
-
-function statusActionLabel(action: StatusAction): string {
-  switch (action) {
-    case 'showLogs': return tr('Show Logs');
-    case 'openProjectSetting': return tr('Set Project Path');
-    case 'openPythonSetting': return tr('Set Python Path');
-    case 'startExecutor': return tr('Retry');
-    case 'refresh': return tr('Reload Tasks');
-    case 'stopExecutor': return tr('Stop Executor');
-  }
-}
-
-/** 宿主侧执行器状态摘要：供状态栏、视图徽标和 context key 使用 */
-export interface ExecutorStateSummary {
-  status: 'idle' | 'connecting' | 'running';
-  paused: boolean;
-  /** 当前任务显示名（空闲为空） */
-  current: string;
-  /** 一次性任务等待数 */
-  queued: number;
-  /** 已启用的触发任务数 */
-  triggers: number;
-}
 
 export class ConsoleViewProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'okScriptToolkit.console';
