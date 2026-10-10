@@ -8,7 +8,7 @@
 
 **Bring ok-script's language keys, OCR fixes, templates, skills and task data straight into your VS Code workflow.**
 
-Language key completion · OCR fix hints · Resource preview & annotation · Console · Character skill management
+Language key completion · OCR fix hints · Run / Parameters / Resources (inbox→draft→published) · Character skill management
 
 [![VS Code Marketplace](https://img.shields.io/badge/VS%20Code%20Marketplace-ok--script%20Toolkit-007ACC?logo=visualstudiocode&logoColor=white)](https://marketplace.visualstudio.com/items?itemName=AliceJump.ok-script-toolkit)
 [![JetBrains Marketplace](https://img.shields.io/badge/JetBrains%20Marketplace-ok--script%20Toolkit-000000?logo=jetbrains&logoColor=white)](https://plugins.jetbrains.com/plugin/34091-ok-script-toolkit)
@@ -23,7 +23,7 @@ Language key completion · OCR fix hints · Resource preview & annotation · Con
 
 ---
 
-A VS Code extension that brings ok-script language keys, OCR fixes, templates, skill effects, and task data directly into your Python development workflow. It also includes built-in Resource Preview, Annotation Management, Console, and Character & Skill Manager panels.
+A VS Code extension that brings ok-script language keys, OCR fixes, templates, skill effects, and task data directly into your Python development workflow. It also includes a **Run** tree, **Parameters** inspector, unified **Resources** workbench (inbox / draft / published), and Character & Skill Manager.
 
 > [!TIP]
 > The demo images at the beginning of each feature section below are clickable — if the GIFs don't load, click the links to view them.
@@ -53,7 +53,7 @@ See [feature and documentation parity](docs/feature-parity.en.md) for current ho
 | [Code development assistance](#code-development-assistance) | Complete and explain `self.lang`, OCR regex, and skill effect IDs in the editor |
 | [Template management](#template-management) | Browse templates in a grid, click to insert `fL.<name>`, with thumbnail preview |
 | [Temp screenshots](#temp-screenshots) | 10-slot scratch area in the activity bar — box-select to copy normalized coordinates |
-| [Console](#console-task-running) | Auto-generate parameter forms from `config.py` and run tasks, without writing to the target project's config |
+| [Run](#run-task-tree) | Auto-generate parameter forms from `config.py` and run tasks, without writing to the target project's config |
 | [Character skill management](#character-skill-management) | Visual management and diagnostics for characters / skills / effects / enhancement groups |
 | [Multi-language support](#multi-language-support) | UI supports 6 languages; data hints follow the target project |
 
@@ -121,7 +121,7 @@ Details:
 - Note: Cross-Webview drag-and-drop is not available in VS Code (each webview is an iframe with a different origin, `dataTransfer` is blocked), so the **Add to Annotation Management** button is the reliable entry point for import.
 - The **annotation editor** also supports this mode: click "Coords (C)" in the toolbar or press `C` to enter box-select mode, copying the same `x,y,tox,toy` normalized coordinates without creating an annotation box or modifying COCO. The resulting box also has handles for fine-tuning, with coordinates re-copied after each adjustment; clicking outside the box in non-interactive areas clears it. Override with `copyCoords` in `okScriptToolkit.annotationKeybindings`.
 
-### Console (Task Running)
+### Run (Task Tree)
 
 <p align="center">
   <a href="screenshots/task-launcher.gif"><img src="screenshots/task-launcher.gif" alt="Console: parameter form and run log" width="900"></a>
@@ -290,6 +290,7 @@ Command categories display as "ok-script 工具箱" / "ok-script Toolkit" depend
 
 | Command | Shortcut | Description |
 |---|---|---|
+| `ok-script Toolkit: Capture to Inbox` | `Ctrl+Alt+S` |
 | `ok-script Toolkit: Open Resource Preview` | `Ctrl+Alt+T` (macOS `Cmd+Alt+T`, requires Python editor focus) | Focus the Resource Preview view in the activity bar |
 | `ok-script Toolkit: Open Resource Preview in Editor` | — | Open a large grid view in the editor area |
 | `ok-script Toolkit: Open Console` | — | Focus the Console view in the activity bar |

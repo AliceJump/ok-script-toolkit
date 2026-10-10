@@ -8,7 +8,7 @@
 
 **把 ok-script 的语言、OCR、模板、技能和任务数据，直接搬进 VS Code 的开发流程。**
 
-语言键补全 · OCR 修正提示 · 资源预览与标注 · 控制台 · 角色技能管理
+语言键补全 · OCR 修正提示 · 运行 / 参数 / 资源（收件箱→草稿→已发布）· 角色技能管理
 
 [![VS Code Marketplace](https://img.shields.io/badge/VS%20Code%20Marketplace-ok--script%20Toolkit-007ACC?logo=visualstudiocode&logoColor=white)](https://marketplace.visualstudio.com/items?itemName=AliceJump.ok-script-toolkit)
 [![JetBrains Marketplace](https://img.shields.io/badge/JetBrains%20Marketplace-ok--script%20Toolkit-000000?logo=jetbrains&logoColor=white)](https://plugins.jetbrains.com/plugin/34091-ok-script-toolkit)
@@ -23,7 +23,7 @@
 
 ---
 
-VS Code 扩展，为 ok-script 项目的 Python 开发提供语言键、OCR 修正、模板和技能效果的数据提示，同时内置资源预览、标注管理、控制台和角色技能管理面板，让 ok-script 的语言、OCR、模板、技能和任务数据直接进入开发流程。
+VS Code 扩展，为 ok-script 项目的 Python 开发提供语言键、OCR 修正、模板和技能效果的数据提示，同时内置**运行**（原生任务树）、**参数**检查器、**资源**工作台（收件箱 / 草稿 / 已发布）和角色技能管理，让 ok-script 的语言、OCR、模板、技能和任务数据直接进入开发流程。
 
 > [!TIP]
 > 下面每个功能章节开头的演示图都是可点的——如果动图没加载出来，直接点开链接看。
@@ -52,8 +52,8 @@ PyCharm / IntelliJ IDEA 用户请装 JetBrains 版：[ok-script Toolkit for JetB
 |---|---|
 | [代码开发辅助](#代码开发辅助) | 在编辑器内补全和解释 `self.lang`、OCR 正则与技能效果 ID |
 | [模板管理](#模板管理) | 网格浏览模板，单击插入 `fL.<名称>`，支持缩略图预览 |
-| [临时截图](#临时截图) | 活动栏里的 10 张暂存区，框选即可复制归一化坐标 |
-| [控制台](#控制台任务运行) | 从 `config.py` 自动生成参数表单并运行任务，全程不写目标项目配置 |
+| [资源](#资源收件箱草稿已发布) | 单一「资源」视图：收件箱（原临时截图）+ 草稿 / 已发布 |
+| [运行](#运行任务树) | 原生 TreeView：游戏 / 执行器 / 触发与一次性任务；参数在「参数」视图 |
 | [角色技能管理](#角色技能管理) | 角色 / 技能 / 效果 / 强化组的可视化管理与诊断 |
 | [多语言支持](#多语言支持) | 界面支持 6 种语言，数据提示跟随目标项目 |
 
@@ -98,13 +98,13 @@ self.wait_click_feature(feature=fL.give_gift, time_out=10)
 
 框资源管理复用标注原图与 COCO 编辑器，支持编辑框、从模板生成包围框，并显式发布归一化位置表。框画廊提供裁剪预览、来源定位及 `self.pos` 引用的插入、复制、补全和 Hover。工作文件与运行时文件分开，游戏中的加载由业务项目负责。详见 [框资源设计](docs/box-resources.md)。
 
-### 临时截图
+### 资源（收件箱 → 草稿 → 已发布）
 
 <p align="center">
   <a href="screenshots/temp-shots.gif"><img src="screenshots/temp-shots.gif" alt="临时截图：轮播与框选复制归一化坐标" width="900"></a>
 </p>
 
-**ok-script 临时截图** 是活动栏上的**独立容器**（有自己的图标），里面是一个最多 10 张的暂存区（超出自动淘汰最早一张），用于快速取素材：
+活动栏只保留一个 **ok-script** 容器。其中的 **资源** 视图上部是**收件箱**（原「临时截图」，最多 10 张，超出淘汰最早一张），下部是**草稿 / 已发布**切换：
 
 | 能力 | 说明 |
 |---|---|
@@ -121,7 +121,7 @@ self.wait_click_feature(feature=fL.give_gift, time_out=10)
 - 注：VS Code 的跨 Webview 拖拽不可用（各 webview 是不同 origin 的 iframe，`dataTransfer` 被屏蔽），所以「添加到标注管理」按钮是导入的可靠入口。
 - **标注编辑器**同样支持该模式：工具栏「坐标 (C)」或按 `C` 键后框选，直接复制同样的 `x,y,tox,toy` 归一化坐标，不会创建标注框、不改动 COCO。得到的框同样带手柄可继续微调，每次调整结束重新复制；点击图片非交互部分清除。快捷键可用 `okScriptToolkit.annotationKeybindings` 的 `copyCoords` 覆盖。
 
-### 控制台（任务运行）
+### 运行（任务树）
 
 <p align="center">
   <a href="screenshots/task-launcher.gif"><img src="screenshots/task-launcher.gif" alt="控制台：参数表单与运行日志" width="900"></a>
@@ -139,9 +139,9 @@ self.wait_click_feature(feature=fL.give_gift, time_out=10)
 - **不污染目标项目配置**：执行器运行时，ok 框架对 `configs/` 与截图的读写全部改道到工作区的沙箱目录 `.vscode/ok-script-toolkit/`，**目标项目的配置文件与截图全程保持原样**（`devices.json` 做桥接拷贝以复用游戏连接）。调试时可以放心地改参数试跑，不会弄脏项目。
 - 执行器可随时暂停/恢复（全局挂起轮询与任务），也可以「停止当前任务」而不关闭执行器；运行日志输出到专属输出频道。
 - **全局配置接管**：目标项目的全局配置组（ok 框架 GlobalConfig 的可见分组）由探针一并解析，在控制台「配置」分段以参数快照呈现——修改即保存、可一键恢复默认；改动经 `gparams` 即时推送给运行中的执行器，执行器启动时以 `OK_TOOLKIT_GCONFIG` 注入全量快照。同样只写沙箱、不碰目标项目配置。
-- **控制台视图**：任务运行与游戏连接统一在「控制台」的四个分段（任务 / 游戏 / 配置 / 账号）里管理；顶栏健康度条实时反映执行器状态，空闲时详情面板显示运行中心（当前任务 / 执行队列 / 触发轮询），任务卡悬停弹出只读摘要。侧边栏较窄时，分段导航会收成图标条（≤640px）或顶部分段条（≤480px）。
-- **状态栏与命令**：状态栏左侧显示执行器状态（空闲 / 启动中 / 运行中的任务 + 排队数 / 已暂停），点击打开控制台；控制台视图标题栏和命令面板提供「运行任务… / 启动 / 暂停 / 继续 / 停止当前任务 / 关闭执行器 / 查看日志 / 连接游戏」等命令，按执行器状态显隐。运行中 + 排队的任务数显示在视图徽标上。
-- **错误就地显示**：项目路径缺失、Python 不存在、执行器异常退出等错误显示在控制台横幅里，并带「设置项目路径 / 设置 Python 路径 / 查看日志 / 重试」等下一步按钮；控制台不可见时才退回通知（同样带按钮）。
+- **运行视图**：原生 TreeView，展示游戏连接、执行器、触发任务（勾选=启用）、一次性任务（按组）、全局配置与账号；行内可运行 / 打开参数 / 停止。
+- **参数视图**：跟随「运行」里的选中项，编辑沙箱覆盖（自动保存并在执行器运行时推送）。
+- **状态栏与命令**：状态栏左侧显示执行器状态，点击打开「运行」；标题栏和命令面板提供启动 / 暂停 / 停止 / 日志 / 连接游戏等，按状态显隐。运行中 + 排队数显示为视图徽标。
 - **角色技能管理入口**在「配置」分段；未检测到角色数据（`characterMasterFile` / `characterSkillsDirectory` 都不存在）时隐藏，命令面板里的同名命令也一并隐藏。
 
 ### 角色技能管理
@@ -162,7 +162,7 @@ self.wait_click_feature(feature=fL.give_gift, time_out=10)
 ### 多语言支持
 
 - 扩展界面（通知、输出频道、hover、资源预览、标注管理、控制台和角色技能管理面板）支持简体中文、繁体中文、英文、日文、韩文和西班牙文，默认跟随 VS Code 显示语言。
-- 侧边栏分为 **ok-script 工具**（控制台）、**ok-script 资源**（资源预览 + 标注管理）和 **ok-script 临时截图** 三个独立活动栏容器。界面图标统一使用 VS Code codicons。
+- 侧边栏只有一个 **ok-script** 活动栏容器，内含 **运行**（TreeView）、**参数**（检查器）、**资源**（收件箱 + 草稿/已发布）。界面图标统一使用 VS Code codicons。
 - 代码提示中的语言数据始终使用目标项目自身的 locale 和原始协议值，不受插件界面语言影响。
 
 > [!NOTE]
@@ -302,9 +302,9 @@ self.wait_click_ocr(match=self.lang.zip_line_mixin.k_2f4f4a2f, ...)
 
 | 命令 | 快捷键 | 说明 |
 |---|---|---|
-| `ok-script 工具箱: 打开资源预览` | `Ctrl+Alt+T`（macOS `Cmd+Alt+T`，需聚焦 Python 编辑器） | 聚焦活动栏中的资源预览视图 |
-| `ok-script 工具箱: 在编辑器中打开资源预览` | — | 在编辑器区打开大窗口网格视图 |
-| `ok-script 工具箱: 打开控制台` | — | 聚焦活动栏中的控制台视图 |
+| `ok-script 工具箱: 打开资源预览` | `Ctrl+Alt+T`（macOS `Cmd+Alt+T`，需聚焦 Python 编辑器） | 聚焦「资源」视图 |
+| `ok-script 工具箱: 截到收件箱` | `Ctrl+Alt+S`（macOS `Cmd+Alt+S`） | 截图进入资源收件箱（原「截图并打开标注管理」仍保留为另一条命令） |
+| `ok-script 工具箱: 打开控制台` | — | 聚焦「运行」视图 |
 | `ok-script 工具箱: 控制台：运行任务…` | — | 从已加载的一次性任务里选一个入队（执行器未启动时会先启动） |
 | `ok-script 工具箱: 控制台：启动执行器 / 暂停执行器 / 继续执行器 / 停止当前任务 / 关闭执行器` | — | 与控制台按钮同一套逻辑；按执行器状态在命令面板和视图标题栏里显隐 |
 | `ok-script 工具箱: 控制台：刷新任务 / 查看日志 / 连接游戏 / 断开游戏` | — | 重新解析任务列表、打开输出频道、连接或断开游戏窗口 |

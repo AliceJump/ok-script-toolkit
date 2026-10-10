@@ -8,6 +8,9 @@ This report compares the pages actually registered in the baseline source, cover
 
 This is a source audit, without interactive or screenshot verification in either IDE. “No corresponding entry in the current page” does not mean that no implementation exists elsewhere in the plugin. Theme, scaling, focus, and keyboard behavior still need real IDE verification. Shared Python code, formats, or passing tests do not establish interaction parity.
 
+
+
+> P1 (2026-10-11): VS Code now uses a single activity-bar container with Run TreeView / Parameters / Resources. JetBrains toolWindow merge and Tree parity remain pending (plan.md §11).
 ## 1. Registered entry points and organization
 
 | ID | Item | VS Code | JetBrains | User-visible difference |
