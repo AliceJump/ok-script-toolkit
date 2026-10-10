@@ -84,7 +84,7 @@
   "view.resources": "Recursos",
   "viewsWelcome.run": "Abre una carpeta de proyecto ok-script (con src/config.py) o [elige una ruta](command:okScriptToolkit.pickProject).",
   "command.captureToInbox": "Capturar a la bandeja",
-  "command.annotateImage": "Anotar imagen…",
+  "command.annotateImage": "Abrir con el editor de anotaciones",
   "command.publishResources": "Publicar recursos…",
   "command.insertResourceReference": "Insertar referencia",
   "command.revealResource": "Mostrar recurso",

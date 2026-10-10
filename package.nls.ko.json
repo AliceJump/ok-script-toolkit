@@ -84,7 +84,7 @@
   "view.resources": "리소스",
   "viewsWelcome.run": "src/config.py 가 있는 ok-script 프로젝트 폴더를 열거나 [프로젝트 경로 선택](command:okScriptToolkit.pickProject).",
   "command.captureToInbox": "받은 편지로 캡처",
-  "command.annotateImage": "이미지 주석…",
+  "command.annotateImage": "주석 편집기로 열기",
   "command.publishResources": "리소스 게시…",
   "command.insertResourceReference": "리소스 참조 삽입",
   "command.revealResource": "리소스 표시",

@@ -84,7 +84,7 @@
   "view.resources": "リソース",
   "viewsWelcome.run": "src/config.py のある ok-script プロジェクトフォルダーを開くか、[プロジェクトパスを選択](command:okScriptToolkit.pickProject)してください。",
   "command.captureToInbox": "受信箱にキャプチャ",
-  "command.annotateImage": "画像を注釈…",
+  "command.annotateImage": "注釈エディターで開く",
   "command.publishResources": "リソースを公開…",
   "command.insertResourceReference": "リソース参照を挿入",
   "command.revealResource": "リソースを表示",

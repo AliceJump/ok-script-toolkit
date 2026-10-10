@@ -84,7 +84,7 @@
   "view.resources": "资源",
   "viewsWelcome.run": "打开含 src/config.py 的 ok-script 项目文件夹，或 [选择项目路径](command:okScriptToolkit.pickProject)。",
   "command.captureToInbox": "截到收件箱",
-  "command.annotateImage": "标注图片…",
+  "command.annotateImage": "用标注编辑器打开",
   "command.publishResources": "发布资源…",
   "command.insertResourceReference": "插入资源引用",
   "command.revealResource": "在资源中定位",
