@@ -303,5 +303,13 @@
   "Find References": "Find References",
   "Select a template to find references": "Select a template to find references",
   "No references to “{name}” found in Python files.": "No references to “{name}” found in Python files.",
-  "{count} reference(s) to “{name}”": "{count} reference(s) to “{name}”"
+  "{count} reference(s) to “{name}”": "{count} reference(s) to “{name}”",
+  "new": "new",
+  "overwrite": "overwrite",
+  "removed from published": "removed from published",
+  "Write the files below": "Write the files below",
+  "Files to write": "Files to write",
+  "Templates: {add} new · {keep} overwrite · {remove} removed": "Templates: {add} new · {keep} overwrite · {remove} removed",
+  "Publish preview": "Publish preview",
+  "Review what will be written. Enter on “Publish” to continue, Esc to cancel.": "Review what will be written. Enter on “Publish” to continue, Esc to cancel."
 }

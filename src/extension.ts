@@ -39,6 +39,7 @@ import {
   TemplateAssetViewProvider,
   TemplateAssetPanel,
   repaintAllAssetGalleries,
+  setPublishedTemplateNamesProvider,
 } from './templateAssetPanel';
 import { TempScreenshotStore } from './tempScreenshotStore';
 import { TempScreenshotViewProvider } from './tempScreenshotPanel';
@@ -298,6 +299,7 @@ export function activate(context: vscode.ExtensionContext): void {
   gameConnect.overlayForwarder = (enabled) => okConsole.setOverlayEnabled(enabled);
 
   const templateAssetData = new TemplateAssetData(targetRoot);
+  setPublishedTemplateNamesProvider(() => [...features.all()].map((ft) => ft.name));
   const tempScreenshotStore = new TempScreenshotStore(
     path.join(context.globalStorageUri.fsPath, 'temp-screenshots', wsHash),
   );

@@ -303,5 +303,13 @@
   "Find References": "Buscar referencias",
   "Select a template to find references": "Elige una plantilla",
   "No references to “{name}” found in Python files.": "No hay referencias a “{name}” en archivos Python.",
-  "{count} reference(s) to “{name}”": "{count} referencia(s) a “{name}”"
+  "{count} reference(s) to “{name}”": "{count} referencia(s) a “{name}”",
+  "new": "nuevo",
+  "overwrite": "sobrescribir",
+  "removed from published": "se quitará de publicado",
+  "Write the files below": "Escribir los archivos siguientes",
+  "Files to write": "Archivos a escribir",
+  "Templates: {add} new · {keep} overwrite · {remove} removed": "Plantillas: {add} nuevas · {keep} sobrescritas · {remove} quitadas",
+  "Publish preview": "Vista previa de publicación",
+  "Review what will be written. Enter on “Publish” to continue, Esc to cancel.": "Revisa lo que se escribirá. Enter en “Publicar” para seguir, Esc para cancelar."
 }

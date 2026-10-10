@@ -303,5 +303,13 @@
   "Find References": "查找引用",
   "Select a template to find references": "选择要查找引用的模板",
   "No references to “{name}” found in Python files.": "Python 文件中没有找到 “{name}” 的引用。",
-  "{count} reference(s) to “{name}”": "“{name}” 共 {count} 处引用"
+  "{count} reference(s) to “{name}”": "“{name}” 共 {count} 处引用",
+  "new": "新增",
+  "overwrite": "覆盖",
+  "removed from published": "将从已发布中移除",
+  "Write the files below": "写入下列文件",
+  "Files to write": "将写入的文件",
+  "Templates: {add} new · {keep} overwrite · {remove} removed": "模板：新增 {add} · 覆盖 {keep} · 移除 {remove}",
+  "Publish preview": "发布预览",
+  "Review what will be written. Enter on “Publish” to continue, Esc to cancel.": "确认将写入的内容。在「发布」上按 Enter 继续，Esc 取消。"
 }

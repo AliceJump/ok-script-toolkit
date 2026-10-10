@@ -303,5 +303,13 @@
   "Find References": "참조 찾기",
   "Select a template to find references": "참조를 찾을 템플릿 선택",
   "No references to “{name}” found in Python files.": "Python 파일에서 “{name}” 참조를 찾지 못했습니다.",
-  "{count} reference(s) to “{name}”": "“{name}” 참조 {count}개"
+  "{count} reference(s) to “{name}”": "“{name}” 참조 {count}개",
+  "new": "신규",
+  "overwrite": "덮어쓰기",
+  "removed from published": "게시본에서 제거",
+  "Write the files below": "아래 파일 쓰기",
+  "Files to write": "쓸 파일",
+  "Templates: {add} new · {keep} overwrite · {remove} removed": "템플릿: 신규 {add} · 덮어쓰기 {keep} · 제거 {remove}",
+  "Publish preview": "게시 미리보기",
+  "Review what will be written. Enter on “Publish” to continue, Esc to cancel.": "쓸 내용을 확인하세요. “게시”에서 Enter, Esc로 취소."
 }

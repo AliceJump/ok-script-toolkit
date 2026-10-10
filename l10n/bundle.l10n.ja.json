@@ -303,5 +303,13 @@
   "Find References": "参照を検索",
   "Select a template to find references": "参照を検索するテンプレートを選択",
   "No references to “{name}” found in Python files.": "Python ファイルに “{name}” の参照はありません。",
-  "{count} reference(s) to “{name}”": "“{name}” の参照 {count} 件"
+  "{count} reference(s) to “{name}”": "“{name}” の参照 {count} 件",
+  "new": "新規",
+  "overwrite": "上書き",
+  "removed from published": "公開版から削除",
+  "Write the files below": "以下のファイルを書き込む",
+  "Files to write": "書き込むファイル",
+  "Templates: {add} new · {keep} overwrite · {remove} removed": "テンプレート：新規 {add} · 上書き {keep} · 削除 {remove}",
+  "Publish preview": "公開プレビュー",
+  "Review what will be written. Enter on “Publish” to continue, Esc to cancel.": "書き込み内容を確認。「公開」で Enter、Esc で取消。"
 }

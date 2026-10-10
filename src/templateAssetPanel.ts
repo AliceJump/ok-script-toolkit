@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
+import { buildPublishPreview } from './publishPreview';
 import { TemplateAssetData } from './templateAssetData';
 import { AnnotationPanel } from './annotationPanel';
 import { cropTemplateThumbFileAsync, THUMB_HEIGHT } from './pngCrop';
@@ -40,6 +41,12 @@ interface TemplatePublishPlan {
   targetLabel: string;
   generateEnum: boolean;
   absEnumPath?: string;
+}
+
+/** 当前已发布的模板名（extension 注入 FeatureData；没注入时预览只列文件、不列增删） */
+let publishedTemplateNames: (() => string[]) | undefined;
+export function setPublishedTemplateNamesProvider(provider: () => string[]): void {
+  publishedTemplateNames = provider;
 }
 
 type PublishResource = 'template' | 'rect' | 'point';
@@ -358,8 +365,77 @@ class AssetGalleryController {
     const positionPlan = wantsPosition ? await this.preparePositionPublish(positionSelection) : undefined;
     if (wantsPosition && !positionPlan) return;
 
+    // 只读预览：确认前不写任何文件；取消 = 什么都不发生（与上面的「先收集决定」同一保证）
+    if (!(await this.confirmPublishPreview(templatePlan, positionPlan))) return;
+
     if (positionPlan && !(await this.executePositionPublish(positionPlan))) return;
     if (templatePlan) await this.executeTemplatePublish(templatePlan);
+  }
+
+  private draftTemplateNames(): string[] {
+    this.data.load();
+    const names: string[] = [];
+    for (const image of this.data.listImages()) {
+      for (const ann of this.data.getAnnotationsForImage(image, true)) names.push(ann.categoryName);
+    }
+    return names;
+  }
+
+  private async confirmPublishPreview(
+    templatePlan: TemplatePublishPlan | undefined,
+    positionPlan: PositionPublishPlan | undefined,
+  ): Promise<boolean> {
+    const rel = (file: string, root: string) => path.relative(root, file).split(path.sep).join('/') || file;
+    const preview = buildPublishPreview({
+      template: templatePlan ? {
+        targetLabel: templatePlan.targetLabel,
+        enumPath: templatePlan.absEnumPath ? rel(templatePlan.absEnumPath, templatePlan.projectRoot) : undefined,
+        draftNames: this.draftTemplateNames(),
+        publishedNames: publishedTemplateNames?.() ?? [],
+      } : undefined,
+      position: positionPlan ? {
+        format: positionPlan.format,
+        rect: positionPlan.options.rect,
+        point: positionPlan.options.point,
+        files: positionPlan.format === 'python'
+          ? ['ScreenRatio.py', 'PositionMap.py'].map((f) => `${positionPlan.options.pythonTargetDir.replace(/\/+$/, '')}/${f}`)
+          : [positionPlan.options.jsonTarget],
+      } : undefined,
+    });
+    type Row = vscode.QuickPickItem & { publish?: boolean };
+    const icon = { file: '$(file)', add: '$(diff-added)', keep: '$(circle-filled)', remove: '$(diff-removed)' } as const;
+    const kindText = { file: '', add: tr('new'), keep: tr('overwrite'), remove: tr('removed from published') } as const;
+    const items: Row[] = [
+      { label: `$(cloud-upload) ${tr('Publish')}`, description: tr('Write the files below'), publish: true, alwaysShow: true },
+      { label: tr('Files to write'), kind: vscode.QuickPickItemKind.Separator },
+      ...preview.files.map((row) => ({ label: `${icon.file} ${row.label}` })),
+    ];
+    if (preview.templates.length) {
+      items.push({
+        label: tr('Templates: {add} new · {keep} overwrite · {remove} removed', preview.counts),
+        kind: vscode.QuickPickItemKind.Separator,
+      });
+      items.push(...preview.templates.map((row) => ({ label: `${icon[row.kind]} ${row.label}`, description: kindText[row.kind] })));
+    }
+    return new Promise<boolean>((resolve) => {
+      const qp = vscode.window.createQuickPick<Row>();
+      qp.title = tr('Publish preview');
+      qp.placeholder = tr('Review what will be written. Enter on “Publish” to continue, Esc to cancel.');
+      qp.items = items;
+      qp.activeItems = [items[0]];
+      let done = false;
+      qp.onDidAccept(() => {
+        if (!qp.selectedItems[0]?.publish) return; // 只读行：不做任何事
+        done = true;
+        resolve(true);
+        qp.hide();
+      });
+      qp.onDidHide(() => {
+        qp.dispose();
+        if (!done) resolve(false);
+      });
+      qp.show();
+    });
   }
 
   private async handlePublishPositions(selection: { rect: boolean; point: boolean }): Promise<void> {
