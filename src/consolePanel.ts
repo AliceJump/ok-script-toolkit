@@ -925,7 +925,7 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
    * 不等于「现在开始跑」。想真正启动请点状态条的启动按钮（`startExecutor`）。
    * 执行器已在运行时勾选依然即时生效。
    */
-  private async setTriggerEnabled(view: vscode.WebviewView, task: TaskInfo, enabled: boolean): Promise<void> {
+  private async setTriggerEnabled(view: vscode.WebviewView | undefined, task: TaskInfo, enabled: boolean): Promise<void> {
     const key = this.taskKey(task);
     if (enabled) this.enabledTriggers.add(key);
     else this.enabledTriggers.delete(key);
@@ -1242,6 +1242,112 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
 
   // ── 命令面板 / 视图标题栏 / 状态栏入口（与 webview 按钮走同一套逻辑）──
 
+  private readonly treeChangeEmitter = new vscode.EventEmitter<void>();
+  /** 任务列表 / 执行器 / 勾选 / 游戏状态变化时触发，供 Run TreeView 刷新 */
+  readonly onDidChangeTree = this.treeChangeEmitter.event;
+
+  private fireTreeChange(): void {
+    this.treeChangeEmitter.fire();
+  }
+
+  /**
+   * 无 webview 时也能驱动执行器（P1 TreeView / 参数视图）。
+   * 挂上游戏状态回调并拉一次任务列表。
+   */
+  async activateHeadless(): Promise<void> {
+    this.gameConnect.attachUi(
+      (text) => this.setStatus(text ? 'info' : 'ok', text),
+      () => { this.pushGameState(); this.fireTreeChange(); },
+    );
+    this.toolboxSubscription?.dispose();
+    this.toolboxSubscription = onToolboxStateChange(() => { this.pushGameState(); this.fireTreeChange(); });
+    await this.refreshTasksHeadless();
+  }
+
+  private async refreshTasksHeadless(): Promise<void> {
+    // refreshTasks 需要 WebviewView；headless 时用一个最小 shim 只接收 postMessage 忽略
+    const shim = {
+      webview: { postMessage: () => undefined },
+    } as unknown as vscode.WebviewView;
+    await this.refreshTasks(shim);
+    this.fireTreeChange();
+  }
+
+  /** Run TreeView / 参数视图共用的只读快照 */
+  getRunSnapshot(): {
+    tasks: TaskInfo[];
+    schemas: Record<string, TaskSchema>;
+    enabledTriggers: string[];
+    globalGroups: GlobalConfigGroup[];
+    globalSnapshots: Record<string, Record<string, unknown>>;
+    currentTaskKey: string | null;
+    onetimeQueue: string[];
+    multiAccount: MultiAccountInfo;
+    accountNames: string[];
+    game: { connected: boolean; title?: string; detail?: string };
+  } {
+    const state = this.gameConnect.currentState();
+    const game = state.game;
+    return {
+      tasks: [...this.knownTasks],
+      schemas: { ...this.schemas },
+      enabledTriggers: [...this.enabledTriggers],
+      globalGroups: [...this.globalGroups],
+      globalSnapshots: { ...this.globalSnapshots },
+      currentTaskKey: this.isCurrentProjectExecutor() ? (this.snapshot.current || null) : null,
+      onetimeQueue: this.isCurrentProjectExecutor() ? [...(this.snapshot.onetimeQueue || [])] : [],
+      multiAccount: this.multiAccount,
+      accountNames: Object.keys(this.accountStoreData?.accounts || {}),
+      game: {
+        connected: Boolean(game),
+        title: game?.title || game?.exe,
+        detail: game ? `PID ${game.pid}` : undefined,
+      },
+    };
+  }
+
+  getTaskByKey(key: string): TaskInfo | undefined {
+    return this.knownTasks.find((task) => this.taskKey(task) === key);
+  }
+
+  getSchema(key: string): TaskSchema | undefined {
+    return this.schemas[key];
+  }
+
+  getTaskConfig(key: string): TaskConfig | undefined {
+    return this.taskConfigs[key];
+  }
+
+  async setTriggerEnabledByKey(key: string, enabled: boolean): Promise<void> {
+    const task = this.getTaskByKey(key);
+    if (!task) return;
+    await this.setTriggerEnabled(this.view ?? undefined, task, enabled);
+    this.fireTreeChange();
+  }
+
+  async enqueueByKey(key: string): Promise<void> {
+    const task = this.getTaskByKey(key);
+    if (!task) return;
+    await this.enqueueOnetime(this.view ?? undefined, task);
+    this.fireTreeChange();
+  }
+
+  async saveTaskParams(key: string, params: Record<string, unknown>): Promise<void> {
+    const task = this.getTaskByKey(key);
+    if (!task) return;
+    this.saveTaskConfig(task, this.sanitizeTaskConfig(task, { ...(this.taskConfigs[key] || {}), params }));
+    this.fireTreeChange();
+  }
+
+  setGlobalParam(group: string, key: string, value: unknown): void {
+    this.setGlobalValue(group, key, value);
+    this.fireTreeChange();
+  }
+
+  getGlobalGroup(name: string): GlobalConfigGroup | undefined {
+    return this.globalGroups.find((g) => g.name === name);
+  }
+
   executorState(): ExecutorStateSummary {
     const own = this.executor !== null && this.isCurrentProjectExecutor();
     const currentKey = own ? (this.snapshot.current || '') : '';
@@ -1296,9 +1402,10 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
   async commandRefresh(): Promise<void> {
     if (this.view) {
       await this.refreshTasks(this.view);
+      this.fireTreeChange();
       return;
     }
-    await vscode.commands.executeCommand(`${ConsoleViewProvider.viewType}.focus`);
+    await this.refreshTasksHeadless();
   }
 
   /** 「运行任务…」：从已加载的一次性任务里选一个入队（与卡片「启动」等价，必要时会启动执行器） */
@@ -1482,6 +1589,7 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
     this.toolboxSubscription = undefined;
     this.gameConnect.detachUi();
     this.executorStateEmitter.dispose();
+    this.treeChangeEmitter.dispose();
     this.output.dispose();
   }
 
