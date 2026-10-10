@@ -417,6 +417,7 @@ class AnnotationController {
       currentIndex: this._imageList.indexOf(imagePath),
       totalImages: this._imageList.length,
       filename: path.basename(imagePath),
+      imageNames: this._imageList.map((p) => path.basename(p)),
     });
   }
 

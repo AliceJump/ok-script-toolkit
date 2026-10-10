@@ -36,6 +36,7 @@
     <button class="icon-btn has-codicon" id="nextBtn" title="Next image" aria-label="Next image"><span class="codicon codicon-chevron-right" aria-hidden="true"></span></button>
   </div>
   <div class="editor-body">
+    <aside class="image-strip" id="imageStrip" aria-label="Source images"></aside>
     <div class="canvas-wrap">
       <canvas id="canvas"></canvas>
       <div class="empty" id="emptyMsg"></div>
@@ -53,6 +54,17 @@
         <button class="mini-btn" id="onlyCurrentBtn" type="button"></button>
       </div>
       <div class="annotation-list-rows" id="annotationRows"></div>
+      <div class="annotation-inspector" id="annotationInspector" hidden>
+        <div class="annotation-list-title" id="inspectorTitle"></div>
+        <label class="inspector-row"><span id="inspectorNameLabel">Name</span><input id="inspectorName" type="text" /></label>
+        <div class="inspector-xywh">
+          <label>X<input id="inspectorX" type="number" /></label>
+          <label>Y<input id="inspectorY" type="number" /></label>
+          <label>W<input id="inspectorW" type="number" /></label>
+          <label>H<input id="inspectorH" type="number" /></label>
+        </div>
+        <div class="inspector-expr" id="inspectorExpr"></div>
+      </div>
     </aside>
   </div>
   <div class="color-bar">

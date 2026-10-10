@@ -1167,6 +1167,7 @@
     } else {
       img = null; imgData = null; canvas.style.display = 'none'; emptyMsg.style.display = 'flex'; syncAnnotationList();
     }
+    renderImageStrip(msg);
     document.getElementById('navInfo').textContent = `${msg.filename} (${msg.currentIndex + 1}/${msg.totalImages})`;
     document.getElementById('prevBtn').disabled = msg.currentIndex <= 0;
     document.getElementById('nextBtn').disabled = msg.currentIndex >= msg.totalImages - 1;
@@ -1175,6 +1176,38 @@
 
   window.addEventListener('resize', resize);
   resize();
+
+  function renderImageStrip(msg) {
+    const strip = document.getElementById('imageStrip');
+    if (!strip) return;
+    const names = msg.imageNames || [];
+    strip.replaceChildren();
+    names.forEach((name, index) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'image-strip__item' + (index === msg.currentIndex ? ' is-active' : '');
+      btn.title = name;
+      btn.textContent = String(index + 1);
+      btn.addEventListener('click', () => vscode.postMessage({ type: 'navigate', index }));
+      strip.appendChild(btn);
+    });
+  }
+
+  function updateInspector(ann) {
+    const box = document.getElementById('annotationInspector');
+    if (!box) return;
+    if (!ann) { box.hidden = true; return; }
+    box.hidden = false;
+    document.getElementById('inspectorTitle').textContent = t('inspectorSelected') || 'Selected';
+    document.getElementById('inspectorName').value = ann.category || ann.categoryName || '';
+    document.getElementById('inspectorX').value = Math.round(ann.x ?? ann.bbox?.[0] ?? 0);
+    document.getElementById('inspectorY').value = Math.round(ann.y ?? ann.bbox?.[1] ?? 0);
+    document.getElementById('inspectorW').value = Math.round(ann.w ?? ann.bbox?.[2] ?? 0);
+    document.getElementById('inspectorH').value = Math.round(ann.h ?? ann.bbox?.[3] ?? 0);
+    const expr = document.getElementById('inspectorExpr');
+    if (expr) expr.textContent = ann.category ? ('fL.' + ann.category) : '';
+  }
+
   updateStaticText();
   vscode.postMessage({ type:'ready' });
 })();
