@@ -91,5 +91,6 @@
   "command.run.openParams": "パラメータを開く",
   "command.run.runTaskInline": "タスクを実行",
   "command.run.toggleTrigger": "トリガー切替",
-  "command.pickProject": "ok-script プロジェクトフォルダーを選択…"
+  "command.pickProject": "ok-script プロジェクトフォルダーを選択…",
+  "command.findTemplateReferences": "テンプレート参照を検索…"
 }

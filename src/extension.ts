@@ -15,6 +15,7 @@ import {
   LangCompletionProvider,
   LangHoverProvider,
   LangInlayHintsProvider,
+  featureAliases,
 } from './providers';
 import { EffectCompletionProvider, EffectHoverProvider, EffectInlayHintsProvider } from './effectProvider';
 import {
@@ -30,6 +31,7 @@ import type { RunTreeNode } from './run/treeModel';
 import { issuesToDiagnostics } from './run/characterDiagnostics';
 import { configuredCharacterDataPaths, loadCharacterManagerData } from './characterData';
 import { insertIntoPythonEditor } from './pythonEditor';
+import { findReferencesInText } from './templateReferences';
 import { CharacterManagerPanel, detectCharacterData } from './characterPanel';
 import { GameConnectService } from './toolboxConnect';
 import { TemplateAssetData } from './templateAssetData';
@@ -490,8 +492,42 @@ export function activate(context: vscode.ExtensionContext): void {
       if (text) insertIntoPythonEditor(text);
     }),
     vscode.commands.registerCommand('okScriptToolkit.revealResource', async (name?: string) => {
-      void vscode.commands.executeCommand(`${ResourcesViewProvider.viewType}.focus`);
-      if (name) void vscode.window.showInformationMessage(tr('Locate “{name}” in Resources', { name }));
+      await vscode.commands.executeCommand(`${ResourcesViewProvider.viewType}.focus`);
+      if (typeof name === 'string' && name) resourcesView.reveal(name);
+    }),
+    vscode.commands.registerCommand('okScriptToolkit.findTemplateReferences', async (name?: string) => {
+      let target = typeof name === 'string' ? name : '';
+      if (!target) {
+        const picked = await vscode.window.showQuickPick(
+          [...features.all()].map((ft) => ({ label: ft.name, description: `${ft.width}×${ft.height}` })),
+          { placeHolder: tr('Select a template to find references') },
+        );
+        target = picked?.label || '';
+      }
+      if (!target) return;
+      const files = await vscode.workspace.findFiles('**/*.py', '**/{.venv,venv,node_modules,.git,__pycache__}/**', 2000);
+      const items: (vscode.QuickPickItem & { location: vscode.Location })[] = [];
+      for (const uri of files) {
+        let text = '';
+        try { text = Buffer.from(await vscode.workspace.fs.readFile(uri)).toString('utf8'); } catch { continue; }
+        if (!text.includes(target)) continue;
+        for (const ref of findReferencesInText(text, target, featureAliases())) {
+          items.push({
+            label: `$(${ref.kind === 'position' ? 'symbol-field' : ref.kind === 'key' ? 'symbol-string' : 'symbol-constant'}) ${ref.preview}`,
+            description: `${vscode.workspace.asRelativePath(uri)}:${ref.line + 1}`,
+            location: new vscode.Location(uri, new vscode.Range(ref.line, ref.column, ref.line, ref.column + ref.length)),
+          });
+        }
+      }
+      if (!items.length) {
+        void vscode.window.showInformationMessage(tr('No references to “{name}” found in Python files.', { name: target }));
+        return;
+      }
+      const choice = await vscode.window.showQuickPick(items, {
+        placeHolder: tr('{count} reference(s) to “{name}”', { count: items.length, name: target }),
+        matchOnDescription: true,
+      });
+      if (choice) await vscode.window.showTextDocument(choice.location.uri, { selection: choice.location.range });
     }),
     vscode.commands.registerCommand('okScriptToolkit.pickProject', async () => {
       const picked = await vscode.window.showOpenDialog({

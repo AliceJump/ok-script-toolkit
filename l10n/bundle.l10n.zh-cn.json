@@ -298,6 +298,10 @@
   "Open Parameters": "打开参数",
   "paramsSandboxHint": "仅写入沙箱 · 执行器运行中时会推送",
   "Resource expression (e.g. fL.btn_claim)": "资源表达式（例如 fL.btn_claim）",
-  "Locate “{name}” in Resources": "在「资源」中定位 “{name}”",
-  "Use as ok-script project": "用作 ok-script 项目"
+  "Use as ok-script project": "用作 ok-script 项目",
+  "Reveal in Resources": "在资源中定位",
+  "Find References": "查找引用",
+  "Select a template to find references": "选择要查找引用的模板",
+  "No references to “{name}” found in Python files.": "Python 文件中没有找到 “{name}” 的引用。",
+  "{count} reference(s) to “{name}”": "“{name}” 共 {count} 处引用"
 }

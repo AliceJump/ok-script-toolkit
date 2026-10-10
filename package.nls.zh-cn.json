@@ -91,5 +91,6 @@
   "command.run.openParams": "打开参数",
   "command.run.runTaskInline": "运行任务",
   "command.run.toggleTrigger": "切换触发启用",
-  "command.pickProject": "选择 ok-script 项目目录…"
+  "command.pickProject": "选择 ok-script 项目目录…",
+  "command.findTemplateReferences": "查找模板引用…"
 }

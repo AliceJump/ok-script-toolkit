@@ -298,6 +298,10 @@
   "Open Parameters": "パラメータを開く",
   "paramsSandboxHint": "サンドボックスにのみ保存 · 実行中はエグゼキュータへ送出",
   "Resource expression (e.g. fL.btn_claim)": "リソース式（例: fL.btn_claim）",
-  "Locate “{name}” in Resources": "「リソース」で “{name}” を表示",
-  "Use as ok-script project": "ok-script プロジェクトとして使う"
+  "Use as ok-script project": "ok-script プロジェクトとして使う",
+  "Reveal in Resources": "リソースで表示",
+  "Find References": "参照を検索",
+  "Select a template to find references": "参照を検索するテンプレートを選択",
+  "No references to “{name}” found in Python files.": "Python ファイルに “{name}” の参照はありません。",
+  "{count} reference(s) to “{name}”": "“{name}” の参照 {count} 件"
 }

@@ -91,5 +91,6 @@
   "command.run.openParams": "Open Parameters",
   "command.run.runTaskInline": "Run Task",
   "command.run.toggleTrigger": "Toggle Trigger",
-  "command.pickProject": "Choose ok-script Project Folder…"
+  "command.pickProject": "Choose ok-script Project Folder…",
+  "command.findTemplateReferences": "Find Template References…"
 }

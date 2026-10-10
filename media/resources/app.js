@@ -174,6 +174,13 @@
       setSeg(document.getElementById('modeTabs'), 'data-mode', state.mode);
       renderGrid();
     }
+    if (msg.type === 'reveal') {
+      state.query = msg.name || '';
+      els.search.value = state.query;
+      renderGrid();
+      const card = els.grid.querySelector('.res-card');
+      if (card) ThumbnailActions.select(card, true);
+    }
     if (msg.type === 'thumbs') {
       for (const it of (msg.items || [])) state.thumbs[it.name] = it.url;
       renderGrid();

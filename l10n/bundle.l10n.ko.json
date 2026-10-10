@@ -298,6 +298,10 @@
   "Open Parameters": "매개 변수 열기",
   "paramsSandboxHint": "샌드박스에만 저장 · 실행 중이면 실행기로 전송",
   "Resource expression (e.g. fL.btn_claim)": "리소스 식(예: fL.btn_claim)",
-  "Locate “{name}” in Resources": "리소스에서 “{name}” 찾기",
-  "Use as ok-script project": "ok-script 프로젝트로 사용"
+  "Use as ok-script project": "ok-script 프로젝트로 사용",
+  "Reveal in Resources": "리소스에서 표시",
+  "Find References": "참조 찾기",
+  "Select a template to find references": "참조를 찾을 템플릿 선택",
+  "No references to “{name}” found in Python files.": "Python 파일에서 “{name}” 참조를 찾지 못했습니다.",
+  "{count} reference(s) to “{name}”": "“{name}” 참조 {count}개"
 }

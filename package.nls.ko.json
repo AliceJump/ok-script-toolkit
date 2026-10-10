@@ -91,5 +91,6 @@
   "command.run.openParams": "매개 변수 열기",
   "command.run.runTaskInline": "작업 실행",
   "command.run.toggleTrigger": "트리거 전환",
-  "command.pickProject": "ok-script 프로젝트 폴더 선택…"
+  "command.pickProject": "ok-script 프로젝트 폴더 선택…",
+  "command.findTemplateReferences": "템플릿 참조 찾기…"
 }

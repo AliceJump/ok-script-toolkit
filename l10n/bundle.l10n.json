@@ -298,6 +298,10 @@
   "Open Parameters": "Open Parameters",
   "paramsSandboxHint": "Saved to the sandbox only · pushed to the executor when running",
   "Resource expression (e.g. fL.btn_claim)": "Resource expression (e.g. fL.btn_claim)",
-  "Locate “{name}” in Resources": "Locate “{name}” in Resources",
-  "Use as ok-script project": "Use as ok-script project"
+  "Use as ok-script project": "Use as ok-script project",
+  "Reveal in Resources": "Reveal in Resources",
+  "Find References": "Find References",
+  "Select a template to find references": "Select a template to find references",
+  "No references to “{name}” found in Python files.": "No references to “{name}” found in Python files.",
+  "{count} reference(s) to “{name}”": "{count} reference(s) to “{name}”"
 }

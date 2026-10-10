@@ -91,5 +91,6 @@
   "command.run.openParams": "Abrir parámetros",
   "command.run.runTaskInline": "Ejecutar tarea",
   "command.run.toggleTrigger": "Alternar disparador",
-  "command.pickProject": "Elegir carpeta del proyecto…"
+  "command.pickProject": "Elegir carpeta del proyecto…",
+  "command.findTemplateReferences": "Buscar referencias de plantilla…"
 }

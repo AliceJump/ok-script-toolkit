@@ -82,6 +82,12 @@ export class ResourcesViewProvider implements vscode.WebviewViewProvider, vscode
     });
   }
 
+  /** 在资源视图里定位某个资源：切到已发布并把搜索框填成名字 */
+  reveal(name: string): void {
+    this.mode = 'published';
+    void this.pushLibrary().then(() => this.view?.webview.postMessage({ type: 'reveal', name }));
+  }
+
   async captureToInbox(): Promise<void> {
     const { captureGameWindow } = await import('../screenshotCapture');
     const out = this.tempStore.newFilePath();
