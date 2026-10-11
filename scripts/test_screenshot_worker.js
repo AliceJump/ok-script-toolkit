@@ -12,6 +12,12 @@ const path = require('path');
 const rl = require('readline').createInterface({ input: process.stdin });
 rl.on('line', line => {
   const r = JSON.parse(line);
+  fs.appendFileSync(path.join(r.project_dir, 'requests.jsonl'), JSON.stringify(r) + '\\n');
+  if (r.op === 'warmup') {
+    if (r.method === 'hang') return;
+    setTimeout(() => console.log(JSON.stringify({ capture_response: r.id, ok: r.method !== 'error', frame_ready: true, error: 'warmup failed' })), 80);
+    return;
+  }
   if (r.op === 'probe') {
     console.log(JSON.stringify({ capture_response: r.id, ok: true,
       config: { ok: true, exe: [fs.readFileSync(path.join(r.project_dir, 'exe.txt'), 'utf8')] } }));
@@ -34,12 +40,18 @@ rl.on('line', line => {
   const logs = [];
   const worker = new ScreenshotWorker(process.execPath, script, tmp, line => logs.push(line), 2000);
   try {
+    const warming = worker.prewarm('auto');
+    assert.strictEqual(worker.prewarm('auto'), warming, 'Concurrent triggers must share one warmup');
+    assert.strictEqual(await warming, true);
+    assert.strictEqual(fs.readFileSync(path.join(tmp, 'requests.jsonl'), 'utf8').trim().split('\n').length, 1);
     fs.writeFileSync(path.join(tmp, 'exe.txt'), 'game.exe');
     assert.deepStrictEqual(await worker.probe(), { ok: true, exe: ['game.exe'] });
     await Promise.all([worker.capture('one', {}, 'auto'), worker.capture('two', {}, 'bitblt')]);
     fs.writeFileSync(path.join(tmp, 'exe.txt'), 'edited.exe');
     assert.deepStrictEqual(await worker.probe(), { ok: true, exe: ['edited.exe'] });
     assert.strictEqual(logs.filter(line => line.includes('worker_started')).length, 1);
+    await assert.rejects(worker.prewarm('error'), /warmup failed/);
+    await worker.prewarm('auto');
     await assert.rejects(worker.capture('error', {}, 'auto'), /capture failed/);
     await worker.capture('restart', {}, 'auto');
     assert.strictEqual(logs.filter(line => line.includes('worker_started')).length, 2);
@@ -52,7 +64,7 @@ rl.on('line', line => {
   const hung = new ScreenshotWorker(process.execPath, script, tmp, () => {}, 200);
   try {
     const started = Date.now();
-    await assert.rejects(hung.capture('hang', {}, 'auto'), /timed out/);
+    await assert.rejects(hung.prewarm('hang'), /timed out/);
     assert(Date.now() - started < 2500);
     await hung.capture('recovered', {}, 'auto');
   } finally { hung.dispose(); }
@@ -60,7 +72,7 @@ rl.on('line', line => {
   const idleLogs = [];
   const idle = new ScreenshotWorker(process.execPath, script, tmp, line => idleLogs.push(line), 2000, 50);
   try {
-    await idle.capture('first', {}, 'auto');
+    await idle.prewarm('auto');
     await new Promise(resolve => setTimeout(resolve, 150));
     await idle.capture('second', {}, 'auto');
     assert.strictEqual(idleLogs.filter(line => line.includes('worker_started')).length, 2);

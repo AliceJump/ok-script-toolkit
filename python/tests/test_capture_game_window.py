@@ -27,7 +27,7 @@ bitblt = module('ok.device.capture_methods.bitblt_utils', BitBltCtxDummy=Mock,
                 clean_up_bitblt=Mock(), clean_up_desktop_bitblt=Mock())
 cv2 = module('cv2', imwrite=Mock(return_value=True), resize=Mock(), INTER_LINEAR=1)
 gui = module('win32gui', GetClientRect=lambda _: (0, 0, 640, 480),
-             ClientToScreen=lambda *_: (10, 20), GetWindowRect=lambda _: (0, 0, 650, 500))
+             ClientToScreen=lambda *_: (10, 20), GetWindowRect=lambda _: (0, 0, 650, 500), IsIconic=lambda _: False)
 dependencies = {m.__name__: m for m in (window, wgc, bitblt, cv2, gui,
                 module('win32api'), module('win32con'))}
 spec = importlib.util.spec_from_file_location('capture_under_test',
@@ -257,6 +257,79 @@ class CaptureTest(unittest.TestCase):
         self.assertIn(str(config), sources)
         self.assertIn(capture.os.path.normcase(str(local)), sources)
         self.assertNotIn(capture.os.path.normcase(str(dependency)), sources)
+
+    def test_warmup_discards_frame_and_real_shot_requests_a_fresh_frame(self):
+        capture._REUSE_WGC = True
+        FakeWgc.frame = Frame()
+        probe = module('probe_window_config', probe_project_config=lambda _: {'ok': True, 'exe': ['game.exe']})
+        processor = Mock(return_value=Frame())
+        with patch.dict(sys.modules, {'probe_window_config': probe}), \
+             patch.object(capture, 'load_screenshot_processor', return_value=processor), \
+             patch.object(capture, '_capture_foreground') as foreground, \
+             patch.object(capture, '_capture_bitblt') as bit:
+            self.assertTrue(capture.warm_capture_session('project'))
+            cv2.imwrite.assert_not_called()
+            processor.assert_not_called()
+            FakeWgc.frame = Frame()
+            capture.capture(self.output, processor=processor)
+        self.assertEqual(len(FakeWgc.instances), 1)
+        self.assertEqual(FakeWgc.instances[0].calls, 2)
+        cv2.imwrite.assert_called_once()
+        processor.assert_called_once_with(FakeWgc.frame)
+        foreground.assert_not_called()
+        bit.assert_not_called()
+
+    def test_warmup_without_game_or_in_foreground_mode_never_activates_or_saves(self):
+        probe = module('probe_window_config', probe_project_config=lambda _: {'ok': True, 'exe': ['game.exe']})
+        with patch.dict(sys.modules, {'probe_window_config': probe}), \
+             patch.object(capture, 'load_screenshot_processor') as load, \
+             patch.object(capture, 'find_hwnd', return_value=('', None)) as find, \
+             patch.object(capture, '_capture_foreground') as foreground:
+            self.assertFalse(capture.warm_capture_session('project'))
+            find.reset_mock()
+            self.assertFalse(capture.warm_capture_session('project', 'foreground'))
+            find.assert_not_called()
+            self.assertEqual(load.call_count, 2)
+        foreground.assert_not_called()
+        cv2.imwrite.assert_not_called()
+        self.assertEqual(FakeWgc.instances, [])
+
+    def test_server_warmup_reuses_project_imports_and_failure_does_not_block_capture(self):
+        requests = [json.dumps({'id': n, 'op': 'warmup', 'project_dir': 'project'}) + '\n' for n in (1, 2, 3)]
+        requests.append(json.dumps({'id': 4, 'output_path': self.output, 'project_dir': 'project'}) + '\n')
+        protocol = io.StringIO()
+        with patch.object(sys, 'stdin', requests), \
+             patch.object(capture, '_PROTOCOL_STDOUT', protocol), \
+             patch.object(capture, '_project_sources', return_value={}), \
+             patch.object(capture, 'warm_capture_session', side_effect=[False, RuntimeError('warmup failure'), True]) as warm, \
+             patch.object(capture, 'load_screenshot_processor'), \
+             patch.object(capture, 'capture') as take:
+            capture.serve()
+        replies = [json.loads(line) for line in protocol.getvalue().splitlines()]
+        self.assertTrue(replies[0]['ok'])
+        self.assertFalse(replies[0]['frame_ready'])
+        self.assertFalse(replies[1]['ok'])
+        self.assertTrue(replies[2]['frame_ready'])
+        self.assertTrue(replies[3]['ok'])
+        self.assertEqual([call.kwargs['load_project'] for call in warm.call_args_list], [True, False, False])
+        take.assert_called_once()
+
+    def test_project_change_after_warmup_requires_restart_before_next_request(self):
+        config = Path(make_tmp_dir('capture-warm-source')) / 'config.py'
+        config.write_text('version = 1', encoding='utf-8')
+        protocol = io.StringIO()
+        def requests():
+            yield json.dumps({'id': 1, 'op': 'warmup', 'project_dir': str(config.parent)}) + '\n'
+            config.write_text('version = 222', encoding='utf-8')
+            yield json.dumps({'id': 2, 'op': 'probe', 'project_dir': str(config.parent)}) + '\n'
+        with patch.object(sys, 'stdin', requests()), \
+             patch.object(capture, '_PROTOCOL_STDOUT', protocol), \
+             patch.object(capture, 'warm_capture_session', return_value=False), \
+             patch.object(capture, '_project_sources', side_effect=lambda _: {str(config): capture._source_signature(config)}):
+            capture.serve()
+        replies = [json.loads(line) for line in protocol.getvalue().splitlines()]
+        self.assertTrue(replies[0]['ok'])
+        self.assertTrue(replies[1]['restart'])
 
 
 if __name__ == '__main__':

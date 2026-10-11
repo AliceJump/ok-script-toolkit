@@ -7,6 +7,7 @@ interface CaptureReply {
   error?: string;
   restart?: boolean;
   config?: unknown;
+  frame_ready?: boolean;
 }
 
 /** 截图专用解释器：串行请求、有限等待、闲置退出；项目源码变更时自动重启。 */
@@ -17,6 +18,7 @@ export class ScreenshotWorker {
   private idleTimer?: NodeJS.Timeout;
   private queue: Promise<unknown> = Promise.resolve();
   private disposed = false;
+  private warming?: { method: string; job: Promise<boolean> };
 
   constructor(
     private readonly pythonPath: string,
@@ -33,6 +35,15 @@ export class ScreenshotWorker {
 
   probe(): Promise<unknown> {
     return this.submit({ op: 'probe' }).then(reply => reply.config);
+  }
+
+  prewarm(method: string): Promise<boolean> {
+    if (this.warming?.method === method) return this.warming.job;
+    const job = this.submit({ op: 'warmup', method }).then(reply => reply.frame_ready === true);
+    this.warming = { method, job };
+    const clear = () => { if (this.warming?.job === job) this.warming = undefined; };
+    void job.then(clear, clear);
+    return job;
   }
 
   private submit(payload: Record<string, unknown>): Promise<CaptureReply> {

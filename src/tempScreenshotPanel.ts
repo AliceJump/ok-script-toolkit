@@ -5,7 +5,7 @@ import { execFile } from 'child_process';
 import { TempScreenshotStore, MAX_TEMP_SCREENSHOTS } from './tempScreenshotStore';
 import { TemplateAssetData } from './templateAssetData';
 import { repaintAllAssetGalleries } from './templateAssetPanel';
-import { captureGameWindow } from './screenshotCapture';
+import { captureGameWindow, prewarmScreenshotCapture } from './screenshotCapture';
 import { clearPendingDrag, setPendingDrag } from './tempDrag';
 import { cropTemplateThumbFileAsync, readImageSize, removeTemplateThumbFile, THUMB_HEIGHT } from './pngCrop';
 import { injectWebviewLocalization, tr } from './localization';
@@ -326,7 +326,10 @@ export class TempScreenshotViewProvider implements vscode.WebviewViewProvider {
       () => view.visible,
     );
     controller.attachHtml();
-    view.onDidChangeVisibility(() => { if (view.visible) void controller.refresh(); });
+    if (view.visible) void prewarmScreenshotCapture();
+    view.onDidChangeVisibility(() => {
+      if (view.visible) { void prewarmScreenshotCapture(); void controller.refresh(); }
+    });
     view.onDidDispose(() => controller.dispose());
   }
 }

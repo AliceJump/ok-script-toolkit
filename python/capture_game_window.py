@@ -554,11 +554,43 @@ def _source_signature(filename):
         return None
 
 
+def warm_capture_session(project_dir, method='auto', load_project=True):
+    """提前导入项目及初始化后台 WGC，丢弃首帧；不写文件、不激活窗口。"""
+    if load_project:
+        load_screenshot_processor(project_dir)
+    if method not in ('auto', 'wgc'):
+        return False
+    # 即使游戏尚未打开，也先完成 WGC 依赖导入。
+    try:
+        from ok.util.window import windows_graphics_available
+        if not windows_graphics_available():
+            return False
+        importlib.import_module('ok.device.capture_methods.windows_graphics')
+    except Exception as exc:
+        print(f"WGC warmup unavailable: {exc}", file=sys.stderr)
+        return False
+    from probe_window_config import probe_project_config
+    config = probe_project_config(project_dir)
+    # 没有明确目标时，不在后台猜测窗口或弹输入框。
+    if not config.get('ok') or not (config.get('exe') or config.get('hwnd_class')):
+        return False
+    result = find_hwnd(None, config.get('exe') or [], 0, 0, class_name=config.get('hwnd_class'))
+    hwnd = result[1]
+    if not hwnd or win32gui.IsIconic(hwnd):
+        return False
+    left, top, right, bottom = win32gui.GetClientRect(hwnd)
+    width, height = right - left, bottom - top
+    if width <= 0 or height <= 0:
+        return False
+    return _capture_wgc(hwnd, width, height, timeout=1.5) is not None
+
+
 def serve():
     """串行处理截图请求，复用导入和 WGC 会话；每张图读取新帧和当前配置。"""
     global _REUSE_WGC
     _REUSE_WGC = True
     sources = {}
+    project_warmed = False
     for line in sys.stdin:
         request = json.loads(line)
         response = {'capture_response': request['id'], 'ok': False}
@@ -573,6 +605,11 @@ def serve():
             if request.get('op') == 'probe':
                 from probe_window_config import probe_project_config
                 response['config'] = probe_project_config(project_dir)
+            elif request.get('op') == 'warmup':
+                response['frame_ready'] = warm_capture_session(
+                    project_dir, request.get('method', 'auto'), load_project=not project_warmed)
+                project_warmed = True
+                sources = _project_sources(project_dir)
             else:
                 processor = load_screenshot_processor(project_dir) if project_dir else None
                 _log_timing('load_project_config', started)
@@ -581,6 +618,7 @@ def serve():
                         processor=processor, method=request.get('method', 'auto'))
                 if project_dir:
                     sources = _project_sources(project_dir)
+                    project_warmed = True
             response['ok'] = True
         except Exception as exc:
             response['error'] = str(exc)

@@ -6,7 +6,7 @@ import { AnnotationPanel } from './annotationPanel';
 import { cropTemplateThumbFileAsync, THUMB_HEIGHT } from './pngCrop';
 import { injectWebviewLocalization, tr } from './localization';
 import { TempScreenshotStore } from './tempScreenshotStore';
-import { captureGameWindow, getProjectConfig, probeWindowConfig } from './screenshotCapture';
+import { captureGameWindow, getProjectConfig, probeWindowConfig, prewarmScreenshotCapture } from './screenshotCapture';
 import { takePendingDrag } from './tempDrag';
 import { ideSetting, labelEnumClassName, labelEnumPathInputError, labelEnumPathSetting, normalizeLabelEnumPathInput, setIdeSetting, templatesDirectory } from './projectConfig';
 import { labelEnumRenameImpact, labelEnumRenameMessage, referencingFiles, writableClassName } from './labelEnumGuard';
@@ -853,7 +853,10 @@ export class TemplateAssetViewProvider implements vscode.WebviewViewProvider {
       this.tempStore,
     );
     controller.attachHtml();
-    view.onDidChangeVisibility(() => { if (view.visible) void controller.update(); });
+    if (view.visible) void prewarmScreenshotCapture();
+    view.onDidChangeVisibility(() => {
+      if (view.visible) { void prewarmScreenshotCapture(); void controller.update(); }
+    });
     view.onDidDispose(() => controller.dispose());
   }
 }
@@ -866,6 +869,7 @@ export class TemplateAssetPanel {
   static show(data: TemplateAssetData, thumbDir: string, extensionUri: vscode.Uri, tempStore?: TempScreenshotStore): void {
     if (TemplateAssetPanel.current) {
       TemplateAssetPanel.current.panel.reveal();
+      void prewarmScreenshotCapture();
       void TemplateAssetPanel.current.controller.update();
       return;
     }
@@ -905,8 +909,9 @@ export class TemplateAssetPanel {
     readonly controller: AssetGalleryController,
   ) {
     controller.attachHtml();
+    if (panel.visible) void prewarmScreenshotCapture();
     panel.onDidChangeViewState((e) => {
-      if (e.webviewPanel.visible) void this.controller.update();
+      if (e.webviewPanel.visible) { void prewarmScreenshotCapture(); void this.controller.update(); }
     });
     panel.onDidDispose(() => {
       this.controller.dispose();

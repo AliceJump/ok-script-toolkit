@@ -116,6 +116,24 @@ export type CaptureOutcome =
   | { ok: true }
   | { ok: false; reason: 'noScript' | 'cancelled' | 'failed'; error?: string };
 
+/** 面板显示或执行器就绪时后台预热；失败只写日志，不影响任务或弹出输入框。 */
+export async function prewarmScreenshotCapture(expectedProjectDir?: string, expectedPythonPath?: string): Promise<void> {
+  try {
+    const { projectDir, pythonPath } = getProjectConfig();
+    if (!projectDir || !fs.existsSync(projectDir)
+      || (expectedProjectDir !== undefined && expectedProjectDir !== projectDir)
+      || (expectedPythonPath !== undefined && expectedPythonPath !== pythonPath)) return;
+    const script = path.join(path.dirname(__dirname), 'python', 'capture_game_window.py');
+    if (!fs.existsSync(script)) return;
+    const method = vscode.workspace.getConfiguration('okScriptToolkit').get<string>('captureMethod') || 'auto';
+    const started = Date.now();
+    const frameReady = await getCaptureWorker(pythonPath, script, projectDir).prewarm(method);
+    captureLogger(`[capture] warmup_ms=${Date.now() - started} frame_ready=${frameReady}`);
+  } catch (error) {
+    captureLogger(`[capture] warmup failed: ${String(error)}`);
+  }
+}
+
 /**
  * 捕获游戏窗口到指定文件。
  *
