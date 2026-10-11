@@ -6,6 +6,7 @@ interface CaptureReply {
   ok: boolean;
   error?: string;
   restart?: boolean;
+  config?: unknown;
 }
 
 /** 截图专用解释器：串行请求、有限等待、闲置退出；项目源码变更时自动重启。 */
@@ -27,16 +28,24 @@ export class ScreenshotWorker {
   ) {}
 
   capture(outputPath: string, windowConfig: unknown, method: string): Promise<void> {
+    return this.submit({ output_path: outputPath, window_config: windowConfig, method }).then(() => {});
+  }
+
+  probe(): Promise<unknown> {
+    return this.submit({ op: 'probe' }).then(reply => reply.config);
+  }
+
+  private submit(payload: Record<string, unknown>): Promise<CaptureReply> {
     const job = this.queue.then(async () => {
       if (this.disposed) throw new Error('Screenshot worker disposed');
       for (let attempt = 0; attempt < 2; attempt++) {
-        const reply = await this.request(outputPath, windowConfig, method);
+        const reply = await this.request(payload);
         if (reply.restart) {
           this.stop();
           continue;
         }
         if (!reply.ok) throw new Error(reply.error || 'Screenshot worker failed');
-        return;
+        return reply;
       }
       throw new Error('Screenshot sources changed repeatedly');
     });
@@ -85,15 +94,14 @@ export class ScreenshotWorker {
     return child;
   }
 
-  private request(outputPath: string, windowConfig: unknown, method: string): Promise<CaptureReply> {
+  private request(payload: Record<string, unknown>): Promise<CaptureReply> {
     if (this.idleTimer) clearTimeout(this.idleTimer);
     const child = this.start();
     return new Promise((resolve, reject) => {
       const id = ++this.nextId;
       const timer = setTimeout(() => this.stop(new Error('Screenshot worker timed out')), this.timeoutMs);
       this.pending = { id, resolve, reject, timer };
-      child.stdin.write(JSON.stringify({ id, output_path: outputPath, project_dir: this.projectDir,
-        window_config: windowConfig, method }) + '\n');
+      child.stdin.write(JSON.stringify({ ...payload, id, project_dir: this.projectDir }) + '\n');
     });
   }
 

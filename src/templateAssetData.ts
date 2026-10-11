@@ -484,13 +484,19 @@ export class TemplateAssetData extends CocoAnnotationData {
    * 否则"导进来但一张框都没标"的图会立刻在标注文件里占一条空记录。
    * 模板序号占位同时看磁盘与 COCO（见 `nextImageName`），所以不登记也不会撞名。
    */
-  importImageFile(srcPath: string): string | undefined {
+  importImageFile(srcPath: string, convertBmp = false): string | undefined {
     try {
       this.ensureTemplateFolder();
-      const ext = path.extname(srcPath);
+      const convert = convertBmp && path.extname(srcPath).toLowerCase() === '.bmp';
+      const ext = convert ? '.png' : path.extname(srcPath);
       const name = this.nextImageName() + ext;
       const dst = path.join(this.templateFolder, name);
-      fs.copyFileSync(srcPath, dst);
+      if (convert) {
+        const image = decodeRgba(fs.readFileSync(srcPath));
+        fs.writeFileSync(dst, encodePngRgb(image.width, image.height, image.rgba));
+      } else {
+        fs.copyFileSync(srcPath, dst);
+      }
       return dst;
     } catch {
       return undefined;

@@ -205,15 +205,11 @@ def _clean(value):
     return value
 
 
-def main():
-    if len(sys.argv) < 2:
-        print(json.dumps({"ok": False, "error": "缺少 project_dir 参数"}, ensure_ascii=False))
-        sys.exit(1)
-    project_dir = sys.argv[1]
-
+def probe_project_config(project_dir):
+    """仅解析当前源码，可在截图进程中调用，不执行项目配置。"""
     config_path = _resolve_config_path(project_dir)
     if not config_path:
-        print(json.dumps({
+        return {
             "ok": False,
             "error": f"找不到 config.py: {project_dir}",
             "searched": [
@@ -221,25 +217,32 @@ def main():
                 os.path.join(project_dir, "src", "config.py"),
                 os.path.join(project_dir, "config.py"),
             ],
-        }, ensure_ascii=False))
-        sys.exit(1)
+        }
 
-    window_config = _extract_config_dict_keys(config_path)
-    template_matching = _extract_template_matching_keys(config_path)
-    template_tab = _extract_template_tab_keys(config_path)
+    with open(config_path, encoding="utf-8") as f:
+        config_dict = _find_config_dict(ast.parse(f.read(), filename=config_path))
+    window_config = _extract_sub_dict(config_dict, "windows", WINDOWS_SUB_KEYS)
+    template_matching = _extract_sub_dict(config_dict, "template_matching", TEMPLATE_MATCHING_SUB_KEYS)
+    template_tab = _extract_sub_dict(config_dict, "template_tab", TEMPLATE_TAB_SUB_KEYS)
 
     window_config = {k: _clean(v) for k, v in window_config.items()}
     coco_feature_json = _clean(template_matching.get("coco_feature_json"))
     label_enum_relative_path = _clean(template_tab.get("label_enum_relative_path"))
 
-    print(json.dumps({
+    return {
         "ok": True,
         "config_path": config_path,
         **window_config,
         "coco_feature_json": coco_feature_json,
         "label_enum_relative_path": label_enum_relative_path,
-    }, ensure_ascii=False))
-    sys.exit(0)
+    }
+
+
+def main():
+    result = probe_project_config(sys.argv[1]) if len(sys.argv) >= 2 else {
+        "ok": False, "error": "缺少 project_dir 参数"}
+    print(json.dumps(result, ensure_ascii=False))
+    sys.exit(0 if result['ok'] else 1)
 
 
 if __name__ == "__main__":

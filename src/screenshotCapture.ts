@@ -50,6 +50,25 @@ interface ProbeWindowConfigResult {
   label_enum_relative_path?: string | null;
 }
 
+function windowConfigFromProbe(parsed: ProbeWindowConfigResult | undefined): WindowConfig | undefined {
+  if (!parsed?.ok) return undefined;
+  return {
+    exe: parsed.exe, title: parsed.title, hwnd_class: parsed.hwnd_class, top_hwnd_class: parsed.top_hwnd_class,
+    cocoFeatureJson: parsed.coco_feature_json ?? undefined,
+    labelEnumRelativePath: parsed.label_enum_relative_path ?? undefined,
+  };
+}
+
+function getCaptureWorker(pythonPath: string, scriptPath: string, projectDir = ''): ScreenshotWorker {
+  const key = JSON.stringify([pythonPath, scriptPath, projectDir]);
+  if (!captureWorker || captureWorkerKey !== key) {
+    disposeCaptureWorker();
+    captureWorkerKey = key;
+    captureWorker = new ScreenshotWorker(pythonPath, scriptPath, projectDir, captureLogger);
+  }
+  return captureWorker;
+}
+
 /** 读取 okScriptToolkit 扩展配置中的项目路径和 Python 解释器 */
 export function getProjectConfig(): { projectDir: string; pythonPath: string } {
   const cfg = vscode.workspace.getConfiguration('okScriptToolkit');
@@ -86,18 +105,7 @@ export async function probeWindowConfig(projectDir: string, pythonPath: string):
     for (let i = lines.length - 1; i >= 0; i--) {
       try {
         const parsed = JSON.parse(lines[i]) as ProbeWindowConfigResult;
-        if (parsed.ok) {
-          return {
-            exe: parsed.exe,
-            title: parsed.title,
-            hwnd_class: parsed.hwnd_class,
-            top_hwnd_class: parsed.top_hwnd_class,
-            // 探针解不出来时给的是 `null`（AST 里掺了变量），这里归一成 `undefined`
-            cocoFeatureJson: parsed.coco_feature_json ?? undefined,
-            labelEnumRelativePath: parsed.label_enum_relative_path ?? undefined,
-          };
-        }
-        return undefined;
+        return windowConfigFromProbe(parsed);
       } catch { /* 跳过非 JSON 行 */ }
     }
   } catch { /* Python 不可用或脚本失败 */ }
@@ -118,9 +126,16 @@ export type CaptureOutcome =
 export async function captureGameWindow(outputPath: string, methodOverride?: string): Promise<CaptureOutcome> {
   const started = Date.now();
   const { projectDir, pythonPath } = getProjectConfig();
+  const captureScript = path.join(path.dirname(__dirname), 'python', 'capture_game_window.py');
+  if (!fs.existsSync(captureScript)) return { ok: false, reason: 'noScript' };
   let windowConfig: WindowConfig | undefined;
   if (projectDir) {
-    windowConfig = await probeWindowConfig(projectDir, pythonPath);
+    try {
+      windowConfig = windowConfigFromProbe(await getCaptureWorker(pythonPath, captureScript, projectDir).probe() as ProbeWindowConfigResult);
+    } catch (error) {
+      captureLogger(`[capture] probe failed: ${String(error)}`);
+      return { ok: false, reason: 'failed', error: String(error) };
+    }
     captureLogger(`[capture] probe_ms=${Date.now() - started}`);
   }
 
@@ -148,11 +163,6 @@ export async function captureGameWindow(outputPath: string, methodOverride?: str
 
   fs.mkdirSync(path.dirname(outputPath), { recursive: true });
 
-  const captureScript = path.join(path.dirname(__dirname), 'python', 'capture_game_window.py');
-  if (!fs.existsSync(captureScript)) {
-    return { ok: false, reason: 'noScript' };
-  }
-
   const windowConfigJson = (exeNames || hwndClass || titleRegex)
     ? JSON.stringify({ exe: exeNames, title: titleRegex, hwnd_class: hwndClass })
     : undefined;
@@ -172,15 +182,10 @@ function runCaptureScript(
   const method = methodOverride
     || vscode.workspace.getConfiguration('okScriptToolkit').get<string>('captureMethod')
     || 'auto';
-  const key = JSON.stringify([pythonPath, scriptPath, projectDir]);
-  if (!captureWorker || captureWorkerKey !== key) {
-    disposeCaptureWorker();
-    captureWorkerKey = key;
-    captureWorker = new ScreenshotWorker(pythonPath, scriptPath, projectDir || '', captureLogger);
-  }
+  const worker = getCaptureWorker(pythonPath, scriptPath, projectDir);
   const started = Date.now();
   const windowConfig = configJson ? JSON.parse(configJson) : { title: titlePattern };
-  return captureWorker.capture(outputPath, windowConfig, method).then((): CaptureOutcome => {
+  return worker.capture(outputPath, windowConfig, method).then((): CaptureOutcome => {
     captureLogger(`[capture] request_ms=${Date.now() - started}`);
     if (!fs.existsSync(outputPath)) {
       return { ok: false, reason: 'failed', error: tr('Screenshot failed: file not created') };

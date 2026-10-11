@@ -12,6 +12,11 @@ const path = require('path');
 const rl = require('readline').createInterface({ input: process.stdin });
 rl.on('line', line => {
   const r = JSON.parse(line);
+  if (r.op === 'probe') {
+    console.log(JSON.stringify({ capture_response: r.id, ok: true,
+      config: { ok: true, exe: [fs.readFileSync(path.join(r.project_dir, 'exe.txt'), 'utf8')] } }));
+    return;
+  }
   if (r.output_path === 'hang') return;
   if (r.output_path === 'exit') return process.exit(7);
   if (r.output_path === 'restart' && !fs.existsSync(path.join(r.project_dir, 'restarted'))) {
@@ -29,7 +34,11 @@ rl.on('line', line => {
   const logs = [];
   const worker = new ScreenshotWorker(process.execPath, script, tmp, line => logs.push(line), 2000);
   try {
+    fs.writeFileSync(path.join(tmp, 'exe.txt'), 'game.exe');
+    assert.deepStrictEqual(await worker.probe(), { ok: true, exe: ['game.exe'] });
     await Promise.all([worker.capture('one', {}, 'auto'), worker.capture('two', {}, 'bitblt')]);
+    fs.writeFileSync(path.join(tmp, 'exe.txt'), 'edited.exe');
+    assert.deepStrictEqual(await worker.probe(), { ok: true, exe: ['edited.exe'] });
     assert.strictEqual(logs.filter(line => line.includes('worker_started')).length, 1);
     await assert.rejects(worker.capture('error', {}, 'auto'), /capture failed/);
     await worker.capture('restart', {}, 'auto');

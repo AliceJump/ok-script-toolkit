@@ -809,7 +809,7 @@ class AssetGalleryController {
       void vscode.window.showWarningMessage(tr('The dragged screenshot is no longer available.'));
       return;
     }
-    const dst = this.data.importImageFile(target.filePath);
+    const dst = this.data.importImageFile(target.filePath, true);
     if (!dst) {
       void vscode.window.showErrorMessage(tr('Failed to add to template assets: {error}', { error: target.name }));
       return;

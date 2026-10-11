@@ -217,6 +217,30 @@ class CaptureTest(unittest.TestCase):
         self.assertEqual(load.call_count, 2)
         self.assertTrue(all(json.loads(line)['ok'] for line in protocol.getvalue().splitlines()))
 
+    def test_probe_reads_current_source_without_importing_config_or_capturing(self):
+        root = Path(make_tmp_dir('capture-probe'))
+        config = root / 'config.py'
+        protocol = io.StringIO()
+        def requests():
+            for n in (1, 2):
+                config.write_text("raise RuntimeError('must not execute')\n"
+                                  + "config = {'windows': {'exe': ['game%d.exe']}}" % n, encoding='utf-8')
+                yield json.dumps({'id': n, 'op': 'probe', 'project_dir': str(root)}) + '\n'
+            yield json.dumps({'id': 3, 'op': 'probe', 'project_dir': str(root / 'missing')}) + '\n'
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+        self.addCleanup(lambda: sys.path.pop(0))
+        with patch.object(sys, 'stdin', requests()), \
+             patch.object(capture, '_PROTOCOL_STDOUT', protocol), \
+             patch.object(capture, 'load_screenshot_processor') as load, \
+             patch.object(capture, 'capture') as take:
+            capture.serve()
+        replies = [json.loads(line) for line in protocol.getvalue().splitlines()]
+        self.assertEqual(replies[0]['config']['exe'], ['game1.exe'])
+        self.assertEqual(replies[1]['config']['exe'], ['game2.exe'])
+        self.assertFalse(replies[2]['config']['ok'])
+        load.assert_not_called()
+        take.assert_not_called()
+
     def test_source_watch_includes_project_modules_and_excludes_virtualenv(self):
         root = Path(make_tmp_dir('capture-watch'))
         config = root / 'config.py'

@@ -570,14 +570,18 @@ def serve():
         started = time.perf_counter()
         try:
             project_dir = request.get('project_dir')
-            processor = load_screenshot_processor(project_dir) if project_dir else None
-            _log_timing('load_project_config', started)
-            config = request.get('window_config') or {}
-            capture(request['output_path'], config.get('exe'), config.get('hwnd_class'),
-                    processor=processor, method=request.get('method', 'auto'))
+            if request.get('op') == 'probe':
+                from probe_window_config import probe_project_config
+                response['config'] = probe_project_config(project_dir)
+            else:
+                processor = load_screenshot_processor(project_dir) if project_dir else None
+                _log_timing('load_project_config', started)
+                config = request.get('window_config') or {}
+                capture(request['output_path'], config.get('exe'), config.get('hwnd_class'),
+                        processor=processor, method=request.get('method', 'auto'))
+                if project_dir:
+                    sources = _project_sources(project_dir)
             response['ok'] = True
-            if project_dir:
-                sources = _project_sources(project_dir)
         except Exception as exc:
             response['error'] = str(exc)
         finally:
