@@ -27,7 +27,12 @@ rl.on('line', line => {
   if (r.output_path === 'exit') return process.exit(7);
   if (r.output_path === 'restart' && !fs.existsSync(path.join(r.project_dir, 'restarted'))) {
     fs.writeFileSync(path.join(r.project_dir, 'restarted'), '1');
-    console.log(JSON.stringify({ capture_response: r.id, restart: true }));
+    const reply = JSON.stringify({ capture_response: r.id, restart: true }) + '\\n';
+    const tailCode = 'setTimeout(() => process.stdout.write(' + JSON.stringify(reply) + '), 30)';
+    const tail = require('child_process').spawn(process.execPath, ['-e', tailCode], {
+      stdio: ['ignore', 'inherit', 'ignore'],
+    });
+    tail.unref();
     return process.exit(0);
   }
   for (let i = 0; i < 1000; i++) process.stderr.write('log\\n');

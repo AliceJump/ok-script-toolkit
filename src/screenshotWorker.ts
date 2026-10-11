@@ -97,7 +97,7 @@ export class ScreenshotWorker {
     stderr.on('line', line => this.log(`[capture] ${line}`));
     child.on('error', error => { if (this.child === child) this.stop(error); });
     child.stdin.on('error', error => { if (this.child === child) this.stop(error); });
-    child.on('exit', code => {
+    child.on('close', code => {
       stdout.close();
       stderr.close();
       if (this.child === child) this.stop(new Error(`Screenshot worker exited (${code})`));
