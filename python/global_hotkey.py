@@ -17,9 +17,9 @@ SYNCHRONIZE = 0x00100000
 INFINITE = 0xFFFFFFFF
 
 
-def start_parent_watch(parent_pid: int, message_thread_id: int, user32: ctypes.WinDLL) -> None:
+def start_parent_watch(parent_pid: int, message_thread_id: int, user32: ctypes.WinDLL) -> bool:
     if parent_pid <= 0:
-        return
+        return True
 
     kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
     open_process = kernel32.OpenProcess
@@ -37,7 +37,7 @@ def start_parent_watch(parent_pid: int, message_thread_id: int, user32: ctypes.W
 
     handle = open_process(SYNCHRONIZE, False, parent_pid)
     if not handle:
-        return
+        return False
 
     def wait_for_parent() -> None:
         try:
@@ -47,6 +47,7 @@ def start_parent_watch(parent_pid: int, message_thread_id: int, user32: ctypes.W
             close_handle(handle)
 
     threading.Thread(target=wait_for_parent, name="ok-hotkey-parent-watch", daemon=True).start()
+    return True
 
 
 def main() -> int:
@@ -69,6 +70,9 @@ def main() -> int:
     get_message = user32.GetMessageW
     get_message.argtypes = [ctypes.POINTER(wintypes.MSG), wintypes.HWND, wintypes.UINT, wintypes.UINT]
     get_message.restype = ctypes.c_int
+    peek_message = user32.PeekMessageW
+    peek_message.argtypes = [ctypes.POINTER(wintypes.MSG), wintypes.HWND, wintypes.UINT, wintypes.UINT, wintypes.UINT]
+    peek_message.restype = wintypes.BOOL
     get_current_thread_id = kernel32.GetCurrentThreadId
     get_current_thread_id.restype = wintypes.DWORD
 
@@ -77,10 +81,14 @@ def main() -> int:
         print(f"ERROR register_hotkey {ctypes.get_last_error()}", flush=True)
         return 2
 
-    start_parent_watch(args.parent_pid, get_current_thread_id(), user32)
-    print("READY", flush=True)
     message = wintypes.MSG()
     try:
+        # Create the message queue before the watcher can post WM_QUIT.
+        peek_message(ctypes.byref(message), None, 0, 0, 0)
+        if not start_parent_watch(args.parent_pid, get_current_thread_id(), user32):
+            print(f"ERROR parent_process {ctypes.get_last_error()}", flush=True)
+            return 5
+        print("READY", flush=True)
         while True:
             result = get_message(ctypes.byref(message), None, 0, 0)
             if result == -1:
