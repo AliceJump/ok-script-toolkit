@@ -128,7 +128,7 @@ try {
         $arrival = $null
         $unconfirmedSince = $null
         $restart = $false
-        Write-Host "[wait] session for $Repo#$PrNumber head=$head"
+        Write-Host "[wait] session for $Repo#$PrNumber head=$head; waiting deadline: $(Format-CrDisplayTime $globalDeadline) (local time; maximum wait $TimeoutSeconds seconds; not a review completion estimate)"
 
         while (-not $restart) {
             if ((Get-CrNow) -ge $globalDeadline) { Complete-Wait 'TIMEOUT' $head -Extra @{ detail = 'overall timeout' } }

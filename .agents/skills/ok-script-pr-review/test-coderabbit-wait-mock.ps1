@@ -129,8 +129,8 @@ function Invoke-Wait([hashtable]$Extra = @{}) {
 function Invoke-Quota([hashtable]$Extra = @{}) {
     $params = @{ Repo = $repo; PrNumber = $pr; ExpectedHead = $global:W.head; PollSeconds = 10; ReplyTimeoutSeconds = 60 }
     foreach ($key in $Extra.Keys) { $params[$key] = $Extra[$key] }
-    $lines = @(& $quotaScript @params 6>$null)
-    return [pscustomobject]@{ exit = $LASTEXITCODE; result = ([string]$lines[-1] | ConvertFrom-Json) }
+    $lines = @(& $quotaScript @params 6>&1)
+    return [pscustomobject]@{ exit = $LASTEXITCODE; result = ([string]$lines[-1] | ConvertFrom-Json); log = ($lines | ForEach-Object { "$_" }) -join "`n" }
 }
 function Test-Case([string]$Name, [scriptblock]$Body) {
     try { & $Body; $script:passed++; Write-Output "ok   $Name" }
@@ -149,6 +149,26 @@ function Reply-OnProbe([string[]]$Replies) {
             Add-Comment "$planText $($global:CrReplyQueue.Dequeue())" | Out-Null
         }
     }
+}
+
+Test-Case 'quota wait displays local date, offset and time remaining' {
+    New-World
+    Reply-OnProbe @('More reviews will be available in 2 minutes.', 'Reviews are available now.')
+    $r = Invoke-Quota @{ MaxWaitSeconds = 300 }
+    $expected = $t0.AddSeconds(150).ToLocalTime().ToString('yyyy-MM-dd HH:mm:ss zzz', [Globalization.CultureInfo]::InvariantCulture)
+    Assert-True ($r.log.Contains("next query at $expected (local time; in 00:02:30)")) 'next query must use the local timezone with a countdown'
+    Assert-True ($r.log.Contains('review completion time is unknown')) 'do not present quota recheck as review completion'
+    Assert-True ($r.result.state -eq 'AVAILABLE' -and (Get-Now) -eq $t0.AddSeconds(150)) 'display formatting must not change retry scheduling'
+}
+
+Test-Case 'stopped quota wait still displays suggested local retry time' {
+    New-World
+    Reply-OnProbe @('More reviews will be available in 2 minutes.')
+    $r = Invoke-Quota @{ MaxWaitSeconds = 60 }
+    $expected = $t0.AddSeconds(150).ToLocalTime().ToString('yyyy-MM-dd HH:mm:ss zzz', [Globalization.CultureInfo]::InvariantCulture)
+    Assert-True ($r.log.Contains("suggested next query at $expected (local time; in 00:02:30); this wait has stopped")) 'stopped wait must give a readable retry time'
+    Assert-True ($r.result.nextCheckAt -eq $t0.AddSeconds(150).ToString('o')) 'JSON timestamp must keep its protocol format'
+    Assert-True ($r.result.state -eq 'UNAVAILABLE' -and (Get-Now) -eq $t0) 'stopped wait must not keep sleeping'
 }
 
 Test-Case 'covered head ends REVIEWED without any write' {

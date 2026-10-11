@@ -53,6 +53,7 @@ function Wait-WithSessionCheck {
 
 try {
     $deadline = (Get-CrNow).AddSeconds($MaxWaitSeconds)
+    Write-Host "[rate-limit] waiting deadline: $(Format-CrDisplayTime $deadline) (local time; maximum wait $MaxWaitSeconds seconds; not a review completion estimate)"
     for ($probeCount = 1; $probeCount -le $MaxProbes; $probeCount++) {
         $stop = Test-Session
         if ($stop) { Complete-RateLimit $stop @{ actualHead = $script:ActualHead } }
@@ -90,8 +91,13 @@ try {
         $delay = if ($null -ne $suggested) { $suggested + $RecheckBufferSeconds } else { $DefaultRecheckSeconds }
         $nextCheck = (Get-CrNow).AddSeconds([Math]::Max(1, $delay))
         $detail = @{ probeId = $probe.id; replyId = $reply.comment.id; reply = Get-CrPlainText $reply.comment.body; nextCheckAt = $nextCheck.ToString('o') }
-        if ($nextCheck -gt $deadline -or $probeCount -eq $MaxProbes) { Complete-RateLimit 'UNAVAILABLE' $detail }
-        Write-Host "[rate-limit] unavailable; next query at $($nextCheck.ToString('u')) (a countdown is not proof of quota)"
+        $remaining = [TimeSpan]::FromSeconds([Math]::Max(0, [Math]::Ceiling(($nextCheck - (Get-CrNow)).TotalSeconds)))
+        $nextQuery = "$(Format-CrDisplayTime $nextCheck) (local time; in $($remaining.ToString('c')))"
+        if ($nextCheck -gt $deadline -or $probeCount -eq $MaxProbes) {
+            Write-Host "[rate-limit] unavailable; suggested next query at $nextQuery; this wait has stopped (review completion time is unknown)"
+            Complete-RateLimit 'UNAVAILABLE' $detail
+        }
+        Write-Host "[rate-limit] unavailable; next query at $nextQuery (a countdown is not proof of quota; review completion time is unknown)"
         $stop = Wait-WithSessionCheck $nextCheck
         if ($stop) { Complete-RateLimit $stop @{ actualHead = $script:ActualHead } }
     }
