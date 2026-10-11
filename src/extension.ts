@@ -1,6 +1,7 @@
 import * as path from 'path';
 import * as crypto from 'crypto';
 import * as vscode from 'vscode';
+import { setCaptureLogger, disposeCaptureWorker } from './screenshotCapture';
 import { LangData, poDirectorySetting } from './langData';
 import { tr } from './localization';
 import { cocoFeatureRelPaths, refreshCocoFeaturePath } from './cocoFeaturePath';
@@ -64,7 +65,9 @@ export function activate(context: vscode.ExtensionContext): void {
   // 性能日志输出通道：查看 → 输出 → ok-script-toolkit
   const cropLog = vscode.window.createOutputChannel('ok-script-toolkit');
   setCropLogger((msg) => cropLog.appendLine(msg));
+  setCaptureLogger((msg) => cropLog.appendLine(msg));
   context.subscriptions.push(cropLog);
+  context.subscriptions.push({ dispose: disposeCaptureWorker });
 
   // 初始化 worker 线程池（纯 JS 图像处理，主线程零阻塞）
   initCropWorkerPool(context.extensionPath);

@@ -32,6 +32,17 @@ import threading
 import time
 import ctypes
 
+_SCRIPT_STARTED = time.perf_counter()
+_PROTOCOL_STDOUT = sys.stdout
+if '--serve' in sys.argv:
+    # 项目和框架的普通 print 全部留在日志管道，stdout 只传截图结果。
+    sys.stdout = sys.stderr
+
+
+def _log_timing(stage, started):
+    print(f"capture.timing.{stage}_ms={(time.perf_counter() - started) * 1000:.1f}",
+          file=sys.stderr, flush=True)
+
 
 def _set_process_dpi_awareness():
     """Declaring DPI awareness must happen before any Win32 window/DC call.
@@ -72,6 +83,9 @@ from ok.device.capture_methods.bitblt_utils import (
 
 _ctx = BitBltCtxDummy()
 _desktop_ctx = BitBltCtxDummy()
+_REUSE_WGC = False
+_wgc_session = None
+_log_timing('imports', _SCRIPT_STARTED)
 
 
 def _get_scaling_ratios(hwnd):
@@ -175,7 +189,7 @@ class _StubHwndWindow:
         return f"StubHwndWindow(hwnd={self.hwnd}, {self.width}x{self.height})"
 
 
-def _capture_wgc(hwnd, width, height, attempts=4):
+def _capture_wgc(hwnd, width, height, attempts=4, timeout=1.5):
     """Capture one frame with Windows Graphics Capture. Returns None on failure.
 
     WGC reports the window content size through item.Size, which includes the
@@ -195,12 +209,30 @@ def _capture_wgc(hwnd, width, height, attempts=4):
         print(f"WGC unavailable: {e}", file=sys.stderr)
         return None
 
-    stub = _StubHwndWindow(hwnd, width, height)
-    method = None
+    global _wgc_session
+    key = hwnd, width, height
+    if _wgc_session is not None and _wgc_session[0] != key:
+        _close_wgc_session()
+    if _REUSE_WGC and _wgc_session is not None:
+        _, stub, method = _wgc_session
+    else:
+        stub = _StubHwndWindow(hwnd, width, height)
+        method = None
     frame = None
+    # get_frame() 本身会等待首帧；不能把框架的 4 秒等待重复四次。
+    # 使用框架已有的退出事件取消请求，不在另一个线程关闭仍在读帧的 D3D 对象。
+    deadline = time.monotonic() + timeout
+    cancel = threading.Timer(timeout, stub.app_exit_event.set)
+    cancel.daemon = True
+    cancel.start()
     try:
-        method = WindowsGraphicsCaptureMethod(stub)
-        for _ in range(attempts):
+        if method is None:
+            method = WindowsGraphicsCaptureMethod(stub)
+        if not method.connected():
+            return None
+        for attempt in range(attempts):
+            if stub.app_exit_event.is_set() or time.monotonic() >= deadline:
+                break
             content = getattr(method, 'last_size', None)
             if content is not None:
                 cw, ch = int(content.Width), int(content.Height)
@@ -210,17 +242,37 @@ def _capture_wgc(hwnd, width, height, attempts=4):
                     stub.width, stub.height = cw, ch  # content smaller: do not trim
             frame = method.get_frame()
             if frame is not None:
+                if _REUSE_WGC:
+                    _wgc_session = key, stub, method
                 return frame
-            time.sleep(0.3)
+            if attempt + 1 < attempts:
+                stub.app_exit_event.wait(min(0.05, max(0, deadline - time.monotonic())))
     except Exception as e:
         print(f"WGC capture failed: {e}", file=sys.stderr)
     finally:
-        if method is not None:
-            try:
-                method.close()
-            except Exception:
-                pass
+        cancel.cancel()
+        if not (_REUSE_WGC and frame is not None and not stub.app_exit_event.is_set()):
+            stub.app_exit_event.set()
+            if method is not None:
+                if _wgc_session is not None and _wgc_session[2] is method:
+                    _wgc_session = None
+                try:
+                    method.close()
+                except Exception:
+                    pass
     return frame if frame is not None else None
+
+
+def _close_wgc_session():
+    global _wgc_session
+    if _wgc_session is not None:
+        _, stub, method = _wgc_session
+        _wgc_session = None
+        stub.app_exit_event.set()
+        try:
+            method.close()
+        except Exception:
+            pass
 
 
 def _capture_bitblt(hwnd, w, h, ox, oy):
@@ -244,8 +296,10 @@ def _capture_bitblt(hwnd, w, h, ox, oy):
     print(f"bitblt client={w}x{h} offset={ox},{oy} monitor_scaling={m_scaling:.2f} "
           f"window_scaling={w_scaling:.2f} ratio={ratio:.2f} capture={cap_w}x{cap_h}")
 
-    clean_up_bitblt(_ctx)
-    frame = capture_by_bitblt(_ctx, hwnd, cap_w, cap_h, cap_ox, cap_oy, True)
+    try:
+        frame = capture_by_bitblt(_ctx, hwnd, cap_w, cap_h, cap_ox, cap_oy, True)
+    finally:
+        clean_up_bitblt(_ctx)
     if frame is None:
         return None
     if ratio != 1.0:
@@ -347,7 +401,9 @@ def capture(output_path, exe_names=None, hwnd_class=None, processor=None, method
 
     Returns the output path on success, raises on failure.
     """
+    started = time.perf_counter()
     result = find_hwnd(None, exe_names or [], 0, 0, class_name=hwnd_class)
+    _log_timing('find_window', started)
     title, hwnd = result[0], result[1]
     if not hwnd:
         raise RuntimeError("No matching window found")
@@ -366,17 +422,25 @@ def capture(output_path, exe_names=None, hwnd_class=None, processor=None, method
     ox, oy = wx - wleft, wy - wtop
 
     frame = None
+    if method not in ('auto', 'wgc'):
+        _close_wgc_session()
     if method == 'foreground':
+        started = time.perf_counter()
         frame = _capture_foreground(hwnd, w, h)
+        _log_timing('foreground', started)
         if frame is not None:
             print(f"captured via foreground: {frame.shape[1]}x{frame.shape[0]}")
     else:
         if method in ('auto', 'wgc'):
-            frame = _capture_wgc(hwnd, w, h)
+            started = time.perf_counter()
+            frame = _capture_wgc(hwnd, w, h, timeout=1.5 if method == 'auto' else 3.0)
+            _log_timing('wgc', started)
             if frame is not None:
                 print(f"captured via WGC: {frame.shape[1]}x{frame.shape[0]}")
         if frame is None and method in ('auto', 'bitblt'):
+            started = time.perf_counter()
             frame = _capture_bitblt(hwnd, w, h, ox, oy)
+            _log_timing('bitblt', started)
             if frame is not None:
                 print(f"captured via BitBlt: {frame.shape[1]}x{frame.shape[0]}")
     if frame is None:
@@ -389,13 +453,19 @@ def capture(output_path, exe_names=None, hwnd_class=None, processor=None, method
 
     # 应用项目配置的 screenshot_processor（如遮挡 UID）
     if processor:
+        started = time.perf_counter()
         try:
             frame = processor(frame.copy())
         except Exception as e:
             print(f"screenshot_processor error: {e}", file=sys.stderr)
+        finally:
+            _log_timing('processor', started)
 
     os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
-    cv2.imwrite(output_path, frame)
+    started = time.perf_counter()
+    if not cv2.imwrite(output_path, frame):
+        raise RuntimeError("Screenshot file could not be written")
+    _log_timing('save', started)
     return output_path
 
 
@@ -437,7 +507,9 @@ def main():
     # 从项目 config 加载 screenshot_processor
     processor = None
     if args.project_dir:
+        started = time.perf_counter()
         processor = load_screenshot_processor(args.project_dir)
+        _log_timing('load_project_config', started)
 
     print(f"Searching: exe={exe_names}, class={hwnd_class}, method={args.method}")
 
@@ -446,9 +518,76 @@ def main():
     except Exception as exc:
         print(f"Capture failed: {exc}", file=sys.stderr)
         sys.exit(1)
+    finally:
+        _log_timing('total', _SCRIPT_STARTED)
 
     print(f"Saved: {args.output_path}")
 
 
+def _project_sources(project_dir):
+    """记录本次实际导入的本地源码；变更后由宿主重新启动解释器，避免旧模块缓存。"""
+    from probe_window_config import _resolve_config_path
+    root = os.path.normcase(os.path.abspath(project_dir))
+    environments = tuple(os.path.join(root, name) + os.sep for name in ('.venv', 'venv'))
+    paths = {_resolve_config_path(project_dir)}
+    for loaded in list(sys.modules.values()):
+        filename = getattr(loaded, '__file__', None)
+        if not filename:
+            continue
+        filename = os.path.normcase(os.path.abspath(filename))
+        # 虚拟环境是解释器依赖，不属于项目源码；避免逐张 stat 数千个第三方库文件。
+        if filename.startswith(environments):
+            continue
+        try:
+            if os.path.commonpath((root, filename)) == root:
+                paths.add(filename)
+        except ValueError:
+            pass
+    return {filename: _source_signature(filename) for filename in paths if filename}
+
+
+def _source_signature(filename):
+    try:
+        stat = os.stat(filename)
+        return stat.st_mtime_ns, stat.st_size
+    except OSError:
+        return None
+
+
+def serve():
+    """串行处理截图请求，复用导入和 WGC 会话；每张图读取新帧和当前配置。"""
+    global _REUSE_WGC
+    _REUSE_WGC = True
+    sources = {}
+    for line in sys.stdin:
+        request = json.loads(line)
+        response = {'capture_response': request['id'], 'ok': False}
+        if any(_source_signature(filename) != signature for filename, signature in sources.items()):
+            _close_wgc_session()
+            response['restart'] = True
+            print(json.dumps(response), file=_PROTOCOL_STDOUT, flush=True)
+            return
+        started = time.perf_counter()
+        try:
+            project_dir = request.get('project_dir')
+            processor = load_screenshot_processor(project_dir) if project_dir else None
+            _log_timing('load_project_config', started)
+            config = request.get('window_config') or {}
+            capture(request['output_path'], config.get('exe'), config.get('hwnd_class'),
+                    processor=processor, method=request.get('method', 'auto'))
+            response['ok'] = True
+            if project_dir:
+                sources = _project_sources(project_dir)
+        except Exception as exc:
+            response['error'] = str(exc)
+        finally:
+            _log_timing('request', started)
+        print(json.dumps(response), file=_PROTOCOL_STDOUT, flush=True)
+    _close_wgc_session()
+
+
 if __name__ == "__main__":
-    main()
+    if '--serve' in sys.argv:
+        serve()
+    else:
+        main()
