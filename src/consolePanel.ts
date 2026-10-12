@@ -8,6 +8,7 @@ import { loadToolboxState, notifyExecutorRunning, onToolboxStateChange, saveTool
 import { GameConnectService } from './toolboxConnect';
 import { applySharedAssets, errorPage, getNonce } from './webviewHtml';
 import { reconcileCachedTaskList, reconcileTaskList } from './taskReconcile';
+import { prewarmScreenshotCapture } from './screenshotCapture';
 
 /** 单个任务的元信息 */
 interface TaskInfo {
@@ -1562,6 +1563,7 @@ export class ConsoleViewProvider implements vscode.WebviewViewProvider {
         this.applySnapshot(line.slice(line.indexOf('OK_TOOLKIT_STATE:') + 'OK_TOOLKIT_STATE:'.length).trim());
       } else if (line.includes('OK_TOOLKIT_EXECUTOR_READY')) {
         this.connecting = false;
+        void prewarmScreenshotCapture(this.executorProjectDir, this.executor?.spawnargs?.[0]);
         this.appendOutputLine(tr('Executor ready · {count} trigger task(s) enabled', {
           count: this.enabledTriggers.size,
         }));

@@ -1,8 +1,12 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
+import { captureTemplateScreenshotInBackground } from './backgroundScreenshot';
 import { activate as activateCore, deactivate as deactivateCore } from './extension';
+import { GlobalScreenshotHotkey } from './globalScreenshotHotkey';
 import { resolveProjectDir } from './projectConfig';
+import { getProjectConfig } from './screenshotCapture';
+import { repaintAllAssetGalleries } from './templateAssetPanel';
 
 const WALKTHROUGH_ID = 'okScriptToolkit.getStarted';
 const PROJECT_READY_CONTEXT = 'okScriptToolkit.projectReady';
@@ -29,6 +33,16 @@ function isSupportedProject(projectDir: string): boolean {
 
 export function activate(context: vscode.ExtensionContext): void {
   activateCore(context);
+
+  const globalScreenshotHotkey = new GlobalScreenshotHotkey(
+    context.extensionPath,
+    () => getProjectConfig().pythonPath,
+    () => {
+      void captureTemplateScreenshotInBackground().then((captured) => {
+        if (captured) repaintAllAssetGalleries();
+      });
+    },
+  );
 
   const updateProjectReady = () => vscode.commands.executeCommand(
     'setContext',
@@ -95,6 +109,7 @@ export function activate(context: vscode.ExtensionContext): void {
       }
     }),
     new vscode.Disposable(disposeConfigWatchers),
+    globalScreenshotHotkey,
   );
 
   void updateProjectReady();

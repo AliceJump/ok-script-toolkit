@@ -5,7 +5,7 @@ import { execFile } from 'child_process';
 import { TempScreenshotStore, MAX_TEMP_SCREENSHOTS } from './tempScreenshotStore';
 import { TemplateAssetData } from './templateAssetData';
 import { repaintAllAssetGalleries } from './templateAssetPanel';
-import { captureGameWindow } from './screenshotCapture';
+import { captureGameWindow, prewarmScreenshotCapture } from './screenshotCapture';
 import { clearPendingDrag, setPendingDrag } from './tempDrag';
 import { cropTemplateThumbFileAsync, readImageSize, removeTemplateThumbFile, THUMB_HEIGHT } from './pngCrop';
 import { injectWebviewLocalization, tr } from './localization';
@@ -243,7 +243,7 @@ class TempScreenshotController {
     if (this.busy) return;
     this.busy = true;
     try {
-      const outputPath = this.store.newFilePath();
+      const outputPath = this.store.newFilePath('bmp');
       const outcome = await captureGameWindow(outputPath, hardForeground ? 'foreground' : undefined);
       if (outcome.ok) {
         this.store.register(outputPath);
@@ -268,7 +268,7 @@ class TempScreenshotController {
   async sendToAssets(id: string): Promise<boolean> {
     const target = this.store.get(id);
     if (!target) return false;
-    const dst = this.assetData.importImageFile(target.filePath);
+    const dst = this.assetData.importImageFile(target.filePath, true);
     if (!dst) {
       this.notice('error', tr('Failed to add to template assets: {error}', { error: target.name }));
       return false;
@@ -326,7 +326,10 @@ export class TempScreenshotViewProvider implements vscode.WebviewViewProvider {
       () => view.visible,
     );
     controller.attachHtml();
-    view.onDidChangeVisibility(() => { if (view.visible) void controller.refresh(); });
+    if (view.visible) void prewarmScreenshotCapture();
+    view.onDidChangeVisibility(() => {
+      if (view.visible) { void prewarmScreenshotCapture(); void controller.refresh(); }
+    });
     view.onDidDispose(() => controller.dispose());
   }
 }

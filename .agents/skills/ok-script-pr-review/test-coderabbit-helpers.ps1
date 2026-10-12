@@ -17,6 +17,18 @@ function Assert-Equal {
     if ($Actual -ne $Expected) { throw "$Message -> got '$Actual', expected '$Expected'" }
 }
 
+# ---- display timezone: follow the host, including date rollover and fractional offsets ----
+$displayInstant = [datetimeoffset]'2026-10-08T18:04:05Z'
+foreach ($case in @(
+        @{ Minutes = 0; Want = '2026-10-08 18:04:05 +00:00' },
+        @{ Minutes = 480; Want = '2026-10-09 02:04:05 +08:00' },
+        @{ Minutes = -300; Want = '2026-10-08 13:04:05 -05:00' },
+        @{ Minutes = 330; Want = '2026-10-08 23:34:05 +05:30' })) {
+    $zone = [TimeZoneInfo]::CreateCustomTimeZone("test-$($case.Minutes)", [TimeSpan]::FromMinutes($case.Minutes), 'test', 'test')
+    Assert-Equal (Format-CrDisplayTime $displayInstant $zone) $case.Want 'display uses the requested timezone'
+}
+Assert-Equal (Format-CrDisplayTime $displayInstant) ($displayInstant.ToLocalTime().ToString('yyyy-MM-dd HH:mm:ss zzz', [Globalization.CultureInfo]::InvariantCulture)) 'default display follows host timezone'
+
 # ---- quota replies: a countdown is unavailable; only an explicit positive reply is available ----
 $plan = '<!-- This is an auto-generated reply by CodeRabbit -->' + "`n" +
     'Your [plan](https://docs.coderabbit.ai/management/plans#fair-usage-limits-policy) includes PR reviews subject to [rate limits](https://docs.coderabbit.ai/management/plans#rate-limits).'

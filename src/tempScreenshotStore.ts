@@ -17,13 +17,13 @@ const IMAGE_EXT_RE = /\.(png|jpe?g|bmp)$/i;
 
 /** 生成单调递增的文件名（时间戳 + 自增序号，保证按名字排序即为时间顺序）。 */
 let seq = 0;
-function nextName(): string {
+function nextName(extension = 'png'): string {
   seq = (seq + 1) % 1000;
-  return `shot_${Date.now()}_${String(seq).padStart(3, '0')}.png`;
+  return `shot_${Date.now()}_${String(seq).padStart(3, '0')}.${extension}`;
 }
 
 /**
- * 临时截图存储：把截图以 PNG 落盘到扩展 globalStorage 的工作区子目录，
+ * 临时截图存储：截图以无损 BMP 落盘，粘贴图片保持 PNG，
  * 列表直接从磁盘派生（无需额外索引文件），最多保留 {@link MAX_TEMP_SCREENSHOTS} 张。
  *
  * 该存储被侧边栏视图与标注管理面板共享：侧边栏负责增删，标注管理面板负责
@@ -64,9 +64,9 @@ export class TempScreenshotStore {
   }
 
   /** 为外部写入者（如截图脚本）预留一个落盘路径，随后调用 register() 生效。 */
-  newFilePath(): string {
+  newFilePath(extension: 'png' | 'bmp' = 'png'): string {
     this.ensure();
-    return path.join(this.dir, nextName());
+    return path.join(this.dir, nextName(extension));
   }
 
   /** 写入 base64 PNG（可带 data URI 前缀）。 */

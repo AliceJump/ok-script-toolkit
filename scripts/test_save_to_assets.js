@@ -975,7 +975,33 @@ async function test_deleteImageCleansAllAuthoringSourcesAndRollsBack() {
   console.log('[PASS] image deletion cleans all three authoring sources and rolls back on failure');
 }
 
+function test_tempBmpPromotionPreservesPixelsAndImportSemantics() {
+  setup();
+  try {
+    const { decodeRgba } = require('../out/pngCrop');
+    // 两行不同颜色，包含 BMP 行填充和自底向上的排列。
+    const bmp = Buffer.alloc(54 + 24);
+    bmp.write('BM'); bmp.writeUInt32LE(bmp.length, 2); bmp.writeUInt32LE(54, 10);
+    bmp.writeUInt32LE(40, 14); bmp.writeInt32LE(3, 18); bmp.writeInt32LE(2, 22);
+    bmp.writeUInt16LE(1, 26); bmp.writeUInt16LE(24, 28);
+    for (let y = 0; y < 2; y++) for (let x = 0; x < 3; x++) {
+      const i = 54 + y * 12 + x * 3;
+      bmp[i] = 7 + x; bmp[i + 1] = 40 + y; bmp[i + 2] = 120 + x + y;
+    }
+    const source = path.join(tmpDir, 'shot.bmp'); fs.writeFileSync(source, bmp);
+    const data = new TemplateAssetData(tmpDir);
+    const promoted = data.importImageFile(source, true);
+    assert(promoted && path.extname(promoted) === '.png', '临时 BMP 入库应转 PNG');
+    const before = decodeRgba(bmp), after = decodeRgba(fs.readFileSync(promoted));
+    assert(before.width === after.width && before.height === after.height && before.rgba.equals(after.rgba), '像素与尺寸必须完全一致');
+    const imported = data.importImageFile(source);
+    assert(path.extname(imported) === '.bmp' && fs.readFileSync(imported).equals(bmp), '普通导入保留原格式');
+    assert(!fs.existsSync(path.join(templateDir, 'coco_annotations.json')), '入库不应提前登记标注');
+  } finally { teardown(); }
+}
+
 const tests = [
+  test_tempBmpPromotionPreservesPixelsAndImportSemantics,
   test_deleteImageCleansAllAuthoringSourcesAndRollsBack,
   test_nonOverlappingBboxesPackToSamePage,
   test_overlappingBboxesSplitToDifferentPages,
