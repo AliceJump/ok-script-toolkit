@@ -311,5 +311,7 @@
   "Files to write": "Files to write",
   "Templates: {add} new · {keep} overwrite · {remove} removed": "Templates: {add} new · {keep} overwrite · {remove} removed",
   "Publish preview": "Publish preview",
-  "Review what will be written. Enter on “Publish” to continue, Esc to cancel.": "Review what will be written. Enter on “Publish” to continue, Esc to cancel."
+  "Review what will be written. Enter on “Publish” to continue, Esc to cancel.": "Review what will be written. Enter on “Publish” to continue, Esc to cancel.",
+  "Screenshot inbox is not ready.": "Screenshot inbox is not ready.",
+  "Screenshot saved to inbox: {name}": "Screenshot saved to inbox: {name}"
 }

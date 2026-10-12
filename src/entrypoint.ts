@@ -1,10 +1,9 @@
 import * as vscode from 'vscode';
-import { captureTemplateScreenshotInBackground } from './backgroundScreenshot';
+import { captureInboxScreenshotInBackground } from './backgroundScreenshot';
 import { activate as activateCore, deactivate as deactivateCore } from './extension';
 import { GlobalScreenshotHotkey } from './globalScreenshotHotkey';
 import { isSupportedProject, resolveProjectDir } from './projectConfig';
 import { getProjectConfig } from './screenshotCapture';
-import { repaintAllAssetGalleries } from './templateAssetPanel';
 
 const WALKTHROUGH_ID = 'okScriptToolkit.getStarted';
 const PROJECT_READY_CONTEXT = 'okScriptToolkit.projectReady';
@@ -12,13 +11,13 @@ const PROJECT_READY_CONTEXT = 'okScriptToolkit.projectReady';
 export function activate(context: vscode.ExtensionContext): void {
   activateCore(context);
 
+  // System-wide Ctrl+Alt+S → same Resources inbox as the VS Code keybinding.
+  // Capture runs in the background so the game window keeps focus.
   const globalScreenshotHotkey = new GlobalScreenshotHotkey(
     context.extensionPath,
     () => getProjectConfig().pythonPath,
     () => {
-      void captureTemplateScreenshotInBackground().then((captured) => {
-        if (captured) repaintAllAssetGalleries();
-      });
+      void captureInboxScreenshotInBackground();
     },
   );
 

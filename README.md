@@ -306,7 +306,7 @@ self.wait_click_ocr(match=self.lang.zip_line_mixin.k_2f4f4a2f, ...)
 | 命令 | 快捷键 | 说明 |
 |---|---|---|
 | `ok-script 工具箱: 打开资源预览` | `Ctrl+Alt+T`（macOS `Cmd+Alt+T`，需聚焦 Python 编辑器） | 聚焦「资源」视图 |
-| `ok-script 工具箱: 截到收件箱` | `Ctrl+Alt+S`（macOS `Cmd+Alt+S`） | 截图进入资源收件箱（原「截图并打开标注管理」仍保留为另一条命令） |
+| `ok-script 工具箱: 截到收件箱` | `Ctrl+Alt+S`（macOS `Cmd+Alt+S`；Windows 系统级热键同键） | 截图进入资源收件箱；VS Code 键位与 RegisterHotKey 全局热键共用此终点（原「截图并打开标注管理」仍保留为另一条命令） |
 | `ok-script 工具箱: 打开控制台` | — | 聚焦「运行」视图 |
 | `ok-script 工具箱: 控制台：运行任务…` | — | 从已加载的一次性任务里选一个入队（执行器未启动时会先启动） |
 | `ok-script 工具箱: 控制台：启动执行器 / 暂停执行器 / 继续执行器 / 停止当前任务 / 关闭执行器` | — | 与控制台按钮同一套逻辑；按执行器状态在命令面板和视图标题栏里显隐 |

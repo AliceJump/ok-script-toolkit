@@ -311,5 +311,7 @@
   "Files to write": "將寫入的檔案",
   "Templates: {add} new · {keep} overwrite · {remove} removed": "模板：新增 {add} · 覆寫 {keep} · 移除 {remove}",
   "Publish preview": "發佈預覽",
-  "Review what will be written. Enter on “Publish” to continue, Esc to cancel.": "確認將寫入的內容。在「發佈」上按 Enter 繼續，Esc 取消。"
+  "Review what will be written. Enter on “Publish” to continue, Esc to cancel.": "確認將寫入的內容。在「發佈」上按 Enter 繼續，Esc 取消。",
+  "Screenshot inbox is not ready.": "截圖收件匣尚未就緒。",
+  "Screenshot saved to inbox: {name}": "截圖已儲存到收件匣: {name}"
 }

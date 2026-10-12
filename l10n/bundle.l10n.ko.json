@@ -311,5 +311,7 @@
   "Files to write": "쓸 파일",
   "Templates: {add} new · {keep} overwrite · {remove} removed": "템플릿: 신규 {add} · 덮어쓰기 {keep} · 제거 {remove}",
   "Publish preview": "게시 미리보기",
-  "Review what will be written. Enter on “Publish” to continue, Esc to cancel.": "쓸 내용을 확인하세요. “게시”에서 Enter, Esc로 취소."
+  "Review what will be written. Enter on “Publish” to continue, Esc to cancel.": "쓸 내용을 확인하세요. “게시”에서 Enter, Esc로 취소.",
+  "Screenshot inbox is not ready.": "스크린샷 받은편지함이 준비되지 않았습니다.",
+  "Screenshot saved to inbox: {name}": "스크린샷이 받은편지함에 저장됨: {name}"
 }

@@ -295,7 +295,7 @@ Command categories display as "ok-script 工具箱" / "ok-script Toolkit" depend
 |---|---|---|
 | `ok-script Toolkit: Find Template References…` | — | Find `fL.xxx` / `self.pos.xxx` / `"xxx"` usages in workspace Python files and jump; also in the Python editor context menu |
 | `ok-script Toolkit: Open with Annotation Editor` | — | Explorer image context menu (png/jpg/jpeg/webp only); without an argument it asks for an image |
-| `ok-script Toolkit: Capture to Inbox` | `Ctrl+Alt+S` |
+| `ok-script Toolkit: Capture to Inbox` | `Ctrl+Alt+S` (macOS `Cmd+Alt+S`; also the Windows global hotkey) | Capture into the Resources inbox (temp shots). Same destination as the system-wide RegisterHotKey path |
 | `ok-script Toolkit: Open Resource Preview` | `Ctrl+Alt+T` (macOS `Cmd+Alt+T`, requires Python editor focus) | Focus the Resource Preview view in the activity bar |
 | `ok-script Toolkit: Open Resource Preview in Editor` | — | Open a large grid view in the editor area |
 | `ok-script Toolkit: Open Console` | — | Focus the Console view in the activity bar |
@@ -307,7 +307,7 @@ Command categories display as "ok-script 工具箱" / "ok-script Toolkit" depend
 | `ok-script Toolkit: Open Annotation Editor…` | — | Pick an image from Annotation Management (with annotation counts) and open the COCO annotation editor directly |
 | `ok-script Toolkit: Publish Resources…` | — | Open Annotation Management and go straight into publishing: choose Template / Rect / Point, then publish |
 | `ok-script Toolkit: Open Temp Screenshots` | — | Focus the temp screenshots view in the activity bar |
-| `ok-script Toolkit: Screenshot to Annotation Management` | `Ctrl+Alt+S` (macOS `Cmd+Alt+S`) | Open Annotation Management and take a screenshot immediately. Reuses the panel's own screenshot action; the shot is registered into COCO. Rebindable in Keyboard Shortcuts |
+| `ok-script Toolkit: Screenshot to Annotation Management` | — (`Ctrl+Alt+S` now goes to Capture to Inbox) | Open Annotation Management and take a screenshot immediately. Reuses the panel's own screenshot action; the shot is registered into COCO. Rebindable in Keyboard Shortcuts |
 | `ok-script Toolkit: Project Convention vs My Settings` | — | List the settings that take part in the precedence chain and show **which layer each effective value comes from** (my settings / project convention / built-in default). Rows you have overridden carry a Revert button that drops your override and goes back to the project convention. Exists to fix "once I changed it, I can never see what the team changed" |
 
 ## Update Not Taking Effect

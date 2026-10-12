@@ -276,16 +276,16 @@ Committing these would impose one person's machine/preferences on colleagues.
 
 ### 6.4 Screenshot Shortcut (Not Project Configuration)
 
-**Goal:** screenshot → annotation template management. Target **template asset management** (`openTemplateAssets` / `ShowTemplateAssetsAction`), whose own screenshot action saves and refreshes assets, rather than temporary screenshots (`showTempScreenshots` / `ShowTempShotsAction`).
+**Goal:** one unified shortcut for screenshot → Resources inbox. Default destination is the **Resources inbox** (`captureToInbox` / temp screenshot store; annotate or promote to drafts from there), not the standalone "Screenshot to Annotation Management" panel path. `screenshotToTemplate` remains an explicit command but no longer owns the default binding.
 
 **IDE scope:** keybindings are personal. Project configuration would impose them on colleagues. VS Code and IntelliJ already have native keymap editors; do not invent another system.
 
 | Host | Approach |
 |---|---|
-| VS Code | Add `okScriptToolkit.screenshotToTemplate` to `contributes.commands`, with a default in `contributes.keybindings` and no `when` restriction; users edit Keyboard Shortcuts |
+| VS Code | `okScriptToolkit.captureToInbox` defaults to `Ctrl+Alt+S` and lands in the Resources inbox; `okScriptToolkit.screenshotToTemplate` remains available without a default binding. On Windows the RegisterHotKey global hotkey shares the inbox destination. Users can rebind in Keyboard Shortcuts |
 | JetBrains | Add `AnAction` and a default keybinding under `plugin.xml` actions; users edit Settings → Keymap |
 
-Open the annotation template management panel and invoke its screenshot action. **Reuse existing `handleScreenshot`; do not add capture implementation.**
+Behavior: reuse the same `captureGameWindow` implementation and write a lossless BMP into the inbox store. The system-wide hotkey intentionally avoids stealing focus from the game window.
 
 ## 7. Migration and Compatibility
 

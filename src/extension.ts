@@ -1,6 +1,7 @@
 import * as path from 'path';
 import * as crypto from 'crypto';
 import * as vscode from 'vscode';
+import { bindInboxScreenshotStore } from './backgroundScreenshot';
 import { setCaptureLogger, disposeCaptureWorker } from './screenshotCapture';
 import { LangData, poDirectorySetting } from './langData';
 import { tr } from './localization';
@@ -304,6 +305,7 @@ export function activate(context: vscode.ExtensionContext): void {
     path.join(context.globalStorageUri.fsPath, 'temp-screenshots', wsHash),
   );
   tempScreenshotStore.ensure();
+  bindInboxScreenshotStore(tempScreenshotStore);
   const runTree = new RunTreeDataProvider(okConsole);
   const paramsView = new ParamsViewProvider(context.extensionUri, okConsole, runTree);
   const resourcesView = new ResourcesViewProvider(

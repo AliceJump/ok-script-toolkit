@@ -45,6 +45,16 @@ export class ResourcesViewProvider implements vscode.WebviewViewProvider, vscode
       ].filter((u) => u.fsPath),
     };
     view.webview.html = this.buildHtml(view.webview);
+    void import('../screenshotCapture').then(({ prewarmScreenshotCapture }) => {
+      void prewarmScreenshotCapture();
+    });
+    view.onDidChangeVisibility(() => {
+      if (view.visible) {
+        void import('../screenshotCapture').then(({ prewarmScreenshotCapture }) => {
+          void prewarmScreenshotCapture();
+        });
+      }
+    });
     view.webview.onDidReceiveMessage(async (msg) => {
       switch (msg?.type) {
         case 'ready':
@@ -90,7 +100,7 @@ export class ResourcesViewProvider implements vscode.WebviewViewProvider, vscode
 
   async captureToInbox(): Promise<void> {
     const { captureGameWindow } = await import('../screenshotCapture');
-    const out = this.tempStore.newFilePath();
+    const out = this.tempStore.newFilePath('bmp');
     const result = await captureGameWindow(out);
     if (!result.ok) {
       void vscode.window.showErrorMessage(result.error || tr('Screenshot failed'));

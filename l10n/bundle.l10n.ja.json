@@ -311,5 +311,7 @@
   "Files to write": "書き込むファイル",
   "Templates: {add} new · {keep} overwrite · {remove} removed": "テンプレート：新規 {add} · 上書き {keep} · 削除 {remove}",
   "Publish preview": "公開プレビュー",
-  "Review what will be written. Enter on “Publish” to continue, Esc to cancel.": "書き込み内容を確認。「公開」で Enter、Esc で取消。"
+  "Review what will be written. Enter on “Publish” to continue, Esc to cancel.": "書き込み内容を確認。「公開」で Enter、Esc で取消。",
+  "Screenshot inbox is not ready.": "スクリーンショット受信箱の準備ができていません。",
+  "Screenshot saved to inbox: {name}": "スクリーンショットを受信箱に保存しました: {name}"
 }

@@ -311,5 +311,7 @@
   "Files to write": "Archivos a escribir",
   "Templates: {add} new · {keep} overwrite · {remove} removed": "Plantillas: {add} nuevas · {keep} sobrescritas · {remove} quitadas",
   "Publish preview": "Vista previa de publicación",
-  "Review what will be written. Enter on “Publish” to continue, Esc to cancel.": "Revisa lo que se escribirá. Enter en “Publicar” para seguir, Esc para cancelar."
+  "Review what will be written. Enter on “Publish” to continue, Esc to cancel.": "Revisa lo que se escribirá. Enter en “Publicar” para seguir, Esc para cancelar.",
+  "Screenshot inbox is not ready.": "La bandeja de capturas aún no está lista.",
+  "Screenshot saved to inbox: {name}": "Captura guardada en la bandeja: {name}"
 }
