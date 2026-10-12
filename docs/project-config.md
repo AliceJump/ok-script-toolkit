@@ -349,21 +349,20 @@ import 得到（只是拿不到新标签），不会报错；而改类名是**�
 
 ### 6.4 截图快捷键（新增，**不进项目配置**）
 
-**要什么**：一个"截图 → 进标注模板管理"的快捷键。默认目标是**标注模板管理**
-（`openTemplateAssets` / `ShowTemplateAssetsAction`，其面板自带截图动作：
-截图落盘后刷新素材列表），而**不是**临时截图（`showTempScreenshots` /
-`ShowTempShotsAction`）。
+**要什么**：一个「截图 → 进资源收件箱」的统一快捷键。默认目标是**资源收件箱**
+（`captureToInbox` / 临时截图存储，随后可在资源视图里标注或送入草稿），而不是单独的
+「截图并打开标注管理」面板路径。`screenshotToTemplate` 仍保留为显式命令，但不再占用默认键位。
 
 **为什么是 IDE 级**：键位是个人偏好。放进项目配置会强加给同事，而且 VS Code 与
 IntelliJ 各有原生 keymap 编辑器，用户改键位本来就该走那里 —— 插件不该自造一套。
 
 | 端 | 做法 |
 |---|---|
-| VS Code | `contributes.commands` 新增 `okScriptToolkit.screenshotToTemplate`；`contributes.keybindings` 给它一个默认键位（不加 `when` 限制，任何文件都能按）。用户可在「键盘快捷方式」里改 |
+| VS Code | `contributes.commands` 提供 `okScriptToolkit.captureToInbox`（默认 `Ctrl+Alt+S`，进资源收件箱）与 `okScriptToolkit.screenshotToTemplate`（无默认键位，仍可打开标注管理并截图）；Windows 另有 RegisterHotKey 系统级同键，终点同为收件箱。用户可在「键盘快捷方式」里改 |
 | JetBrains | 新增 `AnAction`（放在 `plugin.xml` 的 `actions` 里给默认键位）；用户可在「设置 → 按键映射」里改 |
 
-行为：打开标注模板管理面板并触发它的截图动作。**不新增截图实现** —— 复用面板已有的
-`handleScreenshot`。
+行为：调用与面板相同的 `captureGameWindow` 实现，把无损 BMP 写入收件箱存储。
+系统级热键刻意不抢焦点，以免打断游戏窗口。
 
 ## 7. 迁移与兼容
 

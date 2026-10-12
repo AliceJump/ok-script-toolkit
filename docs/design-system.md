@@ -3,7 +3,7 @@
 [简体中文](design-system.md) | [English](design-system.en.md)
 
 > 本文件是全项目 UI 的唯一权威规范。所有 webview 面板（console / templatePanel /
-> templateAssetPanel / tempScreenshots / annotationPanel / characterManager / boxPanel）必须遵循。
+> templateAssetPanel / tempScreenshots / annotationPanel / characterManager）必须遵循。
 > 实现真源：`media/shared/tokens.css`（Design Tokens）+ `media/shared/controls.css`（共享控件），
 > **页面只负责组合这些类，不得自行重定义视觉规则。**
 
@@ -59,7 +59,7 @@ Dialog·Modal / 状态提示 / Loading / 空状态 / 错误状态。同类组件
 
 ## 4. 统一尺寸体系
 
-- 间距：`--space-xs(4) / sm(6) / md(10) / lg(14) / xl(20)`
+- 间距：`--space-xs(4) / sm(8) / md(12) / lg(16) / xl(24)`
 - 控件高度：`--control-h-sm(24) / md(30) / lg(34)`
 - 圆角：`--radius-sm(5) / md(8) / lg(11) / pill`
 - 字号：`--font-xs(11) / sm(12) / md(13) / lg(15)`；字重仅 `--weight-regular(400)` / `--weight-medium(500)`
@@ -106,7 +106,17 @@ media/shared/tokens.css      Colors · Typography · Spacing · Radius · Border
 media/shared/controls.css    Button(主/次/迷你/幽灵/图标) · Input · Select · Checkbox/Switch
                              · Tag · Card · Toolbar · SectionTitle · Empty/Broken/Hint · Divider
                              · 可点击性硬规范（[role=button]、真按钮/行级区分层清单）
+                             · .has-codicon / .is-icon-only（图标按钮的对齐与尺寸）
+media/shared/codicons/       @vscode/codicons 0.0.36（codicon.css + codicon.ttf，原样内置）
+media/shared/icons.js        OkIcons.icon / label / iconOnly —— 面板里生成图标的唯一入口
 ```
+
+**图标规范（2026-10-09）**：界面图标一律用 codicon（与 VS Code 原生 UI 同源），
+不再用 emoji 或 Unicode 符号（`▶ ⚙ ⇄ ⟲ ＋ 👁 × ↻` 等字形随字体漂移、读屏会念出符号名）。
+仅图标的按钮必须同时有 `title` 与 `aria-label`（`OkIcons.iconOnly` 自动处理）。
+同一语义只用一个图标：同步默认值 `sync`、恢复出厂 `discard`、交换标注 `arrow-swap`、删除 `trash`、
+查看原图 `go-to-file` / `eye`。面板 HTML 需引入 `__SHARED_CODICONS_URI__` 与 `__SHARED_ICONS_URI__`，
+CSP 需含 `font-src __CSP_SOURCE__`。
 
 新增面板接入方式（**三步，缺一步样式就静默失效**）：
 
@@ -138,7 +148,7 @@ media/shared/controls.css    Button(主/次/迷你/幽灵/图标) · Input · Se
 
 ## 落地进度
 
-2026-10-01 补充：框面板与框画廊共用 `media/boxPanel`，由 `src/boxPanels.ts` 接入共享层，静态审计已包含此目录。下表与“六个面板”记录的是 2026-09-23 的迁移基线，不能据此漏掉新增面板。
+2026-10-09 补充：独立的框面板 / 框画廊（`media/boxPanel`、`src/boxPanels.ts`）已并入统一标注编辑器与资源预览并被移除；悬停与补全使用的位置预览逻辑移到 `src/positionPreview.ts`。下表与“六个面板”记录的是 2026-09-23 的迁移基线，新增面板仍须登记进静态审计。
 
 | 阶段 | 内容 | 状态 |
 |---|---|---|

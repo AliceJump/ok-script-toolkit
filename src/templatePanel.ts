@@ -10,6 +10,7 @@ import { applySharedAssets, getNonce } from './webviewHtml';
 import { readAuthoringFile } from './boxResourceStore';
 import { readPoints } from './pointResourceStore';
 import { templatesDirectory } from './projectConfig';
+import { cocoFeatureRelPaths } from './cocoFeaturePath';
 
 export type ResourcePreviewMode = 'template' | 'rect' | 'point';
 
@@ -142,7 +143,9 @@ class GalleryController {
     const gen = ++this.generation;
     const mode = this.mode;
     const metas = this.metas(mode);
-    await this.webview.postMessage({ type: 'resources', mode, resources: metas });
+    // 模板模式的空态要告诉用户「到底查了哪些文件」（发布产物 COCO 的候选路径）
+    const sources = mode === 'template' ? cocoFeatureRelPaths(this.features.root) : [];
+    await this.webview.postMessage({ type: 'resources', mode, resources: metas, sources });
     if (gen !== this.generation || this.disposed || mode !== this.mode) return;
 
     const batchSize = 6;
@@ -184,6 +187,9 @@ class GalleryController {
           this.mode = msg.mode;
           await this.update();
         }
+        break;
+      case 'openAnnotationManagement':
+        await vscode.commands.executeCommand('okScriptToolkit.openTemplateAssets');
         break;
       case 'copy':
         if (typeof msg.expression === 'string' && msg.expression) {

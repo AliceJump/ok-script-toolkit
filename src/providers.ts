@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { featureHoverLinks, HOVER_ENABLED_COMMANDS } from './hoverLinks';
 import {
   LangData,
   LangEntry,
@@ -13,7 +14,7 @@ import { DEFAULT_FEATURE_ALIASES, ideSetting, labelEnumAliases, loadProjectConfi
 import { annotatedImageToDataUrlCached, cropTemplateToDataUrlCached } from './pngCrop';
 import { selectedProjectLocale, tr } from './localization';
 import { getProjectConfig } from './screenshotCapture';
-import { posPaths, previewRectForPath } from './boxPanels';
+import { posPaths, previewRectForPath } from './positionPreview';
 
 /** 匹配 self.lang.<模块>.<key>（支持 Unicode 标识符，如中文 OCR 文本；负向后视避免匹配 self.langx 之类） */
 const EXPR_RE = /(?<![\w.])self\.lang\.([\p{L}\p{N}_]+)\.([\p{L}\p{N}_]+)/gu;
@@ -434,7 +435,12 @@ export class LangHoverProvider implements vscode.HoverProvider {
     for (const mf of findFeatureMatches(line)) {
       if (position.character >= mf.start && position.character <= mf.end) {
         const ft = this.features.entry(mf.name);
-        if (ft) return new vscode.Hover(formatFeature(ft));
+        if (ft) {
+          const md = formatFeature(ft);
+          md.appendMarkdown('\n\n' + featureHoverLinks(ft.name, { reveal: tr('Reveal in Resources'), refs: tr('Find References') }));
+          md.isTrusted = { enabledCommands: [...HOVER_ENABLED_COMMANDS] };
+          return new vscode.Hover(md);
+        }
       }
     }
     // OCR 函数的 match 正则：hover 显示 ocr.po 中的修正映射

@@ -56,7 +56,8 @@
       {
         "command": "okScriptToolkit.openTemplatesEditor",
         "title": "%command.openTemplatesEditor%",
-        "category": "%command.category%"
+        "category": "%command.category%",
+        "icon": "$(link-external)"
       },
       {
         "command": "okScriptToolkit.showTaskLauncher",
@@ -66,22 +67,26 @@
       {
         "command": "okScriptToolkit.openCharacterManager",
         "title": "%command.openCharacterManager%",
-        "category": "%command.category%"
+        "category": "%command.category%",
+        "icon": "$(person)"
       },
       {
         "command": "okScriptToolkit.openTemplateAssets",
         "title": "%command.openTemplateAssets%",
-        "category": "%command.category%"
+        "category": "%command.category%",
+        "icon": "$(link-external)"
       },
       {
         "command": "okScriptToolkit.openResourcePublisher",
         "title": "%command.openResourcePublisher%",
-        "category": "%command.category%"
+        "category": "%command.category%",
+        "icon": "$(cloud-upload)"
       },
       {
         "command": "okScriptToolkit.openAnnotationEditor",
         "title": "%command.openAnnotationEditor%",
-        "category": "%command.category%"
+        "category": "%command.category%",
+        "icon": "$(edit)"
       },
       {
         "command": "okScriptToolkit.showTempScreenshots",
@@ -91,12 +96,132 @@
       {
         "command": "okScriptToolkit.screenshotToTemplate",
         "title": "%command.screenshotToTemplate%",
-        "category": "%command.category%"
+        "category": "%command.category%",
+        "icon": "$(device-camera)"
       },
       {
         "command": "okScriptToolkit.showConventionSources",
         "title": "%command.showConventionSources%",
         "category": "%command.category%"
+      },
+      {
+        "command": "okScriptToolkit.console.refresh",
+        "title": "%command.console.refresh%",
+        "category": "%command.category%",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "okScriptToolkit.console.runTask",
+        "title": "%command.console.runTask%",
+        "category": "%command.category%",
+        "icon": "$(play)"
+      },
+      {
+        "command": "okScriptToolkit.console.startExecutor",
+        "title": "%command.console.startExecutor%",
+        "category": "%command.category%",
+        "icon": "$(debug-start)"
+      },
+      {
+        "command": "okScriptToolkit.console.pause",
+        "title": "%command.console.pause%",
+        "category": "%command.category%",
+        "icon": "$(debug-pause)"
+      },
+      {
+        "command": "okScriptToolkit.console.resume",
+        "title": "%command.console.resume%",
+        "category": "%command.category%",
+        "icon": "$(debug-continue)"
+      },
+      {
+        "command": "okScriptToolkit.console.stopCurrentTask",
+        "title": "%command.console.stopCurrentTask%",
+        "category": "%command.category%",
+        "icon": "$(debug-step-out)"
+      },
+      {
+        "command": "okScriptToolkit.console.stopExecutor",
+        "title": "%command.console.stopExecutor%",
+        "category": "%command.category%",
+        "icon": "$(debug-stop)"
+      },
+      {
+        "command": "okScriptToolkit.console.showLogs",
+        "title": "%command.console.showLogs%",
+        "category": "%command.category%",
+        "icon": "$(output)"
+      },
+      {
+        "command": "okScriptToolkit.console.connectGame",
+        "title": "%command.console.connectGame%",
+        "category": "%command.category%",
+        "icon": "$(plug)"
+      },
+      {
+        "command": "okScriptToolkit.console.disconnectGame",
+        "title": "%command.console.disconnectGame%",
+        "category": "%command.category%",
+        "icon": "$(debug-disconnect)"
+      },
+      {
+        "command": "okScriptToolkit.captureToInbox",
+        "title": "%command.captureToInbox%",
+        "category": "%command.category%",
+        "icon": "$(device-camera)"
+      },
+      {
+        "command": "okScriptToolkit.annotateImage",
+        "title": "%command.annotateImage%",
+        "category": "%command.category%",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "okScriptToolkit.publishResources",
+        "title": "%command.publishResources%",
+        "category": "%command.category%",
+        "icon": "$(cloud-upload)"
+      },
+      {
+        "command": "okScriptToolkit.insertResourceReference",
+        "title": "%command.insertResourceReference%",
+        "category": "%command.category%",
+        "icon": "$(add)"
+      },
+      {
+        "command": "okScriptToolkit.revealResource",
+        "title": "%command.revealResource%",
+        "category": "%command.category%",
+        "icon": "$(search)"
+      },
+      {
+        "command": "okScriptToolkit.run.openParams",
+        "title": "%command.run.openParams%",
+        "category": "%command.category%",
+        "icon": "$(settings-gear)"
+      },
+      {
+        "command": "okScriptToolkit.run.runTaskInline",
+        "title": "%command.run.runTaskInline%",
+        "category": "%command.category%",
+        "icon": "$(play)"
+      },
+      {
+        "command": "okScriptToolkit.run.toggleTrigger",
+        "title": "%command.run.toggleTrigger%",
+        "category": "%command.category%"
+      },
+      {
+        "command": "okScriptToolkit.pickProject",
+        "title": "%command.pickProject%",
+        "category": "%command.category%",
+        "icon": "$(folder)"
+      },
+      {
+        "command": "okScriptToolkit.findTemplateReferences",
+        "title": "%command.findTemplateReferences%",
+        "category": "%command.category%",
+        "icon": "$(references)"
       }
     ],
     "walkthroughs": [
@@ -177,64 +302,32 @@
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "okTools",
-          "title": "%viewContainer.tools.title%",
+          "id": "okScript",
+          "title": "%viewContainer.okScript.title%",
           "icon": "media/icons/toolbox.svg"
-        },
-        {
-          "id": "okTemplates",
-          "title": "%viewContainer.templates.title%",
-          "icon": "media/icons/templates.svg"
-        },
-        {
-          "id": "okTempShots",
-          "title": "%viewContainer.tempShots.title%",
-          "icon": "media/icons/tempShots.svg"
         }
       ]
     },
     "views": {
-      "okTools": [
+      "okScript": [
+        {
+          "id": "okScriptToolkit.run",
+          "name": "%view.run%",
+          "type": "tree"
+        },
         {
           "type": "webview",
-          "id": "okScriptToolkit.console",
-          "name": "%view.console%",
-          "title": "%view.console.title%",
-          "icon": "media/icons/toolbox.svg",
-          "webviewOptions": {
-            "retainContextWhenHidden": true
-          }
-        }
-      ],
-      "okTemplates": [
-        {
-          "type": "webview",
-          "id": "okScriptToolkit.templateGallery",
-          "name": "%view.templateGallery%",
-          "title": "%view.templateGallery.title%",
-          "icon": "media/icons/templates.svg",
+          "id": "okScriptToolkit.params",
+          "name": "%view.params%",
+          "visibility": "collapsed",
           "webviewOptions": {
             "retainContextWhenHidden": true
           }
         },
         {
           "type": "webview",
-          "id": "okScriptToolkit.templateAssets",
-          "name": "%view.templateAssets%",
-          "title": "%view.templateAssets.title%",
-          "icon": "media/icons/templates.svg",
-          "webviewOptions": {
-            "retainContextWhenHidden": true
-          }
-        }
-      ],
-      "okTempShots": [
-        {
-          "type": "webview",
-          "id": "okScriptToolkit.tempScreenshots",
-          "name": "%view.tempScreenshots%",
-          "title": "%view.tempScreenshots.title%",
-          "icon": "media/icons/tempShots.svg",
+          "id": "okScriptToolkit.resources",
+          "name": "%view.resources%",
           "webviewOptions": {
             "retainContextWhenHidden": true
           }
@@ -249,182 +342,368 @@
         "when": "editorLangId == python"
       },
       {
-        "command": "okScriptToolkit.screenshotToTemplate",
+        "command": "okScriptToolkit.captureToInbox",
         "key": "ctrl+alt+s",
         "mac": "cmd+alt+s"
       }
     ],
-    "configuration": {
-      "title": "%configuration.title%",
-      "properties": {
-        "okScriptToolkit.langDirectory": {
-          "type": "string",
-          "default": "assets/lang",
-          "description": "%config.langDirectory%"
-        },
-        "okScriptToolkit.poDirectory": {
-          "type": "string",
-          "default": "i18n",
-          "description": "%config.poDirectory%"
-        },
-        "okScriptToolkit.enablePoData": {
-          "type": "boolean",
-          "default": true,
-          "description": "%config.enablePoData%"
-        },
-        "okScriptToolkit.poDomains": {
-          "type": "array",
-          "items": {
-            "type": "string"
+    "configuration": [
+      {
+        "id": "okScriptToolkit.codeHints",
+        "title": "%configuration.codeHints%",
+        "order": 1,
+        "properties": {
+          "okScriptToolkit.langDirectory": {
+            "type": "string",
+            "default": "assets/lang",
+            "description": "%config.langDirectory%"
           },
-          "default": [
-            "ocr"
-          ],
-          "description": "%config.poDomains%"
-        },
-        "okScriptToolkit.displayLocale": {
-          "type": "string",
-          "default": "auto",
-          "enum": [
-            "auto",
-            "zh_CN",
-            "zh_TW",
-            "en_US",
-            "ja_JP",
-            "ko_KR",
-            "es_ES"
-          ],
-          "description": "%config.displayLocale%"
-        },
-        "okScriptToolkit.enableInlayHints": {
-          "type": "boolean",
-          "default": true,
-          "description": "%config.enableInlayHints%"
-        },
-        "okScriptToolkit.featureAliases": {
-          "type": "array",
-          "items": {
-            "type": "string"
+          "okScriptToolkit.poDirectory": {
+            "type": "string",
+            "default": "i18n",
+            "description": "%config.poDirectory%"
           },
-          "default": [
-            "fL",
-            "FeatureList",
-            "Labels"
-          ],
-          "description": "%config.featureAliases%"
-        },
-        "okScriptToolkit.labelEnumPath": {
-          "type": "string",
-          "default": "",
-          "scope": "resource",
-          "markdownDescription": "%config.labelEnumPath%"
-        },
-        "okScriptToolkit.labelEnumName": {
-          "type": "string",
-          "default": "",
-          "scope": "resource",
-          "markdownDescription": "%config.labelEnumName%"
-        },
-        "okScriptToolkit.positionJsonPath": {
-          "type": "string",
-          "default": "src/scene/positions.json",
-          "scope": "resource",
-          "markdownDescription": "%config.positionJsonPath%"
-        },
-        "okScriptToolkit.positionPythonDirectory": {
-          "type": "string",
-          "default": "src/scene",
-          "scope": "resource",
-          "markdownDescription": "%config.positionPythonDirectory%"
-        },
-        "okScriptToolkit.effectsFile": {
-          "type": "string",
-          "default": "src/data/effects.py",
-          "description": "%config.effectsFile%"
-        },
-        "okScriptToolkit.okScriptProjectPath": {
-          "type": "string",
-          "default": "",
-          "markdownDescription": "%config.okScriptProjectPath%"
-        },
-        "okScriptToolkit.okScriptPython": {
-          "type": "string",
-          "default": "",
-          "markdownDescription": "%config.okScriptPython%"
-        },
-        "okScriptToolkit.captureMethod": {
-          "type": "string",
-          "default": "auto",
-          "enum": [
-            "auto",
-            "wgc",
-            "bitblt",
-            "foreground"
-          ],
-          "markdownDescription": "%config.captureMethod%"
-        },
-        "okScriptToolkit.characterProjectPath": {
-          "type": "string",
-          "default": "",
-          "markdownDescription": "%config.characterProjectPath%"
-        },
-        "okScriptToolkit.characterMasterFile": {
-          "type": "string",
-          "default": "assets/data/characters.json",
-          "description": "%config.characterMasterFile%"
-        },
-        "okScriptToolkit.characterSkillsDirectory": {
-          "type": "string",
-          "default": "assets/data/character_skills",
-          "description": "%config.characterSkillsDirectory%"
-        },
-        "okScriptToolkit.characterLocaleFile": {
-          "type": "string",
-          "default": "assets/lang/characters.json",
-          "description": "%config.characterLocaleFile%"
-        },
-        "okScriptToolkit.characterAvatarTemplateRegex": {
-          "type": "string",
-          "default": "^battle[_-]?icon[_-]?",
-          "description": "%config.characterAvatarTemplateRegex%"
-        },
-        "okScriptToolkit.okTemplatesDirectory": {
-          "type": "string",
-          "default": "ok_templates",
-          "description": "%config.okTemplatesDirectory%"
-        },
-        "okScriptToolkit.copyCoordsSpace": {
-          "type": "boolean",
-          "default": true,
-          "scope": "application",
-          "description": "%config.copyCoordsSpace%"
-        },
-        "okScriptToolkit.annotationKeybindings": {
-          "type": "object",
-          "default": {
-            "drawBbox": "r",
-            "copyCoords": "c",
-            "deleteMode": "d",
-            "undo": "ctrl+z",
-            "redo": "ctrl+y",
-            "copy": "ctrl+c",
-            "paste": "ctrl+v",
-            "deleteSelected": "Delete",
-            "prevImage": "ArrowLeft",
-            "nextImage": "ArrowRight",
-            "cycleMode": "m"
+          "okScriptToolkit.enablePoData": {
+            "type": "boolean",
+            "default": true,
+            "description": "%config.enablePoData%"
           },
-          "additionalProperties": {
-            "type": "string"
+          "okScriptToolkit.poDomains": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": [
+              "ocr"
+            ],
+            "description": "%config.poDomains%"
           },
-          "markdownDescription": "%config.annotationKeybindings%"
+          "okScriptToolkit.displayLocale": {
+            "type": "string",
+            "default": "auto",
+            "enum": [
+              "auto",
+              "zh_CN",
+              "zh_TW",
+              "en_US",
+              "ja_JP",
+              "ko_KR",
+              "es_ES"
+            ],
+            "description": "%config.displayLocale%"
+          },
+          "okScriptToolkit.enableInlayHints": {
+            "type": "boolean",
+            "default": true,
+            "description": "%config.enableInlayHints%"
+          },
+          "okScriptToolkit.featureAliases": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": [
+              "fL",
+              "FeatureList",
+              "Labels"
+            ],
+            "description": "%config.featureAliases%"
+          },
+          "okScriptToolkit.effectsFile": {
+            "type": "string",
+            "default": "src/data/effects.py",
+            "description": "%config.effectsFile%"
+          }
+        }
+      },
+      {
+        "id": "okScriptToolkit.resources",
+        "title": "%configuration.resources%",
+        "order": 2,
+        "properties": {
+          "okScriptToolkit.okTemplatesDirectory": {
+            "type": "string",
+            "default": "ok_templates",
+            "description": "%config.okTemplatesDirectory%"
+          },
+          "okScriptToolkit.labelEnumPath": {
+            "type": "string",
+            "default": "",
+            "scope": "resource",
+            "markdownDescription": "%config.labelEnumPath%"
+          },
+          "okScriptToolkit.labelEnumName": {
+            "type": "string",
+            "default": "",
+            "scope": "resource",
+            "markdownDescription": "%config.labelEnumName%"
+          },
+          "okScriptToolkit.positionJsonPath": {
+            "type": "string",
+            "default": "src/scene/positions.json",
+            "scope": "resource",
+            "markdownDescription": "%config.positionJsonPath%"
+          },
+          "okScriptToolkit.positionPythonDirectory": {
+            "type": "string",
+            "default": "src/scene",
+            "scope": "resource",
+            "markdownDescription": "%config.positionPythonDirectory%"
+          },
+          "okScriptToolkit.annotationKeybindings": {
+            "type": "object",
+            "default": {
+              "drawBbox": "r",
+              "copyCoords": "c",
+              "deleteMode": "d",
+              "undo": "ctrl+z",
+              "redo": "ctrl+y",
+              "copy": "ctrl+c",
+              "paste": "ctrl+v",
+              "deleteSelected": "Delete",
+              "prevImage": "ArrowLeft",
+              "nextImage": "ArrowRight",
+              "cycleMode": "m"
+            },
+            "additionalProperties": {
+              "type": "string"
+            },
+            "markdownDescription": "%config.annotationKeybindings%"
+          }
+        }
+      },
+      {
+        "id": "okScriptToolkit.screenshots",
+        "title": "%configuration.screenshots%",
+        "order": 3,
+        "properties": {
+          "okScriptToolkit.captureMethod": {
+            "type": "string",
+            "default": "auto",
+            "enum": [
+              "auto",
+              "wgc",
+              "bitblt",
+              "foreground"
+            ],
+            "markdownDescription": "%config.captureMethod%"
+          },
+          "okScriptToolkit.copyCoordsSpace": {
+            "type": "boolean",
+            "default": true,
+            "scope": "application",
+            "description": "%config.copyCoordsSpace%"
+          }
+        }
+      },
+      {
+        "id": "okScriptToolkit.console",
+        "title": "%configuration.console%",
+        "order": 4,
+        "properties": {
+          "okScriptToolkit.okScriptProjectPath": {
+            "type": "string",
+            "default": "",
+            "markdownDescription": "%config.okScriptProjectPath%"
+          },
+          "okScriptToolkit.okScriptPython": {
+            "type": "string",
+            "default": "",
+            "markdownDescription": "%config.okScriptPython%"
+          }
+        }
+      },
+      {
+        "id": "okScriptToolkit.characters",
+        "title": "%configuration.characters%",
+        "order": 5,
+        "properties": {
+          "okScriptToolkit.characterProjectPath": {
+            "type": "string",
+            "default": "",
+            "markdownDescription": "%config.characterProjectPath%"
+          },
+          "okScriptToolkit.characterMasterFile": {
+            "type": "string",
+            "default": "assets/data/characters.json",
+            "description": "%config.characterMasterFile%"
+          },
+          "okScriptToolkit.characterSkillsDirectory": {
+            "type": "string",
+            "default": "assets/data/character_skills",
+            "description": "%config.characterSkillsDirectory%"
+          },
+          "okScriptToolkit.characterLocaleFile": {
+            "type": "string",
+            "default": "assets/lang/characters.json",
+            "description": "%config.characterLocaleFile%"
+          },
+          "okScriptToolkit.characterAvatarTemplateRegex": {
+            "type": "string",
+            "default": "^battle[_-]?icon[_-]?",
+            "description": "%config.characterAvatarTemplateRegex%"
+          }
         }
       }
-    },
+    ],
     "jsonValidation": [
       {
         "fileMatch": "ok-script-toolkit.json",
         "url": "./schemas/ok-script-toolkit.schema.json"
+      }
+    ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "okScriptToolkit.console.refresh",
+          "when": "okScriptToolkit.projectReady"
+        },
+        {
+          "command": "okScriptToolkit.console.runTask",
+          "when": "okScriptToolkit.projectReady"
+        },
+        {
+          "command": "okScriptToolkit.console.startExecutor",
+          "when": "okScriptToolkit.projectReady && !okScriptToolkit.executorRunning"
+        },
+        {
+          "command": "okScriptToolkit.console.pause",
+          "when": "okScriptToolkit.executorRunning && !okScriptToolkit.executorPaused"
+        },
+        {
+          "command": "okScriptToolkit.console.resume",
+          "when": "okScriptToolkit.executorPaused"
+        },
+        {
+          "command": "okScriptToolkit.console.stopCurrentTask",
+          "when": "okScriptToolkit.taskRunning"
+        },
+        {
+          "command": "okScriptToolkit.console.stopExecutor",
+          "when": "okScriptToolkit.executorRunning"
+        },
+        {
+          "command": "okScriptToolkit.console.showLogs",
+          "when": "okScriptToolkit.projectReady"
+        },
+        {
+          "command": "okScriptToolkit.console.connectGame",
+          "when": "okScriptToolkit.projectReady"
+        },
+        {
+          "command": "okScriptToolkit.console.disconnectGame",
+          "when": "okScriptToolkit.projectReady"
+        },
+        {
+          "command": "okScriptToolkit.openCharacterManager",
+          "when": "okScriptToolkit.hasCharacterData"
+        },
+        {
+          "command": "okScriptToolkit.captureToInbox",
+          "when": "okScriptToolkit.projectReady"
+        },
+        {
+          "command": "okScriptToolkit.annotateImage",
+          "when": "okScriptToolkit.projectReady"
+        },
+        {
+          "command": "okScriptToolkit.publishResources",
+          "when": "okScriptToolkit.projectReady"
+        },
+        {
+          "command": "okScriptToolkit.pickProject",
+          "when": "okScriptToolkit.projectReady"
+        },
+        {
+          "command": "okScriptToolkit.run.openParams",
+          "when": "false"
+        },
+        {
+          "command": "okScriptToolkit.run.runTaskInline",
+          "when": "false"
+        },
+        {
+          "command": "okScriptToolkit.run.toggleTrigger",
+          "when": "false"
+        },
+        {
+          "command": "okScriptToolkit.insertResourceReference",
+          "when": "false"
+        },
+        {
+          "command": "okScriptToolkit.findTemplateReferences",
+          "when": "okScriptToolkit.projectReady"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "okScriptToolkit.console.startExecutor",
+          "when": "view == okScriptToolkit.run",
+          "group": "navigation@1"
+        },
+        {
+          "command": "okScriptToolkit.console.connectGame",
+          "when": "view == okScriptToolkit.run && !okScriptToolkit.executorRunning",
+          "group": "navigation@2"
+        },
+        {
+          "command": "okScriptToolkit.console.refresh",
+          "when": "view == okScriptToolkit.run",
+          "group": "navigation@3"
+        },
+        {
+          "command": "okScriptToolkit.console.showLogs",
+          "when": "view == okScriptToolkit.run",
+          "group": "navigation@4"
+        },
+        {
+          "command": "okScriptToolkit.captureToInbox",
+          "when": "view == okScriptToolkit.resources",
+          "group": "navigation@1"
+        },
+        {
+          "command": "okScriptToolkit.publishResources",
+          "when": "view == okScriptToolkit.resources",
+          "group": "navigation@2"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "okScriptToolkit.run.runTaskInline",
+          "when": "view == okScriptToolkit.run && viewItem == run.task.onetime",
+          "group": "inline@1"
+        },
+        {
+          "command": "okScriptToolkit.run.openParams",
+          "when": "view == okScriptToolkit.run && viewItem =~ /^run\\.task/",
+          "group": "inline@2"
+        },
+        {
+          "command": "okScriptToolkit.console.stopCurrentTask",
+          "when": "view == okScriptToolkit.run && viewItem == run.task.running",
+          "group": "inline@1"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "okScriptToolkit.annotateImage",
+          "when": "resourceExtname =~ /^\\.(png|jpe?g|webp)$/i",
+          "group": "navigation@90"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "okScriptToolkit.findTemplateReferences",
+          "when": "editorLangId == python && okScriptToolkit.projectReady",
+          "group": "navigation@90"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "okScriptToolkit.run",
+        "when": "!okScriptToolkit.projectReady",
+        "contents": "%viewsWelcome.run%"
       }
     ]
   },
@@ -435,7 +714,7 @@
     "verify:version": "node scripts/release/verify-version.js",
     "verify:l10n": "node scripts/release/verify-l10n.js",
     "release": "sh scripts/release.sh",
-    "test": "npm run verify:version && npm run verify:l10n && npm run test:l10n-literals && npm run compile && npm run test:webview-l10n && npm run test:webview-html && npm run test:design-system && npm run test:thumbnail-actions && npm run test:task-launcher && npm run test:console-accountseg && npm run test:task-launcher-executor && npm run test:task-reconcile && npm run test:temp-screenshots && npm run test:annotation-coords && npm run test:annotation-clipboard && npm run test:annotation-swap && npm run test:annotation-merge && npm run test:annotation-history && npm run test:annotation-mode-cycle && npm run test:position-resource && npm run test:resource-host-contract && npm run test:position-publish-settings && npm run test:point-resource && npm run test:asset-swap-picker && npm run test:thumb-content-hash && npm run test:list-editor && npm run test:project-config && npm run test:project-config-schema && npm run test:convention-sources && npm run test:label-enum-guard && npm run test:save-to-assets-flow && npm run test:save-to-assets && npm run test:asset-pack-worker && npm run test:coco-feature-path && npm run test:box-resource && npm run test:probe-schemas && npm run test:probe-gui-group-names && npm run test:probe-qt-layer && npm run test:probe-multi-account-path && npm run test:probe-window-config && npm run test:screenshot-capture && npm run test:screenshot-worker && npm run test:background-screenshot && npm run test:global-hotkey && npm run test:run-sandbox && npm run test:startup-patches && npm run test:executor-runtime && npm run test:executor-project-config && npm run test:executor-gconfig && npm run test:project-store && npm run test:project-runtime",
+    "test": "npm run verify:version && npm run verify:l10n && npm run test:l10n-literals && npm run compile && npm run test:webview-l10n && npm run test:webview-html && npm run test:design-system && npm run test:command-contract && npm run test:run-tree-model && npm run test:publish-diff && npm run test:character-diagnostics && npm run test:hover-links && npm run test:template-references && npm run test:publish-preview && npm run test:activation-smoke && npm run test:thumbnail-actions && npm run test:task-launcher && npm run test:console-accountseg && npm run test:task-launcher-executor && npm run test:task-reconcile && npm run test:temp-screenshots && npm run test:annotation-coords && npm run test:annotation-clipboard && npm run test:annotation-swap && npm run test:annotation-merge && npm run test:annotation-history && npm run test:annotation-mode-cycle && npm run test:position-resource && npm run test:resource-host-contract && npm run test:position-publish-settings && npm run test:point-resource && npm run test:asset-swap-picker && npm run test:thumb-content-hash && npm run test:list-editor && npm run test:project-config && npm run test:project-config-schema && npm run test:convention-sources && npm run test:label-enum-guard && npm run test:save-to-assets-flow && npm run test:save-to-assets && npm run test:asset-pack-worker && npm run test:coco-feature-path && npm run test:box-resource && npm run test:probe-schemas && npm run test:probe-gui-group-names && npm run test:probe-qt-layer && npm run test:probe-multi-account-path && npm run test:probe-window-config && npm run test:screenshot-capture && npm run test:screenshot-worker && npm run test:background-screenshot && npm run test:global-hotkey && npm run test:run-sandbox && npm run test:startup-patches && npm run test:executor-runtime && npm run test:executor-project-config && npm run test:executor-gconfig && npm run test:project-store && npm run test:project-runtime",
     "test:webview-html": "node scripts/test_webview_html.js",
     "test:design-system": "node scripts/test_design_system.js",
     "test:thumbnail-actions": "node scripts/test_thumbnail_actions.js",
@@ -486,7 +765,15 @@
     "test:l10n-literals": "node scripts/test_l10n_literals.js",
     "test:position-publish-settings": "node scripts/test_position_publish_settings.js",
     "test:webview-l10n": "node scripts/test_webview_l10n.js",
-    "test:resource-host-contract": "node scripts/test_resource_host_contract.js"
+    "test:resource-host-contract": "node scripts/test_resource_host_contract.js",
+    "test:command-contract": "node scripts/test_command_contract.js",
+    "test:run-tree-model": "node scripts/test_run_tree_model.js",
+    "test:publish-diff": "node scripts/test_publish_diff.js",
+    "test:character-diagnostics": "node scripts/test_character_diagnostics.js",
+    "test:hover-links": "node scripts/test_hover_links.js",
+    "test:template-references": "node scripts/test_template_references.js",
+    "test:publish-preview": "node scripts/test_publish_preview.js",
+    "test:activation-smoke": "node scripts/test_activation_smoke.js"
   },
   "devDependencies": {
     "@types/jpeg-js": "^0.3.0",

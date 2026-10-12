@@ -56,3 +56,14 @@
 - 本轮代码差异已补齐，主仓 PR 的 gitlink 指向子仓 PR 的配套提交。必须先合并子仓 PR #30，再确认或更新 gitlink 到子仓 `main` 可达的提交并核对主仓 CI，最后合并主仓；未合并代码不作为已发布功能。
 
 没有执行真实 IDE 交互、真实游戏截图或业务项目运行验收，也未执行完整 Plugin Verifier API 兼容性检查；构建、结构和自动回归的成功不代替这些验收。
+
+## UI P2 对齐清单（VS Code 已做，JetBrains 待办；本轮不改 JetBrains UI）
+
+| 项 | VS Code（`ui/p2-polish`） | JetBrains 建议做法 | 状态 |
+| --- | --- | --- | --- |
+| 图片右键「用标注编辑器打开」 | `explorer/context`，仅 `.png/.jpg/.jpeg/.webp` | Project View `AnAction`，`update()` 按扩展名显隐 | 待办 |
+| 查找模板引用 | `findTemplateReferences`：`fL.x` / `self.pos.x` / `"x"` → QuickPick 跳转 | `ReferencesSearch` 或 Find Usages 自定义 searcher，复用同一正则 | 待办 |
+| 模板悬停命令链接 | `MarkdownString.isTrusted.enabledCommands` 白名单两条命令 | `DocumentationProvider` 里用 `psi_element://` / 自定义 action 链接 | 待办 |
+| 发布预览 | 写盘前只读列出文件 + 模板新增/覆盖/移除（按名字比较） | 发布对话框前插入只读列表；不改写入语义 | 待办 |
+| 资源视图草稿按模板名列出 | 修正：草稿卡片按标注类别名，与 `fL.<名字>` 对齐 | 资源列表同样按类别名 | 核对 |
+| 激活冒烟测试 | `scripts/test_activation_smoke.js`（模拟 vscode 模块） | 已有 `gradlew test`，可补 action 注册检查 | 可选 |

@@ -2,7 +2,7 @@
 
 [简体中文](design-system.md) | [English](design-system.en.md)
 
-> This is the authoritative UI specification for the entire project. All webview panels (console / templatePanel / templateAssetPanel / tempScreenshots / annotationPanel / characterManager / boxPanel) must follow it.
+> This is the authoritative UI specification for the entire project. All webview panels (console / templatePanel / templateAssetPanel / tempScreenshots / annotationPanel / characterManager) must follow it.
 > Implementation sources: `media/shared/tokens.css` (design tokens) and `media/shared/controls.css` (shared controls).
 > **Pages compose these classes; they must not independently redefine visual rules.**
 
@@ -55,7 +55,7 @@ Buttons of the same kind share height (`--control-h-sm/md/lg`), padding (`--spac
 
 ## 4. Shared Size Scale
 
-- Spacing: `--space-xs(4) / sm(6) / md(10) / lg(14) / xl(20)`.
+- Spacing: `--space-xs(4) / sm(8) / md(12) / lg(16) / xl(24)`.
 - Control height: `--control-h-sm(24) / md(30) / lg(34)`.
 - Radius: `--radius-sm(5) / md(8) / lg(11) / pill`.
 - Font size: `--font-xs(11) / sm(12) / md(13) / lg(15)`; weights only `--weight-regular(400)` / `--weight-medium(500)`.
@@ -95,7 +95,12 @@ media/shared/tokens.css      Colors · Typography · Spacing · Radius · Border
 media/shared/controls.css    Button(primary/secondary/mini/ghost/icon) · Input · Select · Checkbox/Switch
                              · Tag · Card · Toolbar · SectionTitle · Empty/Broken/Hint · Divider
                              · Clickability rules ([role=button], actual-button/clickable-row categories)
+                             · .has-codicon / .is-icon-only (icon button alignment and size)
+media/shared/codicons/       @vscode/codicons 0.0.36 (codicon.css + codicon.ttf, vendored unchanged)
+media/shared/icons.js        OkIcons.icon / label / iconOnly — the single way panels create icons
 ```
+
+**Icon rule (2026-10-09):** UI icons always use codicons (the same set as native VS Code UI). Emoji and Unicode glyphs (`▶ ⚙ ⇄ ⟲ ＋ 👁 × ↻` and similar) are no longer used: they drift with the font and screen readers read out the symbol names. Icon-only buttons must have both `title` and `aria-label` (`OkIcons.iconOnly` handles this). One meaning, one icon: sync defaults `sync`, restore factory defaults `discard`, swap annotations `arrow-swap`, delete `trash`, view original `go-to-file` / `eye`. Panel HTML must load `__SHARED_CODICONS_URI__` and `__SHARED_ICONS_URI__`, and the CSP must include `font-src __CSP_SOURCE__`.
 
 Connect a new panel in **three steps; omitting any step silently breaks styling**:
 
@@ -122,7 +127,7 @@ Connect a new panel in **three steps; omitting any step silently breaks styling*
 
 ## Implementation Progress
 
-2026-10-01 addendum: box panels/galleries share `media/boxPanel`, connected through `src/boxPanels.ts` and included in the static audit. The table and six-panel record below describe the 2026-09-23 migration baseline, not a reason to omit newer panels.
+2026-10-09 addendum: the standalone box panel/gallery (`media/boxPanel`, `src/boxPanels.ts`) was folded into the unified annotation editor and resource preview and has been removed; the position-preview helpers used by hover and completion now live in `src/positionPreview.ts`. The table and six-panel record below describe the 2026-09-23 migration baseline; new panels must still be registered in the static audit.
 
 | Stage | Work | Status |
 |---|---|---|

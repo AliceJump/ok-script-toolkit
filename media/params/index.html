@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src __CSP_SOURCE__ 'nonce-__CSP_NONCE__'; script-src 'nonce-__CSP_NONCE__'; font-src __CSP_SOURCE__; img-src __CSP_SOURCE__ data:;">
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="__SHARED_CODICONS_URI__" />
+  <link rel="stylesheet" href="__SHARED_TOKENS_URI__" />
+  <link rel="stylesheet" href="__SHARED_CONTROLS_URI__" />
+  <link rel="stylesheet" href="__STYLE_URI__" />
+</head>
+<body>
+  <div class="params" id="root">
+    <div class="params-empty" id="empty">
+      <div class="panel-empty__title" id="emptyTitle"></div>
+      <div class="panel-empty__body" id="emptyBody"></div>
+    </div>
+    <div class="params-body" id="body" hidden>
+      <header class="params-head">
+        <div class="params-head__title" id="title"></div>
+        <div class="params-head__sub" id="subtitle"></div>
+        <div class="params-head__status" id="status"></div>
+      </header>
+      <div id="formHost"></div>
+    </div>
+  </div>
+  <div id="paramsI18n" hidden>__I18N_JSON__</div>
+  <script nonce="__CSP_NONCE__" src="__SHARED_ICONS_URI__"></script>
+  <script nonce="__CSP_NONCE__" src="__FIELDS_SCRIPT_URI__"></script>
+  <script nonce="__CSP_NONCE__" src="__CONFIG_PANEL_SCRIPT_URI__"></script>
+  <script nonce="__CSP_NONCE__" src="__APP_SCRIPT_URI__"></script>
+</body>
+</html>

@@ -56,3 +56,14 @@ Business projects load published files. The plugin provides current declarations
 - Confirmed code differences are closed, and the main PR gitlink pins the companion child PR commit. Merge child PR #30 first, then confirm or update the gitlink to a commit reachable from child `main` and verify main CI before merging the main PR. Unmerged code is not released functionality.
 
 No actual IDE interaction, game screenshot or business-project runtime acceptance was performed. Full Plugin Verifier API compatibility was not run; build, structure checks and automated regression do not replace those checks.
+
+## UI P2 parity checklist (done in VS Code, pending in JetBrains; no JetBrains UI changes this round)
+
+| Item | VS Code (`ui/p2-polish`) | Suggested JetBrains approach | Status |
+| --- | --- | --- | --- |
+| Image context menu "Open with Annotation Editor" | `explorer/context`, only `.png/.jpg/.jpeg/.webp` | Project View `AnAction`, visibility by extension in `update()` | Pending |
+| Find template references | `findTemplateReferences`: `fL.x` / `self.pos.x` / `"x"` → QuickPick → jump | `ReferencesSearch` / custom Find Usages searcher with the same regexes | Pending |
+| Command links in template hover | `MarkdownString.isTrusted.enabledCommands` allowlist of two commands | Links in `DocumentationProvider` | Pending |
+| Publish preview | Read-only list of files + template add/overwrite/remove (by name) before writing | Read-only list before the publish dialog; write semantics unchanged | Pending |
+| Resources drafts listed by template name | Fixed: draft cards use the annotation category name, matching `fL.<name>` | Same in the resource list | Check |
+| Activation smoke test | `scripts/test_activation_smoke.js` (mocked vscode module) | `gradlew test` exists; could add an action-registration check | Optional |

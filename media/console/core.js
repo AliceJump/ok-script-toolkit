@@ -49,24 +49,44 @@
   const taskKind = task => task.kind || state.schemas[taskKey(task)]?.kind || 'onetime';
   const triggerEnabled = key => state.executor.enabledTriggers.indexOf(key) >= 0;
 
-  function setStatus(level, text) {
+  const STATUS_ICONS = { error: 'error', warn: 'warning', ok: 'check', info: 'info' };
+
+  /** 状态横幅：文字 + 可选「下一步」按钮（actions 由宿主给出 {action,label}） */
+  function setStatus(level, text, actions = []) {
     if (!text) {
       elements.status.hidden = true;
-      elements.status.textContent = '';
+      elements.status.replaceChildren();
       return;
     }
     elements.status.hidden = false;
     elements.status.className = `status-banner ${level || ''}`;
-    elements.status.textContent = text;
+    elements.status.setAttribute('role', level === 'error' ? 'alert' : 'status');
+    const message = document.createElement('div');
+    message.className = 'status-banner__text';
+    if (STATUS_ICONS[level]) message.append(OkIcons.icon(STATUS_ICONS[level]), ' ');
+    message.append(text);
+    const nodes = [message];
+    if (Array.isArray(actions) && actions.length) {
+      const row = document.createElement('div');
+      row.className = 'panel-actions panel-actions--start';
+      actions.forEach((item, index) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = index === 0 ? 'mini-btn mini-btn--primary' : 'mini-btn';
+        button.textContent = item.label;
+        button.addEventListener('click', () => post({ type: 'statusAction', action: item.action }));
+        row.appendChild(button);
+      });
+      nodes.push(row);
+    }
+    elements.status.replaceChildren(...nodes);
   }
 
   function initializeStaticUi() {
     document.documentElement.lang = navigator.language || 'en';
     document.title = t('taskTitle');
-    elements.refresh.textContent = '↻';
-    elements.refresh.title = t('refresh');
-    elements.refresh.setAttribute('aria-label', t('refresh'));
-    elements.stopExecutor.textContent = `✕ ${t('stopExecutor')}`;
+    OkIcons.iconOnly(elements.refresh, 'refresh', t('refresh'));
+    OkIcons.label(elements.stopExecutor, 'debug-stop', t('stopExecutor'));
     elements.empty.textContent = t('noTasks');
   }
 

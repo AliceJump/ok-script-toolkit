@@ -9,6 +9,7 @@
   const selBox = document.getElementById('selBox');
   const stageEmpty = document.getElementById('stageEmpty');
   const grid = document.getElementById('grid');
+  ThumbnailActions.bindGrid(grid, t('tempGridLabel'));
   const emptyHint = document.getElementById('emptyHint');
   const countEl = document.getElementById('count');
   const coordInfo = document.getElementById('coordInfo');
@@ -290,21 +291,30 @@
 
       const actions = document.createElement('div');
       actions.className = 'actions thumbnail-actions';
-      const sendBtn = ThumbnailActions.button('→', t('tempSendToAssets'), () => vscode.postMessage({ type: 'sendToAssets', id: meta.id }));
-      sendBtn.className = 'send';
-      const delBtn = ThumbnailActions.button('×', t('tempDelete'), () => vscode.postMessage({ type: 'deleteTemp', id: meta.id }));
-      delBtn.className = 'del';
-      actions.append(sendBtn, delBtn);
+      const sendBtn = ThumbnailActions.button('arrow-right', t('tempSendToAssets'), () => vscode.postMessage({ type: 'sendToAssets', id: meta.id }));
+      sendBtn.classList.add('send');
+      actions.append(sendBtn);
       preview.appendChild(actions);
+      // 删除单独放右上角，与「添加到标注管理」分开
+      const dangerActions = document.createElement('div');
+      dangerActions.className = 'actions thumbnail-actions thumbnail-actions--danger';
+      const delBtn = ThumbnailActions.button('trash', t('tempDelete'), () => vscode.postMessage({ type: 'deleteTemp', id: meta.id }));
+      delBtn.classList.add('del', 'is-danger');
+      dangerActions.append(delBtn);
+      preview.appendChild(dangerActions);
 
       const name = document.createElement('div');
       name.className = 'name';
       name.textContent = meta.name;
       card.appendChild(name);
 
-      card.addEventListener('click', () => {
-        stopCarousel();
-        showFrame(index);
+      // 单击 / Space = 选中并在上方预览；Enter / 双击 = 同样预览（临时截图没有「插入」类主操作）；Delete = 删除
+      const preview_ = () => { stopCarousel(); showFrame(index); };
+      ThumbnailActions.bindCard(card, {
+        label: meta.name,
+        onSelect: preview_,
+        onPrimary: preview_,
+        onDelete: () => vscode.postMessage({ type: 'deleteTemp', id: meta.id }),
       });
       card.addEventListener('dragstart', (e) => onCardDragStart(e, meta, card));
       card.addEventListener('dragend', () => {
@@ -318,6 +328,7 @@
 
     updateCount();
     updateEmpty();
+    ThumbnailActions.refreshTabStop(grid);
   }
 
   function updateCount() {

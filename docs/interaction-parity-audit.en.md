@@ -8,6 +8,9 @@ This report compares the pages actually registered in the baseline source, cover
 
 This is a source audit, without interactive or screenshot verification in either IDE. “No corresponding entry in the current page” does not mean that no implementation exists elsewhere in the plugin. Theme, scaling, focus, and keyboard behavior still need real IDE verification. Shared Python code, formats, or passing tests do not establish interaction parity.
 
+
+
+> P1 (2026-10-11): VS Code now uses a single activity-bar container with Run TreeView / Parameters / Resources. JetBrains toolWindow merge and Tree parity remain pending (plan.md §11).
 ## 1. Registered entry points and organization
 
 | ID | Item | VS Code | JetBrains | User-visible difference |
@@ -27,7 +30,7 @@ Sources: [parent registration](../package.json), [VS Code task page](../media/co
 | 06 | Template / Rect / Point modes | Three adjacent buttons, with the active mode highlighted | Mode combo box | All modes are immediately visible on one side; the other requires opening a dropdown |
 | 07 | Insert, copy, source buttons | Three persistent buttons at the bottom right of every thumbnail, directly bound to that card | Insert/copy/open in the top toolbar operate through `selectedValue`; no buttons inside the card | Direct target-card actions versus selecting a target and then using the toolbar |
 | 08 | Selection and target feedback | No list selection state used by these buttons; each button captures its resource | Single-selection `JBList`; renderer changes background, text, and border for selection | Persistent selection and toolbar dependence differ |
-| 09 | Single/double-click timing | Delayed single-click insertion, double-click copy, fixed 500 ms window; card buttons execute immediately | Same basic gestures, using system `awt.multiClickInterval` or a 500 ms fallback; insertion also checks that selection still matches the clicked item | Gesture results broadly match, but timing and selection dependencies differ |
+| 09 | Single/double-click timing | (Since 2026-10-09) click = select, double-click / Enter = insert, Ctrl+C = copy, no delay window; card buttons execute immediately; all three thumbnail grids share these gestures and support arrow keys | Still click-to-insert and double-click copy, using system `awt.multiClickInterval` or a 500 ms fallback; insertion also checks that selection still matches the clicked item | **Needs sync**: VS Code moved to "click selects / double-click or Enter runs the primary action"; JetBrains `ThumbnailActions.kt` has not followed yet |
 | 10 | Grid and card geometry | Responsive CSS grid, 118 px minimum column width, 96 px thumbnail area, left-aligned names | `JList.HORIZONTAL_WRAP`, fixed cell width of 120 plus scaled margins, scaled 72 thumbnail height, centered 10 pt bold names truncated by character count | Density, space usage, alignment, and truncation differ; values are source constants rather than measured screen pixels |
 | 11 | Counts, empty/loading states | Filter/total counts, successful/failed thumbnail counts, explicit empty/no-match messages | Current preview component contains only toolbar, search, and list; failed loading results become an empty collection without equivalent count/empty/failure widgets | Empty data and loading failure are less distinguishable in this page; this does not assess every lower-level error path |
 

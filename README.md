@@ -8,7 +8,7 @@
 
 **把 ok-script 的语言、OCR、模板、技能和任务数据，直接搬进 VS Code 的开发流程。**
 
-语言键补全 · OCR 修正提示 · 模板浏览 · 任务启动 · 角色技能管理
+语言键补全 · OCR 修正提示 · 运行 / 参数 / 资源（收件箱→草稿→已发布）· 角色技能管理
 
 [![VS Code Marketplace](https://img.shields.io/badge/VS%20Code%20Marketplace-ok--script%20Toolkit-007ACC?logo=visualstudiocode&logoColor=white)](https://marketplace.visualstudio.com/items?itemName=AliceJump.ok-script-toolkit)
 [![JetBrains Marketplace](https://img.shields.io/badge/JetBrains%20Marketplace-ok--script%20Toolkit-000000?logo=jetbrains&logoColor=white)](https://plugins.jetbrains.com/plugin/34091-ok-script-toolkit)
@@ -23,7 +23,7 @@
 
 ---
 
-VS Code 扩展，为 ok-script 项目的 Python 开发提供语言键、OCR 修正、模板和技能效果的数据提示，同时内置模板浏览、任务启动和角色技能管理面板，让 ok-script 的语言、OCR、模板、技能和任务数据直接进入开发流程。
+VS Code 扩展，为 ok-script 项目的 Python 开发提供语言键、OCR 修正、模板和技能效果的数据提示，同时内置**运行**（原生任务树）、**参数**检查器、**资源**工作台（收件箱 / 草稿 / 已发布）和角色技能管理，让 ok-script 的语言、OCR、模板、技能和任务数据直接进入开发流程。
 
 > [!TIP]
 > 下面每个功能章节开头的演示图都是可点的——如果动图没加载出来，直接点开链接看。
@@ -52,8 +52,8 @@ PyCharm / IntelliJ IDEA 用户请装 JetBrains 版：[ok-script Toolkit for JetB
 |---|---|
 | [代码开发辅助](#代码开发辅助) | 在编辑器内补全和解释 `self.lang`、OCR 正则与技能效果 ID |
 | [模板管理](#模板管理) | 网格浏览模板，单击插入 `fL.<名称>`，支持缩略图预览 |
-| [临时截图](#临时截图) | 活动栏里的 10 张暂存区，框选即可复制归一化坐标 |
-| [任务启动](#任务启动) | 从 `config.py` 自动生成参数表单并运行任务，全程不写目标项目配置 |
+| [资源](#资源收件箱草稿已发布) | 单一「资源」视图：收件箱（原临时截图）+ 草稿 / 已发布 |
+| [运行](#运行任务树) | 原生 TreeView：游戏 / 执行器 / 触发与一次性任务；参数在「参数」视图 |
 | [角色技能管理](#角色技能管理) | 角色 / 技能 / 效果 / 强化组的可视化管理与诊断 |
 | [多语言支持](#多语言支持) | 界面支持 6 种语言，数据提示跟随目标项目 |
 
@@ -77,15 +77,16 @@ PyCharm / IntelliJ IDEA 用户请装 JetBrains 版：[ok-script Toolkit for JetB
 ### 模板管理
 
 <p align="center">
-  <a href="screenshots/template-panel.gif"><img src="screenshots/template-panel.gif" alt="模板面板：搜索、缩略图预览与快速插入" width="900"></a>
+  <a href="screenshots/template-panel.gif"><img src="screenshots/template-panel.gif" alt="资源预览：搜索、缩略图预览与快速插入" width="900"></a>
 </p>
 
-- **模板面板**：通过侧边栏图标或 `Ctrl+Alt+T` 快捷键（需聚焦 Python 编辑器时生效）打开，网格展示工作区全部模板的缩略图，支持按名称实时搜索和过滤。
-- **快速插入**：单击卡片将 `fL.<模板名>` 插入编辑器光标处，双击复制到剪贴板，使用「查看原图」按钮打开来源。VS Code 模板与框图库统一使用 500 ms 的卡片双击窗口；超过窗口的点击分别按单击处理。插入、复制和查看原图按钮立即执行。
+- **资源预览**：通过侧边栏图标或 `Ctrl+Alt+T` 快捷键（需聚焦 Python 编辑器时生效）打开，网格展示已发布的模板 / 框 / 点资源缩略图，支持按名称实时搜索和过滤。没有资源时会列出实际检查过的 COCO 路径，并提供「打开标注管理」按钮。
+- **快速插入**：缩略图卡片的手势在资源预览、标注管理、临时截图三处一致——**单击 = 选中**，**双击 / Enter = 主操作**（资源预览里是把 `fL.<模板名>` 插入编辑器光标处），`Ctrl+C` 复制引用；卡片右下角的「插入 / 复制 / 查看原图」按钮立即执行。卡片可用 Tab 进入、方向键 / Home / End 移动。
 - **模板代码提示**：输入 `fL.` 或 `FeatureList.` 补全模板名称并显示尺寸，悬停显示缩略图预览、尺寸和来源信息。
-- 也可通过命令 **ok-script 工具箱: 在编辑器中打开模板面板** 在编辑器区打开更大的网格视图。
-- 支持侧边栏（模板面板和模板素材两个视图）和编辑器大窗口两种浏览方式。
-- **交换标注**：在模板素材面板（标注管理）里，缩略图卡片右下角的 **⇄** 按钮可以把这张图与同一列表内另一张图的标注**整套互换** —— 修"标错了图 / 图片顺序反了"用。选择目标时按缩略图挑（模板名多是数字序号，光看名字选不出来）。两张图尺寸不同时，框坐标会**按比例缩放**，并在确认框里写明缩放前后的尺寸；交换是整体写盘、**不可撤销**的，所以落盘前一定会先确认。
+- 也可通过命令 **ok-script 工具箱: 在编辑器中打开资源预览** 在编辑器区打开更大的网格视图。
+- 支持侧边栏（「资源预览」和「标注管理」两个视图）和编辑器大窗口两种浏览方式。
+- **标注管理**：双击 / Enter / `E` 打开标注编辑器，`Delete` 删除（会先确认）；删除按钮单独放在卡片右上角，与查看 / 交换分开。也可以用命令 **打开标注编辑器…** 从图片列表里直接选图。
+- **交换标注**：在标注管理里，缩略图卡片右下角的「交换标注」按钮（codicon `arrow-swap`）可以把这张图与同一列表内另一张图的标注**整套互换** —— 修"标错了图 / 图片顺序反了"用。选择目标时按缩略图挑（模板名多是数字序号，光看名字选不出来）。两张图尺寸不同时，框坐标会**按比例缩放**，并在确认框里写明缩放前后的尺寸。交换是整体写盘，落盘前一定会先确认；完成后的通知里有「撤销」按钮，只要两张图在此之后没被改过，就能一键恢复原来的标注。
 
 ```python
 self.wait_click_feature(feature=fL.give_gift, time_out=10)
@@ -97,33 +98,36 @@ self.wait_click_feature(feature=fL.give_gift, time_out=10)
 
 框资源管理复用标注原图与 COCO 编辑器，支持编辑框、从模板生成包围框，并显式发布归一化位置表。框画廊提供裁剪预览、来源定位及 `self.pos` 引用的插入、复制、补全和 Hover。工作文件与运行时文件分开，游戏中的加载由业务项目负责。详见 [框资源设计](docs/box-resources.md)。
 
-### 临时截图
+### 资源（收件箱 → 草稿 → 已发布）
 
 <p align="center">
   <a href="screenshots/temp-shots.gif"><img src="screenshots/temp-shots.gif" alt="临时截图：轮播与框选复制归一化坐标" width="900"></a>
 </p>
 
-**ok-script 临时截图** 是活动栏上的**独立容器**（有自己的图标），里面是一个最多 10 张的暂存区（超出自动淘汰最早一张），用于快速取素材：
+活动栏只保留一个 **ok-script** 容器。其中的 **资源** 视图上部是**收件箱**（原「临时截图」，最多 10 张，超出淘汰最早一张），下部是**草稿 / 已发布**切换：
 
 | 能力 | 说明 |
 |---|---|
 | 入列 | `Ctrl+V` 粘贴剪贴板图片、点「截屏」截取游戏窗口，或直接把图片文件拖进来 |
 | 0.1s 轮播 | 按 100ms 间隔循环播放全部截图，方便观察有移动界限的按钮等目标 |
 | 框选复制 | 在「框选坐标」模式下框选，把 `x,y,tox,toy` 归一化坐标复制到剪贴板 |
-| 导入标注 | 缩略图卡片右上角的 **→** 按钮把该张导入「标注管理」（即复制进 `ok_templates` 并登记 COCO） |
+| 导入标注 | 缩略图卡片右下角的「添加到标注管理」按钮（codicon `arrow-right`）把该张导入「标注管理」（即复制进 `ok_templates` 并登记 COCO）；删除按钮在右上角 |
 
 细节说明：
 
 - 轮播与框选相互独立——框选期间轮播不停，选框松手后保留在原位，便于反复比对微调。
 - 归一化坐标按图片宽高归一化到 0..1，保留 4 位小数，同样支持滚轮缩放、中键/空白拖拽平移。
 - 框选完成后**框会保留并可继续调整**（带 8 向手柄、可整体拖动，交互与模板标注框一致）：**创建时与每次调整结束都会重新复制一次当前框的坐标**；框本身不写入标注数据、不落盘。点击图片的非交互部分（框体与手柄之外）即清除。
-- 注：VS Code 的跨 Webview 拖拽不可用（各 webview 是不同 origin 的 iframe，`dataTransfer` 被屏蔽），所以 **→** 按钮是导入的可靠入口。
+- 注：VS Code 的跨 Webview 拖拽不可用（各 webview 是不同 origin 的 iframe，`dataTransfer` 被屏蔽），所以「添加到标注管理」按钮是导入的可靠入口。
+- **在资源中定位 / 查找引用**：Python 里悬停 `fL.xxx` 时，预览下方有「在资源中定位」「查找引用」两个链接（只放行这两条本插件命令）。「查找模板引用…」也可从编辑器右键或命令面板运行：在工作区 Python 文件里找 `fL.xxx`、`self.pos.xxx` 和字符串键 `"xxx"`，列在 QuickPick 里，回车跳转（跳过注释行）。
+- **资源管理器右键「用标注编辑器打开」**：只在 `.png/.jpg/.jpeg/.webp` 上出现。图片需已在标注管理里登记，否则会提示先导入。
+- **发布预览**：选完发布选项、真正写盘前，会弹出只读列表：将写入的文件，以及模板「新增 / 覆盖 / 将从已发布中移除」（按模板名比较；发布会重新裁切装箱，坐标不可比）。在「发布」上回车才写入，Esc 什么都不写。
 - **标注编辑器**同样支持该模式：工具栏「坐标 (C)」或按 `C` 键后框选，直接复制同样的 `x,y,tox,toy` 归一化坐标，不会创建标注框、不改动 COCO。得到的框同样带手柄可继续微调，每次调整结束重新复制；点击图片非交互部分清除。快捷键可用 `okScriptToolkit.annotationKeybindings` 的 `copyCoords` 覆盖。
 
-### 任务启动
+### 运行（任务树）
 
 <p align="center">
-  <a href="screenshots/task-launcher.gif"><img src="screenshots/task-launcher.gif" alt="任务启动：参数表单与运行日志" width="900"></a>
+  <a href="screenshots/task-launcher.gif"><img src="screenshots/task-launcher.gif" alt="控制台：参数表单与运行日志" width="900"></a>
 </p>
 
 - 从目标项目的 `src/config.py` / `config.py` 自动解析所有一次性任务和触发任务，生成完整的参数配置表单。
@@ -138,7 +142,10 @@ self.wait_click_feature(feature=fL.give_gift, time_out=10)
 - **不污染目标项目配置**：执行器运行时，ok 框架对 `configs/` 与截图的读写全部改道到工作区的沙箱目录 `.vscode/ok-script-toolkit/`，**目标项目的配置文件与截图全程保持原样**（`devices.json` 做桥接拷贝以复用游戏连接）。调试时可以放心地改参数试跑，不会弄脏项目。
 - 执行器可随时暂停/恢复（全局挂起轮询与任务），也可以「停止当前任务」而不关闭执行器；运行日志输出到专属输出频道。
 - **全局配置接管**：目标项目的全局配置组（ok 框架 GlobalConfig 的可见分组）由探针一并解析，在控制台「配置」分段以参数快照呈现——修改即保存、可一键恢复默认；改动经 `gparams` 即时推送给运行中的执行器，执行器启动时以 `OK_TOOLKIT_GCONFIG` 注入全量快照。同样只写沙箱、不碰目标项目配置。
-- **控制台视图**：任务启动器与工具箱统一在「ok-script 控制台」的四个分段（任务 / 游戏 / 配置 / 账号）里管理；顶栏健康度条实时反映执行器状态，空闲时详情面板显示运行中心（当前任务 / 执行队列 / 触发轮询），任务卡悬停弹出只读摘要。
+- **运行视图**：原生 TreeView，展示游戏连接、执行器、触发任务（勾选=启用）、一次性任务（按组）、全局配置与账号；行内可运行 / 打开参数 / 停止。
+- **参数视图**：跟随「运行」里的选中项，编辑沙箱覆盖（自动保存并在执行器运行时推送）。
+- **状态栏与命令**：状态栏左侧显示执行器状态，点击打开「运行」；标题栏和命令面板提供启动 / 暂停 / 停止 / 日志 / 连接游戏等，按状态显隐。运行中 + 排队数显示为视图徽标。
+- **角色技能管理入口**在「配置」分段；未检测到角色数据（`characterMasterFile` / `characterSkillsDirectory` 都不存在）时隐藏，命令面板里的同名命令也一并隐藏。
 
 ### 角色技能管理
 
@@ -157,8 +164,8 @@ self.wait_click_feature(feature=fL.give_gift, time_out=10)
 
 ### 多语言支持
 
-- 扩展界面（通知、输出频道、hover、模板面板、任务启动器、工具箱和角色技能管理面板）支持简体中文、繁体中文、英文、日文、韩文和西班牙文，默认跟随 VS Code 显示语言。
-- 侧边栏分为 **ok-script 工具**（工具箱 + 任务启动）、**ok-script 模板**（模板面板 + 模板素材）和 **ok-script 临时截图** 三个独立活动栏容器。
+- 扩展界面（通知、输出频道、hover、资源预览、标注管理、控制台和角色技能管理面板）支持简体中文、繁体中文、英文、日文、韩文和西班牙文，默认跟随 VS Code 显示语言。
+- 侧边栏只有一个 **ok-script** 活动栏容器，内含 **运行**（TreeView）、**参数**（检查器）、**资源**（收件箱 + 草稿/已发布）。界面图标统一使用 VS Code codicons。
 - 代码提示中的语言数据始终使用目标项目自身的 locale 和原始协议值，不受插件界面语言影响。
 
 > [!NOTE]
@@ -189,6 +196,8 @@ self.wait_click_feature(feature=fL.give_gift, time_out=10)
 
 ## 配置
 
+设置界面按用途分为 5 个分类：**ok-script：代码提示**、**资源与标注**、**截图**、**控制台与任务**、**角色数据**。
+
 | 配置项 | 默认值 | 说明 |
 |---|---|---|
 | `okScriptToolkit.langDirectory` | `assets/lang` | lang JSON 目录（相对工作区根） |
@@ -201,15 +210,15 @@ self.wait_click_feature(feature=fL.give_gift, time_out=10)
 | `okScriptToolkit.labelEnumPath` | 空 | 生成 `LabelEnum.py` 的路径（相对目标项目根，带不带 `.py` 都可以）；留空则跟随项目约定和 `config.py`。对应项目文件的 `labelEnum.path` |
 | `okScriptToolkit.labelEnumName` | 空 | 生成枚举的类名；留空则由文件名推导。对应项目文件的 `labelEnum.name`。⚠️ 项目代码按这个名字 import，改名会让那些 import 失效 —— 覆盖已有文件前会先请你确认 |
 | `okScriptToolkit.effectsFile` | `src/data/effects.py` | 技能效果 ID 定义文件（`EffectType` 枚举与 `EFFECT_DESCRIPTIONS`），相对工作区根目录 |
-| `okScriptToolkit.okScriptProjectPath` | 空 | 任务启动器使用的 ok-script 项目根目录；为空时尝试使用当前工作区 |
-| `okScriptToolkit.okScriptPython` | 空 | 任务启动器使用的 Python；为空时优先使用目标项目 `.venv/Scripts/python.exe` |
+| `okScriptToolkit.okScriptProjectPath` | 空 | 控制台运行任务使用的 ok-script 项目根目录；为空时尝试使用当前工作区 |
+| `okScriptToolkit.okScriptPython` | 空 | 控制台运行任务使用的 Python；为空时优先使用目标项目 `.venv/Scripts/python.exe` |
 | `okScriptToolkit.captureMethod` | `auto` | 游戏窗口截图方式：`auto` / `wgc` / `bitblt` / `foreground` |
 | `okScriptToolkit.characterProjectPath` | 空 | 角色技能管理面板的数据项目；为空时使用 `okScriptProjectPath` 或当前工作区 |
 | `okScriptToolkit.characterMasterFile` | `assets/data/characters.json` | 角色主表 JSON |
 | `okScriptToolkit.characterSkillsDirectory` | `assets/data/character_skills` | 角色技能 JSON 目录 |
 | `okScriptToolkit.characterLocaleFile` | `assets/lang/characters.json` | 角色名称多语言 JSON |
 | `okScriptToolkit.characterAvatarTemplateRegex` | `^battle[_-]?icon[_-]?` | 角色头像模板名正则；有捕获组时使用第一组，否则使用匹配前缀后的剩余名称，与角色主表英文 slug 匹配；默认兼容 `battleicon`、`battle_icon` 和 `battle-icon` 前缀 |
-| `okScriptToolkit.okTemplatesDirectory` | `ok_templates` | ok_templates 文件夹名（相对工作区根），供模板素材管理器使用 |
+| `okScriptToolkit.okTemplatesDirectory` | `ok_templates` | ok_templates 文件夹名（相对工作区根），供标注管理使用 |
 | `okScriptToolkit.annotationKeybindings` | 见默认值 | 标注编辑器的键盘快捷键；值为按键名，支持 `ctrl+z` 等修饰符前缀 |
 
 ### 项目约定文件 `ok-script-toolkit.json`
@@ -296,14 +305,20 @@ self.wait_click_ocr(match=self.lang.zip_line_mixin.k_2f4f4a2f, ...)
 
 | 命令 | 快捷键 | 说明 |
 |---|---|---|
-| `ok-script 工具箱: 打开模板面板` | `Ctrl+Alt+T`（macOS `Cmd+Alt+T`，需聚焦 Python 编辑器） | 聚焦活动栏中的模板侧边栏视图 |
-| `ok-script 工具箱: 在编辑器中打开模板面板` | — | 在编辑器区打开大窗口网格视图 |
-| `ok-script 工具箱: 打开任务启动` | — | 聚焦活动栏中的任务启动器视图 |
-| `ok-script 工具箱: 打开角色技能管理面板` | — | 打开角色、技能、效果、强化组和名称本地化管理页 |
-| `ok-script 工具箱: 打开模板素材` | — | 在编辑器区打开模板素材管理大窗口面板 |
-| `ok-script 工具箱: 打开标注编辑器` | — | 提示在模板素材面板中点击图片以进入 COCO 标注编辑器（命令本身不直接打开编辑器） |
+| `ok-script 工具箱: 打开资源预览` | `Ctrl+Alt+T`（macOS `Cmd+Alt+T`，需聚焦 Python 编辑器） | 聚焦「资源」视图 |
+| `ok-script 工具箱: 截到收件箱` | `Ctrl+Alt+S`（macOS `Cmd+Alt+S`；Windows 系统级热键同键） | 截图进入资源收件箱；VS Code 键位与 RegisterHotKey 全局热键共用此终点（原「截图并打开标注管理」仍保留为另一条命令） |
+| `ok-script 工具箱: 打开控制台` | — | 聚焦「运行」视图 |
+| `ok-script 工具箱: 控制台：运行任务…` | — | 从已加载的一次性任务里选一个入队（执行器未启动时会先启动） |
+| `ok-script 工具箱: 控制台：启动执行器 / 暂停执行器 / 继续执行器 / 停止当前任务 / 关闭执行器` | — | 与控制台按钮同一套逻辑；按执行器状态在命令面板和视图标题栏里显隐 |
+| `ok-script 工具箱: 控制台：刷新任务 / 查看日志 / 连接游戏 / 断开游戏` | — | 重新解析任务列表、打开输出频道、连接或断开游戏窗口 |
+| `ok-script 工具箱: 打开角色技能管理` | — | 打开角色、技能、效果、强化组和名称本地化管理页；未检测到角色数据时在命令面板中隐藏 |
+| `ok-script 工具箱: 打开标注管理` | — | 在编辑器区打开标注管理大窗口面板 |
+| `ok-script 工具箱: 打开标注编辑器…` | — | 从标注管理的图片列表中选一张（显示标注数），直接打开 COCO 标注编辑器 |
+| `ok-script 工具箱: 发布资源…` | — | 打开标注管理并直接进入发布流程：选择 Template / Rect / Point 后发布 |
 | `ok-script 工具箱: 打开临时截图` | — | 聚焦活动栏中的临时截图视图 |
-| `ok-script 工具箱: 截图并打开模板素材` | `Ctrl+Alt+S`（macOS `Cmd+Alt+S`） | 打开模板素材管理面板并立即截图。复用面板自己的截图动作，截图会登记进 COCO。键位可在「键盘快捷方式」里改 |
+| `ok-script 工具箱: 截图并打开标注管理` | —（`Ctrl+Alt+S` 已改给「截到收件箱」） | 打开标注管理面板并立即截图。复用面板自己的截图动作，截图会登记进 COCO。键位可在「键盘快捷方式」里改 |
+| `ok-script 工具箱: 查找模板引用…` | — | 在工作区 Python 文件里找 `fL.xxx` / `self.pos.xxx` / `"xxx"` 的引用并跳转；也在 Python 编辑器右键菜单里 |
+| `ok-script 工具箱: 用标注编辑器打开` | — | 资源管理器图片右键（仅 png/jpg/jpeg/webp）；命令面板里不带参数时先选图片 |
 | `ok-script 工具箱: 项目约定 vs 我的设置` | — | 列出参与取值链的设置项，显示每一项的**生效值来自哪一层**（我的设置 / 项目约定 / 内置默认）。被个人设置覆盖过的项带一个「恢复」按钮，一键回到项目约定。用于解决"我改过一次就再也看不到团队改了什么" |
 
 ## 更新后不生效

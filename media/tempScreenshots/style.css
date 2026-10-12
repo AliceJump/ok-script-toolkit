@@ -42,9 +42,9 @@ body {
   position: relative;
   flex: 1 1 45%;
   min-height: 110px;
-  margin: 0 6px;
+  margin: 0 var(--space-sm);
   overflow: hidden;
-  border: var(--border-width) solid var(--border);
+  border: var(--border-width) solid color-mix(in srgb, var(--border) 50%, transparent);
   border-radius: var(--radius-md);
   background: repeating-conic-gradient(
     color-mix(in srgb, var(--text-muted) 12%, transparent) 0% 25%, transparent 0% 50%
@@ -142,10 +142,10 @@ body {
   flex: 1 1 55%;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 0 6px var(--space-sm);
+  padding: 0 var(--space-sm) var(--space-md);
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
-  gap: var(--space-sm);
+  gap: var(--space-md);
   align-content: start;
 }
 .card {
@@ -200,15 +200,15 @@ body {
 /* ── 提示条 ─────────────────────────────────────────────────────────── */
 .toast {
   position: fixed;
-  left: 6px;
-  right: 6px;
-  bottom: 6px;
-  padding: 5px var(--space-sm);
+  left: var(--space-sm);
+  right: var(--space-sm);
+  bottom: var(--space-sm);
+  padding: var(--space-xs) var(--space-sm);
   border-radius: var(--radius-md);
   font-size: var(--font-xs);
   background: var(--bg-container-raised);
   color: var(--text-primary);
-  border: var(--border-width) solid var(--border);
+  border: var(--border-width) solid color-mix(in srgb, var(--border) 55%, transparent);
   box-shadow: var(--shadow);
   opacity: 0;
   transform: translateY(6px);
@@ -222,9 +222,9 @@ body {
 /* ── 内联确认条（webview 中不使用 window.confirm）───────────────────── */
 .confirm {
   position: fixed;
-  left: 6px;
-  right: 6px;
-  bottom: 6px;
+  left: var(--space-sm);
+  right: var(--space-sm);
+  bottom: var(--space-sm);
   display: none;
   flex-direction: column;
   gap: var(--space-sm);
@@ -234,7 +234,7 @@ body {
   line-height: 1.5;
   background: var(--bg-container-raised);
   color: var(--text-primary);
-  border: var(--border-width) solid var(--border);
+  border: var(--border-width) solid color-mix(in srgb, var(--border) 55%, transparent);
   box-shadow: var(--shadow);
   z-index: 20;
 }

@@ -23,14 +23,14 @@
   --surface-raised: var(--bg-container-raised);
 
   /* ── 2. 控件面与交互态 ───────────────────────────────────────────── */
-  --bg-control: color-mix(in srgb, var(--vscode-button-secondaryBackground, var(--bg-container-raised)) 80%, var(--vscode-foreground) 14%);
-  --bg-control-hover: color-mix(in srgb, var(--bg-control) 82%, var(--vscode-foreground) 18%);
-  --bg-control-active: color-mix(in srgb, var(--bg-control) 72%, var(--vscode-foreground) 26%);
+  --bg-control: color-mix(in srgb, var(--vscode-button-secondaryBackground, var(--bg-container-raised)) 72%, var(--vscode-foreground) 10%);
+  --bg-control-hover: color-mix(in srgb, var(--bg-control) 78%, var(--vscode-foreground) 16%);
+  --bg-control-active: color-mix(in srgb, var(--bg-control) 68%, var(--vscode-foreground) 22%);
   --surface-hover: var(--vscode-list-hoverBackground, color-mix(in srgb, var(--bg-container) 86%, var(--vscode-focusBorder) 14%));
 
   /* 行级可点击区（组头 / 折叠标题行）：极浅色调——默认可识别，但不形成方块墙 */
-  --bg-row: color-mix(in srgb, var(--bg-control) 42%, transparent);
-  --bg-row-hover: color-mix(in srgb, var(--bg-control) 70%, transparent);
+  --bg-row: color-mix(in srgb, var(--bg-control) 26%, transparent);
+  --bg-row-hover: color-mix(in srgb, var(--bg-control) 48%, transparent);
 
   /* ── 6. VS Code 主题映射（本文件是全项目唯一允许直引 --vscode-* 的地方）──
      面板 CSS 一律用下面这些语义 token，便于换主题/换宿主时一处调整。 */
@@ -40,9 +40,9 @@
   --btn-bg: var(--vscode-button-background, #0e639c);
   --btn-fg: var(--vscode-button-foreground, #ffffff);
   --btn-bg-hover: var(--vscode-button-hoverBackground, #1177bb);
-  --btn-secondary-bg: var(--vscode-button-secondaryBackground, color-mix(in srgb, var(--text-primary) 12%, transparent));
+  --btn-secondary-bg: var(--vscode-button-secondaryBackground, color-mix(in srgb, var(--text-primary) 8%, transparent));
   --btn-secondary-fg: var(--vscode-button-secondaryForeground, var(--text-primary));
-  --btn-secondary-bg-hover: var(--vscode-button-secondaryHoverBackground, color-mix(in srgb, var(--text-primary) 18%, transparent));
+  --btn-secondary-bg-hover: var(--vscode-button-secondaryHoverBackground, color-mix(in srgb, var(--text-primary) 14%, transparent));
   --input-bg: var(--vscode-input-background, var(--bg-container));
   --input-fg: var(--vscode-input-foreground, var(--text-primary));
   --input-border: var(--vscode-input-border, var(--border));
@@ -68,7 +68,7 @@
   --clickable-bg-hover: var(--bg-control-hover);
 
   /* ── 3. 边框 ────────────────────────────────────────────────────── */
-  --border: var(--vscode-panel-border, color-mix(in srgb, var(--vscode-foreground) 18%, transparent));
+  --border: var(--vscode-panel-border, color-mix(in srgb, var(--vscode-foreground) 11%, transparent));
   --border-strong: var(--vscode-focusBorder, #007acc);
   --border-width: 1px;
 
@@ -90,17 +90,17 @@
 
   /* ── 6. 间距（spacing scale）─────────────────────────────────────── */
   --space-xs: 4px;
-  --space-sm: 6px;
-  --space-md: 10px;
-  --space-lg: 14px;
-  --space-xl: 20px;
+  --space-sm: 8px;
+  --space-md: 12px;
+  --space-lg: 16px;
+  --space-xl: 24px;
 
   /* ── 7. 圆角与阴影 ──────────────────────────────────────────────── */
   --radius-sm: 5px;
   --radius-md: 8px;
   --radius-lg: 11px;
   --radius-pill: 999px;
-  --shadow: 0 4px 14px color-mix(in srgb, #000 15%, transparent);
+  --shadow: 0 4px 16px color-mix(in srgb, #000 12%, transparent);
 
   /* ── 8. 控件尺寸（高度）──────────────────────────────────────────── */
   --control-h-sm: 24px;
@@ -135,3 +135,9 @@ body {
 /* hidden 属性兜底：作者样式里的 display 会覆盖 UA 的 [hidden]{display:none}，
    导致所有基于 hidden 的折叠/显隐在真机上失效（jsdom 测试只查属性所以测不出来）。 */
 [hidden] { display: none !important; }
+
+/* ── 图标（codicons）：尺寸走 token，按钮内图文对齐 ── */
+:root {
+  --icon-sm: 14px;
+  --icon-md: 16px;
+}

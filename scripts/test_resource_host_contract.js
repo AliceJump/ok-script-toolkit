@@ -79,7 +79,9 @@ function plain(value) { return JSON.parse(JSON.stringify(value)); }
   let templatePlan = {};
   let positionPlan = {};
   let positionSuccess = true;
+  let previewOk = true;
   const host = {
+    confirmPublishPreview: async () => { effects.push('preview'); return previewOk; },
     data: templateData,
     prepareTemplatePublish: async () => { effects.push('configure template'); return templatePlan; },
     preparePositionPublish: async picked => {
@@ -95,7 +97,11 @@ function plain(value) { return JSON.parse(JSON.stringify(value)); }
     await publish.handlePublish.call(host);
     assert.deepStrictEqual(effects, expected);
   }
-  await run(['configure template', 'configure positions', 'write positions', 'write template']);
+  await run(['configure template', 'configure positions', 'preview', 'write positions', 'write template']);
+  // Esc on the read-only preview writes nothing.
+  previewOk = false;
+  await run(['configure template', 'configure positions', 'preview']);
+  previewOk = true;
   positionPlan = undefined;
   await run(['configure template', 'configure positions']);
   positionPlan = {};
@@ -103,12 +109,12 @@ function plain(value) { return JSON.parse(JSON.stringify(value)); }
   await run(['configure template']);
   templatePlan = {};
   positionSuccess = false;
-  await run(['configure template', 'configure positions', 'write positions']);
+  await run(['configure template', 'configure positions', 'preview', 'write positions']);
   positionSuccess = true;
   selection = ['template'];
-  await run(['configure template', 'write template']);
+  await run(['configure template', 'preview', 'write template']);
   selection = ['point'];
-  await run(['configure positions', 'write positions']);
+  await run(['configure positions', 'preview', 'write positions']);
   selection = [];
   await run([]);
 
@@ -117,7 +123,7 @@ function plain(value) { return JSON.parse(JSON.stringify(value)); }
   expectedResourceLabels = ['translated:Template'];
   rectAnnotations = [];
   pointItems = [];
-  await run(['configure template', 'write template']);
+  await run(['configure template', 'preview', 'write template']);
 
   templateAnnotations = [];
   expectedResourceLabels = [];
@@ -156,7 +162,7 @@ function plain(value) { return JSON.parse(JSON.stringify(value)); }
   selection = ['template'];
   expectedResourceLabels = ['translated:Template'];
   const beforeMixedPick = quickPickCalls;
-  await run(['configure template', 'write template']);
+  await run(['configure template', 'preview', 'write template']);
   assert.strictEqual(quickPickCalls, beforeMixedPick + 1, 'valid templates remain selectable alongside empty boxes and invalid points');
 
   rectAnnotations = [{ id: 1 }];
@@ -165,7 +171,7 @@ function plain(value) { return JSON.parse(JSON.stringify(value)); }
   templateData.readErrors = ['json'];
   selection = ['rect'];
   expectedResourceLabels = ['translated:Box'];
-  await run(['configure positions', 'write positions']);
+  await run(['configure positions', 'preview', 'write positions']);
   assert.strictEqual(quickPickCalls, beforeMixedPick + 2, 'valid boxes remain selectable alongside invalid templates and empty points');
 
   templateData.readErrors = [];

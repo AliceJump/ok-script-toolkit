@@ -109,6 +109,14 @@ function configuredPaths(projectDir: string): CharacterDataPaths {
   });
 }
 
+/** 角色数据是否存在（主表或技能目录任一存在）：决定是否露出角色技能管理入口 */
+export function detectCharacterData(): boolean {
+  const projectDir = resolveProjectDir();
+  if (!projectDir || !fs.existsSync(projectDir)) return false;
+  const paths = configuredPaths(projectDir);
+  return fs.existsSync(paths.masterFile) || fs.existsSync(paths.skillsDir);
+}
+
 function normalizedAvatarKey(value: string | undefined): string {
   return (value || '').trim().toLowerCase().replace(/[\s_-]+/g, '');
 }

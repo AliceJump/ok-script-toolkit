@@ -96,7 +96,7 @@ press('q');
 assert.strictEqual(activeMode(), 'rectModeBtn', 'mode switching must stay disabled while the edit dialog is open');
 
 const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
-const defaults = pkg.contributes.configuration.properties['okScriptToolkit.annotationKeybindings'].default;
+const defaults = Object.assign({}, ...[].concat(pkg.contributes.configuration).map((section) => section.properties))['okScriptToolkit.annotationKeybindings'].default;
 assert.strictEqual(defaults.cycleMode, 'm', 'default cycle shortcut should be M');
 assert(!Object.prototype.hasOwnProperty.call(defaults, 'modeTemplate'));
 assert(!Object.prototype.hasOwnProperty.call(defaults, 'modeRect'));

@@ -2,7 +2,8 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src __CSP_SOURCE__; script-src __CSP_SOURCE__ 'nonce-__CSP_NONCE__'; img-src data: __CSP_SOURCE__">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src __CSP_SOURCE__; script-src __CSP_SOURCE__ 'nonce-__CSP_NONCE__'; font-src __CSP_SOURCE__; img-src data: __CSP_SOURCE__">
+<link rel="stylesheet" href="__SHARED_CODICONS_URI__">
 <link rel="stylesheet" href="__SHARED_TOKENS_URI__">
 <link rel="stylesheet" href="__SHARED_CONTROLS_URI__">
 <link rel="stylesheet" href="__STYLE_URI__">
@@ -27,14 +28,15 @@
     <button class="mini-btn" id="drawBtn">Draw (R)</button>
     <button class="mini-btn" id="coordBtn">Coords (C)</button>
     <button class="mini-btn" id="deleteBtn">Delete (D)</button>
-    <button class="icon-btn" id="undoBtn" title="Undo">↩</button>
-    <button class="icon-btn" id="redoBtn" title="Redo">↪</button>
+    <button class="icon-btn has-codicon" id="undoBtn" title="Undo" aria-label="Undo"><span class="codicon codicon-discard" aria-hidden="true"></span></button>
+    <button class="icon-btn has-codicon" id="redoBtn" title="Redo" aria-label="Redo"><span class="codicon codicon-redo" aria-hidden="true"></span></button>
     <div class="spacer"></div>
     <span class="info" id="navInfo"></span>
-    <button class="icon-btn" id="prevBtn" title="Previous image">◀</button>
-    <button class="icon-btn" id="nextBtn" title="Next image">▶</button>
+    <button class="icon-btn has-codicon" id="prevBtn" title="Previous image" aria-label="Previous image"><span class="codicon codicon-chevron-left" aria-hidden="true"></span></button>
+    <button class="icon-btn has-codicon" id="nextBtn" title="Next image" aria-label="Next image"><span class="codicon codicon-chevron-right" aria-hidden="true"></span></button>
   </div>
   <div class="editor-body">
+    <aside class="image-strip" id="imageStrip" aria-label="Source images"></aside>
     <div class="canvas-wrap">
       <canvas id="canvas"></canvas>
       <div class="empty" id="emptyMsg"></div>
@@ -52,6 +54,17 @@
         <button class="mini-btn" id="onlyCurrentBtn" type="button"></button>
       </div>
       <div class="annotation-list-rows" id="annotationRows"></div>
+      <div class="annotation-inspector" id="annotationInspector" hidden>
+        <div class="annotation-list-title" id="inspectorTitle"></div>
+        <label class="inspector-row"><span id="inspectorNameLabel">Name</span><input id="inspectorName" type="text" /></label>
+        <div class="inspector-xywh">
+          <label>X<input id="inspectorX" type="number" /></label>
+          <label>Y<input id="inspectorY" type="number" /></label>
+          <label>W<input id="inspectorW" type="number" /></label>
+          <label>H<input id="inspectorH" type="number" /></label>
+        </div>
+        <div class="inspector-expr" id="inspectorExpr"></div>
+      </div>
     </aside>
   </div>
   <div class="color-bar">
@@ -151,6 +164,7 @@
       }, true);
     })();
   </script>
+  <script src="__SHARED_ICONS_URI__"></script>
   <script src="__EXTERNAL_SYNC_SCRIPT_URI__"></script>
   <script src="__CONFLICT_SCRIPT_URI__"></script>
   <script src="__APP_SCRIPT_URI__"></script>

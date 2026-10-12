@@ -22,6 +22,7 @@ const dictionary = {
 };
 
 let html = fs.readFileSync(path.join(componentRoot, 'index.html'), 'utf8');
+html = html.replace('<script src="__SHARED_ICONS_URI__"></script>', () => `<script>${fs.readFileSync(path.join(componentRoot, '..', 'shared', 'icons.js'), 'utf8')}</script>`);
 html = html
   .replaceAll('__CSP_NONCE__', 'test')
   .replaceAll('__CSP_SOURCE__', "'self'")

@@ -12,6 +12,7 @@ const { JSDOM, VirtualConsole } = jsdom;
 const root = path.resolve(__dirname, '..');
 const componentRoot = path.join(root, 'media', 'console');
 let html = fs.readFileSync(path.join(componentRoot, 'index.html'), 'utf8');
+html = html.replace('<script src="__SHARED_ICONS_URI__"></script>', () => `<script>${fs.readFileSync(path.join(componentRoot, '..', 'shared', 'icons.js'), 'utf8')}</script>`);
 const baseDictionary = JSON.parse(fs.readFileSync(path.join(root, 'l10n', 'webview.en.json'), 'utf8'));
 if (!baseDictionary.parameters) throw new Error('EN dictionary not found');
 const dictionary = {

@@ -3,8 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src __CSP_SOURCE__; script-src __CSP_SOURCE__ 'nonce-__CSP_NONCE__'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src __CSP_SOURCE__; script-src __CSP_SOURCE__ 'nonce-__CSP_NONCE__'; font-src __CSP_SOURCE__">
   <title></title>
+  <link rel="stylesheet" href="__SHARED_CODICONS_URI__">
   <link rel="stylesheet" href="__SHARED_TOKENS_URI__">
   <link rel="stylesheet" href="__SHARED_CONTROLS_URI__">
   <link rel="stylesheet" href="__STYLE_URI__">
@@ -101,6 +102,8 @@
     <section class="page" id="pageConfig" role="tabpanel" hidden>
       <div class="takeover-banner" id="takeoverBanner"></div>
       <div id="configList" class="gconfig-list" aria-live="polite"></div>
+      <!-- 角色技能数据属于项目数据，放在配置段；未检测到角色数据时隐藏（宿主 capabilities） -->
+      <button id="openCharacterManager" class="secondary-btn tool-entry" type="button" hidden></button>
     </section>
 
     <!-- ── 分段：账号（多账户存储只读概要）───────────────────────── -->
@@ -131,7 +134,6 @@
         </label>
       </div>
 
-      <button id="openCharacterManager" class="secondary-btn tool-entry" type="button"></button>
     </section>
 
     </div><!-- /lay-main -->
@@ -154,6 +156,7 @@
   </aside>
 
   <script nonce="__CSP_NONCE__">globalThis.__TASK_LAUNCHER_I18N__ = __I18N_JSON__;</script>
+  <script src="__SHARED_ICONS_URI__"></script>
   <script src="__CORE_SCRIPT_URI__"></script>
   <script src="__FIELDS_SCRIPT_URI__"></script>
   <script src="__CONFIG_PANEL_SCRIPT_URI__"></script>

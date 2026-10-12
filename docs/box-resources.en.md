@@ -55,7 +55,7 @@ Side and wide previews support Template / Rect / Point modes and name/expression
 
 Single click inserts; double click copies. Buttons expose the same actions and annotated source previews. Without a Python editor, the reference is copied with an explanation. Template previews never fill an absent runtime library with unpublished authoring data. Rect / Point hints follow current authoring data without requiring publication first.
 
-Both hosts use `Ctrl+Alt+T` for resource previews and `Ctrl+Alt+S` for capture into annotation management; macOS uses the corresponding `Cmd+Alt` combinations. Publication belongs to annotation management, with no separate publishing chain in previews.
+Both hosts use `Ctrl+Alt+T` for resource previews and `Ctrl+Alt+S` for capture into the Resources inbox (VS Code keybinding and the Windows global hotkey share this destination); macOS uses the corresponding `Cmd+Alt` combinations. Publication belongs to annotation management, with no separate publishing chain in previews.
 
 ## Unified Publication
 

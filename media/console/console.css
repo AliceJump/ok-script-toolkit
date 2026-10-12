@@ -5,7 +5,7 @@
 .console {
   width: min(100%, 1080px);
   margin: 0 auto;
-  padding: 0 12px 28px;
+  padding: 0 var(--space-md) var(--space-xl);
 }
 
 /* ── 全局状态条：游戏连接 + 常驻执行器（两个分段共享） ─────────── */
@@ -83,6 +83,9 @@
   gap: 5px;
 }
 
+/* 状态条是 grid：子项默认 min-width:auto 会按内容撑宽，窄宽时整行溢出视口 */
+.gbar > * { min-width: 0; }
+
 .gbar__sub {
   padding-left: 31px;
   color: var(--muted);
@@ -124,7 +127,7 @@
 }
 
 .seg__btn.is-active {
-  border-color: var(--border);
+  border-color: color-mix(in srgb, var(--border) 60%, transparent);
   background: var(--bg-control);
   color: var(--text-primary);
 }
@@ -199,22 +202,21 @@
 .group-head.is-collapsed .group-head__chev { transform: rotate(-90deg); }
 .group-head__count { color: color-mix(in srgb, var(--muted) 72%, transparent); font-weight: 500; }
 
-.group-body { display: grid; gap: 8px; }
+.group-body { display: grid; gap: 6px; }
 .group-body.is-collapsed { display: none; }
 
 /* ── 任务卡片（新布局：单行主区 + 参数徽标 + 状态徽标） ─────────── */
 .task-card {
   overflow: hidden;
-  border: 1px solid var(--border);
+  border: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
   border-radius: var(--radius-lg);
   background: var(--surface);
-  box-shadow: 0 1px 0 color-mix(in srgb, var(--text-primary) 4%, transparent);
-  transition: border-color .14s ease, box-shadow .14s ease;
+  transition: border-color .14s ease, background-color .14s ease;
 }
 
 .task-card:hover {
-  border-color: color-mix(in srgb, var(--border-strong) 58%, var(--border));
-  box-shadow: var(--shadow);
+  border-color: var(--border);
+  background: color-mix(in srgb, var(--surface) 92%, var(--surface-hover));
 }
 
 .task-card.is-active { border-color: var(--border-strong); }
@@ -223,9 +225,9 @@
 .task-card__header {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 10px;
+  gap: var(--space-sm);
   align-items: start;
-  padding: 12px 13px 10px;
+  padding: var(--space-sm) var(--space-md) 6px;
 }
 
 .task-card__identity { min-width: 0; }
@@ -235,17 +237,17 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: var(--font-lg);
+  font-size: var(--font-md);
   font-weight: 650;
 }
 
 .task-card__kind {
   flex: 0 0 auto;
-  border: 1px solid var(--border);
+  border: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
   border-radius: var(--radius-pill);
   padding: 1px 7px;
   color: var(--muted);
-  background: color-mix(in srgb, var(--surface-raised) 82%, transparent);
+  background: var(--bg-row);
   font-size: var(--font-2xs);
   font-weight: 500;
 }
@@ -295,11 +297,16 @@
 }
 
 .task-card__description {
-  margin-top: 7px;
+  margin-top: var(--space-xs);
   color: var(--muted);
   font-size: var(--font-xs);
-  line-height: 1.55;
+  line-height: 1.45;
   white-space: pre-wrap;
+  /* 列表里最多两行，完整描述在悬停摘要/抽屉里 */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
 }
 
 .task-card__actions {
@@ -309,6 +316,9 @@
 }
 
 .task-card__actions button { white-space: nowrap; }
+/* 主操作（启动 / 启用开关）永远完整可见：不被压缩；可压缩的是「参数」按钮 */
+.task-card__actions > :last-child { flex-shrink: 0; }
+.task-card__config { min-width: 0; overflow: hidden; }
 
 /* 参数入口：统一「中性图标按钮」形态（design-system 第 3 条：默认态即可识别，
    不靠 hover 首次显形）。全部状态保持中性，不用警示色——「已修改」以描边强化表达。 */
@@ -317,7 +327,7 @@
   align-items: center;
   gap: 5px;
   min-height: var(--control-h-sm, 24px);
-  border: var(--border-width, 1px) solid var(--border);
+  border: var(--border-width, 1px) solid color-mix(in srgb, var(--border) 55%, transparent);
   border-radius: var(--radius-pill, 999px);
   padding: 2px 10px;
   color: var(--text-primary);
@@ -327,7 +337,7 @@
 }
 .task-card__config:hover:not(:disabled) {
   background: var(--bg-control-hover);
-  border-color: var(--border-strong);
+  border-color: var(--border);
 }
 .task-card__config.has-overrides {
   border-color: var(--border-strong);
@@ -343,9 +353,9 @@
 
 /* ── 游戏分段 ─────────────────────────────────────────────────── */
 .connect-card {
-  margin-top: 12px;
-  padding: 18px 16px 16px;
-  border: 1px solid var(--border);
+  margin-top: var(--space-md);
+  padding: var(--space-xl) var(--space-lg) var(--space-lg);
+  border: 1px solid color-mix(in srgb, var(--border) 45%, transparent);
   border-radius: var(--radius-lg);
   background: var(--surface);
   text-align: center;
@@ -403,10 +413,10 @@
 .tool-row {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-top: 10px;
-  padding: 11px 13px;
-  border: 1px solid var(--border);
+  gap: var(--space-md);
+  margin-top: var(--space-md);
+  padding: var(--space-md) var(--space-lg);
+  border: 1px solid color-mix(in srgb, var(--border) 45%, transparent);
   border-radius: var(--radius-lg);
   background: var(--surface);
 }
@@ -655,7 +665,7 @@
 
 .config-group {
   overflow: hidden;
-  border: 1px solid var(--border);
+  border: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
   border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--surface-raised) 72%, transparent);
 }
@@ -711,10 +721,10 @@
 }
 
 .status-banner {
-  margin-top: 8px;
-  border: 1px solid var(--border);
+  margin-top: var(--space-sm);
+  border: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
   border-radius: var(--radius-md);
-  padding: 8px 10px;
+  padding: var(--space-sm) var(--space-md);
   font-size: var(--font-xs);
   line-height: 1.45;
   background: var(--surface-raised);
@@ -878,7 +888,7 @@
 }
 .gconfig-list { display: flex; flex-direction: column; gap: 10px; }
 .gconfig-card {
-  border: 1px solid var(--border);
+  border: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
   border-radius: var(--radius-md);
   overflow: hidden;
   background: var(--surface);
@@ -925,6 +935,16 @@
 }
 .subgroup-body { display: flex; flex-direction: column; gap: 8px; }
 .task-card__snap { min-width: 30px; font-size: var(--font-sm); }
+/* 快照操作是次要动作：中性底色 + 描边，不与「启动」主按钮抢视觉 */
+.task-card__actions .task-card__snap {
+  flex: 0 0 auto;
+  min-height: var(--control-h-sm);
+  padding: 2px 6px;
+  border: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
+  color: var(--text-primary);
+  background: var(--bg-control);
+}
+.task-card__actions .task-card__snap:hover:not(:disabled) { background: var(--bg-control-hover); border-color: var(--border); }
 .tag--store {
   font-size: var(--font-2xs);
   border: 1px solid var(--border-strong, var(--border));
@@ -969,9 +989,9 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
-  border: 1px solid var(--border);
+  border: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
   border-radius: var(--radius-sm);
-  padding: 4px;
+  padding: var(--space-xs);
   background: color-mix(in srgb, var(--surface) 70%, transparent);
 }
 .ms-list__item {
@@ -1003,7 +1023,7 @@
   flex: 0 0 auto;
   max-height: 100vh;
   padding: 6px 6px 6px 0;
-  border-right: 1px solid var(--border);
+  border-right: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
   background: var(--bg-page);
 }
 .lay-side__item {
@@ -1025,25 +1045,78 @@
   box-shadow: inset 2px 0 0 var(--border-strong);
 }
 .lay-side__ico {
-  width: 14px; height: 14px;
+  display: inline-flex;
   flex: 0 0 auto;
-  border-radius: var(--radius-sm);
-  background: var(--border-strong);
-  opacity: .7;
+  opacity: .8;
 }
+.lay-side__ico .codicon { font-size: var(--icon-md); }
 .lay-side__item.is-active .lay-side__ico { opacity: 1; }
+.lay-side__item:focus-visible { outline: 1px solid var(--border-strong); outline-offset: -1px; }
 .lay-side__foot { margin-top: auto; padding: 10px 12px; font-size: var(--font-xs); color: var(--muted); }
 .lay-main { flex: 1; min-width: 0; }
+
+/* 中等宽度：侧栏收成图标导航条（文字进 tooltip），把横向空间还给任务列表 */
+@media (max-width: 640px) {
+  .gbar__row { flex-wrap: wrap; row-gap: 2px; }
+  .gbar__val { flex: 1 1 0; }
+  .gbar__actions { flex: 0 1 auto; flex-wrap: wrap; justify-content: flex-end; min-width: 0; max-width: 100%; margin-left: auto; }
+  .task-card__actions { flex-wrap: wrap; }
+  .shell { gap: var(--space-sm); }
+  .lay-side { width: 44px; padding: 6px 4px 6px 0; }
+  .lay-side__item { justify-content: center; padding: 8px 0; }
+  .lay-side__label,
+  .lay-side__foot { display: none; }
+}
+
+/* 窄侧边栏（≈300px）：导航改为顶部分段条（图标 + 文字），主内容占满宽度 */
+@media (max-width: 480px) {
+  .shell { flex-direction: column; gap: var(--space-sm); }
+  .lay-side {
+    position: static;
+    flex-direction: row;
+    width: auto;
+    max-height: none;
+    align-self: stretch;
+    margin-inline: -8px;
+    padding: var(--space-xs) 8px;
+    border-right: 0;
+    border-bottom: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
+  }
+  .lay-side__item {
+    flex: 1 1 0;
+    min-width: 0;
+    gap: var(--space-xs);
+    padding: 5px var(--space-xs);
+    font-size: var(--font-sm);
+  }
+  .lay-side__item.is-active { box-shadow: inset 0 -2px 0 var(--border-strong); }
+  .lay-side__label {
+    display: inline;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+@media (max-width: 340px) {
+  .lay-side__ico { display: none; }
+  /* 极窄（≤340，含 260）：标题允许换行而不是省略成「每周…」，类名/描述继续截断；
+     「参数」只留图标，把宽度让给「启动」 */
+  .task-card__title-row { flex-wrap: wrap; row-gap: 3px; }
+  .task-card__name { white-space: normal; overflow-wrap: anywhere; }
+  .task-card__actions button { flex: 0 0 auto; }
+  .task-card__actions .task-card__config { flex: 1 1 auto; justify-content: center; }
+  .task-card__actions > :last-child { flex: 1 0 auto; }
+}
 
 /* ═══ 配置健康度条（任务分段顶部，真实快照数据） ══════════════ */
 .rc-health {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px 18px;
-  margin: 0 0 10px;
-  padding: 9px 12px;
-  border: 1px solid var(--border);
+  gap: var(--space-sm) var(--space-lg);
+  margin: 0 0 var(--space-md);
+  padding: var(--space-sm) var(--space-md);
+  border: 1px solid color-mix(in srgb, var(--border) 45%, transparent);
   border-radius: var(--radius-md);
   background: var(--surface);
 }
@@ -1061,10 +1134,10 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px 12px;
-  margin: 0 0 10px;
-  padding: 8px 12px;
-  border: 1px dashed var(--border-strong);
+  gap: var(--space-sm) var(--space-md);
+  margin: 0 0 var(--space-md);
+  padding: var(--space-sm) var(--space-md);
+  border: 1px dashed color-mix(in srgb, var(--border-strong) 55%, var(--border));
   border-radius: var(--radius-md);
   background: var(--surface);
 }
@@ -1253,12 +1326,12 @@
 .gconfig-card__head--toggle:hover { background: var(--bg-row-hover); }
 .gconfig-card__head--toggle:focus-visible { outline: 1px solid var(--border-strong); outline-offset: -1px; }
 
-/* 配置分组折叠按键：只有 ▲/▼ 符号，描边 + 静态底色使其成为可见控件 */
+/* 配置分组折叠按键：只有 ▲/▼ 符号，轻描边 + 静态底色使其成为可见控件 */
 .config-group__toggle {
-  border: var(--border-width, 1px) solid var(--border);
+  border: var(--border-width, 1px) solid color-mix(in srgb, var(--border) 55%, transparent);
   background: var(--bg-control);
 }
-.config-group__toggle:hover:not(:disabled) { border-color: var(--border-strong); }
+.config-group__toggle:hover:not(:disabled) { border-color: var(--border); }
 
 /* kind 级任务组头（触发任务/一次性）：行级可点击区（同上） */
 .group-head {

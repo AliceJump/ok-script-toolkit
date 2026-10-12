@@ -11,6 +11,7 @@
   let metas = [];
 
   document.title = t('templateAssetsTitle');
+  ThumbnailActions.bindGrid(grid, t('templateAssetsTitle'));
   search.placeholder = t('templatesSearch');
   document.getElementById('importBtn').textContent = t('assetImport');
   document.getElementById('screenshotBtn').textContent = t('screenshot');
@@ -36,7 +37,8 @@
 
   function updateCardMeta(card, meta) {
     card.title = meta.name + '\n' + meta.width + 'x' + meta.height +
-      (meta.categories.length ? '\n' + meta.categories.join(', ') : '');
+      (meta.categories.length ? '\n' + meta.categories.join(', ') : '') +
+      '\n' + t('assetCardHint');
     const name = card.querySelector('.name');
     const cats = card.querySelector('.cats');
     const size = card.querySelector('.size');
@@ -60,12 +62,19 @@
     const actDiv = document.createElement('div');
     actDiv.className = 'actions thumbnail-actions';
     actDiv.append(
-      ThumbnailActions.button('👁', t('openSourceImage'), () => vscode.postMessage({ type: 'openSource', imagePath: meta.imagePath })),
-      ThumbnailActions.button('⇄', t('assetSwapTooltip'), () => openSwapPicker(meta)),
-      ThumbnailActions.button('×', t('assetDeleteTooltip'), () => vscode.postMessage({ type: 'deleteImage', imagePath: meta.imagePath })),
+      ThumbnailActions.button('go-to-file', t('openSourceImage'), () => vscode.postMessage({ type: 'openSource', imagePath: meta.imagePath })),
+      ThumbnailActions.button('arrow-swap', t('assetSwapTooltip'), () => openSwapPicker(meta)),
     );
-    ['open', 'swap', 'delete'].forEach((action, index) => { actDiv.children[index].dataset.action = action; });
+    ['open', 'swap'].forEach((action, index) => { actDiv.children[index].dataset.action = action; });
     box.appendChild(actDiv);
+    // 删除与查看/交换分开：放在右上角，危险色只在悬停/聚焦时出现（宿主仍会弹确认）
+    const dangerDiv = document.createElement('div');
+    dangerDiv.className = 'actions thumbnail-actions thumbnail-actions--danger';
+    const deleteBtn = ThumbnailActions.button('trash', t('assetDeleteTooltip'), () => requestDelete(meta));
+    deleteBtn.classList.add('is-danger');
+    deleteBtn.dataset.action = 'delete';
+    dangerDiv.appendChild(deleteBtn);
+    box.appendChild(dangerDiv);
 
     const m = document.createElement('div');
     m.className = 'meta';
@@ -82,10 +91,19 @@
     card.appendChild(box);
     card.appendChild(m);
     updateCardMeta(card, meta);
-    card.addEventListener('click', () => {
-      vscode.postMessage({ type: 'openAnnotation', imagePath: meta.imagePath });
+    // 单击 = 选中；双击 / Enter / E = 打开标注编辑器；Delete = 删除（宿主确认）
+    const openAnnotation = () => vscode.postMessage({ type: 'openAnnotation', imagePath: meta.imagePath });
+    ThumbnailActions.bindCard(card, {
+      label: meta.name,
+      onPrimary: openAnnotation,
+      onEdit: openAnnotation,
+      onDelete: () => requestDelete(meta),
     });
     return card;
+  }
+
+  function requestDelete(meta) {
+    vscode.postMessage({ type: 'deleteImage', imagePath: meta.imagePath });
   }
 
   function applyFilter() {
@@ -99,10 +117,11 @@
       if (ok) shown++;
     }
     updateCount();
+    ThumbnailActions.refreshTabStop(grid);
     emptyEl.style.display = 'none';
     if (metas.length === 0) {
       emptyEl.style.display = '';
-      emptyEl.textContent = t('noTemplatesWithHint');
+      renderEmptyState();
     } else if (shown === 0) {
       emptyEl.style.display = '';
       emptyEl.textContent = t('assetNoMatch') + ': "' + search.value.trim() + '"';
@@ -110,6 +129,47 @@
   }
 
   search.addEventListener('input', () => applyFilter());
+
+  /** 空态：说明这里放什么 + 直接给出下一步（截图 / 导入），不再借用资源预览的 COCO 提示 */
+  function renderEmptyState() {
+    const title = document.createElement('div');
+    title.className = 'panel-empty__title';
+    title.textContent = t('assetsEmptyTitle');
+    const body = document.createElement('div');
+    body.textContent = t('assetsEmptyBody');
+    const actions = document.createElement('div');
+    actions.className = 'panel-actions';
+    const shot = document.createElement('button');
+    shot.type = 'button';
+    shot.className = 'mini-btn mini-btn--primary';
+    OkIcons.label(shot, 'device-camera', t('screenshot'));
+    shot.addEventListener('click', () => vscode.postMessage({ type: 'screenshot', hardForeground: hardForegroundChk.checked }));
+    const imp = document.createElement('button');
+    imp.type = 'button';
+    imp.className = 'mini-btn';
+    OkIcons.label(imp, 'folder-opened', t('assetImport'));
+    imp.addEventListener('click', () => vscode.postMessage({ type: 'importFile' }));
+    actions.append(shot, imp);
+    emptyEl.replaceChildren(title, body, actions);
+  }
+
+  /** 标注源文件损坏：常驻横幅 + 打开源文件（之前只有一次性通知，关掉就找不到了） */
+  const sourceErrorEl = document.getElementById('sourceError');
+  function renderSourceError(text) {
+    sourceErrorEl.hidden = !text;
+    if (!text) { sourceErrorEl.replaceChildren(); return; }
+    const message = document.createElement('div');
+    message.append(OkIcons.icon('error'), ' ' + text);
+    const actions = document.createElement('div');
+    actions.className = 'panel-actions panel-actions--start';
+    const open = document.createElement('button');
+    open.type = 'button';
+    open.className = 'mini-btn';
+    OkIcons.label(open, 'go-to-file', t('openAnnotationSource'));
+    open.addEventListener('click', () => vscode.postMessage({ type: 'openAnnotationSource' }));
+    actions.append(open);
+    sourceErrorEl.replaceChildren(message, actions);
+  }
 
   /**
    * 一张缩略图的**唯一落地口**：写缓存 + 落到网格卡片 + 落到打开中的交换选择器。
@@ -295,6 +355,10 @@
       }
       case 'thumbs': {
         for (const it of (msg.items || [])) applyThumb(it.name, it.url);
+        break;
+      }
+      case 'sourceError': {
+        renderSourceError(msg.text || '');
         break;
       }
     }

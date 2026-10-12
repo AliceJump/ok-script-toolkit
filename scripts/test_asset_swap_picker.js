@@ -19,6 +19,7 @@ const dictionary = {
   cancel: 'Cancel', loadFailed: 'Failed', assetNoMatch: 'No match', noTemplatesWithHint: 'No templates', assetDropHint: 'Drop',
 };
 let html = fs.readFileSync(path.join(componentRoot, 'index.html'), 'utf8');
+html = html.replace('<script src="__SHARED_ICONS_URI__"></script>', () => `<script>${fs.readFileSync(path.join(componentRoot, '..', 'shared', 'icons.js'), 'utf8')}</script>`);
 html = html.replaceAll('__CSP_NONCE__', 'test').replaceAll('__CSP_SOURCE__', "'self'")
   .replaceAll('__I18N_JSON__', JSON.stringify(dictionary)).replaceAll('__SHARED_TOKENS_URI__', '').replaceAll('__SHARED_CONTROLS_URI__', '')
   .replace('<script src="__SHARED_THUMBNAIL_ACTIONS_URI__"></script>', `<script>${fs.readFileSync(path.join(root, 'media/shared/thumbnailActions.js'), 'utf8')}</script>`)
@@ -45,7 +46,10 @@ const flush = w => new Promise(r => w.setTimeout(r, 0));
   const card = name => d.querySelector(`.card[data-name="${name}"]`);
   assert.strictEqual(card('1.png').querySelectorAll('.actions button').length, 3, 'cards expose open/swap/delete only');
   assert.strictEqual(card('1.png').querySelector('[data-action="edit"]'), null, 'edit button is removed');
+  // 单击只选中；双击（或 Enter）才打开标注编辑器
   card('1.png').dispatchEvent(new w.MouseEvent('click', { bubbles:true }));
+  assert.notStrictEqual(sent.at(-1)?.type, 'openAnnotation', 'single click only selects');
+  card('1.png').dispatchEvent(new w.MouseEvent('dblclick', { bubbles:true }));
   assert.deepStrictEqual(sent.at(-1), { type:'openAnnotation', imagePath:'C:/p/1.png' });
   card('1.png').querySelector('[data-action="open"]').click();
   assert.deepStrictEqual(sent.at(-1), { type:'openSource', imagePath:'C:/p/1.png' });

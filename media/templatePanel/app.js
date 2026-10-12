@@ -9,6 +9,8 @@
   const cards = new Map();
   let metas = [];
   let currentMode = 'template';
+  /** 宿主告知的数据来源（模板模式 = 已发布的 COCO 路径候选） */
+  let sources = [];
   let loadedCount = 0;
   let failedCount = 0;
 
@@ -20,6 +22,7 @@
   document.getElementById('rectModeBtn').textContent = t('modeRect');
   document.getElementById('pointModeBtn').textContent = t('modePoint');
   document.querySelector('.hint').textContent = t('templatesHint');
+  ThumbnailActions.bindGrid(grid, t('resourcesTitle'));
 
   function shownCount() {
     let n = 0;
@@ -60,9 +63,9 @@
     const actions = document.createElement('div');
     actions.className = 'actions thumbnail-actions';
     actions.append(
-      ThumbnailActions.button('＋', t('insertExpression'), () => vscode.postMessage({ type: 'insert', expression: meta.expression })),
-      ThumbnailActions.button('⧉', t('copyExpression'), () => vscode.postMessage({ type: 'copy', expression: meta.expression })),
-      ThumbnailActions.button('👁', t('viewOriginal'), () => vscode.postMessage({
+      ThumbnailActions.button('add', t('insertExpression'), () => vscode.postMessage({ type: 'insert', expression: meta.expression })),
+      ThumbnailActions.button('copy', t('copyExpression'), () => vscode.postMessage({ type: 'copy', expression: meta.expression })),
+      ThumbnailActions.button('eye', t('viewOriginal'), () => vscode.postMessage({
         type: 'open', imagePath: meta.imagePath, name: meta.name, bbox: JSON.stringify(meta.bbox),
       })),
     );
@@ -80,11 +83,12 @@
     m.append(nm, sz);
     card.append(box, m);
 
-    ThumbnailActions.bindClicks(
-      card,
-      () => vscode.postMessage({ type: 'insert', expression: meta.expression }),
-      () => vscode.postMessage({ type: 'copy', expression: meta.expression }),
-    );
+    // 单击 = 选中；双击 / Enter = 插入引用；Ctrl+C = 复制引用（三处缩略图同一套手势）
+    ThumbnailActions.bindCard(card, {
+      label: meta.name,
+      onPrimary: () => vscode.postMessage({ type: 'insert', expression: meta.expression }),
+      onCopy: () => vscode.postMessage({ type: 'copy', expression: meta.expression }),
+    });
     return card;
   }
 
@@ -99,15 +103,42 @@
       if (ok) shown++;
     }
     updateCount();
+    ThumbnailActions.refreshTabStop(grid);
     emptyEl.style.display = 'none';
     emptyEl.textContent = '';
     if (metas.length === 0) {
       emptyEl.style.display = '';
-      emptyEl.textContent = currentMode === 'template' ? t('noTemplatesWithHint') : t('resourcesEmpty');
+      renderEmptyState();
     } else if (shown === 0) {
       emptyEl.style.display = '';
       emptyEl.textContent = t('noTemplateMatch', { query: search.value.trim() });
     }
+  }
+
+  /** 空态：资源预览只读「已发布」的资源，所以给出查过的路径 + 去标注管理的入口 */
+  function renderEmptyState() {
+    const title = document.createElement('div');
+    title.className = 'panel-empty__title';
+    title.textContent = currentMode === 'template' ? t('previewEmptyTemplateTitle') : t('resourcesEmpty');
+    const body = document.createElement('div');
+    body.textContent = currentMode === 'template' ? t('previewEmptyTemplateBody') : t('previewEmptyPositionBody');
+    const nodes = [title, body];
+    if (sources.length) {
+      const checked = document.createElement('div');
+      checked.className = 'panel-empty__path';
+      checked.textContent = t('previewCheckedPaths', { paths: sources.join('\n') });
+      nodes.push(checked);
+    }
+    const actions = document.createElement('div');
+    actions.className = 'panel-actions';
+    const open = document.createElement('button');
+    open.type = 'button';
+    open.className = 'mini-btn mini-btn--primary';
+    OkIcons.label(open, 'edit', t('openAnnotationManagement'));
+    open.addEventListener('click', () => vscode.postMessage({ type: 'openAnnotationManagement' }));
+    actions.append(open);
+    nodes.push(actions);
+    emptyEl.replaceChildren(...nodes);
   }
 
   function resetResources(resources) {
@@ -167,6 +198,7 @@
     switch (msg.type) {
       case 'resources':
         currentMode = msg.mode || currentMode;
+        sources = Array.isArray(msg.sources) ? msg.sources : [];
         updateModeButtons();
         resetResources(msg.resources || []);
         break;

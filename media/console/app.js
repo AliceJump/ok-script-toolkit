@@ -83,8 +83,12 @@
       case 'connectDone':
         Console.onConnectDone();
         break;
+      // 宿主能力：未检测到角色数据时隐藏「角色技能管理」入口
+      case 'capabilities':
+        document.getElementById('openCharacterManager').hidden = message.characterData !== true;
+        break;
       case 'status':
-        setStatus(message.level, message.text);
+        setStatus(message.level, message.text, message.actions || []);
         break;
       default:
         break;

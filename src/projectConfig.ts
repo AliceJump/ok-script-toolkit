@@ -390,3 +390,23 @@ export function labelEnumClassName(filePath: string, projectDir?: string, scope?
 export function templatesCocoAnnotationsSetting(projectDir?: string): string | undefined {
   return normalizeRelPath(templatesOf(loadProjectConfig(projectDir)).cocoAnnotations);
 }
+
+/** 目录内存在 config.py 或 src/config.py 即视为可运行的 ok-script 项目 */
+export function isSupportedProject(projectDir: string): boolean {
+  if (!projectDir) return false;
+  try {
+    if (!fs.statSync(projectDir).isDirectory()) return false;
+  } catch {
+    return false;
+  }
+  return [
+    path.join(projectDir, 'config.py'),
+    path.join(projectDir, 'src', 'config.py'),
+  ].some((file) => {
+    try {
+      return fs.statSync(file).isFile();
+    } catch {
+      return false;
+    }
+  });
+}

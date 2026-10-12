@@ -270,11 +270,11 @@ class TempScreenshotController {
     if (!target) return false;
     const dst = this.assetData.importImageFile(target.filePath, true);
     if (!dst) {
-      this.notice('error', tr('Failed to add to template assets: {error}', { error: target.name }));
+      this.notice('error', tr('Failed to add to Annotation Management: {error}', { error: target.name }));
       return false;
     }
     repaintAllAssetGalleries();
-    this.notice('info', tr('Added to template assets: {name}', { name: path.basename(dst) }));
+    this.notice('info', tr('Added to Annotation Management: {name}', { name: path.basename(dst) }));
     return true;
   }
 
@@ -326,11 +326,22 @@ export class TempScreenshotViewProvider implements vscode.WebviewViewProvider {
       () => view.visible,
     );
     controller.attachHtml();
+    const updateBadge = () => {
+      const count = this.store.list().length;
+      view.badge = count > 0
+        ? { value: count, tooltip: tr('{count} temporary screenshot(s) waiting to be sorted', { count }) }
+        : undefined;
+    };
+    updateBadge();
+    const storeSubscription = this.store.onChange(updateBadge);
     if (view.visible) void prewarmScreenshotCapture();
     view.onDidChangeVisibility(() => {
       if (view.visible) { void prewarmScreenshotCapture(); void controller.refresh(); }
     });
-    view.onDidDispose(() => controller.dispose());
+    view.onDidDispose(() => {
+      storeSubscription.dispose();
+      controller.dispose();
+    });
   }
 }
 
