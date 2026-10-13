@@ -1,13 +1,9 @@
-import * as fs from 'fs';
-import * as path from 'path';
 import * as vscode from 'vscode';
 import { AnnotationPanel } from './annotationPanel';
 import { readAuthoringFile } from './boxResourceStore';
-import { AUTHORING_FILE_NAME, PixelBox } from './boxResourcePure';
-import { templatesDirectory } from './projectConfig';
-import { readImageSize } from './pngCrop';
+import { AUTHORING_FILE_NAME } from './boxResourcePure';
 import { TemplateAssetData } from './templateAssetData';
-import { readPoints } from './pointResourceStore';
+import { positionResources } from './resourceAuthoring';
 
 /** Cross-image rect path occupancy used by the unified annotation editor. */
 export function boxPathOccupancy(authoring: ReturnType<typeof readAuthoringFile>): Record<string, string> {
@@ -37,54 +33,12 @@ export function openBoxEditor(
   );
 }
 
-/**
- * Position preview source comes directly from current authoring data. There is no separately
- * indexed legacy box runtime file anymore. Rects use their exact bbox; points use a tiny marker
- * box so existing hover rendering can still highlight their location.
- */
-export function previewRectForPath(
-  root: string,
-  positionPath: string,
-): { imagePath: string; bbox: [number, number, number, number] } | undefined {
-  const directory = templatesDirectory(root);
-  const authoring = readAuthoringFile(root, directory);
-  const rect = authoring.boxes.find((box) => box.path === positionPath);
-  if (rect) {
-    const imagePath = path.join(root, directory, rect.image);
-    if (!fs.existsSync(imagePath)) return undefined;
-    const size = readImageSize(fs.readFileSync(imagePath));
-    if (!size) return undefined;
-    const pixel: PixelBox = {
-      x: rect.bbox[0],
-      y: rect.bbox[1],
-      w: rect.bbox[2],
-      h: rect.bbox[3],
-    };
-    if (pixel.w <= 0 || pixel.h <= 0) return undefined;
-    return { imagePath, bbox: [pixel.x, pixel.y, pixel.w, pixel.h] };
-  }
-
-  const points = readPoints(root, directory);
-  if (points.errors.length) return undefined;
-  const point = points.file.points.find((item) => item.path === positionPath);
-  if (!point) return undefined;
-  const imagePath = path.join(root, directory, point.image);
-  if (!fs.existsSync(imagePath)) return undefined;
-  const size = readImageSize(fs.readFileSync(imagePath));
-  if (!size) return undefined;
-  const marker = 10;
-  const left = Math.max(0, Math.min(size.width - 1, Math.round(point.x - marker / 2)));
-  const top = Math.max(0, Math.min(size.height - 1, Math.round(point.y - marker / 2)));
-  const width = Math.max(1, Math.min(marker, size.width - left));
-  const height = Math.max(1, Math.min(marker, size.height - top));
-  return { imagePath, bbox: [left, top, width, height] };
+/** Position previews and completion share the current authoring projection. */
+export function previewRectForPath(root: string, positionPath: string): { imagePath: string; bbox: [number, number, number, number] } | undefined {
+  const resource = positionResources(root).find(item => item.name === positionPath);
+  return resource ? { imagePath: resource.imagePath, bbox: resource.bbox } : undefined;
 }
 
-/** Completion/hover indexes the current rect + point authoring namespace directly. */
 export function posPaths(root: string): string[] {
-  const directory = templatesDirectory(root);
-  const rects = readAuthoringFile(root, directory).boxes.map((box) => box.path);
-  const pointResult = readPoints(root, directory);
-  const points = pointResult.errors.length ? [] : pointResult.file.points.map((point) => point.path);
-  return [...new Set([...rects, ...points])].sort((a, b) => a.localeCompare(b));
+  return [...new Set(positionResources(root).map(item => item.name))].sort((a, b) => a.localeCompare(b));
 }

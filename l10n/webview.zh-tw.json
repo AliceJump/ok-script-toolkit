@@ -243,7 +243,7 @@
   "accountStoreSeeOutput": "具體原因見輸出頻道「ok-script Console」。",
   "accountReadFailed": "儲存檔案無法解析（詳見執行器輸出）。",
   "overriddenTasksLabel": "有覆寫的任務",
-  "templatesSearch": "搜尋模板名稱…",
+  "templatesSearch": "搜尋圖片 / Template / Box / Point 名稱…",
   "templatesTitle": "模板面板",
   "templatesHint": "單擊=插入 · 雙擊=複製 · 右下角按鈕可直接操作",
   "templatesCount": "{shown}/{total} 個模板",

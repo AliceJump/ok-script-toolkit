@@ -260,5 +260,6 @@
   "Could not publish positions: {error}": "No se pudieron publicar las posiciones: {error}",
   "Published positions: {files}": "Posiciones publicadas: {files}",
   "Resource Preview": "Vista previa de recursos",
-  "No annotations available to publish.": "No hay anotaciones disponibles para publicar."
+  "No annotations available to publish.": "No hay anotaciones disponibles para publicar.",
+  "The resource was not found in current annotations: {name}": "No se encontró el recurso en las anotaciones actuales: {name}"
 }

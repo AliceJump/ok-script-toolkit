@@ -260,5 +260,6 @@
   "Could not publish positions: {error}": "Could not publish positions: {error}",
   "Published positions: {files}": "Published positions: {files}",
   "Resource Preview": "Resource Preview",
-  "No annotations available to publish.": "No annotations available to publish."
+  "No annotations available to publish.": "No annotations available to publish.",
+  "The resource was not found in current annotations: {name}": "The resource was not found in current annotations: {name}"
 }

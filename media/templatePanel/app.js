@@ -63,7 +63,7 @@
       ThumbnailActions.button('＋', t('insertExpression'), () => vscode.postMessage({ type: 'insert', expression: meta.expression })),
       ThumbnailActions.button('⧉', t('copyExpression'), () => vscode.postMessage({ type: 'copy', expression: meta.expression })),
       ThumbnailActions.button('👁', t('viewOriginal'), () => vscode.postMessage({
-        type: 'open', imagePath: meta.imagePath, name: meta.name, bbox: JSON.stringify(meta.bbox),
+        type: 'open', mode: meta.kind, name: meta.name,
       })),
     );
     box.appendChild(actions);

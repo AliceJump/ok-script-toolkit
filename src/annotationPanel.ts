@@ -110,6 +110,7 @@ class AnnotationController {
   private _currentImage: string | undefined;
   private _imageList: string[] = [];
   private mode: UnifiedAnnotationMode;
+  private focusName: string | undefined;
   private readonly templateData: TemplateAssetData;
   private readonly boxData: TemplateAssetData;
 
@@ -368,10 +369,11 @@ class AnnotationController {
     });
   }
 
-  open(imagePath: string, imageList: string[], mode?: UnifiedAnnotationMode | boolean): void {
+  open(imagePath: string, imageList: string[], mode?: UnifiedAnnotationMode | boolean, focusName?: string): void {
     if (this._currentImage && this._currentImage !== imagePath) this.resetMergeState();
     if (mode !== undefined) this.mode = normalizeAnnotationMode(mode);
     this._imageList = [...imageList];
+    this.focusName = focusName;
     this._currentImage = imagePath;
     this.sendConfig();
     void this.loadImage(imagePath);
@@ -417,6 +419,7 @@ class AnnotationController {
       currentIndex: this._imageList.indexOf(imagePath),
       totalImages: this._imageList.length,
       filename: path.basename(imagePath),
+      focusName: this.focusName,
     });
   }
 
@@ -472,6 +475,7 @@ class AnnotationController {
         this.pendingLoadRequests.delete(msg.loadRequestId);
         this.noteEditorVersion(msg.imagePath, msg.mode, msg.editorVersion);
         this.commitAcceptedLoad(request);
+        this.focusName = undefined;
         break;
       }
       case 'loadRejected': {
@@ -781,14 +785,15 @@ export class AnnotationPanel {
     imagePath: string,
     imageList: string[],
     onSaved: (imagePath: string) => void,
-    boxMode = false,
+    mode: UnifiedAnnotationMode | boolean = false,
+    focusName?: string,
   ): void {
-    const initialMode: UnifiedAnnotationMode = boxMode ? 'rect' : 'template';
+    const initialMode = normalizeAnnotationMode(mode);
     const current = AnnotationPanel.current;
     if (current && current.controller.root !== data.root) current.panel.dispose();
     else if (current) {
       current.panel.reveal();
-      current.controller.open(imagePath, imageList, initialMode);
+      current.controller.open(imagePath, imageList, initialMode, focusName);
       return;
     }
     const panel = vscode.window.createWebviewPanel(
@@ -812,7 +817,7 @@ export class AnnotationPanel {
     );
     const instance = new AnnotationPanel(panel, controller);
     AnnotationPanel.current = instance;
-    controller.open(imagePath, imageList, initialMode);
+    controller.open(imagePath, imageList, initialMode, focusName);
   }
 
   private constructor(

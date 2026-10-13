@@ -3,13 +3,17 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { ensureEditorTracker, insertIntoPythonEditor } from './pythonEditor';
 import { FeatureData } from './featureData';
-import { annotatedImageFile, cropTemplateThumbFileAsync, openAnnotatedImage, THUMB_HEIGHT } from './pngCrop';
+import { cropTemplateThumbFileAsync, THUMB_HEIGHT } from './pngCrop';
 import { featureAliases } from './providers';
 import { injectWebviewLocalization, tr } from './localization';
 import { applySharedAssets, getNonce } from './webviewHtml';
 import { readAuthoringFile } from './boxResourceStore';
 import { readPoints } from './pointResourceStore';
 import { templatesDirectory } from './projectConfig';
+import { findAuthoringResource } from './resourceAuthoring';
+import { AnnotationPanel } from './annotationPanel';
+import { TemplateAssetData } from './templateAssetData';
+import { sameAnnotationFile } from './cocoAnnotationData';
 
 export type ResourcePreviewMode = 'template' | 'rect' | 'point';
 
@@ -199,8 +203,8 @@ class GalleryController {
         break;
       case 'open':
         if (typeof msg.name === 'string') {
-          const meta = this.metas(this.mode).find(item => item.name === msg.name);
-          if (meta) await this.openOriginalWithMarker(meta);
+          const kind = msg.mode ?? this.mode;
+          if (['template', 'rect', 'point'].includes(kind)) this.openOriginal({ kind, name: msg.name });
         }
         break;
       default:
@@ -208,20 +212,22 @@ class GalleryController {
     }
   }
 
-  private async openOriginalWithMarker(meta: ResourceMeta): Promise<void> {
-    try {
-      const file = await vscode.window.withProgress(
-        { location: vscode.ProgressLocation.Notification, title: tr('ok-script-toolkit: Generating source image annotation…') },
-        async () => meta.kind === 'template'
-          ? openAnnotatedImage(meta.imagePath, meta.name, meta.bbox, this.thumbDir, this.features.root)
-          : annotatedImageFile(meta.imagePath, meta.bbox, this.thumbDir),
-      );
-      if (!file) {
-        void vscode.window.showWarningMessage(tr('Failed to generate annotated image: source image could not be decoded or was missing'));
-        return;
-      }
-      await vscode.commands.executeCommand('vscode.open', vscode.Uri.file(file));
-    } catch { /* open failure is non-fatal */ }
+  private openOriginal(meta: Pick<ResourceMeta, 'kind' | 'name'>): void {
+    const resource = findAuthoringResource(this.features.root, meta.kind, meta.name);
+    if (!resource || !fs.existsSync(resource.imagePath)) {
+      void vscode.window.showWarningMessage(tr('The resource was not found in current annotations: {name}', { name: meta.name }));
+      return;
+    }
+    const data = new TemplateAssetData(this.features.root);
+    data.load();
+    const images = data.listImages();
+    const imagePath = images.find(item => sameAnnotationFile(item, resource.imagePath));
+    if (!imagePath) {
+      void vscode.window.showWarningMessage(tr('The resource was not found in current annotations: {name}', { name: meta.name }));
+      return;
+    }
+    AnnotationPanel.show(this.extensionUri, data, this.thumbDir, imagePath, images,
+      () => repaintAllGalleries(), resource.kind, resource.name);
   }
 
   dispose(): void {

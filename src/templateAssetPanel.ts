@@ -15,6 +15,7 @@ import { onAnnotationDataChanged, sameAnnotationFile } from './cocoAnnotationDat
 import { isSameSize, scaleBoxes, SwapBox } from './annotationSwapPure';
 import { boxAnnotationData } from './boxResourceStore';
 import { readPoints } from './pointResourceStore';
+import { positionResources } from './resourceAuthoring';
 import { applySharedAssets, getNonce } from './webviewHtml';
 import {
   PositionPublishFormat,
@@ -133,7 +134,7 @@ class AssetGalleryController {
   ) {
     liveControllers.add(this);
     this.disposables.push(onAnnotationDataChanged(file => {
-      if (sameAnnotationFile(file, this.data.annotationFile)) void this.update();
+      if (sameAnnotationFile(path.dirname(file), this.data.templatesDir)) void this.update();
     }));
     this.disposables.push(
       webview.onDidReceiveMessage((msg) => { void this.onMessage(msg); }),
@@ -156,6 +157,15 @@ class AssetGalleryController {
       void vscode.window.showErrorMessage(tr('The annotation source is invalid. Fix the source file before saving or exporting.'));
     }
     this.lastReadErrors = authoringErrors.length > 0;
+    const positions = positionResources(this.data.root);
+    const searchIndex = new Map<string, string[]>();
+    const imageKey = (imagePath: string) => process.platform === 'win32' ? path.resolve(imagePath).toLowerCase() : path.resolve(imagePath);
+    for (const item of positions) {
+      const key = imageKey(item.imagePath);
+      const names = searchIndex.get(key) ?? [];
+      names.push(item.name);
+      searchIndex.set(key, names);
+    }
     const metas = imageFiles.map((imgPath) => {
       const size = this.imagePixelSize(imgPath);
       const cats = this.data.getCategoriesForImage(imgPath);
@@ -165,6 +175,7 @@ class AssetGalleryController {
         width: size.width,
         height: size.height,
         categories: cats,
+        searchNames: searchIndex.get(imageKey(imgPath)) ?? [],
         annotations: this.data.getAnnotationsForImage(imgPath, true).length,
       };
     });

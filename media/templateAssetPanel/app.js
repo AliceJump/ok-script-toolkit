@@ -94,7 +94,7 @@
     for (const [name, card] of cards) {
       const meta = metas.find(m => m.name === name);
       const ok = !q || name.toLowerCase().includes(q) ||
-        (meta && meta.categories.some(c => c.toLowerCase().includes(q)));
+        (meta && [...meta.categories, ...(meta.searchNames || [])].some(c => c.toLowerCase().includes(q)));
       card.style.display = ok ? '' : 'none';
       if (ok) shown++;
     }
