@@ -12,8 +12,7 @@ import { EffectData, EffectEntry } from './effectData';
 import { DEFAULT_FEATURE_ALIASES, ideSetting, labelEnumAliases, loadProjectConfig } from './projectConfig';
 import { annotatedImageToDataUrlCached, cropTemplateToDataUrlCached } from './pngCrop';
 import { selectedProjectLocale, tr } from './localization';
-import { getProjectConfig } from './screenshotCapture';
-import { posPaths, previewRectForPath } from './boxPanels';
+import { AuthoringResource, positionResources, positionSummary, positionLeaf } from './resourceAuthoring';
 
 /** 匹配 self.lang.<模块>.<key>（支持 Unicode 标识符，如中文 OCR 文本；负向后视避免匹配 self.langx 之类） */
 const EXPR_RE = /(?<![\w.])self\.lang\.([\p{L}\p{N}_]+)\.([\p{L}\p{N}_]+)/gu;
@@ -313,7 +312,7 @@ function hintLabel(value: string, type: 'string' | 'pattern' | undefined): strin
 /** 生成 feature 模板的预览：图片 + 元信息（带缓存） */
 function formatFeature(ft: FeatureTemplate): vscode.MarkdownString {
   const md = new vscode.MarkdownString(undefined, true);
-  md.appendCodeblock(`fL.${ft.name}`, 'python');
+  md.appendCodeblock(`${featureAliases()[0] ?? 'fL'}.${ft.name}`, 'python');
   const img = cropTemplateToDataUrlCached(ft.imagePath, ft.bbox);
   if (img) {
     md.appendMarkdown(`\n![${tr('Template preview')}](${img})\n`);
@@ -327,6 +326,24 @@ function formatFeature(ft: FeatureTemplate): vscode.MarkdownString {
       `\n- bbox: \`x=${ft.bbox[0]} y=${ft.bbox[1]} w=${ft.bbox[2]} h=${ft.bbox[3]}\``,
   );
   return md;
+}
+
+function formatPosition(resource: AuthoringResource): vscode.MarkdownString {
+  const md = new vscode.MarkdownString(undefined, true);
+  const [x, y, w, h] = resource.bbox;
+  md.appendCodeblock(`self.pos.${resource.name}${resource.kind === 'rect' ? '.to_box()' : ''}`, 'python');
+  const img = annotatedImageToDataUrlCached(resource.imagePath, resource.bbox);
+  if (img) md.appendMarkdown(`\n![${resource.kind === 'point' ? 'Point' : 'Box'}](${img})\n`);
+  md.appendMarkdown(`\n- ${positionSummary(resource)}` +
+    (resource.kind === 'rect' ? `\n- bbox: \`x=${x} y=${y} w=${w} h=${h}\`` : '') +
+    `\n- ${tr('Source')}: \`${resource.imagePath}\``);
+  return md;
+}
+
+class ResourceCompletionItem extends vscode.CompletionItem {
+  constructor(label: string, readonly resourceName: string, readonly resourceKind: 'position' | 'template') {
+    super(label, vscode.CompletionItemKind.Field);
+  }
 }
 
 /** 幽灵注释：仅在 self.lang.X.Y 表达式末尾显示当前语言的值（模板不做幽灵注释） */
@@ -422,14 +439,8 @@ export class LangHoverProvider implements vscode.HoverProvider {
     }
     const pos = findPosMatch(line, position.character);
     if (pos) {
-      const preview = previewRectForPath(getProjectConfig().projectDir, pos.path);
-      const md = new vscode.MarkdownString(undefined, true);
-      md.appendCodeblock(`self.pos.${pos.path}.to_box()`, 'python');
-      if (preview) {
-        const img = annotatedImageToDataUrlCached(preview.imagePath, preview.bbox);
-        if (img) md.appendMarkdown(`\n![box](${img})\n`);
-      }
-      return new vscode.Hover(md);
+      const resource = positionLeaf(positionResources(this.features.root), pos.path);
+      if (resource) return new vscode.Hover(formatPosition(resource));
     }
     for (const mf of findFeatureMatches(line)) {
       if (position.character >= mf.start && position.character <= mf.end) {
@@ -514,12 +525,22 @@ export class LangCompletionProvider implements vscode.CompletionItemProvider {
     if (posMatch) {
       const parent = posMatch[1].replace(/\.$/, '');
       const prefix = parent ? `${parent}.` : '';
-      const paths = posPaths(getProjectConfig().projectDir);
+      const resources = positionResources(this.features.root);
+      const paths = resources.map(item => item.name);
       const segments = [...new Set(paths
         .filter((item) => item.startsWith(prefix))
         .map((item) => item.slice(prefix.length).split('.')[0])
         .filter(Boolean))];
-      return segments.map((segment) => new vscode.CompletionItem(segment, vscode.CompletionItemKind.Field));
+      return segments.map(segment => {
+        const name = prefix + segment;
+        const leaf = positionLeaf(resources, name);
+        if (!leaf || paths.some(item => item.startsWith(name + '.'))) {
+          return new vscode.CompletionItem(segment, vscode.CompletionItemKind.Field);
+        }
+        const item = new ResourceCompletionItem(segment, name, 'position');
+        item.detail = positionSummary(leaf);
+        return item;
+      });
     }
 
     // 别名. -> 补全模板名（如 fL. / FeatureList.；缩略图懒加载）
@@ -530,7 +551,8 @@ export class LangCompletionProvider implements vscode.CompletionItemProvider {
       if (/[\w.]$/.test(prefix)) continue; // 别名前是单词字符/点（如 xfL.、self.fL.），不匹配
       return this.features.names().map((name, i) => {
         const ft = this.features.entry(name);
-        const item = new vscode.CompletionItem(name, vscode.CompletionItemKind.Value);
+        const item = new ResourceCompletionItem(name, name, 'template');
+        item.kind = vscode.CompletionItemKind.Value;
         if (ft) {
           item.detail = `${ft.width}×${ft.height}`;
           item.sortText = '\u0000' + String(i).padStart(3, '0') + name;
@@ -571,8 +593,13 @@ export class LangCompletionProvider implements vscode.CompletionItemProvider {
 
   /** 懒加载：用户选中/悬停某个补全项时，才生成该模板的缩略图预览 */
   resolveCompletionItem(item: vscode.CompletionItem): vscode.CompletionItem {
-    const name = typeof item.label === 'string' ? item.label : '';
-    const ft = name ? this.features.entry(name) : undefined;
+    if (!(item instanceof ResourceCompletionItem)) return item;
+    if (item.resourceKind === 'position') {
+      const resource = positionLeaf(positionResources(this.features.root), item.resourceName);
+      if (resource) item.documentation = formatPosition(resource);
+      return item;
+    }
+    const ft = this.features.entry(item.resourceName);
     if (ft) item.documentation = formatFeature(ft);
     return item;
   }

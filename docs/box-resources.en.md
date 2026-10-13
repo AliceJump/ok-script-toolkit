@@ -2,7 +2,7 @@
 
 [简体中文](box-resources.md) | [English](box-resources.en.md)
 
-Verified against current local implementations on 2026-10-08. Both hosts use unified annotation management and resource previews. This document describes the current data and operation contracts; see [Feature Parity](feature-parity.en.md) for entry points and verification status.
+Verified against current local implementations on 2026-10-13. Both hosts use unified annotation management and resource previews. This document describes the current data and operation contracts; see [Feature Parity](feature-parity.en.md) for entry points and verification status.
 
 ## Authoring and Published Files
 
@@ -33,7 +33,7 @@ Historical `version` / `boxes` and `version` / `points` authoring formats are no
 
 ## Annotation Management
 
-The unified entry provides import, capture, temporary screenshot drops, filename or Template category search, editing, source-image viewing, Template annotation swaps, deletion, and publication. Swapping preserves the existing Template operation scope in both hosts; Rect / Point remain editable in the unified editor.
+The unified entry provides import, capture, temporary screenshot drops, filename, Template, Box, or Point name search, editing, source-image viewing, Template annotation swaps, deletion, and publication. Swapping preserves the existing Template operation scope in both hosts; Rect / Point remain editable in the unified editor.
 
 Template swaps between differently sized images scale and clamp coordinates, show image sizes and annotation counts before confirmation, and verify source annotations and image sizes again before saving.
 
@@ -53,9 +53,13 @@ Side and wide previews support Template / Rect / Point modes and name/expression
 | Rect | `self.pos.<path>.to_box()` |
 | Point | `self.pos.<path>` |
 
-Single click inserts; double click copies. Buttons expose the same actions and annotated source previews. Without a Python editor, the reference is copied with an explanation. Template previews never fill an absent runtime library with unpublished authoring data. Rect / Point hints follow current authoring data without requiring publication first.
+Single click inserts; double click copies. Buttons expose the same actions. View original resolves the unique name against current authoring annotations, opens the existing unified editor in Template / Rect / Point mode, and selects and reveals the target. Missing annotations produce a resource warning without falling back to stale card or runtime atlas coordinates. Without a Python editor, the reference is copied with an explanation. Template previews never fill an absent runtime library with unpublished authoring data. Rect / Point hints follow current authoring data without requiring publication first.
 
 Both hosts use `Ctrl+Alt+T` for resource previews and `Ctrl+Alt+S` for capture into annotation management; macOS uses the corresponding `Cmd+Alt` combinations. Publication belongs to annotation management, with no separate publishing chain in previews.
+
+Box / Point names in annotation management are search indexes only. They do not appear as image metadata or create persisted source fields. Lookup uses the existing `category_id` / `image_id` relationships.
+
+`self.pos` completion remains hierarchical by dot-separated path. Intermediate nodes contain only the path segment. Leaves show `Box · width×height` or `Point · (x, y)`. Source previews are generated only when a leaf is selected; completion details share the Hover formatter. Boxes use `.to_box()` and show bbox geometry. Points use direct position expressions and pixel coordinates, with a cross marking the location. Position hints work directly from unpublished authoring data. When Rect and Point share a conflicting name, code hints do not choose either resource arbitrarily.
 
 ## Unified Publication
 

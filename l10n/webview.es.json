@@ -243,7 +243,7 @@
   "accountStoreSeeOutput": "Consulte el canal de salida \"ok-script Console\" para más detalles.",
   "accountReadFailed": "No se pudo analizar el archivo del almacén (ver la salida del ejecutor).",
   "overriddenTasksLabel": "Tareas con anulaciones",
-  "templatesSearch": "Buscar nombres de plantillas…",
+  "templatesSearch": "Buscar nombres de imagen / Template / Box / Point…",
   "templatesTitle": "Galería de plantillas",
   "templatesHint": "Clic=insertar · Doble clic=copiar · Use los botones inferiores derechos para acciones directas",
   "templatesCount": "{shown}/{total} plantillas",

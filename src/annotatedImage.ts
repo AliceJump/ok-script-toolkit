@@ -33,11 +33,13 @@ export interface AnnotatedPixels { width: number; height: number; rgba: Buffer }
 export function renderAnnotatedPixels(
   { width, height, rgba }: AnnotatedPixels, bbox: [number, number, number, number],
 ): AnnotatedPixels | undefined {
-  if (!bbox.every(Number.isFinite) || bbox[2] <= 0 || bbox[3] <= 0) return undefined;
-  const bx = Math.max(0, Math.round(bbox[0]));
-  const by = Math.max(0, Math.round(bbox[1]));
-  const bw = Math.min(width, Math.round(bbox[0] + bbox[2])) - bx;
-  const bh = Math.min(height, Math.round(bbox[1] + bbox[3])) - by;
+  const point = bbox[2] === 0 && bbox[3] === 0;
+  if (!bbox.every(Number.isFinite) || (!point && (bbox[2] <= 0 || bbox[3] <= 0))) return undefined;
+  if (point && (bbox[0] < 0 || bbox[1] < 0 || bbox[0] > width || bbox[1] > height)) return undefined;
+  const bx = Math.max(0, point ? Math.min(width - 1, Math.round(bbox[0])) : Math.round(bbox[0]));
+  const by = Math.max(0, point ? Math.min(height - 1, Math.round(bbox[1])) : Math.round(bbox[1]));
+  const bw = point ? 1 : Math.min(width, Math.round(bbox[0] + bbox[2])) - bx;
+  const bh = point ? 1 : Math.min(height, Math.round(bbox[1] + bbox[3])) - by;
   if (bw <= 0 || bh <= 0) return undefined;
   const pad = 200;
   const cropX = Math.max(0, bx - pad), cropY = Math.max(0, by - pad);
@@ -67,13 +69,19 @@ export function renderAnnotatedPixels(
   }
 
   const thickness = Math.max(2, Math.round(2 * scale));
-  drawRectOutline(outRgba, outW, outH,
-    Math.round((bx - cropX) * scale), Math.round((by - cropY) * scale),
+  const px = Math.min(outW - 1, Math.round((bx - cropX) * scale));
+  const py = Math.min(outH - 1, Math.round((by - cropY) * scale));
+  if (point) {
+    strokeRectInward(outRgba, outW, outH, px - 7, py - 2, 15, 5, 5, 255, 255, 255);
+    strokeRectInward(outRgba, outW, outH, px - 2, py - 7, 5, 15, 5, 255, 255, 255);
+    strokeRectInward(outRgba, outW, outH, px - 6, py - 1, 13, 3, 3, 255, 40, 40);
+    strokeRectInward(outRgba, outW, outH, px - 1, py - 6, 3, 13, 3, 255, 40, 40);
+  } else drawRectOutline(outRgba, outW, outH, px, py,
     Math.max(1, Math.round(bw * scale)), Math.max(1, Math.round(bh * scale)), thickness);
   return { width: outW, height: outH, rgba: outRgba };
 }
 
 export function annotatedFileName(contentHash: string, bbox: [number, number, number, number]): string {
-  const key = crypto.createHash('sha1').update(`v3|${contentHash}|${bbox.join(',')}`).digest('hex').slice(0, 16);
+  const key = crypto.createHash('sha1').update(`v4|${contentHash}|${bbox.join(',')}`).digest('hex').slice(0, 16);
   return `a2_${key}.png`;
 }

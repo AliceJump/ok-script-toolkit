@@ -966,10 +966,10 @@ export function cropTemplateOriginalFile(
 export function annotatedImageToDataUrlCached(
   imagePath: string, bbox: [number, number, number, number],
 ): string | undefined {
-  if (!bbox.every(Number.isFinite) || bbox[2] <= 0 || bbox[3] <= 0) return undefined;
+  if (!bbox.every(Number.isFinite) || !((bbox[2] === 0 && bbox[3] === 0) || (bbox[2] > 0 && bbox[3] > 0))) return undefined;
   const contentHash = imageContentHash(imagePath);
   if (!contentHash) return undefined;
-  const key = `annotated-v3|${contentHash}|${bbox.join(',')}`;
+  const key = `annotated-v4|${contentHash}|${bbox.join(',')}`;
   const hit = CROP_CACHE.get(key);
   if (hit) return hit.url;
   try {

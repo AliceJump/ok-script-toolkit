@@ -243,7 +243,7 @@
   "accountStoreSeeOutput": "자세한 원인은 출력 채널 \"ok-script Console\"을 참조하세요.",
   "accountReadFailed": "스토어 파일을 해석할 수 없습니다(실행기 출력 참조).",
   "overriddenTasksLabel": "재정의가 있는 작업",
-  "templatesSearch": "템플릿 이름 검색…",
+  "templatesSearch": "이미지 / Template / Box / Point 이름 검색…",
   "templatesTitle": "템플릿 갤러리",
   "templatesHint": "클릭=삽입 · 더블클릭=복사 · 오른쪽 아래 버튼으로 바로 실행",
   "templatesCount": "{shown}/{total} 템플릿",

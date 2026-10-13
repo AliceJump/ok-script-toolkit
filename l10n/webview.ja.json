@@ -243,7 +243,7 @@
   "accountStoreSeeOutput": "詳細は出力チャンネル「ok-script Console」を参照。",
   "accountReadFailed": "ストアファイルを解析できません（実行器の出力を参照）。",
   "overriddenTasksLabel": "上書きありのタスク",
-  "templatesSearch": "テンプレート名を検索…",
+  "templatesSearch": "画像 / Template / Box / Point 名を検索…",
   "templatesTitle": "テンプレートギャラリー",
   "templatesHint": "クリック=挿入 · ダブルクリック=コピー · 右下のボタンで直接操作",
   "templatesCount": "{shown}/{total} テンプレート",

@@ -260,5 +260,6 @@
   "Could not publish positions: {error}": "位置リソースを公開できませんでした: {error}",
   "Published positions: {files}": "位置リソースを公開しました: {files}",
   "Resource Preview": "リソースプレビュー",
-  "No annotations available to publish.": "公開できるアノテーションはありません。"
+  "No annotations available to publish.": "公開できるアノテーションはありません。",
+  "The resource was not found in current annotations: {name}": "現在のアノテーションにリソースが見つかりません: {name}"
 }

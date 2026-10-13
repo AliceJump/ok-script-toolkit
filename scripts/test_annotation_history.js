@@ -29,11 +29,12 @@ let webviewState = {};
 const virtualConsole = new VirtualConsole();
 virtualConsole.on('jsdomError', error => { throw error; });
 
+const drawn = [];
 function makeContext() {
   const noop = () => {};
   return {
-    clearRect: noop, fillRect: noop, strokeRect: noop, beginPath: noop, closePath: noop,
-    arc: noop, fill: noop, fillText: noop, drawImage: noop, setLineDash: noop,
+    clearRect: noop, fillRect: noop, strokeRect: (...args) => drawn.push(args), beginPath: noop, closePath: noop,
+    arc: (...args) => drawn.push(args), fill: noop, fillText: noop, drawImage: noop, setLineDash: noop,
     moveTo: noop, lineTo: noop, stroke: noop, save: noop, restore: noop,
     getImageData: () => ({ data: new Uint8ClampedArray(4) }),
     measureText: () => ({ width: 0 }),
@@ -281,6 +282,27 @@ function load(mode, annotations, imagePath = 'x/a.png', extra = {}) {
   'host completes the webview load version handshake instead of leaving it one-sided');
   assert(controllerSource.includes('loadRequestId: requestId') && controllerSource.includes('expectedEditorVersion'),
     'host versions every load request against the editor state it has already observed');
+
+  // Resource jumps select matching shapes after decoding and reveal hidden targets.
+  const target = { id: 42, category: 'screen.focus', x: 850, y: 850, w: 80, h: 80 };
+  load('rect', [target], 'x/focus.png', { focusName: target.category });
+  await flush(); await flush();
+  assert(document.querySelector('.annotation-row.is-selected'), 'new-image jump selects the resource after image decoding');
+  document.getElementById('hideAllBtn').click();
+  for (let i = 0; i < 12; i++) canvas.dispatchEvent(new window.WheelEvent('wheel', { deltaY: -1, clientX: 0, clientY: 0, bubbles: true, cancelable: true }));
+  const writesBeforeFocus = writes().length;
+  drawn.length = 0;
+  load('rect', [target], 'x/focus.png', { focusName: target.category });
+  await flush();
+  assert(document.querySelector('.annotation-row.is-selected input[type="checkbox"]').checked, 'same-image jump unhides the selected resource');
+  assert(drawn.some(([x,y,w,h]) => w > 30 && h > 30 && x >= 0 && y >= 0 && x + w <= 800 && y + h <= 600),
+    'zoomed viewport pans until the current box is visible');
+  assert(writes().length === writesBeforeFocus, 'selection and panning never save annotations');
+  const pointTarget = { ...target, category: 'screen.focus_point', w: 0, h: 0 };
+  load('point', [pointTarget], 'x/focus.png', { focusName: pointTarget.category });
+  await flush();
+  assert(document.getElementById('pointModeBtn').classList.contains('active'), 'point jump switches editor mode');
+  assert(document.querySelector('.annotation-row.is-selected').textContent.includes(pointTarget.category), 'point jump selects the point by name');
 
   console.log('annotation history runtime tests passed');
 })().catch(error => {

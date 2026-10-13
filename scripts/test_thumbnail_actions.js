@@ -117,5 +117,16 @@ w.dispatchEvent(new w.MessageEvent('message', { data: { type: 'templates', templ
 assert.strictEqual(w.document.querySelector('.card'), card, 'annotation refresh preserves the existing source-card DOM node');
 assert.strictEqual(card.querySelector('.cats').textContent, 'screen.updated', 'annotation metadata updates in place');
 
+w.dispatchEvent(new w.MessageEvent('message', { data: { type: 'templates', templates: [{
+  name: 'source.png', imagePath: 'source.png', width: 20, height: 30, categories: ['screen.updated'], annotations: 1,
+  searchNames: ['screen.rect', 'screen.click'],
+}] } }));
+const search = w.document.getElementById('search');
+for (const [query, visible] of [['SCREEN.RECT', true], ['screen.click', true], ['unrelated', false], ['source.png', true], ['screen.updated', true]]) {
+  search.value = query;
+  search.dispatchEvent(new w.Event('input'));
+  assert.strictEqual(card.style.display !== 'none', visible, 'asset search indexes resource and image names: ' + query);
+}
+assert.strictEqual(card.querySelector('.cats').textContent, 'screen.updated', 'Box / Point names remain search-only metadata');
 dom.window.close();
 console.log('thumbnail action parity: unified template/rect/point preview and asset actions OK');

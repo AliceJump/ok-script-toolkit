@@ -1132,7 +1132,8 @@
     if (msg.type !== 'load') return;
 
     const incomingMode = msg.annotationMode || annotationMode;
-    if (pendingMode && incomingMode !== pendingMode) return;
+    if (pendingMode && incomingMode !== pendingMode && !msg.focusName) return;
+    if (msg.focusName) { pendingMode = null; modeLoading = false; }
     if (pendingMode === incomingMode) { pendingMode = null; modeLoading = false; }
     const newImageKey = msg.filename || '';
     const imageChanged = currentImageKey && currentImageKey !== newImageKey;
@@ -1150,16 +1151,30 @@
     listSignature = '';
     updateStaticText();
 
+    function focusResource() {
+      if (!msg.focusName || !img) return;
+      const index = annotations.findIndex(ann => ann.category === msg.focusName);
+      if (index < 0) return;
+      const ann = annotations[index];
+      hiddenSet().delete(ann.category);
+      selectOnly(index);
+      if (!pointMode) scale = Math.max(fitScale, Math.min(scale,
+        Math.max(1, canvas.width - 40) / ann.w, Math.max(1, canvas.height - 40) / ann.h));
+      offsetX = canvas.width / 2 - (ann.x + (pointMode ? 0 : ann.w / 2)) * scale;
+      offsetY = canvas.height / 2 - (ann.y + (pointMode ? 0 : ann.h / 2)) * scale;
+      recalcOffset();
+      canvas.focus();
+    }
     const needImageLoad = !img || imageChanged;
     if (msg.imageBase64 && needImageLoad) {
       img = new Image();
       img.onload = () => {
         emptyMsg.style.display = 'none'; canvas.style.display = 'block';
-        recalcFit(); scale = fitScale; recalcOffset(); loadImgData(); paint();
+        recalcFit(); scale = fitScale; recalcOffset(); loadImgData(); focusResource(); paint();
       };
       img.src = msg.imageBase64;
     } else if (msg.imageBase64 && img) {
-      emptyMsg.style.display = 'none'; canvas.style.display = 'block'; paint();
+      emptyMsg.style.display = 'none'; canvas.style.display = 'block'; focusResource(); paint();
     } else {
       img = null; imgData = null; canvas.style.display = 'none'; emptyMsg.style.display = 'flex'; syncAnnotationList();
     }
