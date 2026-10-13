@@ -4,10 +4,14 @@ const os = require('os');
 const path = require('path');
 const vm = require('vm');
 const root = path.resolve(__dirname, '..');
-function load(name, dependencies, extra = '') {
+function load(name, dependencies, extra = '', isolated = false) {
   const exports = {};
   vm.runInNewContext(fs.readFileSync(path.join(root, 'out', name + '.js'), 'utf8') + extra, {
-    exports, require: key => dependencies[key] || require(key.startsWith('.') ? path.join(root, 'out', key) : key),
+    exports, require: key => {
+      if (Object.hasOwn(dependencies, key)) return dependencies[key];
+      if (isolated && key.startsWith('.')) throw new Error('Missing editor dependency mock: ' + key);
+      return require(key.startsWith('.') ? path.join(root, 'out', key) : key);
+    },
   });
   return exports;
 }
@@ -50,9 +54,10 @@ function write(kind, name, bbox, file = 'source.png') {
     let renders = 0;
     const providers = load('providers', {
       vscode, './projectConfig': config, './resourceAuthoring': resources,
+      './langData': {},
       './localization': { tr: key => key },
       './pngCrop': { annotatedImageToDataUrlCached: () => { renders++; return 'data:image/png;base64,preview'; } },
-    });
+    }, '', true);
     const features = { root: project, entry: name => name === 'screen' ? { name } : undefined };
     const provider = new providers.LangCompletionProvider({}, features);
     const items = text => provider.provideCompletionItems({ lineAt: () => ({ text }) }, { line: 0, character: text.length });
@@ -86,10 +91,13 @@ function write(kind, name, bbox, file = 'source.png') {
     const opened = [];
     const gallery = load('templatePanel', {
       vscode, './providers': { featureAliases: () => ['Features'] }, './resourceAuthoring': resources,
+      './pythonEditor': {}, './pngCrop': {}, './projectConfig': config, './webviewHtml': {},
+      './boxResourceStore': {}, './pointResourceStore': {},
       './localization': { tr: key => key },
       './annotationPanel': { AnnotationPanel: { show: (...args) => opened.push(args) } },
       './templateAssetData': { TemplateAssetData: class { load() {} listImages() { return [image, nextImage]; } } },
-    }, '\nexports.Controller = GalleryController;').Controller.prototype;
+      './cocoAnnotationData': require('../out/cocoAnnotationData'),
+    }, '\nexports.Controller = GalleryController;', true).Controller.prototype;
     const host = { features, mode: 'template', thumbDir: folder, extensionUri: {}, openOriginal: gallery.openOriginal };
     host.metas = () => [{ name: 'button', kind: 'template', imagePath: image, bbox: [0, 0, 1, 1] }];
     await gallery.onMessage.call(host, { type: 'open', name: 'button', imagePath: 'forged.png' });
