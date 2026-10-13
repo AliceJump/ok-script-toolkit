@@ -110,9 +110,15 @@ function write(kind, name, bbox, file = 'source.png') {
 
     write('points', 'screen.panel', [90, 80, 0, 0]);
     const ambiguous = items('self.pos.screen.').find(item => item.label === 'panel');
-    assert.strictEqual(ambiguous.detail, undefined, 'duplicate Box / Point names do not choose one type arbitrarily');
+    assert.strictEqual(ambiguous.detail, 'Box · 30×40 / Point · (90, 80)', 'same-name leaf keeps both resource types in one namespace');
     provider.resolveCompletionItem(ambiguous);
-    assert.strictEqual(ambiguous.documentation, undefined);
+    assert(ambiguous.documentation.value.includes('self.pos.screen.panel.to_box()'));
+    assert(ambiguous.documentation.value.includes('Point · (90, 80)'));
+    const typedHover = text => hover.provideHover({ lineAt: () => ({ text }) }, { line: 0, character: 18 }).contents.value;
+    assert(typedHover('self.pos.screen.panel.to_box()').includes('Box · 30×40'));
+    assert(!typedHover('self.pos.screen.panel.to_box()').includes('Point ·'));
+    assert(typedHover('self.pos.screen.panel').includes('Point · (90, 80)'));
+    assert(!typedHover('self.pos.screen.panel').includes('.to_box()'));
     assert.strictEqual(resources.findAuthoringResource(project, 'point', 'screen.panel').kind, 'point',
       'mode-specific original editing can still resolve a same-name point');
 

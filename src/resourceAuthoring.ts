@@ -43,9 +43,15 @@ export function findAuthoringResource(root: string, kind: ResourceKind, name: st
   return image ? { name, kind, imagePath: path.resolve(data.templatesDir, image.file_name), bbox: annotation.bbox } : undefined;
 }
 
-export function positionLeaf(resources: readonly AuthoringResource[], name: string): AuthoringResource | undefined {
+export function positionChoices(resources: readonly AuthoringResource[], name: string): AuthoringResource[] {
   const matches = resources.filter(item => item.name === name);
-  return matches.length === 1 ? matches[0] : undefined;
+  return matches.filter(item => matches.filter(other => other.kind === item.kind).length === 1);
+}
+
+export function positionReferenceResource(resources: readonly AuthoringResource[], name: string, boxed: boolean): AuthoringResource | undefined {
+  const choices = positionChoices(resources, name);
+  if (boxed) return choices.find(item => item.kind === 'rect');
+  return choices.find(item => item.kind === 'point') ?? (choices.length === 1 ? choices[0] : undefined);
 }
 
 export function positionSummary(resource: AuthoringResource): string {

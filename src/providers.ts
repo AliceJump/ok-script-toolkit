@@ -12,7 +12,7 @@ import { EffectData, EffectEntry } from './effectData';
 import { DEFAULT_FEATURE_ALIASES, ideSetting, labelEnumAliases, loadProjectConfig } from './projectConfig';
 import { annotatedImageToDataUrlCached, cropTemplateToDataUrlCached } from './pngCrop';
 import { selectedProjectLocale, tr } from './localization';
-import { AuthoringResource, positionResources, positionSummary, positionLeaf } from './resourceAuthoring';
+import { AuthoringResource, positionResources, positionSummary, positionChoices, positionReferenceResource } from './resourceAuthoring';
 
 /** 匹配 self.lang.<模块>.<key>（支持 Unicode 标识符，如中文 OCR 文本；负向后视避免匹配 self.langx 之类） */
 const EXPR_RE = /(?<![\w.])self\.lang\.([\p{L}\p{N}_]+)\.([\p{L}\p{N}_]+)/gu;
@@ -20,11 +20,11 @@ const EXPR_RE = /(?<![\w.])self\.lang\.([\p{L}\p{N}_]+)\.([\p{L}\p{N}_]+)/gu;
 /** 转义正则特殊字符（别名可能含 . 等） */
 const POS_RE = /(?<![\w.])self\.pos\.((?:[A-Za-z_][A-Za-z0-9_]*\.)*[A-Za-z_][A-Za-z0-9_]*)\.to_box\(\)|(?<![\w.])self\.pos\.((?:[A-Za-z_][A-Za-z0-9_]*\.)*[A-Za-z_][A-Za-z0-9_]*)(?![\w.(])/g;
 
-function findPosMatch(line: string, character: number): { path: string } | undefined {
+function findPosMatch(line: string, character: number): { path: string; boxed: boolean } | undefined {
   POS_RE.lastIndex = 0;
   let match: RegExpExecArray | null;
   while ((match = POS_RE.exec(line))) {
-    if (character >= match.index && character <= match.index + match[0].length) return { path: match[1] || match[2] };
+    if (character >= match.index && character <= match.index + match[0].length) return { path: match[1] || match[2], boxed: !!match[1] };
   }
   return undefined;
 }
@@ -340,6 +340,12 @@ function formatPosition(resource: AuthoringResource): vscode.MarkdownString {
   return md;
 }
 
+function formatPositionChoices(resources: readonly AuthoringResource[]): vscode.MarkdownString {
+  const md = new vscode.MarkdownString(undefined, true);
+  md.appendMarkdown(resources.map(resource => formatPosition(resource).value).join('\n---\n'));
+  return md;
+}
+
 class ResourceCompletionItem extends vscode.CompletionItem {
   constructor(label: string, readonly resourceName: string, readonly resourceKind: 'position' | 'template') {
     super(label, vscode.CompletionItemKind.Field);
@@ -439,7 +445,7 @@ export class LangHoverProvider implements vscode.HoverProvider {
     }
     const pos = findPosMatch(line, position.character);
     if (pos) {
-      const resource = positionLeaf(positionResources(this.features.root), pos.path);
+      const resource = positionReferenceResource(positionResources(this.features.root), pos.path, pos.boxed);
       if (resource) return new vscode.Hover(formatPosition(resource));
     }
     for (const mf of findFeatureMatches(line)) {
@@ -533,12 +539,12 @@ export class LangCompletionProvider implements vscode.CompletionItemProvider {
         .filter(Boolean))];
       return segments.map(segment => {
         const name = prefix + segment;
-        const leaf = positionLeaf(resources, name);
-        if (!leaf || paths.some(item => item.startsWith(name + '.'))) {
+        const choices = positionChoices(resources, name);
+        if (!choices.length || paths.some(item => item.startsWith(name + '.'))) {
           return new vscode.CompletionItem(segment, vscode.CompletionItemKind.Field);
         }
         const item = new ResourceCompletionItem(segment, name, 'position');
-        item.detail = positionSummary(leaf);
+        item.detail = choices.map(positionSummary).join(' / ');
         return item;
       });
     }
@@ -595,8 +601,8 @@ export class LangCompletionProvider implements vscode.CompletionItemProvider {
   resolveCompletionItem(item: vscode.CompletionItem): vscode.CompletionItem {
     if (!(item instanceof ResourceCompletionItem)) return item;
     if (item.resourceKind === 'position') {
-      const resource = positionLeaf(positionResources(this.features.root), item.resourceName);
-      if (resource) item.documentation = formatPosition(resource);
+      const choices = positionChoices(positionResources(this.features.root), item.resourceName);
+      if (choices.length) item.documentation = formatPositionChoices(choices);
       return item;
     }
     const ft = this.features.entry(item.resourceName);

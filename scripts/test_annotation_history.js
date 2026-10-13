@@ -284,7 +284,7 @@ function load(mode, annotations, imagePath = 'x/a.png', extra = {}) {
     'host versions every load request against the editor state it has already observed');
 
   // Resource jumps select matching shapes after decoding and reveal hidden targets.
-  const target = { id: 42, category: 'screen.focus', x: 850, y: 850, w: 80, h: 80 };
+  const target = { id: 42, category: 'screen.focus', x: 850, y: 550, w: 80, h: 400 };
   load('rect', [target], 'x/focus.png', { focusName: target.category });
   await flush(); await flush();
   assert(document.querySelector('.annotation-row.is-selected'), 'new-image jump selects the resource after image decoding');

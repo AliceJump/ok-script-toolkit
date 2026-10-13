@@ -59,7 +59,7 @@ Both hosts use `Ctrl+Alt+T` for resource previews and `Ctrl+Alt+S` for capture i
 
 Box / Point names in annotation management are search indexes only. They do not appear as image metadata or create persisted source fields. Lookup uses the existing `category_id` / `image_id` relationships.
 
-`self.pos` completion remains hierarchical by dot-separated path. Intermediate nodes contain only the path segment. Leaves show `Box · width×height` or `Point · (x, y)`. Source previews are generated only when a leaf is selected; completion details share the Hover formatter. Boxes use `.to_box()` and show bbox geometry. Points use direct position expressions and pixel coordinates, with a cross marking the location. Position hints work directly from unpublished authoring data. When Rect and Point share a conflicting name, code hints do not choose either resource arbitrarily.
+`self.pos` completion remains hierarchical by dot-separated path. Intermediate nodes contain only the path segment. Leaves show `Box · width×height` or `Point · (x, y)`. Source previews are generated only when a leaf is selected; completion details share the Hover formatter. Boxes use `.to_box()` and show bbox geometry. Points use direct position expressions and pixel coordinates, with a cross marking the location. Position hints work directly from unpublished authoring data. When Rect and Point share a name, existing references preserve the expression type: `.to_box()` selects Rect, while a direct position expression prefers Point. A direct reference remains supported when only Rect exists. Completion without a suffix keeps one path candidate and combines both resource details instead of duplicating namespace entries.
 
 ## Unified Publication
 
