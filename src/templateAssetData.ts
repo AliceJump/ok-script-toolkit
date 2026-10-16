@@ -339,7 +339,7 @@ export class TemplateAssetData extends CocoAnnotationData {
       stagedEnum = enumInImages
         ? path.join(stagedImagesDir, path.relative(targetImagesDir, enumFile))
         : path.join(enumStagingRoot!, 'new', path.basename(enumFile));
-      this.generateLabelEnum(stagedEnum, labels, folderUri);
+      this.generateLabelEnum(stagedEnum, labels, folderUri, enumFile);
     }
     if (cancellationToken?.isCancellationRequested) throw new vscode.CancellationError();
 
@@ -436,7 +436,7 @@ export class TemplateAssetData extends CocoAnnotationData {
    * 2. **成员名**必须是合法 Python 标识符。分类名带空格 / 连字符 / 中文时，
    *    `   洗手 台 = '...'` 这种行会让整个文件 `SyntaxError`，用户拿到的枚举文件直接不能用。
    */
-  private generateLabelEnum(filePath: string, labels: string[], folderUri?: vscode.Uri): void {
+  private generateLabelEnum(filePath: string, labels: string[], folderUri?: vscode.Uri, originalFilePath = filePath): void {
     const dir = path.dirname(filePath);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 
@@ -449,11 +449,13 @@ export class TemplateAssetData extends CocoAnnotationData {
     //
     // ⚠️ 个人覆盖会改掉写进源码的类名，而项目的代码按名字 import。那道闸不在这一层：
     // 覆盖前的确认在 `templateAssetPanel.ts`（UI 层）做，见 `labelEnumGuard.ts`。
-    const rawClassName = labelEnumNameSetting(filePath, this.rootDir, folderUri).value;
+    const rawClassName = labelEnumNameSetting(originalFilePath, this.rootDir, folderUri).value;
     // 类名同样进源码：非法标识符直接退回一个安全的默认名，而不是生成坏文件。
     // 走 `writableClassName` 而**不是**内联一个正则 —— 面板的写入前校验要用**同一个**函数
     // 算"将要写入的类名"，两处各写一遍会让警告内容与实际写进去的东西不符。
     const className = writableClassName(rawClassName);
+    // 发布先写临时文件；引号风格必须从实际覆盖的目标读取。
+    const quote = labelEnumQuote(fs.existsSync(originalFilePath) ? fs.readFileSync(originalFilePath, 'utf-8') : '');
     let content = 'from enum import Enum\n\n\n';
     content += `class ${className}(str, Enum):\n`;
     if (labels.length === 0) {
@@ -462,13 +464,13 @@ export class TemplateAssetData extends CocoAnnotationData {
     }
     const usedMemberNames = new Set<string>();
     for (const label of labels) {
-      // 值：单引号包裹，转义反斜杠与单引号（其余控制字符由 pythonLiteral 兜住）
+      // 值沿用原文件的引号，并转义相应的定界符。
       const baseName = memberNameFor(label);
       let memberName = baseName;
       let suffix = 2;
       while (usedMemberNames.has(memberName)) memberName = `${baseName}_${suffix++}`;
       usedMemberNames.add(memberName);
-      content += `    ${memberName} = ${pythonStringLiteral(label)}\n`;
+      content += `    ${memberName} = ${pythonStringLiteral(label, quote)}\n`;
     }
     fs.writeFileSync(filePath, content, 'utf-8');
   }
@@ -507,19 +509,19 @@ export class TemplateAssetData extends CocoAnnotationData {
 /* ---------------- Python 源码生成助手 ---------------- */
 
 /**
- * 把一段用户输入变成合法的 Python 单引号字符串字面量（含引号）。
+ * 把一段用户输入变成合法的 Python 字符串字面量（含选定的引号）。
  *
  * 为什么不用 `JSON.stringify`：JSON 与 Python 的字符串转义规则**不完全重合**。
  * JSON 里单引号无需转义（`"\u0027"` 反而可选），而 Python 单引号字面量里 `\'` 是必需的；
  * 反之 JSON 允许裸的 `\/`，Python 也接受但语义微妙。所以这里逐字符显式转义，
  * 只保留两边都安全的表示，避免"看起来能跑、换一个标签就炸"。
  */
-export function pythonStringLiteral(value: string): string {
-  let out = "'";
+export function pythonStringLiteral(value: string, quote: "'" | '"' = "'"): string {
+  let out: string = quote;
   for (const ch of value) {
     switch (ch) {
       case '\\': out += '\\\\'; break;
-      case '\'': out += '\\\''; break;
+      case '\'': case '"': out += ch === quote ? `\\${ch}` : ch; break;
       case '\n': out += '\\n'; break;
       case '\r': out += '\\r'; break;
       case '\t': out += '\\t'; break;
@@ -535,7 +537,24 @@ export function pythonStringLiteral(value: string): string {
       }
     }
   }
-  return `${out}'`;
+  return `${out}${quote}`;
+}
+
+/** 沿用已有成员值的主要引号风格；数量相同时取首个，空文件默认单引号。 */
+export function labelEnumQuote(source: string): "'" | '"' {
+  // 按字符串和注释扫描，避免把文档字符串中的赋值示例当成成员。
+  const tokens = /#[^\r\n]*|("""|''')(?:\\[\s\S]|(?!\1)[^\\])*\1|(["'])(?:\\[\s\S]|(?!\2)[^\\\r\n])*\2/g;
+  const quotes: ("'" | '"')[] = [];
+  for (const token of source.matchAll(tokens)) {
+    if (!token[2]) continue;
+    const prefix = source.slice(source.lastIndexOf('\n', token.index! - 1) + 1, token.index);
+    if (/^[ \t]+[A-Za-z_]\w*[ \t]*(?::[^=\r\n]+)?=[ \t]*[rRuU]?$/.test(prefix)) {
+      quotes.push(token[2] as "'" | '"');
+    }
+  }
+  const singles = quotes.filter(quote => quote === "'").length;
+  const doubles = quotes.length - singles;
+  return singles === doubles ? quotes[0] ?? "'" : singles > doubles ? "'" : '"';
 }
 
 /**

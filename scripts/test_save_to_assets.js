@@ -51,9 +51,9 @@ if (!vscodeAlreadyExists) {
   fs.writeFileSync(path.join(vscodeMockPath, 'index.js'), VSCODE_STUB);
 }
 
-let TemplateAssetData;
+let TemplateAssetData, labelEnumQuote, pythonStringLiteral;
 try {
-  TemplateAssetData = require('../out/templateAssetData').TemplateAssetData;
+  ({ TemplateAssetData, labelEnumQuote, pythonStringLiteral } = require('../out/templateAssetData'));
 } finally {
   if (!vscodeAlreadyExists) {
     fs.rmSync(vscodeMockPath, { recursive: true, force: true });
@@ -1000,7 +1000,59 @@ function test_tempBmpPromotionPreservesPixelsAndImportSemantics() {
   } finally { teardown(); }
 }
 
+async function test_enumOverwriteKeepsQuotes() {
+  const strict = require('assert').strict;
+  const { spawnSync } = require('child_process');
+  const python = [process.env.PYTHON, 'python', 'python3'].filter(Boolean)
+    .find(exe => spawnSync(exe, ['--version']).status === 0);
+  strict.equal(labelEnumQuote(''), "'");
+  strict.equal(labelEnumQuote(`class Labels(str, Enum):
+    """
+    fake = 'example'
+    other = 'example'
+    """
+    # ignored = 'comment'
+    first = "first" # 'comment'
+    second: str = r"second"
+    third = 'third'
+`), '"');
+  strict.equal(labelEnumQuote(`    a = "a"\n    b = 'b'\n`), '"');
+  strict.equal(labelEnumQuote(`    a = 'a'\n    b = "b"\n`), "'");
+  const labels = ['plain', 'it\'s "quoted"', 'a\\b\n\t\x07', '中文'];
+  for (const originalQuote of [undefined, "'", '"']) {
+    const quote = originalQuote ?? "'";
+    for (const inImages of [false, true]) {
+      setup();
+      try {
+        const enumFile = path.join(inImages ? path.join(targetDir, 'images') : tmpDir, 'Labels.py');
+        fs.mkdirSync(path.dirname(enumFile), { recursive: true });
+        if (originalQuote) fs.writeFileSync(enumFile, `from enum import Enum\nclass Labels(str, Enum):\n    old = ${quote}old${quote}\n`);
+        fs.writeFileSync(path.join(templateDir, '1.png'), createPng(100, 100, 128, 128, 128));
+        fs.writeFileSync(path.join(templateDir, 'coco_annotations.json'), JSON.stringify({
+          images: [{ id: 1, file_name: '1.png', width: 100, height: 100 }],
+          annotations: labels.map((_, id) => ({ id, image_id: 1, category_id: id, bbox: [id * 20, 0, 10, 10], area: 100, iscrowd: 0 })),
+          categories: labels.map((name, id) => ({ id, name, supercategory: '' })),
+        }));
+        const data = new TemplateAssetData(tmpDir);
+        data.load();
+        await data.saveToAssets(targetDir, true, enumFile);
+        const output = fs.readFileSync(enumFile, 'utf8');
+        strict.equal(labelEnumQuote(output), quote, '必须从覆盖目标读取风格，而不是临时文件');
+        for (const label of labels) strict.ok(output.includes(` = ${pythonStringLiteral(label, quote)}\n`));
+        if (python) {
+          const evaluated = spawnSync(python, ['-c', 'import json,sys; ns={}; exec(sys.stdin.read(),ns); print(json.dumps([x.value for x in ns["Labels"]],ensure_ascii=False))'], { input: output, encoding: 'utf8', env: { ...process.env, PYTHONIOENCODING: 'utf-8' } });
+          strict.equal(evaluated.status, 0, evaluated.stderr);
+          strict.deepEqual(JSON.parse(evaluated.stdout), [...labels].sort(), 'Python 实际执行后所有标签值必须保持不变');
+        }
+      } finally { teardown(); }
+    }
+  }
+  if (!python) console.log('[SKIP] Python 不可用，跳过生成枚举的实际执行检查');
+  console.log('[PASS] enum overwrite preserves quote style and Python values through staging');
+}
+
 const tests = [
+  test_enumOverwriteKeepsQuotes,
   test_tempBmpPromotionPreservesPixelsAndImportSemantics,
   test_deleteImageCleansAllAuthoringSourcesAndRollsBack,
   test_nonOverlappingBboxesPackToSamePage,
