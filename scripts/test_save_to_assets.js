@@ -1018,6 +1018,8 @@ async function test_enumOverwriteKeepsQuotes() {
 `), '"');
   strict.equal(labelEnumQuote(`    a = "a"\n    b = 'b'\n`), '"');
   strict.equal(labelEnumQuote(`    a = 'a'\n    b = "b"\n`), "'");
+  strict.equal(labelEnumQuote('    中文 = "中文"\n'), '"');
+  strict.equal(labelEnumQuote('    ℘ = "symbol"\n    𐐀 = "non-bmp"\n'), '"');
   const labels = ['plain', 'it\'s "quoted"', 'a\\b\n\t\x07', '中文'];
   for (const originalQuote of [undefined, "'", '"']) {
     const quote = originalQuote ?? "'";

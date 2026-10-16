@@ -548,7 +548,7 @@ export function labelEnumQuote(source: string): "'" | '"' {
   for (const token of source.matchAll(tokens)) {
     if (!token[2]) continue;
     const prefix = source.slice(source.lastIndexOf('\n', token.index! - 1) + 1, token.index);
-    if (/^[ \t]+[A-Za-z_]\w*[ \t]*(?::[^=\r\n]+)?=[ \t]*[rRuU]?$/.test(prefix)) {
+    if (/^[ \t]+[_\p{ID_Start}][_\p{ID_Continue}]*[ \t]*(?::[^=\r\n]+)?=[ \t]*[rRuU]?$/u.test(prefix)) {
       quotes.push(token[2] as "'" | '"');
     }
   }
